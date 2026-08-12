@@ -27,6 +27,7 @@ import {
   type ErrorCode,
   type HealthResponse,
 } from '../../shared/contract.js';
+import { isLegalRoute, isSpaRoute } from '../../shared/routes.js';
 import type { ServerEnvironment } from '../config/environment.js';
 import {
   commitFoundationCheck,
@@ -37,6 +38,8 @@ import {
   mintDevelopmentIdentity,
   resolveSession,
 } from '../identity/development-identity.js';
+import { getLegalDocument } from '../legal/legal-registry.js';
+import { renderLegalPage } from '../legal/render-legal-page.js';
 
 /** Largest request body the server will buffer, in bytes. */
 const MAX_REQUEST_BODY_BYTES = 8 * 1024;
@@ -189,13 +192,13 @@ function sendNotFoundPage(response: ServerResponse, requestedPath: string): void
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Route not found — Hallucinated Dungeons Local Arena</title>
+    <title>Route not found — Hallucinated Dungeons</title>
   </head>
   <body>
     <main>
       <h1>No page exists at ${safePath}</h1>
-      <p>The Local Arena serves the Phase 0 foundation page at the site root.</p>
-      <p><a href="/">Return to the Local Arena</a></p>
+      <p>Hallucinated Dungeons is at the site root. Legal documents and the Local Arena diagnostics page are linked from there.</p>
+      <p><a href="/">Return to Hallucinated Dungeons</a></p>
     </main>
   </body>
 </html>
@@ -365,6 +368,30 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    // Legal routes are plain server-rendered documents, not part of the
+    // single-page application, so they remain readable without script
+    // execution and are served the same way in both runtime modes.
+    if (isLegalRoute(path)) {
+      if (method !== 'GET') {
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+      const document = getLegalDocument(path);
+      if (document === null) {
+        sendNotFoundPage(response, path);
+        return;
+      }
+      const page = renderLegalPage(document);
+      applySecurityHeaders(response);
+      response.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'content-length': Buffer.byteLength(page),
+        'cache-control': 'no-store',
+      });
+      response.end(page);
+      return;
+    }
+
     if (env.clientBundleDir === null) {
       sendNotFoundPage(response, path);
       return;
@@ -375,10 +402,14 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
-    const served =
-      path === '/'
-        ? await serveBundleAsset(response, env.clientBundleDir, 'index.html')
-        : await serveBundleAsset(response, env.clientBundleDir, path);
+    // Only the declared single-page-application routes fall back to the
+    // built index.html on a hard navigation or reload. Every other path is
+    // resolved as a literal asset (scripts, styles, source maps) or answered
+    // with the honest 404 page — an unlinked path never silently renders the
+    // application shell.
+    const served = isSpaRoute(path)
+      ? await serveBundleAsset(response, env.clientBundleDir, 'index.html')
+      : await serveBundleAsset(response, env.clientBundleDir, path);
 
     if (!served) {
       sendNotFoundPage(response, path);

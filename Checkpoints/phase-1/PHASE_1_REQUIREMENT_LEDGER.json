@@ -33,30 +33,38 @@
       "id": "P1-DESIGN-SYSTEM",
       "source": "8.17; 8.17.1; 25 Phase 1 build scope",
       "behavior": "A version-controlled Design System Manifest defines named tokens for color, typography, spacing, iconography, motion, component anatomy and every state, responsive and accessibility adaptations, and named rendering layers. Every component and screenshot baseline identifies the manifest version it follows.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Checkpoints/phase-1/design/DESIGN_SYSTEM_MANIFEST.md v1, implemented as CSS custom properties in Builder/src/client/styles.css",
+      "verification": "Builder actual-page self-play against Rapid Builder Mode; tests/e2e/phase1-shell.spec.ts. Typography uses an honestly labeled interim substitution (Section 25.980) pending licensed font bundling, tracked as follow-up P1-TYPOGRAPHY-ASSETS.",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-SHELL-NAV",
       "source": "25 Phase 1 build scope",
       "behavior": "Responsive hosted shell with stable navigation and accessibility foundations, using the obsidian-blue direction.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/client/shell.ts, Builder/src/client/router.ts, Builder/src/client/main.ts",
+      "verification": "tests/e2e/phase1-shell.spec.ts (navigation, aria-current, keyboard operability, focus management on route change); tests/unit covers the shared route table",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-OPENING-IDENTITY",
       "source": "1.8.6; 1.8.7",
       "behavior": "Programmatic-first opening identity sequence with a skip control, local versioned assets only, and no dependency on runtime image generation, an AI call, a remote animation service, an iframe, a third-party script, or a WebGL-only effect. Decorative assets stay off the critical path and within the stated budgets, and the sequence remains usable under cache miss, reduced motion, autoplay denial, and individual asset failure.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/client/pages/home.ts (CSS animation + one original inline SVG motif, no canvas, no audio)",
+      "verification": "tests/e2e/phase1-shell.spec.ts (semantic title present independently, skip control, prefers-reduced-motion, no replay on in-app navigation)",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-LEGAL-ROUTES",
-      "source": "1.8.4",
+      "source": "1.8.4; 1.8.5",
       "behavior": "Stable routes /legal/terms, /legal/privacy, /legal/alpha-participation, and /legal/content-and-safety load without authentication as ordinary accessible documents showing title, version, effective date, stable anchors, and a contact path. Opening a legal link preserves pending invitation and form state.",
+      "implementation": "Builder/src/server/legal/legal-registry.ts (the registry), Builder/src/server/legal/render-legal-page.ts (fully server-rendered, script-independent HTML), Builder/src/shared/routes.ts",
+      "verification": "tests/unit/legal-registry.test.mjs; tests/e2e/phase1-shell.spec.ts (anchors resolve, headers, readable with client script disabled, unregistered route still 404s, links open in a new tab so form/invitation state is trivially preserved). Recording a player's acceptance of a specific version is deferred to the chunk that adds an account-creation flow to attach it to.",
+      "status": "IMPLEMENTED_UNVERIFIED"
+    },
+    {
+      "id": "P1-TYPOGRAPHY-ASSETS",
+      "source": "8.17.1",
+      "behavior": "The licensed baseline typeface contract (an inscription-influenced serif such as Cinzel for headings, a highly legible sans-serif such as Atkinson Hyperlegible for body copy, a readable monospace family) is bundled locally with a documented provenance and license record, replacing the v1 interim system-font substitution recorded in the Design System Manifest.",
       "implementation": "not started",
       "verification": "not started",
       "status": "NOT_STARTED"
@@ -195,7 +203,7 @@
       "communicationSurfacesAndSafety": "IN SCOPE (structural). Chronicle, Party Chat, Rules Desk, and the Action Composer are established as separate surfaces with real Phase 1 behavior only.",
       "accessibilityBrowserBehaviorDegradedModes": "IN SCOPE (foundations). Keyboard operation, focus management, live regions, reduced motion, and high zoom are foundations here. Full browser and device certification is Phase 6.",
       "securityPrivacyProviderPolicyHiddenInformation": "PARTIAL — COMPATIBLE. Phase 0 guards remain active and the architecture conformance scan now enforces the account model mechanically. Provider policy and hidden-information projections arrive with the features that need them.",
-      "artAudioPerformanceRenderingLayerOwnership": "PARTIAL — COMPATIBLE. The Design System Manifest and named rendering layers are authored here, with interim assets under the stated budgets. Production art and audio are Phase 5."
+      "artAudioPerformanceRenderingLayerOwnership": "PARTIAL — COMPATIBLE. Design System Manifest v1 and a DOM Render Layer Registry are authored and implemented (shell, page-content, intro-overlay, live-region), with one original interim SVG motif and an honestly labeled interim typography substitution pending licensed font bundling. Production art and audio are Phase 5."
     }
   }
 }

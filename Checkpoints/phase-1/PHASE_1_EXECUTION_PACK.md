@@ -175,8 +175,9 @@ with the Product Owner's visual approval recorded against the certified candidat
 Internal workstream checkpoints, not gates. QA handoff happens once, at the phase candidate.
 
 1. Execution pack, ledger, ownership contract, architecture enforcement. **(done)**
-2. Design System Manifest, hosted shell, navigation, legal routes, accessibility foundations.
-3. Opening identity sequence with its skip control and fallbacks.
+2. Design System Manifest, hosted shell, navigation, legal routes, accessibility foundations,
+   and the opening identity sequence with its skip control and fallbacks. **(done)**
+3. ~~Opening identity sequence with its skip control and fallbacks.~~ Folded into step 2 above.
 4. Account projection surface over the existing development identity.
 5. Character creation: mechanical steps, validation, derived values, drafts.
 6. Identity & Final Review, Create Character, Character Vault, ownership.

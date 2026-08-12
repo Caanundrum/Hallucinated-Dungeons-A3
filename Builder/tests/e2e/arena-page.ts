@@ -18,9 +18,15 @@ export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 export const SERVER_ORIGIN =
   process.env.HD_E2E_SERVER_URL ?? process.env.HD_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 
-/** Opens the arena page and waits for the candidate strip to be populated. */
+/**
+ * Opens the Local Arena diagnostics page and waits for the candidate strip to
+ * be populated. The Phase 0 write/read journey moved from the site root to
+ * `/diagnostics` once the Phase 1 shell took over the root route; this helper
+ * is kept pointed at wherever that journey actually lives so every test
+ * written against it did not need to change individually.
+ */
 export async function openArena(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/diagnostics');
   await expect(page.getByTestId('candidate-id')).not.toBeEmpty();
 }
 

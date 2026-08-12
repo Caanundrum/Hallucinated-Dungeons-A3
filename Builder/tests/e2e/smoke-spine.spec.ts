@@ -25,7 +25,7 @@ test.describe('Permanent smoke spine', () => {
   test('startup: the page loads and reports its candidate and environment', async ({ page }) => {
     await openArena(page);
 
-    await expect(page.getByRole('heading', { name: 'Hallucinated Dungeons — Local Arena' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Local Arena diagnostics' })).toBeVisible();
     await expect(page.getByTestId('environment-class')).toHaveText('local');
     await expect(page.getByTestId('candidate-id')).toContainText('cand-');
   });
