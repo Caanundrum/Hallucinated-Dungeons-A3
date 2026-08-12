@@ -1,0 +1,740 @@
+{
+  "generatedAt": "2026-08-12T17:02:15.796Z",
+  "base": "http://127.0.0.1:5274",
+  "expectedCandidate": "cand-882c6c2fe4a3",
+  "total": 37,
+  "passed": 37,
+  "failed": [],
+  "results": [
+    {
+      "id": "A01",
+      "title": "running candidate id and environment class match the frozen manifest",
+      "passed": true,
+      "detail": {
+        "candidateId": "cand-882c6c2fe4a3",
+        "blueprintVersion": "ALPHA_3_V1",
+        "environmentClass": "local",
+        "runtimeMode": "frozen_certification",
+        "firebaseProjectId": "hallucinated-dungeons-local",
+        "environmentSchemaVersion": "1"
+      }
+    },
+    {
+      "id": "A02",
+      "title": "health route reports both emulators reachable",
+      "passed": true,
+      "detail": {
+        "status": "ready",
+        "candidate": {
+          "candidateId": "cand-882c6c2fe4a3",
+          "blueprintVersion": "ALPHA_3_V1",
+          "environmentClass": "local",
+          "runtimeMode": "frozen_certification",
+          "firebaseProjectId": "hallucinated-dungeons-local",
+          "environmentSchemaVersion": "1"
+        },
+        "checks": {
+          "firestoreEmulator": true,
+          "authEmulator": true
+        }
+      }
+    },
+    {
+      "id": "A03a",
+      "title": "POST identity mint from a foreign Origin is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A04",
+      "title": "authenticated submission is accepted and persisted",
+      "passed": true,
+      "detail": {
+        "status": 201,
+        "check": {
+          "checkId": "419e5f87-5126-41e0-8f9d-31d3b4bc200d",
+          "note": "QA baseline note one",
+          "recordedAt": "2026-08-12T17:02:08.557Z",
+          "sequence": 1
+        }
+      }
+    },
+    {
+      "id": "A03b",
+      "title": "GET records with a valid cookie but a foreign Origin is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A03c",
+      "title": "POST records from a foreign Origin is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A03d",
+      "title": "CORS preflight from a foreign Origin is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "acao": "http://127.0.0.1:5274"
+      }
+    },
+    {
+      "id": "A03e",
+      "title": "POST with Origin: null (sandboxed iframe / data: document) is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A03f",
+      "title": "POST with no Origin header at all is refused (no header-stripping bypass)",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A03g",
+      "title": "POST from a look-alike Origin (allowed origin as a prefix) is refused",
+      "passed": true,
+      "detail": {
+        "status": 403,
+        "body": {
+          "error": "FORBIDDEN_ORIGIN",
+          "message": "This request did not come from the declared Local Arena client origin."
+        }
+      }
+    },
+    {
+      "id": "A05a",
+      "title": "unauthenticated read of records is refused",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "error": "NOT_AUTHENTICATED",
+          "message": "Enter the Local Arena before recording a foundation check."
+        }
+      }
+    },
+    {
+      "id": "A05b",
+      "title": "unauthenticated write is refused",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "error": "NOT_AUTHENTICATED",
+          "message": "Enter the Local Arena before recording a foundation check."
+        }
+      }
+    },
+    {
+      "id": "A05c",
+      "title": "a forged/guessed session cookie is refused",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "error": "NOT_AUTHENTICATED",
+          "message": "Enter the Local Arena before recording a foundation check."
+        }
+      }
+    },
+    {
+      "id": "A05d",
+      "title": "unauthenticated /api/session is refused",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "error": "NOT_AUTHENTICATED",
+          "message": "Enter the Local Arena before recording a foundation check."
+        }
+      }
+    },
+    {
+      "id": "A06a",
+      "title": "submission declaring a different candidate is refused with recovery guidance",
+      "passed": true,
+      "detail": {
+        "status": 409,
+        "body": {
+          "error": "CANDIDATE_MISMATCH",
+          "message": "This page was loaded from a different candidate than the one now running. Reload the page to continue."
+        }
+      }
+    },
+    {
+      "id": "A06b",
+      "title": "submission with no candidate header is refused",
+      "passed": true,
+      "detail": {
+        "status": 409,
+        "body": {
+          "error": "CANDIDATE_MISMATCH",
+          "message": "This page was loaded from a different candidate than the one now running. Reload the page to continue."
+        }
+      }
+    },
+    {
+      "id": "A06c",
+      "title": "the refused stale-candidate submissions wrote nothing",
+      "passed": true,
+      "detail": {
+        "notes": [
+          "QA baseline note one"
+        ]
+      }
+    },
+    {
+      "id": "A07a",
+      "title": "replaying an identical requestId returns the original record and writes nothing new",
+      "passed": true,
+      "detail": {
+        "first": {
+          "status": 201,
+          "duplicate": false,
+          "checkId": "e8bb7186-7387-4a8d-b69a-4fb7a8b1efc2"
+        },
+        "second": {
+          "status": 200,
+          "duplicate": true,
+          "checkId": "e8bb7186-7387-4a8d-b69a-4fb7a8b1efc2"
+        },
+        "storedCopies": 1
+      }
+    },
+    {
+      "id": "A07b",
+      "title": "reusing a requestId with a different note body returns the original note (no overwrite)",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "duplicate": true,
+        "note": "replay probe"
+      }
+    },
+    {
+      "id": "A08",
+      "title": "10 concurrent submissions of the same requestId commit exactly one record",
+      "passed": true,
+      "detail": {
+        "statuses": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          201,
+          200,
+          200
+        ],
+        "duplicateFlags": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          true
+        ],
+        "storedCopies": 1,
+        "distinctCheckIds": 1
+      }
+    },
+    {
+      "id": "A09",
+      "title": "8 concurrent distinct submissions all persist with unique sequence numbers (no lost update)",
+      "passed": true,
+      "detail": {
+        "statuses": [
+          201,
+          201,
+          201,
+          201,
+          201,
+          201,
+          201,
+          201
+        ],
+        "storedCount": 8,
+        "sequences": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "projectionVersion": 8
+      }
+    },
+    {
+      "id": "A10a",
+      "title": "every malformed/abusive note payload is refused with a specific, explanatory code",
+      "passed": true,
+      "detail": [
+        {
+          "name": "empty string note",
+          "expect": "NOTE_EMPTY",
+          "status": 400,
+          "error": "NOTE_EMPTY",
+          "message": "Enter a short note before recording a foundation check.",
+          "duplicate": null
+        },
+        {
+          "name": "whitespace-only note",
+          "expect": "NOTE_EMPTY",
+          "status": 400,
+          "error": "NOTE_EMPTY",
+          "message": "Enter a short note before recording a foundation check.",
+          "duplicate": null
+        },
+        {
+          "name": "note of 121 characters",
+          "expect": "NOTE_TOO_LONG",
+          "status": 400,
+          "error": "NOTE_TOO_LONG",
+          "message": "That note is longer than the 120 characters this record accepts.",
+          "duplicate": null
+        },
+        {
+          "name": "note of 5000 characters",
+          "expect": "NOTE_TOO_LONG",
+          "status": 400,
+          "error": "NOTE_TOO_LONG",
+          "message": "That note is longer than the 120 characters this record accepts.",
+          "duplicate": null
+        },
+        {
+          "name": "note is a number",
+          "expect": "BAD_REQUEST",
+          "status": 400,
+          "error": "BAD_REQUEST",
+          "message": "The request body was not valid JSON in the expected shape.",
+          "duplicate": null
+        },
+        {
+          "name": "note is an object",
+          "expect": "BAD_REQUEST",
+          "status": 400,
+          "error": "BAD_REQUEST",
+          "message": "The request body was not valid JSON in the expected shape.",
+          "duplicate": null
+        },
+        {
+          "name": "note is null",
+          "expect": "BAD_REQUEST",
+          "status": 400,
+          "error": "BAD_REQUEST",
+          "message": "The request body was not valid JSON in the expected shape.",
+          "duplicate": null
+        },
+        {
+          "name": "missing requestId",
+          "expect": "REQUEST_ID_INVALID",
+          "status": 400,
+          "error": "REQUEST_ID_INVALID",
+          "message": "The submission was missing a valid request identifier, so it could not be made retry-safe.",
+          "duplicate": null
+        },
+        {
+          "name": "non-uuid requestId",
+          "expect": "REQUEST_ID_INVALID",
+          "status": 400,
+          "error": "REQUEST_ID_INVALID",
+          "message": "The submission was missing a valid request identifier, so it could not be made retry-safe.",
+          "duplicate": null
+        },
+        {
+          "name": "uuid v1 requestId",
+          "expect": "REQUEST_ID_INVALID",
+          "status": 400,
+          "error": "REQUEST_ID_INVALID",
+          "message": "The submission was missing a valid request identifier, so it could not be made retry-safe.",
+          "duplicate": null
+        },
+        {
+          "name": "requestId with a firestore path separator",
+          "expect": "REQUEST_ID_INVALID",
+          "status": 400,
+          "error": "REQUEST_ID_INVALID",
+          "message": "The submission was missing a valid request identifier, so it could not be made retry-safe.",
+          "duplicate": null
+        },
+        {
+          "name": "prototype pollution attempt in body",
+          "expect": null,
+          "status": 201,
+          "error": null,
+          "message": null,
+          "duplicate": false
+        }
+      ]
+    },
+    {
+      "id": "A10b",
+      "title": "client-supplied ownership/sequence fields are ignored; the server assigns them",
+      "passed": true,
+      "detail": {
+        "accountId": "dev-057556b1-fd2d-45b9-9d83-900e147a2217",
+        "storedSequence": 1,
+        "status": 201
+      }
+    },
+    {
+      "id": "A10c",
+      "title": "malformed JSON is refused with BAD_REQUEST, not a crash",
+      "passed": true,
+      "detail": {
+        "status": 400,
+        "body": {
+          "error": "BAD_REQUEST",
+          "message": "The request body was not valid JSON in the expected shape."
+        }
+      }
+    },
+    {
+      "id": "A10d",
+      "title": "a 200 KB body is answered with an explanatory error and the server survives",
+      "passed": true,
+      "detail": {
+        "oversized": {
+          "answered": true,
+          "status": 413,
+          "elapsedMs": 8,
+          "body": {
+            "error": "PAYLOAD_TOO_LARGE",
+            "message": "That request body is larger than this route accepts, so it was refused before being read."
+          }
+        },
+        "serverStillAnswering": 200
+      }
+    },
+    {
+      "id": "A10e",
+      "title": "the connection stays usable after an oversized body is rejected",
+      "passed": true,
+      "detail": {
+        "oversizedResponse": {
+          "answered": true,
+          "status": 413,
+          "elapsedMs": 6,
+          "setCookie": null
+        },
+        "nextRequestOnSameConnection": {
+          "answered": true,
+          "status": 200,
+          "elapsedMs": 1,
+          "setCookie": null
+        }
+      }
+    },
+    {
+      "id": "A10f",
+      "title": "CONTROL: two ordinary requests reuse one keep-alive connection without stalling",
+      "passed": true,
+      "detail": {
+        "first": {
+          "answered": true,
+          "status": 200
+        },
+        "second": {
+          "answered": true,
+          "status": 200
+        }
+      }
+    },
+    {
+      "id": "A11",
+      "title": "unsupported methods on the records route are refused (no hidden update/delete verb)",
+      "passed": true,
+      "detail": {
+        "put": 405,
+        "delete": 405
+      }
+    },
+    {
+      "id": "A12a",
+      "title": "unlinked routes and path-traversal attempts expose nothing and return an error status",
+      "passed": true,
+      "detail": [
+        {
+          "path": "/admin",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/dist",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/dist/",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/dist/server/index.js",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/.git/config",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/package.json",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/firestore.rules",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/firebase.json",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/../../etc/passwd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/..%2f..%2f..%2fetc%2fpasswd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/assets/../../../../etc/passwd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/assets/..%5c..%5cetc%5cpasswd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/....//....//etc/passwd",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/api/admin",
+          "status": 404,
+          "contentType": "application/json; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "{\"error\":\"NOT_FOUND\",\"message\":\"No such route.\"}"
+        },
+        {
+          "path": "/api/",
+          "status": 404,
+          "contentType": "application/json; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "{\"error\":\"NOT_FOUND\",\"message\":\"No such route.\"}"
+        },
+        {
+          "path": "/api/candidate/../session",
+          "status": 401,
+          "contentType": "application/json; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "{\"error\":\"NOT_AUTHENTICATED\",\"message\":\"Enter the Local Arena before recording a foundatio"
+        },
+        {
+          "path": "/.env",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        },
+        {
+          "path": "/node_modules/playwright/package.json",
+          "status": 404,
+          "contentType": "text/html; charset=utf-8",
+          "leaksPasswd": false,
+          "leaksSource": false,
+          "bodyStart": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"vie"
+        }
+      ]
+    },
+    {
+      "id": "A12b",
+      "title": "the 404 page does not reflect an attacker-controlled path as live markup",
+      "passed": true,
+      "detail": {
+        "status": 404,
+        "snippet": "<h1>No page exists at /%3Cimg%20src=x%20onerror=alert(1)%3E</h1>"
+      }
+    },
+    {
+      "id": "A12c",
+      "title": "INFORMATIONAL: client source map exposure on the frozen bundle",
+      "passed": true,
+      "detail": {
+        "status": 404,
+        "note": "source map not served"
+      }
+    },
+    {
+      "id": "A13a",
+      "title": "a second identity cannot see the first identity records",
+      "passed": true,
+      "detail": {
+        "ownerA": {
+          "accountId": "dev-29e6ea47-817b-46df-aa3c-b44c31a34d81",
+          "notes": [
+            "owner A private note"
+          ]
+        },
+        "ownerB": {
+          "accountId": "dev-3b2afac1-d03a-4b14-8133-081eb7d22f75",
+          "notes": [
+            "owner B private note"
+          ]
+        }
+      }
+    },
+    {
+      "id": "A13b",
+      "title": "a caller cannot write into another account by naming it in the body",
+      "passed": true,
+      "detail": {
+        "forgeStatus": 201,
+        "ownerANotes": [
+          "owner A private note"
+        ]
+      }
+    },
+    {
+      "id": "A14a",
+      "title": "signing out ends the session server-side and the stale cookie cannot be replayed",
+      "passed": true,
+      "detail": {
+        "signOut": 204,
+        "replayRead": 401,
+        "replayWrite": 401,
+        "replaySession": 401
+      }
+    },
+    {
+      "id": "A14b",
+      "title": "sign out clears the browser cookie as well",
+      "passed": true,
+      "detail": {
+        "setCookie": "hd_dev_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+      }
+    },
+    {
+      "id": "A14c",
+      "title": "the session cookie is HttpOnly and SameSite=Strict",
+      "passed": true,
+      "detail": {
+        "setCookie": "hd_dev_session=<redacted>; Path=/; HttpOnly; SameSite=Strict; Expires=Wed, 12 Aug 2026 21:02:15 GMT"
+      }
+    },
+    {
+      "id": "A15",
+      "title": "INFORMATIONAL: security headers present on the HTML document",
+      "passed": true,
+      "detail": {
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+        "x-frame-options": "DENY",
+        "referrer-policy": "no-referrer"
+      }
+    }
+  ]
+}

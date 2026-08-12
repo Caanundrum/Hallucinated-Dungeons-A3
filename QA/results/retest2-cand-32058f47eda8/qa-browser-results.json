@@ -1,0 +1,2592 @@
+{
+  "config": {
+    "argv": [
+      "/exec-daemon/node",
+      "/workspace/Builder/node_modules/.bin/playwright",
+      "test",
+      "--config=/workspace/QA/playwright.retest2.config.ts"
+    ],
+    "configFile": "/workspace/QA/playwright.retest2.config.ts",
+    "rootDir": "/workspace/QA/scripts",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/QA/results/retest2-cand-32058f47eda8/test-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspace/QA/scripts",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.qa\\.spec\\.ts$/"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/workspace/QA/results/retest2-cand-32058f47eda8/qa-browser-results.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "/workspace/QA/results/retest2-cand-32058f47eda8/html-report",
+          "open": "never"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "focus-residual-probe.qa.spec.ts",
+      "file": "focus-residual-probe.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "FR-01 focus after signing out with the keyboard",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [
+                {
+                  "type": "observed",
+                  "description": "{\"tag\":\"DIV\",\"testId\":\"notice-message\",\"className\":\"message success\"}"
+                },
+                {
+                  "type": "first-tab-stop-after-sign-out",
+                  "description": "{\"tag\":\"A\",\"testId\":null,\"className\":\"skip-link\"}"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 274,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-12T17:19:16.646Z",
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"tag\":\"DIV\",\"testId\":\"notice-message\",\"className\":\"message success\"}"
+                    },
+                    {
+                      "type": "first-tab-stop-after-sign-out",
+                      "description": "{\"tag\":\"A\",\"testId\":null,\"className\":\"skip-link\"}"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3790a2375e25ecceac56-17532a1df76303770a2b",
+          "file": "focus-residual-probe.qa.spec.ts",
+          "line": 42,
+          "column": 5
+        },
+        {
+          "title": "FR-02 focus after a submission fails because the session died",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [
+                {
+                  "type": "observed",
+                  "description": "{\"tag\":\"DIV\",\"testId\":\"error-message\",\"className\":\"message error\"}"
+                },
+                {
+                  "type": "keyboard-recovery",
+                  "description": "{\"reachedEnterByTabbing\":true}"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 272,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-12T17:19:16.985Z",
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"tag\":\"DIV\",\"testId\":\"error-message\",\"className\":\"message error\"}"
+                    },
+                    {
+                      "type": "keyboard-recovery",
+                      "description": "{\"reachedEnterByTabbing\":true}"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3790a2375e25ecceac56-f475b17b9cd7f359f8cf",
+          "file": "focus-residual-probe.qa.spec.ts",
+          "line": 65,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "phase0-player.qa.spec.ts",
+      "file": "phase0-player.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 0 independent QA — rendered page",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 60,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S01 ordinary journey: enter, record, see server truth, refresh, recover",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 784,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:17.279Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-993d1cd243d9593f3aa8",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 61,
+              "column": 7
+            },
+            {
+              "title": "QA-S02 duplicate submission: rapid double-click cannot commit twice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1637,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:18.068Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-46388ab6f444853af316",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 115,
+              "column": 7
+            },
+            {
+              "title": "QA-S02b repeated Enter keypresses cannot commit twice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1530,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:19.712Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-12363b548dc64209b615",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 163,
+              "column": 7
+            },
+            {
+              "title": "QA-S02c a lost response plus retry commits exactly one record",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 545,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:21.246Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-f28606889c7df53eb43c",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 185,
+              "column": 7
+            },
+            {
+              "title": "QA-S02d submitting the same text twice as two separate intents",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 494,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:21.797Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-4d79bb8499fb458558f3",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 221,
+              "column": 7
+            },
+            {
+              "title": "QA-S04 stale page: a submission naming another candidate is refused and explained",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 448,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:22.295Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-520f7fbc078c589258df",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 235,
+              "column": 7
+            },
+            {
+              "title": "QA-S05 direct navigation to unlinked routes exposes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 532,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:22.748Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-50f95c8e1c9a68daee5d",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 272,
+              "column": 7
+            },
+            {
+              "title": "QA-S06 ownership: a second identity cannot see the first identity records",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 822,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:23.285Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-9e3011c8d6b2432d9399",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 316,
+              "column": 7
+            },
+            {
+              "title": "QA-S07 an unauthenticated browser can neither read nor write",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 144,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:24.114Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-16bd06cac63c72052983",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 358,
+              "column": 7
+            },
+            {
+              "title": "QA-S08 input abuse: validation, over-length, and markup are handled as text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1196,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:24.262Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-5cc507c201e91240bce9",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 391,
+              "column": 7
+            },
+            {
+              "title": "QA-S09 sign out ends the session server-side and the cookie cannot be replayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "post-sign-out-confirmation",
+                      "description": "{\"visibleNoticeElements\":1,\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 546,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:25.464Z",
+                      "annotations": [
+                        {
+                          "type": "post-sign-out-confirmation",
+                          "description": "{\"visibleNoticeElements\":1,\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-a0fbdffef16730635c38",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 482,
+              "column": 7
+            },
+            {
+              "title": "QA-S10 the whole journey is operable with the keyboard alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "focus-after-submit",
+                      "description": "{\"tag\":\"INPUT\",\"testId\":\"note-input\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 379,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:26.015Z",
+                      "annotations": [
+                        {
+                          "type": "focus-after-submit",
+                          "description": "{\"tag\":\"INPUT\",\"testId\":\"note-input\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-95ee820cf398d88a2fe3",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 560,
+              "column": 7
+            },
+            {
+              "title": "QA-S11 honesty: every rendered control does something real",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 475,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:26.399Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-347dcc433ce72c6a53fa",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 610,
+              "column": 7
+            },
+            {
+              "title": "QA-S12 a real cross-origin page cannot read or write arena data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "cross-origin-outcome",
+                      "description": "{\"readWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"},\"writeWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 415,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:26.879Z",
+                      "annotations": [
+                        {
+                          "type": "cross-origin-outcome",
+                          "description": "{\"readWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"},\"writeWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-9b2946fbb2f126788cab",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 664,
+              "column": 7
+            },
+            {
+              "title": "QA-S13 a server failure is explained on the page and offers a real retry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 507,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:27.299Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-e59ccc167bf292c33415",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 727,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — failure explanation on the page",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 759,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S14 signing out is confirmed on screen",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nSession ended. The stored records remain owned by that account.\",\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 347,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:27.811Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nSession ended. The stored records remain owned by that account.\",\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-e5a489035e871f8bcdfa",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 760,
+              "column": 7
+            },
+            {
+              "title": "QA-S15 an expired session is explained on the page with a way forward",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nThis development session expired. Enter the Local Arena again.\",\"errorElements\":1,\"noticeElements\":0,\"retryButtons\":0,\"noteInputs\":0,\"liveRegionText\":\"This development session expired. Enter the Local Arena again.\",\"liveRegionVisibleToSightedUser\":{\"className\":\"visually-hidden\",\"width\":1,\"height\":1,\"clip\":\"rect(0px, 0px, 0px, 0px)\",\"position\":\"absolute\"}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1044,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:28.163Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nThis development session expired. Enter the Local Arena again.\",\"errorElements\":1,\"noticeElements\":0,\"retryButtons\":0,\"noteInputs\":0,\"liveRegionText\":\"This development session expired. Enter the Local Arena again.\",\"liveRegionVisibleToSightedUser\":{\"className\":\"visually-hidden\",\"width\":1,\"height\":1,\"clip\":\"rect(0px, 0px, 0px, 0px)\",\"position\":\"absolute\"}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-239dbfde7f7ce0b3fbed",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 784,
+              "column": 7
+            },
+            {
+              "title": "QA-S16 the same invisibility affects a read that hits an expired session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\",\"errorElements\":1,\"liveRegionText\":\"Enter the Local Arena before recording a foundation check.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 646,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:29.212Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\",\"errorElements\":1,\"liveRegionText\":\"Enter the Local Arena before recording a foundation check.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-b19cf233c6b351a8894f",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 847,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — announcement and focus behaviour",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 886,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S17 the polite live region survives a state change so it can announce",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sameNode\":true,\"text\":\"Recorded sequence 1.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 284,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:29.863Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"sameNode\":true,\"text\":\"Recorded sequence 1.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-d564cd08539a3302b874",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 887,
+              "column": 7
+            },
+            {
+              "title": "QA-S18 focus is retained near the control the player just used",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"afterSubmit\":{\"tag\":\"INPUT\",\"testId\":\"note-input\"},\"afterRefresh\":{\"tag\":\"BUTTON\",\"testId\":\"refresh-projection\"}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 272,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:30.151Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"afterSubmit\":{\"tag\":\"INPUT\",\"testId\":\"note-input\"},\"afterRefresh\":{\"tag\":\"BUTTON\",\"testId\":\"refresh-projection\"}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-217fc6077ac522961304",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 914,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — completeness of what is shown",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 944,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S19 a long record history is presented honestly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"recordsWritten\":23,\"recordsRendered\":20,\"oldestRendered\":\"bulk note 04\",\"newestRendered\":\"bulk note 23\",\"mentionsTruncation\":true}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2002,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:30.427Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"recordsWritten\":23,\"recordsRendered\":20,\"oldestRendered\":\"bulk note 04\",\"newestRendered\":\"bulk note 23\",\"mentionsTruncation\":true}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-3ea491e36b779a340d62",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 945,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — recovery after an expired session",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 978,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S20 what recovery is actually available after the silent sign-out",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sameAccount\":false,\"noteInputRestoredTo\":\"the note in flight\",\"recordsVisible\":0,\"renderedNotes\":[]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 526,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:32.435Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"sameAccount\":false,\"noteInputRestoredTo\":\"the note in flight\",\"recordsVisible\":0,\"renderedNotes\":[]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-476a1e2b8c9500f7e824",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 979,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase0-remediation-retest.qa.spec.ts",
+      "file": "phase0-remediation-retest.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Retest — closure of the reported findings",
+          "file": "phase0-remediation-retest.qa.spec.ts",
+          "line": 89,
+          "column": 6,
+          "specs": [
+            {
+              "title": "RT-001a P0-QA-001: a submission into a dead session is explained on screen",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"errorVisibility\":{\"text\":\"Enter the Local Arena before recording a foundation check.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message error\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 501,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:32.973Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"errorVisibility\":{\"text\":\"Enter the Local Arena before recording a foundation check.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message error\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-f592555d1cd726f6b701",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 90,
+              "column": 7
+            },
+            {
+              "title": "RT-001b P0-QA-001: a read against a dead session explains itself",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"errorVisibility\":{\"text\":\"Enter the Local Arena before recording a foundation check.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message error\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 410,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:33.480Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"errorVisibility\":{\"text\":\"Enter the Local Arena before recording a foundation check.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message error\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nEnter the Local Arena before recording a foundation check.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-825a07dc727d6dbba81a",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 125,
+              "column": 7
+            },
+            {
+              "title": "RT-001c P0-QA-001: the typed note is not thrown away by the failure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"restored\":\"text the player typed\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 495,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:33.895Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"restored\":\"text the player typed\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-aa8055ef93a78e7c1360",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 148,
+              "column": 7
+            },
+            {
+              "title": "RT-002 P0-QA-002: signing out is confirmed on screen",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"noticeVisibility\":{\"text\":\"Session ended. The stored records remain owned by that account.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message success\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nSession ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 396,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:34.395Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"noticeVisibility\":{\"text\":\"Session ended. The stored records remain owned by that account.\",\"width\":699,\"height\":49,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"block\",\"className\":\"message success\",\"insideVisuallyHidden\":false},\"mainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\\nSession ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-4f818a8276af17676ca9",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 171,
+              "column": 7
+            },
+            {
+              "title": "RT-003 P0-QA-003: the live region survives every re-render",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sameNode\":true,\"regionCount\":1,\"text\":\"Enter a short note before recording a foundation check.\",\"ariaLive\":\"polite\",\"role\":\"status\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 479,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:34.795Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"sameNode\":true,\"regionCount\":1,\"text\":\"Enter a short note before recording a foundation check.\",\"ariaLive\":\"polite\",\"role\":\"status\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-7414c2da8e747bd3d38b",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 192,
+              "column": 7
+            },
+            {
+              "title": "RT-004 P0-QA-004: a failure replaces the earlier success announcement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"afterSuccess\":\"Recorded sequence 1.\",\"afterFailure\":\"Enter the Local Arena before recording a foundation check.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 345,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:35.279Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"afterSuccess\":\"Recorded sequence 1.\",\"afterFailure\":\"Enter the Local Arena before recording a foundation check.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-37cf2bed4d9c363b6524",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 228,
+              "column": 7
+            },
+            {
+              "title": "RT-005 P0-QA-005: focus is preserved across actions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"afterSubmit\":{\"tag\":\"INPUT\",\"testId\":\"note-input\"},\"afterRefresh\":{\"tag\":\"BUTTON\",\"testId\":\"refresh-projection\"},\"caret\":{\"valueLength\":200,\"selectionStart\":37,\"focused\":true}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 325,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:35.629Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"afterSubmit\":{\"tag\":\"INPUT\",\"testId\":\"note-input\"},\"afterRefresh\":{\"tag\":\"BUTTON\",\"testId\":\"refresh-projection\"},\"caret\":{\"valueLength\":200,\"selectionStart\":37,\"focused\":true}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-9a5b2e7edb2598636a64",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 249,
+              "column": 7
+            },
+            {
+              "title": "RT-006 P0-QA-006: a partial list says how many records exist",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"notice\":\"Showing the 20 most recent of 23 stored checks.\",\"rendered\":20,\"visibility\":{\"text\":\"Showing the 20 most recent of 23 stored checks.\",\"width\":363,\"height\":22,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"inline\",\"className\":\"\",\"insideVisuallyHidden\":false}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2068,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:35.960Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"notice\":\"Showing the 20 most recent of 23 stored checks.\",\"rendered\":20,\"visibility\":{\"text\":\"Showing the 20 most recent of 23 stored checks.\",\"width\":363,\"height\":22,\"clip\":\"auto\",\"clipPath\":\"none\",\"opacity\":\"1\",\"visibility\":\"visible\",\"display\":\"inline\",\"className\":\"\",\"insideVisuallyHidden\":false}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-a5a20c364b969ffd1332",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 301,
+              "column": 7
+            },
+            {
+              "title": "RT-007 P0-QA-006 boundary: exactly 20 records claims no truncation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1691,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:38.032Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-fec9b9e423bfafd5b918",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 328,
+              "column": 7
+            },
+            {
+              "title": "RT-008 P0-QA-008: the hardening headers are live in a real browser",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"csp\":\"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'\",\"xfo\":\"DENY\",\"referrer\":\"no-referrer\",\"nosniff\":\"nosniff\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 112,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:39.729Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"csp\":\"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'\",\"xfo\":\"DENY\",\"referrer\":\"no-referrer\",\"nosniff\":\"nosniff\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-78dee4d1280bf61a0880",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 345,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Retest — defects the fixes could have introduced",
+          "file": "phase0-remediation-retest.qa.spec.ts",
+          "line": 368,
+          "column": 6,
+          "specs": [
+            {
+              "title": "RT-101 the whole journey runs with no console error and no CSP violation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"consoleErrors\":[\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\",\"error: Failed to load resource: the server responded with a status of 400 (Bad Request)\"],\"pageErrors\":[],\"failedRequests\":[\"DELETE http://127.0.0.1:5274/api/session :: net::ERR_ABORTED\"],\"cspViolations\":[],\"unexpectedConsole\":[],\"unexpectedFailedRequests\":[]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 627,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:39.847Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"consoleErrors\":[\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\",\"error: Failed to load resource: the server responded with a status of 400 (Bad Request)\"],\"pageErrors\":[],\"failedRequests\":[\"DELETE http://127.0.0.1:5274/api/session :: net::ERR_ABORTED\"],\"cspViolations\":[],\"unexpectedConsole\":[],\"unexpectedFailedRequests\":[]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-c2e8f839fdb6ef86dd74",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 369,
+              "column": 7
+            },
+            {
+              "title": "RT-102 the stylesheet really loaded and the page is actually styled",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"bodyBackground\":\"rgb(11, 16, 32)\",\"bodyColor\":\"rgb(232, 236, 247)\",\"bodyFont\":\"\\\"Segoe UI\\\", system-ui, -apple-system, \\\"Helvetica Neue\\\", Arial, sans-serif\",\"buttonBackground\":\"rgb(110, 168, 255)\",\"buttonCursor\":\"pointer\",\"skipLinkPosition\":\"absolute\",\"styleSheetCount\":1,\"styleSheetRules\":33}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 144,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:40.479Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"bodyBackground\":\"rgb(11, 16, 32)\",\"bodyColor\":\"rgb(232, 236, 247)\",\"bodyFont\":\"\\\"Segoe UI\\\", system-ui, -apple-system, \\\"Helvetica Neue\\\", Arial, sans-serif\",\"buttonBackground\":\"rgb(110, 168, 255)\",\"buttonCursor\":\"pointer\",\"skipLinkPosition\":\"absolute\",\"styleSheetCount\":1,\"styleSheetRules\":33}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-4016a52158ea3481c967",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 455,
+              "column": 7
+            },
+            {
+              "title": "RT-103 aria-disabled controls cannot be hammered into a duplicate record",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"postRequests\":1,\"distinctRequestIds\":1,\"storedCopies\":1}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2180,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:40.627Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"postRequests\":1,\"distinctRequestIds\":1,\"storedCopies\":1}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-8da1073ce2737f2548ab",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 491,
+              "column": 7
+            },
+            {
+              "title": "RT-104 a busy control is marked aria-disabled and its activation does nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"ariaDisabled\":\"true\",\"hasDisabledAttribute\":false,\"label\":\"Recording…\",\"focusable\":true}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2047,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:42.812Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"ariaDisabled\":\"true\",\"hasDisabledAttribute\":false,\"label\":\"Recording…\",\"focusable\":true}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-ba75e55140365f89f6bc",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 556,
+              "column": 7
+            },
+            {
+              "title": "RT-105 hammering \"Enter the Local Arena\" does not mint two identities",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"mintResponses\":1,\"accountId\":\"dev-36a52855-1a7b-41c1-8b19-bc501c98ca3c\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1465,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:44.863Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"mintResponses\":1,\"accountId\":\"dev-36a52855-1a7b-41c1-8b19-bc501c98ca3c\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-0d06e56fe85d3646f4d0",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 592,
+              "column": 7
+            },
+            {
+              "title": "RT-106 hammering \"Leave the Local Arena\" ends the session cleanly once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"deleteResponses\":1}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1574,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:46.333Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"deleteResponses\":1}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-c8761c6ec8ea4512c53c",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 632,
+              "column": 7
+            },
+            {
+              "title": "RT-107 the retry control is offered only where retrying is honest",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"retryAfterValidation\":0,\"retryAfterNetwork\":1}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 527,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:47.912Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"retryAfterValidation\":0,\"retryAfterNetwork\":1}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-69bcb3f1c91b86f200c0",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 674,
+              "column": 7
+            },
+            {
+              "title": "RT-108 escaping still holds through the rebuilt render path",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"fired\":false,\"images\":0,\"svg\":0,\"scripts\":0,\"jsHrefs\":0,\"handlers\":0}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 716,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:48.444Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"fired\":false,\"images\":0,\"svg\":0,\"scripts\":0,\"jsHrefs\":0,\"handlers\":0}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-9c80f3ed45b4398cef9f",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 711,
+              "column": 7
+            },
+            {
+              "title": "RT-109 repeating the same action still announces it each time",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"announcements\":[\"Reloaded the stored projection from the server.\",\"Reloaded the stored projection from the server.\",\"Reloaded the stored projection from the server.\"]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 474,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:49.165Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"announcements\":[\"Reloaded the stored projection from the server.\",\"Reloaded the stored projection from the server.\",\"Reloaded the stored projection from the server.\"]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-12a620b62e55ee83c2c6",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 762,
+              "column": 7
+            },
+            {
+              "title": "RT-110 focus restoration does not steal focus from outside the app",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"beforeClass\":\"skip-link\",\"afterClass\":\"skip-link\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 331,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:49.644Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"beforeClass\":\"skip-link\",\"afterClass\":\"skip-link\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e4e6b37ca7f3bcd309ef-08596df34d43ea8d435f",
+              "file": "phase0-remediation-retest.qa.spec.ts",
+              "line": 784,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase0-retest2.qa.spec.ts",
+      "file": "phase0-retest2.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Retest 2 — P0-QA-009 closure",
+          "file": "phase0-retest2.qa.spec.ts",
+          "line": 107,
+          "column": 6,
+          "specs": [
+            {
+              "title": "RT2-001 signing out with the keyboard lands focus on the explanation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"focus\":{\"tag\":\"DIV\",\"testId\":\"notice-message\",\"role\":null,\"tabIndex\":-1,\"className\":\"message success\",\"text\":\"Session ended. The stored records remain owned by that account.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false},\"liveRegion\":\"Session ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 355,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:49.984Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"focus\":{\"tag\":\"DIV\",\"testId\":\"notice-message\",\"role\":null,\"tabIndex\":-1,\"className\":\"message success\",\"text\":\"Session ended. The stored records remain owned by that account.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false},\"liveRegion\":\"Session ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-bfdfcc3631b3f9a86bb7",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 108,
+              "column": 7
+            },
+            {
+              "title": "RT2-002 an authentication failure lands focus on the error panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"focus\":{\"tag\":\"DIV\",\"testId\":\"error-message\",\"role\":\"alert\",\"tabIndex\":-1,\"className\":\"message error\",\"text\":\"Enter the Local Arena before recording a foundation check.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false},\"liveRegion\":\"Enter the Local Arena before recording a foundation check.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 263,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:50.344Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"focus\":{\"tag\":\"DIV\",\"testId\":\"error-message\",\"role\":\"alert\",\"tabIndex\":-1,\"className\":\"message error\",\"text\":\"Enter the Local Arena before recording a foundation check.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false},\"liveRegion\":\"Enter the Local Arena before recording a foundation check.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-a01aedeafd40cddfc58d",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 135,
+              "column": 7
+            },
+            {
+              "title": "RT2-003 the error panel wins over a stale notice as the focus target",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"tag\":\"DIV\",\"testId\":\"error-message\",\"role\":\"alert\",\"tabIndex\":-1,\"className\":\"message error\",\"text\":\"Enter the Local Arena before recording a foundation check.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 294,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:50.611Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"tag\":\"DIV\",\"testId\":\"error-message\",\"role\":\"alert\",\"tabIndex\":-1,\"className\":\"message error\",\"text\":\"Enter the Local Arena before recording a foundation check.\",\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"isBody\":false}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-aa7d2bbf6bb6b04384ef",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 160,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Retest 2 — problems the fix could introduce",
+          "file": "phase0-retest2.qa.spec.ts",
+          "line": 181,
+          "column": 6,
+          "specs": [
+            {
+              "title": "RT2-101 the focusable messages never appear in the tab order",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"signedOutWithNotice\":[\"A.skip-link\",\"enter-arena\",\"BODY (left the page)\"],\"signedOutWithError\":[\"A.skip-link\",\"enter-arena\",\"BODY (left the page)\"],\"signedInWithNotice\":[\"A.skip-link\",\"leave-arena\",\"note-input\",\"record-submit\",\"refresh-projection\",\"BODY (left the page)\"],\"tabIndexes\":{\"notice\":-1,\"error\":null},\"tabbableInventory\":[\"A.skip-link\",\"leave-arena\",\"note-input\",\"record-submit\",\"refresh-projection\"]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 510,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:50.911Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"signedOutWithNotice\":[\"A.skip-link\",\"enter-arena\",\"BODY (left the page)\"],\"signedOutWithError\":[\"A.skip-link\",\"enter-arena\",\"BODY (left the page)\"],\"signedInWithNotice\":[\"A.skip-link\",\"leave-arena\",\"note-input\",\"record-submit\",\"refresh-projection\",\"BODY (left the page)\"],\"tabIndexes\":{\"notice\":-1,\"error\":null},\"tabbableInventory\":[\"A.skip-link\",\"leave-arena\",\"note-input\",\"record-submit\",\"refresh-projection\"]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-57194f546689357dd6ce",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 182,
+              "column": 7
+            },
+            {
+              "title": "RT2-102 the recovery control is still reachable by keyboard from the message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"forwardTabFromMessage\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"shiftTabFromMessage\":{\"tag\":\"BUTTON\",\"testId\":\"enter-arena\",\"role\":null,\"tabIndex\":0,\"className\":\"\",\"text\":\"Enter the Local Arena\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false}}"
+                    },
+                    {
+                      "type": "keyboard-recovery",
+                      "description": "{\"reachedEnterArena\":true,\"shiftTabPresses\":1}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 215,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:51.426Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"forwardTabFromMessage\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"shiftTabFromMessage\":{\"tag\":\"BUTTON\",\"testId\":\"enter-arena\",\"role\":null,\"tabIndex\":0,\"className\":\"\",\"text\":\"Enter the Local Arena\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false}}"
+                        },
+                        {
+                          "type": "keyboard-recovery",
+                          "description": "{\"reachedEnterArena\":true,\"shiftTabPresses\":1}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-8727f14b2b2d31f270da",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 258,
+              "column": 7
+            },
+            {
+              "title": "RT2-103 the keyboard-only journey still completes end to end",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 346,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:51.645Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-346c8f52bc4fff116523",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 306,
+              "column": 7
+            },
+            {
+              "title": "RT2-104 a keyboard user can recover from an expired session without a mouse",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"shiftTabPressesToRecover\":1,\"restored\":\"note lost to an expired session\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 432,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:51.995Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"shiftTabPressesToRecover\":1,\"restored\":\"note lost to an expired session\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-77708ec48c8eb5488219",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 363,
+              "column": 7
+            },
+            {
+              "title": "RT2-105 the focused message is visibly indicated for a sighted keyboard user",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"matchesFocusVisible\":true,\"matchesFocus\":true,\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"outlineColor\":\"rgb(16, 16, 16)\",\"boxShadow\":\"none\",\"borderColor\":\"rgb(35, 87, 60)\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 225,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:52.431Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"matchesFocusVisible\":true,\"matchesFocus\":true,\"outlineStyle\":\"auto\",\"outlineWidth\":\"1px\",\"outlineColor\":\"rgb(16, 16, 16)\",\"boxShadow\":\"none\",\"borderColor\":\"rgb(35, 87, 60)\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-c40ee84623d8dd413a81",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 409,
+              "column": 7
+            },
+            {
+              "title": "RT2-106 focus fallback does not fire when focus was outside the app",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"before\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"after\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 133,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:52.661Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"before\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"after\":{\"tag\":\"A\",\"testId\":null,\"role\":null,\"tabIndex\":0,\"className\":\"skip-link\",\"text\":\"Skip to main content\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-e5d589e23dfdb4c98ed9",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 438,
+              "column": 7
+            },
+            {
+              "title": "RT2-108 the retry control is the third disappearing control; focus survives it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"focus\":{\"tag\":\"BUTTON\",\"testId\":\"record-submit\",\"role\":null,\"tabIndex\":0,\"className\":\"\",\"text\":\"Record foundation check\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"liveRegion\":\"Recorded sequence 1.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 424,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:52.799Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"focus\":{\"tag\":\"BUTTON\",\"testId\":\"record-submit\",\"role\":null,\"tabIndex\":0,\"className\":\"\",\"text\":\"Record foundation check\",\"outlineStyle\":\"solid\",\"outlineWidth\":\"3px\",\"isBody\":false},\"liveRegion\":\"Recorded sequence 1.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-f2042afb9252e7f74879",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 462,
+              "column": 7
+            },
+            {
+              "title": "RT2-107 no console error or CSP violation across the journey",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"consoleErrors\":[\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\",\"error: Failed to load resource: the server responded with a status of 400 (Bad Request)\",\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\"],\"pageErrors\":[],\"cspViolations\":[],\"unexpectedConsole\":[]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 546,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T17:19:53.228Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"consoleErrors\":[\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\",\"error: Failed to load resource: the server responded with a status of 400 (Bad Request)\",\"error: Failed to load resource: the server responded with a status of 401 (Unauthorized)\"],\"pageErrors\":[],\"cspViolations\":[],\"unexpectedConsole\":[]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "841ade2e6446698811f9-e86336ac072d6609b83f",
+              "file": "phase0-retest2.qa.spec.ts",
+              "line": 511,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "signout-abort-probe.qa.spec.ts",
+      "file": "signout-abort-probe.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "SA-01 sign out really ends the session even if the browser logs an abort",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [
+                {
+                  "type": "observed",
+                  "description": "{\"sessionRequestEvents\":[\"response GET :: 401\",\"response DELETE :: 204\",\"requestfailed DELETE :: net::ERR_ABORTED\"],\"replayReadStatus\":401,\"replayWriteStatus\":401,\"cookieAfterSignOut\":null}"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 394,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-12T17:19:53.781Z",
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sessionRequestEvents\":[\"response GET :: 401\",\"response DELETE :: 204\",\"requestfailed DELETE :: net::ERR_ABORTED\"],\"replayReadStatus\":401,\"replayWriteStatus\":401,\"cookieAfterSignOut\":null}"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "eb1ddf2a3453a3e02dca-8b4b6e569041c0fdf15e",
+          "file": "signout-abort-probe.qa.spec.ts",
+          "line": 37,
+          "column": 5
+        },
+        {
+          "title": "SA-02 the sign-out request itself completes with 204",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [
+                {
+                  "type": "observed",
+                  "description": "{\"inPageResult\":{\"threw\":false,\"status\":204},\"observedResponses\":[{\"method\":\"GET\",\"status\":401},{\"method\":\"DELETE\",\"status\":204}]}"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 181,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-12T17:19:54.179Z",
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"inPageResult\":{\"threw\":false,\"status\":204},\"observedResponses\":[{\"method\":\"GET\",\"status\":401},{\"method\":\"DELETE\",\"status\":204}]}"
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "eb1ddf2a3453a3e02dca-bf726dac1168cde6ea3f",
+          "file": "signout-abort-probe.qa.spec.ts",
+          "line": 97,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-12T17:19:16.273Z",
+    "duration": 38148.289,
+    "expected": 57,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

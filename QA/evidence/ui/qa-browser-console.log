@@ -1,0 +1,260 @@
+
+Running 22 tests using 1 worker
+
+(node:16115) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16115) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › scripts/phase0-player.qa.spec.ts:56:7 › Phase 0 independent QA — rendered page › QA-S01 ordinary journey: enter, record, see server truth, refresh, recover (767ms)
+  ✓   2 [chromium] › scripts/phase0-player.qa.spec.ts:110:7 › Phase 0 independent QA — rendered page › QA-S02 duplicate submission: rapid double-click cannot commit twice (1.7s)
+  ✓   3 [chromium] › scripts/phase0-player.qa.spec.ts:158:7 › Phase 0 independent QA — rendered page › QA-S02b repeated Enter keypresses cannot commit twice (1.5s)
+  ✓   4 [chromium] › scripts/phase0-player.qa.spec.ts:180:7 › Phase 0 independent QA — rendered page › QA-S02c a lost response plus retry commits exactly one record (594ms)
+  ✓   5 [chromium] › scripts/phase0-player.qa.spec.ts:216:7 › Phase 0 independent QA — rendered page › QA-S02d submitting the same text twice as two separate intents (379ms)
+  ✓   6 [chromium] › scripts/phase0-player.qa.spec.ts:230:7 › Phase 0 independent QA — rendered page › QA-S04 stale page: a submission naming another candidate is refused and explained (446ms)
+  ✓   7 [chromium] › scripts/phase0-player.qa.spec.ts:267:7 › Phase 0 independent QA — rendered page › QA-S05 direct navigation to unlinked routes exposes nothing (544ms)
+  ✓   8 [chromium] › scripts/phase0-player.qa.spec.ts:311:7 › Phase 0 independent QA — rendered page › QA-S06 ownership: a second identity cannot see the first identity records (807ms)
+  ✓   9 [chromium] › scripts/phase0-player.qa.spec.ts:353:7 › Phase 0 independent QA — rendered page › QA-S07 an unauthenticated browser can neither read nor write (145ms)
+  ✓  10 [chromium] › scripts/phase0-player.qa.spec.ts:386:7 › Phase 0 independent QA — rendered page › QA-S08 input abuse: validation, over-length, and markup are handled as text (1.2s)
+  ✓  11 [chromium] › scripts/phase0-player.qa.spec.ts:477:7 › Phase 0 independent QA — rendered page › QA-S09 sign out ends the session server-side and the cookie cannot be replayed (532ms)
+  ✓  12 [chromium] › scripts/phase0-player.qa.spec.ts:555:7 › Phase 0 independent QA — rendered page › QA-S10 the whole journey is operable with the keyboard alone (358ms)
+  ✓  13 [chromium] › scripts/phase0-player.qa.spec.ts:605:7 › Phase 0 independent QA — rendered page › QA-S11 honesty: every rendered control does something real (426ms)
+  ✓  14 [chromium] › scripts/phase0-player.qa.spec.ts:659:7 › Phase 0 independent QA — rendered page › QA-S12 a real cross-origin page cannot read or write arena data (400ms)
+  ✓  15 [chromium] › scripts/phase0-player.qa.spec.ts:722:7 › Phase 0 independent QA — rendered page › QA-S13 a server failure is explained on the page and offers a real retry (507ms)
+  ✘  16 [chromium] › scripts/phase0-player.qa.spec.ts:755:7 › Phase 0 independent QA — failure explanation on the page › QA-S14 signing out is confirmed on screen (366ms)
+(node:16351) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16351) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  17 [chromium] › scripts/phase0-player.qa.spec.ts:779:7 › Phase 0 independent QA — failure explanation on the page › QA-S15 an expired session is explained on the page with a way forward (1.1s)
+(node:16418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  18 [chromium] › scripts/phase0-player.qa.spec.ts:842:7 › Phase 0 independent QA — failure explanation on the page › QA-S16 the same invisibility affects a read that hits an expired session (746ms)
+(node:16487) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16487) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  19 [chromium] › scripts/phase0-player.qa.spec.ts:882:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S17 the polite live region survives a state change so it can announce (327ms)
+(node:16556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  20 [chromium] › scripts/phase0-player.qa.spec.ts:909:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S18 focus is retained near the control the player just used (379ms)
+(node:16626) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16626) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  21 [chromium] › scripts/phase0-player.qa.spec.ts:940:7 › Phase 0 independent QA — completeness of what is shown › QA-S19 a long record history is presented honestly (2.3s)
+(node:16695) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:16695) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  22 [chromium] › scripts/phase0-player.qa.spec.ts:974:7 › Phase 0 independent QA — recovery after an expired session › QA-S20 what recovery is actually available after the silent sign-out (548ms)
+
+
+  1) [chromium] › scripts/phase0-player.qa.spec.ts:755:7 › Phase 0 independent QA — failure explanation on the page › QA-S14 signing out is confirmed on screen 
+
+    Error: the sign-out confirmation should be readable on the page
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "Session ended"
+    Received string:    "Enter the Local Arena·
+    The server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·
+    Enter the Local Arena"
+
+      772 |
+      773 |     await page.screenshot({ path: `${EVIDENCE}/s14-01-sign-out-confirmation.png`, fullPage: true });
+    > 774 |     expect(visibleText, 'the sign-out confirmation should be readable on the page').toContain(
+          |                                                                                     ^
+      775 |       'Session ended',
+      776 |     );
+      777 |   });
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:774:85
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › scripts/phase0-player.qa.spec.ts:779:7 › Phase 0 independent QA — failure explanation on the page › QA-S15 an expired session is explained on the page with a way forward 
+
+    Error: the expiry reason should be readable on the page
+
+    expect(received).toMatch(expected)
+
+    Expected pattern: /session expired/i
+    Received string:  "Enter the Local Arena·
+    The server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·
+    Enter the Local Arena"
+
+      836 |       observed.visibleMainText,
+      837 |       'the expiry reason should be readable on the page',
+    > 838 |     ).toMatch(/session expired/i);
+          |       ^
+      839 |     expect(observed.errorElements, 'an error message element should be rendered').toBeGreaterThan(0);
+      840 |   });
+      841 |
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:838:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › scripts/phase0-player.qa.spec.ts:842:7 › Phase 0 independent QA — failure explanation on the page › QA-S16 the same invisibility affects a read that hits an expired session 
+
+    Error: the page should say why it stopped showing the records
+
+    expect(received).toMatch(expected)
+
+    Expected pattern: /enter the local arena before|session expired/i
+    Received string:  "Enter the Local Arena·
+    The server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·
+    Enter the Local Arena"
+
+      875 |       observed.visibleMainText,
+      876 |       'the page should say why it stopped showing the records',
+    > 877 |     ).toMatch(/enter the local arena before|session expired/i);
+          |       ^
+      878 |   });
+      879 | });
+      880 |
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:877:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › scripts/phase0-player.qa.spec.ts:882:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S17 the polite live region survives a state change so it can announce 
+
+    Error: the live region should persist across renders
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      904 |     });
+      905 |     test.info().annotations.push({ type: 'observed', description: JSON.stringify(survived) });
+    > 906 |     expect(survived.sameNode, 'the live region should persist across renders').toBe(true);
+          |                                                                                ^
+      907 |   });
+      908 |
+      909 |   test('QA-S18 focus is retained near the control the player just used', async ({ page }) => {
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:906:80
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › scripts/phase0-player.qa.spec.ts:909:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S18 focus is retained near the control the player just used 
+
+    Error: focus should not be dumped on <body> after submitting
+
+    expect(received).not.toBe(expected) // Object.is equality
+
+    Expected: not "BODY"
+
+      931 |     });
+      932 |
+    > 933 |     expect(afterSubmit.tag, 'focus should not be dumped on <body> after submitting').not.toBe(
+          |                                                                                          ^
+      934 |       'BODY',
+      935 |     );
+      936 |   });
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:933:90
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [chromium] › scripts/phase0-player.qa.spec.ts:940:7 › Phase 0 independent QA — completeness of what is shown › QA-S19 a long record history is presented honestly 
+
+    Error: a truncated list should tell the player it is truncated
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      967 |       shown === 23 || observed.mentionsTruncation,
+      968 |       'a truncated list should tell the player it is truncated',
+    > 969 |     ).toBe(true);
+          |       ^
+      970 |   });
+      971 | });
+      972 |
+        at /workspace/QA/scripts/phase0-player.qa.spec.ts:969:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6 failed
+    [chromium] › scripts/phase0-player.qa.spec.ts:755:7 › Phase 0 independent QA — failure explanation on the page › QA-S14 signing out is confirmed on screen 
+    [chromium] › scripts/phase0-player.qa.spec.ts:779:7 › Phase 0 independent QA — failure explanation on the page › QA-S15 an expired session is explained on the page with a way forward 
+    [chromium] › scripts/phase0-player.qa.spec.ts:842:7 › Phase 0 independent QA — failure explanation on the page › QA-S16 the same invisibility affects a read that hits an expired session 
+    [chromium] › scripts/phase0-player.qa.spec.ts:882:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S17 the polite live region survives a state change so it can announce 
+    [chromium] › scripts/phase0-player.qa.spec.ts:909:7 › Phase 0 independent QA — announcement and focus behaviour › QA-S18 focus is retained near the control the player just used 
+    [chromium] › scripts/phase0-player.qa.spec.ts:940:7 › Phase 0 independent QA — completeness of what is shown › QA-S19 a long record history is presented honestly 
+  16 passed (19.3s)

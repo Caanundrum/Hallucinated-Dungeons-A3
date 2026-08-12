@@ -1,14 +1,32 @@
+# Working Directory layout (blueprint 1.11.1):
+#   Builder/         tracked source (the candidate)
+#   QA/              QA-owned findings and validation evidence (tracked)
+#   Checkpoints/     phase checkpoints and certificates (tracked)
+#   Evidence/        Builder certification evidence (structured records tracked)
+#   Runtime/         materialized runtimes, emulator data, logs (never tracked)
+#   Pending-Archive/ packaged phase archives awaiting an Archive Directory
+
 node_modules/
 dist/
 build/
 
-# Firebase Emulator Suite (Local Arena) runtime artifacts
+# Runtime Root is machine-local by definition: it holds materialized candidate
+# runtimes, emulator state, process logs, and per-run manifests.
+Runtime/
+Pending-Archive/*
+!Pending-Archive/.hd-root.json
+
+# Heavy or machine-specific evidence artifacts. Structured run records,
+# readiness results, and screenshots stay tracked so a reviewer can read them.
+Evidence/**/*.zip
+Evidence/**/*.webm
+Evidence/**/trace/
+Evidence/**/videos/
+QA/**/*.zip
+QA/**/*.webm
+
+# Firebase Emulator Suite runtime artifacts
 .firebase/
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
-database-debug.log
-pubsub-debug.log
 *-debug.log
 emulator-data/
 

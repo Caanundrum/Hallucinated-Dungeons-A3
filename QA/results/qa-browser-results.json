@@ -1,0 +1,1222 @@
+{
+  "config": {
+    "argv": [
+      "/exec-daemon/node",
+      "/workspace/Builder/node_modules/.bin/playwright",
+      "test",
+      "--config=/workspace/QA/playwright.qa.config.ts"
+    ],
+    "configFile": "/workspace/QA/playwright.qa.config.ts",
+    "rootDir": "/workspace/QA/scripts",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/QA/results/test-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspace/QA/scripts",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.qa\\.spec\\.ts$/"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/workspace/QA/results/qa-browser-results.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "/workspace/QA/results/html-report",
+          "open": "never"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "phase0-player.qa.spec.ts",
+      "file": "phase0-player.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 0 independent QA — rendered page",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 55,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S01 ordinary journey: enter, record, see server truth, refresh, recover",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 767,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:20:58.297Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-993d1cd243d9593f3aa8",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "QA-S02 duplicate submission: rapid double-click cannot commit twice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1651,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:20:59.131Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-46388ab6f444853af316",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "QA-S02b repeated Enter keypresses cannot commit twice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1528,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:00.788Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-12363b548dc64209b615",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 158,
+              "column": 7
+            },
+            {
+              "title": "QA-S02c a lost response plus retry commits exactly one record",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 594,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:02.321Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-f28606889c7df53eb43c",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 180,
+              "column": 7
+            },
+            {
+              "title": "QA-S02d submitting the same text twice as two separate intents",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 379,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:02.920Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-4d79bb8499fb458558f3",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 216,
+              "column": 7
+            },
+            {
+              "title": "QA-S04 stale page: a submission naming another candidate is refused and explained",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 446,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:03.304Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-520f7fbc078c589258df",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 230,
+              "column": 7
+            },
+            {
+              "title": "QA-S05 direct navigation to unlinked routes exposes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 544,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:03.756Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-50f95c8e1c9a68daee5d",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 267,
+              "column": 7
+            },
+            {
+              "title": "QA-S06 ownership: a second identity cannot see the first identity records",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 807,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:04.305Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-9e3011c8d6b2432d9399",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 311,
+              "column": 7
+            },
+            {
+              "title": "QA-S07 an unauthenticated browser can neither read nor write",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 145,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:05.117Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-16bd06cac63c72052983",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 353,
+              "column": 7
+            },
+            {
+              "title": "QA-S08 input abuse: validation, over-length, and markup are handled as text",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1246,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:05.268Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-5cc507c201e91240bce9",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 386,
+              "column": 7
+            },
+            {
+              "title": "QA-S09 sign out ends the session server-side and the cookie cannot be replayed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "post-sign-out-confirmation",
+                      "description": "{\"visibleNoticeElements\":0,\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 532,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:06.519Z",
+                      "annotations": [
+                        {
+                          "type": "post-sign-out-confirmation",
+                          "description": "{\"visibleNoticeElements\":0,\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-a0fbdffef16730635c38",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 477,
+              "column": 7
+            },
+            {
+              "title": "QA-S10 the whole journey is operable with the keyboard alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "focus-after-submit",
+                      "description": "{\"tag\":\"BODY\",\"testId\":null}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 358,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:07.057Z",
+                      "annotations": [
+                        {
+                          "type": "focus-after-submit",
+                          "description": "{\"tag\":\"BODY\",\"testId\":null}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-95ee820cf398d88a2fe3",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 555,
+              "column": 7
+            },
+            {
+              "title": "QA-S11 honesty: every rendered control does something real",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 426,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:07.420Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-347dcc433ce72c6a53fa",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 605,
+              "column": 7
+            },
+            {
+              "title": "QA-S12 a real cross-origin page cannot read or write arena data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "cross-origin-outcome",
+                      "description": "{\"readWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"},\"writeWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 400,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:07.851Z",
+                      "annotations": [
+                        {
+                          "type": "cross-origin-outcome",
+                          "description": "{\"readWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"},\"writeWithCredentials\":{\"blocked\":true,\"reason\":\"TypeError: Failed to fetch\"}}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-9b2946fbb2f126788cab",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 659,
+              "column": 7
+            },
+            {
+              "title": "QA-S13 a server failure is explained on the page and offers a real retry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 507,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:08.256Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-e59ccc167bf292c33415",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 722,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — failure explanation on the page",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 754,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S14 signing out is confirmed on screen",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 366,
+                      "error": {
+                        "message": "Error: the sign-out confirmation should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Session ended\"\u001b[39m\nReceived string:    \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m",
+                        "stack": "Error: the sign-out confirmation should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Session ended\"\u001b[39m\nReceived string:    \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:774:85",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 85,
+                          "line": 774
+                        },
+                        "snippet": "  772 |\n  773 |     await page.screenshot({ path: `${EVIDENCE}/s14-01-sign-out-confirmation.png`, fullPage: true });\n> 774 |     expect(visibleText, 'the sign-out confirmation should be readable on the page').toContain(\n      |                                                                                     ^\n  775 |       'Session ended',\n  776 |     );\n  777 |   });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 85,
+                            "line": 774
+                          },
+                          "message": "Error: the sign-out confirmation should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: \u001b[32m\"Session ended\"\u001b[39m\nReceived string:    \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n\n  772 |\n  773 |     await page.screenshot({ path: `${EVIDENCE}/s14-01-sign-out-confirmation.png`, fullPage: true });\n> 774 |     expect(visibleText, 'the sign-out confirmation should be readable on the page').toContain(\n      |                                                                                     ^\n  775 |       'Session ended',\n  776 |     );\n  777 |   });\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:774:85"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:08.767Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"liveRegionText\":\"Session ended. The stored records remain owned by that account.\"}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ef6f3--out-is-confirmed-on-screen-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 85,
+                        "line": 774
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-e5a489035e871f8bcdfa",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 755,
+              "column": 7
+            },
+            {
+              "title": "QA-S15 an expired session is explained on the page with a way forward",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"errorElements\":0,\"noticeElements\":0,\"retryButtons\":0,\"noteInputs\":0,\"liveRegionText\":\"This development session expired. Enter the Local Arena again.\",\"liveRegionVisibleToSightedUser\":{\"className\":\"visually-hidden\",\"width\":1,\"height\":1,\"clip\":\"rect(0px, 0px, 0px, 0px)\",\"position\":\"absolute\"}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1061,
+                      "error": {
+                        "message": "Error: the expiry reason should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m",
+                        "stack": "Error: the expiry reason should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:838:7",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 7,
+                          "line": 838
+                        },
+                        "snippet": "  836 |       observed.visibleMainText,\n  837 |       'the expiry reason should be readable on the page',\n> 838 |     ).toMatch(/session expired/i);\n      |       ^\n  839 |     expect(observed.errorElements, 'an error message element should be rendered').toBeGreaterThan(0);\n  840 |   });\n  841 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 7,
+                            "line": 838
+                          },
+                          "message": "Error: the expiry reason should be readable on the page\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n\n  836 |       observed.visibleMainText,\n  837 |       'the expiry reason should be readable on the page',\n> 838 |     ).toMatch(/session expired/i);\n      |       ^\n  839 |     expect(observed.errorElements, 'an error message element should be rendered').toBeGreaterThan(0);\n  840 |   });\n  841 |\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:838:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:09.529Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"errorElements\":0,\"noticeElements\":0,\"retryButtons\":0,\"noteInputs\":0,\"liveRegionText\":\"This development session expired. Enter the Local Arena again.\",\"liveRegionVisibleToSightedUser\":{\"className\":\"visually-hidden\",\"width\":1,\"height\":1,\"clip\":\"rect(0px, 0px, 0px, 0px)\",\"position\":\"absolute\"}}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-dceb1-the-page-with-a-way-forward-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 7,
+                        "line": 838
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-239dbfde7f7ce0b3fbed",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 779,
+              "column": 7
+            },
+            {
+              "title": "QA-S16 the same invisibility affects a read that hits an expired session",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"errorElements\":0,\"liveRegionText\":\"Recorded sequence 1.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 746,
+                      "error": {
+                        "message": "Error: the page should say why it stopped showing the records\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/enter the local arena before|session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m",
+                        "stack": "Error: the page should say why it stopped showing the records\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/enter the local arena before|session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:877:7",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 7,
+                          "line": 877
+                        },
+                        "snippet": "  875 |       observed.visibleMainText,\n  876 |       'the page should say why it stopped showing the records',\n> 877 |     ).toMatch(/enter the local arena before|session expired/i);\n      |       ^\n  878 |   });\n  879 | });\n  880 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 7,
+                            "line": 877
+                          },
+                          "message": "Error: the page should say why it stopped showing the records\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/enter the local arena before|session expired/i\u001b[39m\nReceived string:  \u001b[31m\"Enter the Local Arena·\u001b[39m\n\u001b[31mThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.·\u001b[39m\n\u001b[31mEnter the Local Arena\"\u001b[39m\n\n  875 |       observed.visibleMainText,\n  876 |       'the page should say why it stopped showing the records',\n> 877 |     ).toMatch(/enter the local arena before|session expired/i);\n      |       ^\n  878 |   });\n  879 | });\n  880 |\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:877:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:11.042Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"visibleMainText\":\"Enter the Local Arena\\n\\nThe server mints a temporary development identity for local testing. There is no password to create or store, and this route exists only in the Local Execution Environment.\\n\\nEnter the Local Arena\",\"errorElements\":0,\"liveRegionText\":\"Recorded sequence 1.\"}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-e3e66-hat-hits-an-expired-session-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 7,
+                        "line": 877
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-b19cf233c6b351a8894f",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 842,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — announcement and focus behaviour",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 881,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S17 the polite live region survives a state change so it can announce",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sameNode\":false,\"text\":\"Recorded sequence 1.\"}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 327,
+                      "error": {
+                        "message": "Error: the live region should persist across renders\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m",
+                        "stack": "Error: the live region should persist across renders\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:906:80",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 80,
+                          "line": 906
+                        },
+                        "snippet": "  904 |     });\n  905 |     test.info().annotations.push({ type: 'observed', description: JSON.stringify(survived) });\n> 906 |     expect(survived.sameNode, 'the live region should persist across renders').toBe(true);\n      |                                                                                ^\n  907 |   });\n  908 |\n  909 |   test('QA-S18 focus is retained near the control the player just used', async ({ page }) => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 80,
+                            "line": 906
+                          },
+                          "message": "Error: the live region should persist across renders\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  904 |     });\n  905 |     test.info().annotations.push({ type: 'observed', description: JSON.stringify(survived) });\n> 906 |     expect(survived.sameNode, 'the live region should persist across renders').toBe(true);\n      |                                                                                ^\n  907 |   });\n  908 |\n  909 |   test('QA-S18 focus is retained near the control the player just used', async ({ page }) => {\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:906:80"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:12.240Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"sameNode\":false,\"text\":\"Recorded sequence 1.\"}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-f8cf7-e-change-so-it-can-announce-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 80,
+                        "line": 906
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-d564cd08539a3302b874",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 882,
+              "column": 7
+            },
+            {
+              "title": "QA-S18 focus is retained near the control the player just used",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"afterSubmit\":{\"tag\":\"BODY\",\"testId\":null},\"afterRefresh\":{\"tag\":\"BODY\",\"testId\":null}}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 379,
+                      "error": {
+                        "message": "Error: focus should not be dumped on <body> after submitting\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"BODY\"\u001b[39m",
+                        "stack": "Error: focus should not be dumped on <body> after submitting\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"BODY\"\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:933:90",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 90,
+                          "line": 933
+                        },
+                        "snippet": "  931 |     });\n  932 |\n> 933 |     expect(afterSubmit.tag, 'focus should not be dumped on <body> after submitting').not.toBe(\n      |                                                                                          ^\n  934 |       'BODY',\n  935 |     );\n  936 |   });"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 90,
+                            "line": 933
+                          },
+                          "message": "Error: focus should not be dumped on <body> after submitting\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"BODY\"\u001b[39m\n\n  931 |     });\n  932 |\n> 933 |     expect(afterSubmit.tag, 'focus should not be dumped on <body> after submitting').not.toBe(\n      |                                                                                          ^\n  934 |       'BODY',\n  935 |     );\n  936 |   });\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:933:90"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:13.003Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"afterSubmit\":{\"tag\":\"BODY\",\"testId\":null},\"afterRefresh\":{\"tag\":\"BODY\",\"testId\":null}}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-ff194-ontrol-the-player-just-used-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 90,
+                        "line": 933
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-217fc6077ac522961304",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 909,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — completeness of what is shown",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 939,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S19 a long record history is presented honestly",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"recordsWritten\":23,\"recordsRendered\":20,\"oldestRendered\":\"bulk note 04\",\"newestRendered\":\"bulk note 23\",\"mentionsTruncation\":false}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 2263,
+                      "error": {
+                        "message": "Error: a truncated list should tell the player it is truncated\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m",
+                        "stack": "Error: a truncated list should tell the player it is truncated\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:969:7",
+                        "location": {
+                          "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                          "column": 7,
+                          "line": 969
+                        },
+                        "snippet": "  967 |       shown === 23 || observed.mentionsTruncation,\n  968 |       'a truncated list should tell the player it is truncated',\n> 969 |     ).toBe(true);\n      |       ^\n  970 |   });\n  971 | });\n  972 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                            "column": 7,
+                            "line": 969
+                          },
+                          "message": "Error: a truncated list should tell the player it is truncated\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  967 |       shown === 23 || observed.mentionsTruncation,\n  968 |       'a truncated list should tell the player it is truncated',\n> 969 |     ).toBe(true);\n      |       ^\n  970 |   });\n  971 | });\n  972 |\n    at /workspace/QA/scripts/phase0-player.qa.spec.ts:969:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:13.838Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"recordsWritten\":23,\"recordsRendered\":20,\"oldestRendered\":\"bulk note 04\",\"newestRendered\":\"bulk note 23\",\"mentionsTruncation\":false}"
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/QA/results/test-output/phase0-player.qa-Phase-0-i-82888-story-is-presented-honestly-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/QA/scripts/phase0-player.qa.spec.ts",
+                        "column": 7,
+                        "line": 969
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-3ea491e36b779a340d62",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 940,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Phase 0 independent QA — recovery after an expired session",
+          "file": "phase0-player.qa.spec.ts",
+          "line": 973,
+          "column": 6,
+          "specs": [
+            {
+              "title": "QA-S20 what recovery is actually available after the silent sign-out",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "{\"sameAccount\":false,\"noteInputRestoredTo\":\"the note in flight\",\"recordsVisible\":0,\"renderedNotes\":[]}"
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 548,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-12T16:21:16.626Z",
+                      "annotations": [
+                        {
+                          "type": "observed",
+                          "description": "{\"sameAccount\":false,\"noteInputRestoredTo\":\"the note in flight\",\"recordsVisible\":0,\"renderedNotes\":[]}"
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5244423616d0cf9be383-476a1e2b8c9500f7e824",
+              "file": "phase0-player.qa.spec.ts",
+              "line": 974,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-12T16:20:57.928Z",
+    "duration": 19338.595,
+    "expected": 16,
+    "skipped": 0,
+    "unexpected": 6,
+    "flaky": 0
+  }
+}

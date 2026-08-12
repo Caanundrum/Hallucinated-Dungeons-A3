@@ -1,0 +1,32 @@
+[PASS] R01 the running candidate is the replacement candidate
+        {"candidateId":"cand-32058f47eda8","blueprintVersion":"ALPHA_3_V1","environmentClass":"local","runtimeMode":"frozen_certification","firebaseProjectId":"hallucinated-dungeons-local","environmentSchemaVersion":"1"}
+[PASS] R02 every class of response carries the hardening headers
+        {"html document":{"status":200,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"},"404 page":{"status":404,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"},"json success":{"status":200,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"},"json error":{"status":401,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"},"js bundle":{"status":200,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"},"css bundle":{"status":200,"content-security-policy":"ok","x-frame-options":"ok","referrer-policy":"ok","x-content-type-options":"ok"}}
+[PASS] R03 the client bundle actually loads (js and css return 200)
+        {"js":{"path":"assets/index-vChbcHYo.js","status":200},"css":{"path":"assets/index-7vK97B9h.css","status":200}}
+[PASS] R04 the served HTML contains nothing the CSP would block
+        {"inlineScript":false,"inlineStyleBlock":false,"inlineStyleAttribute":false}
+[PASS] R05 every oversized body is answered with 413 and every valid-size body is still processed
+        [{"name":"valid 100 character note","bodyBytes":162,"expectStatus":201,"answered":true,"status":201,"error":null,"connectionHeader":"close","elapsedMs":18},{"name":"body just under 8 KB","bodyBytes":8054,"expectStatus":400,"answered":true,"status":400,"error":"NOTE_TOO_LONG","connectionHeader":"close","elapsedMs":6},{"name":"body just over 8 KB","bodyBytes":8454,"expectStatus":413,"answered":true,"status":413,"error":"PAYLOAD_TOO_LARGE","connectionHeader":"close","elapsedMs":6},{"name":"body of 200 KB","bodyBytes":204862,"expectStatus":413,"answered":true,"status":413,"error":"PAYLOAD_TOO_LARGE","connectionHeader":"close","elapsedMs":6},{"name":"body of 5 MB","bodyBytes":5242942,"expectStatus":413,"answered":true,"status":413,"error":"PAYLOAD_TOO_LARGE","connectionHeader":"close","elapsedMs":12}]
+[PASS] R05b the size guard rejects before reading, not after a long upload
+        [{"name":"body just over 8 KB","elapsedMs":6},{"name":"body of 200 KB","elapsedMs":6},{"name":"body of 5 MB","elapsedMs":12}]
+[PASS] R06 a chunked upload with no Content-Length is refused cleanly rather than stalling
+        {"answered":true,"status":413,"body":{"error":"PAYLOAD_TOO_LARGE","message":"That request body is larger than this route accepts, so it was refused before being read."},"connection":"close","elapsedMs":8}
+[PASS] R07 a 60 KB body is refused with 413 and never reaches storage
+        {"status":413,"error":"PAYLOAD_TOO_LARGE"}
+[PASS] R08 an ordinary submission still works after the oversized rejections, and no oversized note was stored
+        {"submitStatus":201,"storedNoteLengths":[38,100],"oversizedNotesStored":0}
+[PASS] R09 totalCount reports the true stored count at every size
+        [{"written":0,"totalCount":0,"rendered":0},{"written":1,"totalCount":1,"rendered":1,"projectionVersion":1},{"written":19,"totalCount":19,"rendered":19,"projectionVersion":19},{"written":20,"totalCount":20,"rendered":20,"projectionVersion":20},{"written":21,"totalCount":21,"rendered":20,"projectionVersion":21},{"written":23,"totalCount":23,"rendered":20,"projectionVersion":23}]
+[PASS] R10 totalCount is owner-scoped and does not leak the global record count
+        {"accountId":"dev-03ea4ecb-4948-4fc6-b9ca-277ad69c4e00","totalCount":2,"otherAccountTotal":23}
+[PASS] R11 the projection with totalCount is still refused to an unauthenticated caller
+        {"status":401,"body":{"error":"NOT_AUTHENTICATED","message":"Enter the Local Arena before recording a foundation check."}}
+[PASS] R12 the 413 carries a machine code and a sentence a player could read
+        {"error":"PAYLOAD_TOO_LARGE","message":"That request body is larger than this route accepts, so it was refused before being read."}
+[PASS] R14 an unauthenticated oversized body cannot stall a connection either
+        {"oversized":{"status":401,"error":"NOT_AUTHENTICATED"},"followUp":200}
+[PASS] R15 INFORMATIONAL: source map exposure on the new bundle
+        {"path":"assets/index-vChbcHYo.js.map","status":200}
+
+15/15 new-surface checks passed.

@@ -1,0 +1,304 @@
+{
+  "generatedAt": "2026-08-12T17:20:06.779Z",
+  "candidateUnderTest": "cand-32058f47eda8",
+  "scope": "surface changed by the Phase 0 remediation",
+  "total": 15,
+  "passed": 15,
+  "failed": [],
+  "results": [
+    {
+      "id": "R01",
+      "title": "the running candidate is the replacement candidate",
+      "passed": true,
+      "detail": {
+        "candidateId": "cand-32058f47eda8",
+        "blueprintVersion": "ALPHA_3_V1",
+        "environmentClass": "local",
+        "runtimeMode": "frozen_certification",
+        "firebaseProjectId": "hallucinated-dungeons-local",
+        "environmentSchemaVersion": "1"
+      }
+    },
+    {
+      "id": "R02",
+      "title": "every class of response carries the hardening headers",
+      "passed": true,
+      "detail": {
+        "html document": {
+          "status": 200,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        },
+        "404 page": {
+          "status": 404,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        },
+        "json success": {
+          "status": 200,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        },
+        "json error": {
+          "status": 401,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        },
+        "js bundle": {
+          "status": 200,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        },
+        "css bundle": {
+          "status": 200,
+          "content-security-policy": "ok",
+          "x-frame-options": "ok",
+          "referrer-policy": "ok",
+          "x-content-type-options": "ok"
+        }
+      }
+    },
+    {
+      "id": "R03",
+      "title": "the client bundle actually loads (js and css return 200)",
+      "passed": true,
+      "detail": {
+        "js": {
+          "path": "assets/index-vChbcHYo.js",
+          "status": 200
+        },
+        "css": {
+          "path": "assets/index-7vK97B9h.css",
+          "status": 200
+        }
+      }
+    },
+    {
+      "id": "R04",
+      "title": "the served HTML contains nothing the CSP would block",
+      "passed": true,
+      "detail": {
+        "inlineScript": false,
+        "inlineStyleBlock": false,
+        "inlineStyleAttribute": false
+      }
+    },
+    {
+      "id": "R05",
+      "title": "every oversized body is answered with 413 and every valid-size body is still processed",
+      "passed": true,
+      "detail": [
+        {
+          "name": "valid 100 character note",
+          "bodyBytes": 162,
+          "expectStatus": 201,
+          "answered": true,
+          "status": 201,
+          "error": null,
+          "connectionHeader": "close",
+          "elapsedMs": 18
+        },
+        {
+          "name": "body just under 8 KB",
+          "bodyBytes": 8054,
+          "expectStatus": 400,
+          "answered": true,
+          "status": 400,
+          "error": "NOTE_TOO_LONG",
+          "connectionHeader": "close",
+          "elapsedMs": 6
+        },
+        {
+          "name": "body just over 8 KB",
+          "bodyBytes": 8454,
+          "expectStatus": 413,
+          "answered": true,
+          "status": 413,
+          "error": "PAYLOAD_TOO_LARGE",
+          "connectionHeader": "close",
+          "elapsedMs": 6
+        },
+        {
+          "name": "body of 200 KB",
+          "bodyBytes": 204862,
+          "expectStatus": 413,
+          "answered": true,
+          "status": 413,
+          "error": "PAYLOAD_TOO_LARGE",
+          "connectionHeader": "close",
+          "elapsedMs": 6
+        },
+        {
+          "name": "body of 5 MB",
+          "bodyBytes": 5242942,
+          "expectStatus": 413,
+          "answered": true,
+          "status": 413,
+          "error": "PAYLOAD_TOO_LARGE",
+          "connectionHeader": "close",
+          "elapsedMs": 12
+        }
+      ]
+    },
+    {
+      "id": "R05b",
+      "title": "the size guard rejects before reading, not after a long upload",
+      "passed": true,
+      "detail": [
+        {
+          "name": "body just over 8 KB",
+          "elapsedMs": 6
+        },
+        {
+          "name": "body of 200 KB",
+          "elapsedMs": 6
+        },
+        {
+          "name": "body of 5 MB",
+          "elapsedMs": 12
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "title": "a chunked upload with no Content-Length is refused cleanly rather than stalling",
+      "passed": true,
+      "detail": {
+        "answered": true,
+        "status": 413,
+        "body": {
+          "error": "PAYLOAD_TOO_LARGE",
+          "message": "That request body is larger than this route accepts, so it was refused before being read."
+        },
+        "connection": "close",
+        "elapsedMs": 7
+      }
+    },
+    {
+      "id": "R07",
+      "title": "a 60 KB body is refused with 413 and never reaches storage",
+      "passed": true,
+      "detail": {
+        "status": 413,
+        "error": "PAYLOAD_TOO_LARGE"
+      }
+    },
+    {
+      "id": "R08",
+      "title": "an ordinary submission still works after the oversized rejections, and no oversized note was stored",
+      "passed": true,
+      "detail": {
+        "submitStatus": 201,
+        "storedNoteLengths": [
+          38,
+          100
+        ],
+        "oversizedNotesStored": 0
+      }
+    },
+    {
+      "id": "R09",
+      "title": "totalCount reports the true stored count at every size",
+      "passed": true,
+      "detail": [
+        {
+          "written": 0,
+          "totalCount": 0,
+          "rendered": 0
+        },
+        {
+          "written": 1,
+          "totalCount": 1,
+          "rendered": 1,
+          "projectionVersion": 1
+        },
+        {
+          "written": 19,
+          "totalCount": 19,
+          "rendered": 19,
+          "projectionVersion": 19
+        },
+        {
+          "written": 20,
+          "totalCount": 20,
+          "rendered": 20,
+          "projectionVersion": 20
+        },
+        {
+          "written": 21,
+          "totalCount": 21,
+          "rendered": 20,
+          "projectionVersion": 21
+        },
+        {
+          "written": 23,
+          "totalCount": 23,
+          "rendered": 20,
+          "projectionVersion": 23
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "title": "totalCount is owner-scoped and does not leak the global record count",
+      "passed": true,
+      "detail": {
+        "accountId": "dev-5a60f90d-aedf-4ca8-b97f-7e92ffc1c9c3",
+        "totalCount": 2,
+        "otherAccountTotal": 23
+      }
+    },
+    {
+      "id": "R11",
+      "title": "the projection with totalCount is still refused to an unauthenticated caller",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "error": "NOT_AUTHENTICATED",
+          "message": "Enter the Local Arena before recording a foundation check."
+        }
+      }
+    },
+    {
+      "id": "R12",
+      "title": "the 413 carries a machine code and a sentence a player could read",
+      "passed": true,
+      "detail": {
+        "error": "PAYLOAD_TOO_LARGE",
+        "message": "That request body is larger than this route accepts, so it was refused before being read."
+      }
+    },
+    {
+      "id": "R14",
+      "title": "an unauthenticated oversized body cannot stall a connection either",
+      "passed": true,
+      "detail": {
+        "oversized": {
+          "status": 401,
+          "error": "NOT_AUTHENTICATED"
+        },
+        "followUp": 200
+      }
+    },
+    {
+      "id": "R15",
+      "title": "INFORMATIONAL: source map exposure on the new bundle",
+      "passed": true,
+      "detail": {
+        "path": "assets/index-vChbcHYo.js.map",
+        "status": 200
+      }
+    }
+  ]
+}

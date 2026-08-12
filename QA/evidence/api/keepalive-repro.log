@@ -1,0 +1,14 @@
+
+--- control: two ordinary GETs on one keep-alive connection ---
+first  : {"outcome":"answered","status":200,"elapsedMs":5,"setCookie":null,"body":"{\"candidateId\":\"cand-0f810c6c26d8\",\"blueprintVersion\":\"ALPHA_3_V1\",\"environmentClass\":\"local\",\"runtimeMode\":\"frozen_certification\",\"firebaseProjectId\":\"hallucinated-dungeons-local\",\"environmentSchemaV"}
+second : {"outcome":"answered","status":200,"elapsedMs":1,"setCookie":null,"body":"{\"candidateId\":\"cand-0f810c6c26d8\",\"blueprintVersion\":\"ALPHA_3_V1\",\"environmentClass\":\"local\",\"runtimeMode\":\"frozen_certification\",\"firebaseProjectId\":\"hallucinated-dungeons-local\",\"environmentSchemaV"}
+
+--- body just over the 8 KB limit (note length 9000) ---
+oversized POST : {"outcome":"answered","status":400,"elapsedMs":8,"setCookie":null,"body":"{\"error\":\"BAD_REQUEST\",\"message\":\"The request body was not valid JSON in the expected shape.\"}"}
+next GET (same connection) : {"outcome":"answered","status":200,"elapsedMs":1,"setCookie":null,"body":"{\"candidateId\":\"cand-0f810c6c26d8\",\"blueprintVersion\":\"ALPHA_3_V1\",\"environmentClass\":\"local\",\"runtimeMode\":\"frozen_certification\",\"firebaseProjectId\":\"hallucinated-dungeons-local\",\"environmentSchemaV"}
+following GET  : {"outcome":"answered","status":200,"elapsedMs":1,"setCookie":null,"body":"{\"candidateId\":\"cand-0f810c6c26d8\",\"blueprintVersion\":\"ALPHA_3_V1\",\"environmentClass\":\"local\",\"runtimeMode\":\"frozen_certification\",\"firebaseProjectId\":\"hallucinated-dungeons-local\",\"environmentSchemaV"}
+
+--- 200 KB body (note length 200000) ---
+oversized POST : {"outcome":"answered","status":400,"elapsedMs":8,"setCookie":null,"body":"{\"error\":\"BAD_REQUEST\",\"message\":\"The request body was not valid JSON in the expected shape.\"}"}
+next GET (same connection) : {"outcome":"STALLED (no response)","elapsedMs":8001}
+following GET  : {"outcome":"answered","status":200,"elapsedMs":1,"setCookie":null,"body":"{\"candidateId\":\"cand-0f810c6c26d8\",\"blueprintVersion\":\"ALPHA_3_V1\",\"environmentClass\":\"local\",\"runtimeMode\":\"frozen_certification\",\"firebaseProjectId\":\"hallucinated-dungeons-local\",\"environmentSchemaV"}

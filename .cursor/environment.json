@@ -1,13 +1,15 @@
 {
   "name": "Hallucinated Dungeons Alpha 3",
-  "install": "npm ci",
+  "install": "npm --prefix Builder ci && npx --yes --prefix Builder playwright install --with-deps chromium",
   "terminals": [
     {
-      "name": "Local Arena (Firebase Emulators)",
-      "command": "npm run arena:start"
+      "name": "Local Arena (Rapid Builder Mode)",
+      "command": "npm --prefix Builder run arena:start"
     }
   ],
   "ports": [
+    { "name": "Local Arena page", "port": 5173 },
+    { "name": "Local Arena server", "port": 5174 },
     { "name": "Emulator UI", "port": 4000 },
     { "name": "Firestore emulator", "port": 8080 },
     { "name": "Auth emulator", "port": 9099 }
