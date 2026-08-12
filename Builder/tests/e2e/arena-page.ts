@@ -8,6 +8,16 @@ import { expect, type Page, type Request } from '@playwright/test';
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
+/**
+ * Origin of the application server itself.
+ *
+ * In Frozen Local Certification Mode the server also serves the page, so this
+ * equals the page origin. In Rapid Builder Mode the page comes from the dev
+ * server, and tests that assert server behavior must address the server.
+ */
+export const SERVER_ORIGIN =
+  process.env.HD_E2E_SERVER_URL ?? process.env.HD_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
+
 /** Opens the arena page and waits for the candidate strip to be populated. */
 export async function openArena(page: Page): Promise<void> {
   await page.goto('/');
@@ -25,7 +35,7 @@ export async function enterArena(page: Page): Promise<string> {
 export async function recordCheck(page: Page, note: string): Promise<void> {
   await page.getByTestId('note-input').fill(note);
   await page.getByTestId('record-submit').click();
-  await expect(page.getByTestId('record-submit')).toBeEnabled();
+  await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
 }
 
 /** Reads the notes currently rendered from the server projection. */

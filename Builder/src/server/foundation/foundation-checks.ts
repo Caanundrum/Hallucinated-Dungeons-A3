@@ -16,14 +16,12 @@ import { randomUUID } from 'node:crypto';
 
 import { type Firestore, type Timestamp } from 'firebase-admin/firestore';
 
-import type {
-  FoundationCheckProjection,
-  FoundationProjection,
+import {
+  PROJECTION_PAGE_SIZE,
+  type FoundationCheckProjection,
+  type FoundationProjection,
 } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
-
-/** Number of most recent checks the owner projection returns. */
-export const PROJECTION_PAGE_SIZE = 20;
 
 export interface CommitResult {
   readonly duplicate: boolean;
@@ -147,14 +145,14 @@ export async function readFoundationProjection(options: {
 }): Promise<FoundationProjection> {
   const { firestore, accountId } = options;
 
-  const [projectionSnapshot, checksSnapshot] = await Promise.all([
+  const ownedChecks = firestore
+    .collection(COLLECTIONS.foundationChecks)
+    .where('ownerAccountId', '==', accountId);
+
+  const [projectionSnapshot, checksSnapshot, countSnapshot] = await Promise.all([
     firestore.collection(COLLECTIONS.foundationProjections).doc(accountId).get(),
-    firestore
-      .collection(COLLECTIONS.foundationChecks)
-      .where('ownerAccountId', '==', accountId)
-      .orderBy('sequence', 'desc')
-      .limit(PROJECTION_PAGE_SIZE)
-      .get(),
+    ownedChecks.orderBy('sequence', 'desc').limit(PROJECTION_PAGE_SIZE).get(),
+    ownedChecks.count().get(),
   ]);
 
   const projectionVersion = projectionSnapshot.exists
@@ -163,5 +161,10 @@ export async function readFoundationProjection(options: {
 
   const checks = checksSnapshot.docs.map((doc) => toProjection(doc.data() as StoredCheck));
 
-  return { accountId, projectionVersion, checks };
+  return {
+    accountId,
+    projectionVersion,
+    totalCount: countSnapshot.data().count,
+    checks,
+  };
 }

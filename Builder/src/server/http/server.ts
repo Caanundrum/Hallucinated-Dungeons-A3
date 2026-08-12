@@ -54,6 +54,22 @@ const CONTENT_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+/**
+ * Defence-in-depth response headers. The page assembles HTML from stored,
+ * player-supplied text, so a restrictive policy is a second layer behind
+ * escaping rather than a substitute for it. The built client loads only
+ * same-origin scripts and styles and uses a `data:` favicon.
+ */
+const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
+  [
+    'content-security-policy',
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  ],
+  ['x-frame-options', 'DENY'],
+  ['referrer-policy', 'no-referrer'],
+  ['x-content-type-options', 'nosniff'],
+];
+
 const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.BAD_REQUEST]: 400,
   [ERROR_CODES.CANDIDATE_MISMATCH]: 409,
@@ -64,6 +80,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.NOTE_EMPTY]: 400,
   [ERROR_CODES.NOTE_TOO_LONG]: 400,
   [ERROR_CODES.METHOD_NOT_ALLOWED]: 405,
+  [ERROR_CODES.PAYLOAD_TOO_LARGE]: 413,
   [ERROR_CODES.REQUEST_ID_INVALID]: 400,
   [ERROR_CODES.SESSION_EXPIRED]: 401,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
@@ -82,6 +99,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ERROR_CODES.NOTE_EMPTY]: 'Enter a short note before recording a foundation check.',
   [ERROR_CODES.NOTE_TOO_LONG]: 'That note is longer than the 120 characters this record accepts.',
   [ERROR_CODES.METHOD_NOT_ALLOWED]: 'That method is not allowed on this route.',
+  [ERROR_CODES.PAYLOAD_TOO_LARGE]:
+    'That request body is larger than this route accepts, so it was refused before being read.',
   [ERROR_CODES.REQUEST_ID_INVALID]:
     'The submission was missing a valid request identifier, so it could not be made retry-safe.',
   [ERROR_CODES.SESSION_EXPIRED]: 'This development session expired. Enter the Local Arena again.',
@@ -127,13 +146,19 @@ function parseCookies(header: string | undefined): Map<string, string> {
   return cookies;
 }
 
+function applySecurityHeaders(response: ServerResponse): void {
+  for (const [name, value] of SECURITY_HEADERS) {
+    response.setHeader(name, value);
+  }
+}
+
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
+  applySecurityHeaders(response);
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(payload),
     'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
   });
   response.end(payload);
 }
@@ -141,6 +166,20 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 function sendError(response: ServerResponse, code: ErrorCode): void {
   const body: ApiErrorBody = { error: code, message: ERROR_MESSAGES[code] };
   sendJson(response, ERROR_STATUS[code], body);
+}
+
+/**
+ * Refuses an over-large body and closes the connection.
+ *
+ * The server stops reading the request stream as soon as the limit is passed,
+ * so the remaining upload would sit unread in the socket buffer and stall the
+ * next request on a keep-alive connection. Closing is the honest outcome: the
+ * client learns immediately and can open a new connection.
+ */
+function refuseOversizedBody(request: IncomingMessage, response: ServerResponse): void {
+  response.setHeader('connection', 'close');
+  sendError(response, ERROR_CODES.PAYLOAD_TOO_LARGE);
+  request.destroy();
 }
 
 function sendNotFoundPage(response: ServerResponse, requestedPath: string): void {
@@ -161,23 +200,35 @@ function sendNotFoundPage(response: ServerResponse, requestedPath: string): void
   </body>
 </html>
 `;
+  applySecurityHeaders(response);
   response.writeHead(404, {
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(page),
     'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
   });
   response.end(page);
 }
 
+class PayloadTooLargeError extends Error {
+  constructor() {
+    super('request body exceeds the accepted size');
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const declaredLength = Number(request.headers['content-length'] ?? '0');
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    throw new PayloadTooLargeError();
+  }
+
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of request) {
     const buffer = chunk as Buffer;
     total += buffer.length;
     if (total > MAX_REQUEST_BODY_BYTES) {
-      throw new Error('request body too large');
+      throw new PayloadTooLargeError();
     }
     chunks.push(buffer);
   }
@@ -259,11 +310,11 @@ async function serveBundleAsset(
       return false;
     }
     const contentType = CONTENT_TYPES[extname(absolute).toLowerCase()] ?? 'application/octet-stream';
+    applySecurityHeaders(response);
     response.writeHead(200, {
       'content-type': contentType,
       'content-length': stats.size,
       'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
     });
     createReadStream(absolute).pipe(response);
     return true;
@@ -428,8 +479,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         let body: unknown;
         try {
           body = await readJsonBody(request);
-        } catch {
-          sendError(response, ERROR_CODES.BAD_REQUEST);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
           return;
         }
         if (typeof body !== 'object' || body === null) {

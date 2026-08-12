@@ -44,6 +44,13 @@ import {
 
 const PHASE = 'phase-0';
 
+/**
+ * Number of browser scenarios the Phase 0 suites are expected to execute. A
+ * run that reports success while executing fewer than this did not run the
+ * suite it claims to have run (Section 1.12.8).
+ */
+const EXPECTED_BROWSER_SCENARIOS = 22;
+
 /** Runs a command and captures its result for the run record. */
 function runCommand(command, args, options) {
   const started = new Date();
@@ -312,8 +319,8 @@ async function main() {
     // A suite that reports success without executing assertions is not evidence.
     record(
       'browser_suite_executed_expected_scenarios',
-      stats.total >= 13,
-      `${stats.total} scenario(s) executed`,
+      stats.total >= EXPECTED_BROWSER_SCENARIOS,
+      `${stats.total} scenario(s) executed, ${EXPECTED_BROWSER_SCENARIOS} expected`,
     );
   } finally {
     await arena.stop();

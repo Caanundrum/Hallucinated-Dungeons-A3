@@ -33,6 +33,7 @@ export const ERROR_CODES = {
   NOTE_EMPTY: 'NOTE_EMPTY',
   NOTE_TOO_LONG: 'NOTE_TOO_LONG',
   METHOD_NOT_ALLOWED: 'METHOD_NOT_ALLOWED',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   REQUEST_ID_INVALID: 'REQUEST_ID_INVALID',
   SESSION_EXPIRED: 'SESSION_EXPIRED',
   UPSTREAM_UNAVAILABLE: 'UPSTREAM_UNAVAILABLE',
@@ -79,12 +80,20 @@ export interface FoundationCheckProjection {
  * persisted state. `projectionVersion` increments on every accepted canonical
  * write so the page can prove it is showing server truth rather than a local
  * echo of what the player typed.
+ *
+ * `checks` carries at most {@link PROJECTION_PAGE_SIZE} entries; `totalCount`
+ * is the true number stored for the account, so the page can say when the list
+ * it is showing is partial instead of quietly truncating.
  */
 export interface FoundationProjection {
   readonly accountId: string;
   readonly projectionVersion: number;
+  readonly totalCount: number;
   readonly checks: readonly FoundationCheckProjection[];
 }
+
+/** Number of most recent checks the owner projection returns. */
+export const PROJECTION_PAGE_SIZE = 20;
 
 export interface CreateFoundationCheckRequest {
   readonly requestId: string;
