@@ -33,6 +33,7 @@ import {
 import { LOCAL_PROJECT_ID } from '../arena/project.mjs';
 import { runBlueprintPreflight } from '../blueprint/preflight.mjs';
 import { computeCandidateIdentity, listTrackedFiles } from '../candidate/candidate-identity.mjs';
+import { runArchitectureConformance } from './architecture-conformance.mjs';
 import { runCodeCompletenessScan } from './code-completeness-scan.mjs';
 import { collectGreenfieldEvidence } from './greenfield-evidence.mjs';
 import { verifyToolchain } from '../verify-toolchain.mjs';
@@ -162,6 +163,15 @@ async function main() {
     `${scan.filesScanned} files scanned, ${scan.findings.length} classified finding(s)`,
   );
 
+  const architecture = await runArchitectureConformance();
+  record(
+    'architecture_conformance',
+    architecture.ok,
+    architecture.ok
+      ? `${architecture.filesScanned} files, ${architecture.ruleCount} rules, 0 violations`
+      : architecture.findings.map((f) => `${f.rule}@${f.file}:${f.line}`).join(', '),
+  );
+
   // 4. Greenfield cleanliness evidence.
   const greenfield = await collectGreenfieldEvidence();
   record(
@@ -229,6 +239,7 @@ async function main() {
       evidenceDir,
       scan,
       greenfield,
+      architecture,
     });
     console.error('\nBuilder Verification FAILED before the runtime could start.');
     process.exit(1);
@@ -266,6 +277,7 @@ async function main() {
       evidenceDir,
       scan,
       greenfield,
+      architecture,
     });
     console.error(`\nBuilder Verification FAILED: ${error.message}`);
     process.exit(1);
@@ -346,6 +358,7 @@ async function main() {
     evidenceDir,
     scan,
     greenfield,
+    architecture,
     manifest: arena.manifest,
     manifestPath: arena.manifestPath,
     readiness: arena.readiness,
@@ -424,6 +437,7 @@ async function writeAttempt(options) {
     evidenceDir,
     scan = null,
     greenfield = null,
+    architecture = null,
     manifest = null,
     manifestPath = null,
     readiness = null,
@@ -469,6 +483,7 @@ async function writeAttempt(options) {
     steps,
     failures,
     codeCompletenessScan: scan,
+    architectureConformance: architecture,
     greenfieldEvidence: greenfield,
     commands: commandRuns.map((run) => ({
       command: run.command,
