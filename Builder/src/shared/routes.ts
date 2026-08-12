@@ -13,8 +13,15 @@
  * a hard navigation or reload.
  */
 
-export const SPA_ROUTES = ['/', '/diagnostics'] as const;
+export const SPA_ROUTES = ['/', '/diagnostics', '/characters', '/characters/new'] as const;
 export type SpaRoute = (typeof SPA_ROUTES)[number];
+
+/**
+ * Parameterized single-page routes. A path matching one of these is served
+ * the built bundle on a hard navigation, the same as a fixed route, while
+ * anything else still receives the honest 404 document.
+ */
+const SPA_ROUTE_PATTERNS: readonly RegExp[] = [/^\/characters\/[A-Za-z0-9-]{1,64}$/];
 
 export const LEGAL_ROUTES = [
   '/legal/terms',
@@ -24,8 +31,20 @@ export const LEGAL_ROUTES = [
 ] as const;
 export type LegalRoute = (typeof LEGAL_ROUTES)[number];
 
-export function isSpaRoute(path: string): path is SpaRoute {
-  return (SPA_ROUTES as readonly string[]).includes(path);
+export function isSpaRoute(path: string): boolean {
+  return (
+    (SPA_ROUTES as readonly string[]).includes(path) ||
+    SPA_ROUTE_PATTERNS.some((pattern) => pattern.test(path))
+  );
+}
+
+/** The character id in a `/characters/:id` route, or null for any other path. */
+export function characterIdFromPath(path: string): string | null {
+  const match = /^\/characters\/([A-Za-z0-9-]{1,64})$/.exec(path);
+  if (match === null || match[1] === 'new') {
+    return null;
+  }
+  return match[1] ?? null;
 }
 
 export function isLegalRoute(path: string): path is LegalRoute {

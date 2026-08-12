@@ -51,6 +51,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           <nav class="primary-nav" aria-label="Primary">
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
+              <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
               <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Local Arena diagnostics</a></li>
             </ul>
           </nav>
@@ -92,7 +93,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
     setActiveRoute(path: string): void {
       root.querySelectorAll<HTMLAnchorElement>('.primary-nav a[data-link]').forEach((link) => {
         const linkPath = new URL(link.href, window.location.href).pathname;
-        if (linkPath === path) {
+        const matches =
+          linkPath === path || (linkPath === '/characters' && path.startsWith('/characters/'));
+        if (matches) {
           link.setAttribute('aria-current', 'page');
         } else {
           link.removeAttribute('aria-current');

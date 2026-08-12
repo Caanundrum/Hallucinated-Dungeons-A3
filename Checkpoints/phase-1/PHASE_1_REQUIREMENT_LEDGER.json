@@ -81,17 +81,17 @@
       "id": "P1-CHARACTER-CREATION",
       "source": "1.5.8; 1.5.8.1; 1.5.8.2",
       "behavior": "Custom and quick-start creation validated against the approved SRD manifest, using familiar SRD 5.2.1 terminology, with Identity and Final Review last and Create Character unavailable until all required mechanical and identity fields are valid.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/server/rules/srd-manifest.ts, Builder/src/server/rules/character-rules.ts, Builder/src/server/characters/, Builder/src/client/pages/character-create.ts, Builder/src/client/character-sheet-view.ts",
+      "verification": "tests/unit/character-rules.test.mjs; tests/unit/srd-manifest.test.mjs; tests/unit/parse-choices.test.mjs; tests/unit/characters-service.test.mjs; tests/e2e/phase1-characters.spec.ts; smoke spine character continuity segment. SRD fidelity remains PENDING_HUMAN_REVIEW.",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-CHARACTER-VAULT",
       "source": "25 Phase 1 build scope; 7.7",
       "behavior": "Character Vault, derived values, drafts, validation, and ownership. Every character is owned by exactly one account, and ownership is resolved from the verified authentication context on every sensitive operation.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/server/characters/characters.ts, Builder/src/client/pages/characters.ts, Builder/src/client/pages/character-sheet.ts, COLLECTIONS.characterDrafts/characters",
+      "verification": "tests/e2e/phase1-characters.spec.ts (vault empty/create/resume, foreign account 404 and empty vault); ownership enforced via ownerAccountId on every character route",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-CAMPAIGN-LIFECYCLE",

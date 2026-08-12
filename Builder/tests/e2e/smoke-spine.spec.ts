@@ -53,4 +53,25 @@ test.describe('Permanent smoke spine', () => {
     expect(await renderedNotes(page)).toEqual(['smoke spine canonical write']);
     expect(await projectionVersion(page)).toBe(1);
   });
+
+  test('character continuity: quick-start creates a vault character owned by this account', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await expect(page.getByTestId('vault-heading')).toBeVisible();
+    await page.getByTestId('start-character').click();
+    await page.getByTestId('option-devoted-healer').check();
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
+    await page.getByTestId('identity-name').fill('Smoke Spine Healer');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+
+    await expect(page.getByTestId('character-sheet-heading')).toHaveText('Smoke Spine Healer');
+    await page.getByTestId('back-to-vault').click();
+    await expect(page.getByTestId('character-link')).toContainText('Smoke Spine Healer');
+  });
 });
