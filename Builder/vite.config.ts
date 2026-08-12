@@ -27,6 +27,13 @@ export default defineConfig({
         target: `http://127.0.0.1:${serverPort}`,
         changeOrigin: false,
       },
+      // Legal routes are server-rendered documents, not part of the SPA
+      // bundle Vite serves. Proxying them keeps Rapid Builder Mode behaving
+      // the same as Frozen Certification Mode, where both are one origin.
+      '^/legal/': {
+        target: `http://127.0.0.1:${serverPort}`,
+        changeOrigin: false,
+      },
     },
   },
 });

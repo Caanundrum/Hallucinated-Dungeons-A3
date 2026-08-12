@@ -1,85 +1,201 @@
 /*
- * Phase 0 presentation.
+ * Design System Manifest v1 — Obsidian Chronicle implementation.
  *
- * This is deliberately a small, readable operator surface for the greenfield
- * foundation check. The versioned Design System Manifest and the player-facing
- * visual language are owned by Phase 1; nothing here claims to be that system.
+ * Every token below is defined in
+ * Checkpoints/phase-1/design/DESIGN_SYSTEM_MANIFEST.md. A component may not
+ * introduce a color, spacing, or motion value outside that table; if one is
+ * genuinely needed, the manifest is amended first.
  */
 
 :root {
-  --surface-base: #0b1020;
-  --surface-raised: #141b31;
-  --surface-sunken: #090d19;
-  --border-subtle: #26304d;
-  --text-primary: #e8ecf7;
-  --text-secondary: #a5b0cc;
-  --accent: #6ea8ff;
-  --accent-contrast: #06101f;
-  --danger: #ff9d9d;
-  --danger-surface: #3a1420;
-  --success: #8fe3b0;
-  --radius: 10px;
-  --space-1: 0.35rem;
-  --space-2: 0.7rem;
-  --space-3: 1.15rem;
-  --space-4: 1.8rem;
+  color-scheme: dark;
+
+  /* 1. Color */
+  --abyss-bg: #07080d;
+  --obsidian-surface: #0d111b;
+  --raised-surface: #182131;
+  --structural-border: #2c3a4f;
+  --text-primary: #f4eedf;
+  --text-secondary: #bbc5d2;
+  --amber-action: #d89a3d;
+  --amber-highlight: #f0b65f;
+  --moonlit-blue: #69a7d6;
+  --verdant-success: #4fb286;
+  --warning-gold: #e2a23a;
+  --wound-red: #d65c5c;
+  --arcane-violet: #a783d8;
+  --focus-cyan: #8fd3ff;
+
+  /* 2. Typography — v1 interim substitution, see manifest Section 2 */
+  --font-heading: "Segoe UI", system-ui, sans-serif;
+  --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
+
+  /* 3. Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* 4. Elevation, borders, radius */
+  --radius-control: 8px;
+  --radius-panel: 10px;
+  --border-weight: 1px;
+  --elevation-raised: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+  /* 5. Motion */
+  --motion-immediate: 100ms;
+  --motion-ordinary: 180ms;
+  --motion-emphasized: 280ms;
+  --motion-cinematic: 480ms;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--surface-base);
-  background-image: linear-gradient(180deg, #070b16 0%, #0b1020 45%, #0d1426 100%);
+  background-color: var(--abyss-bg);
+  background-image: linear-gradient(180deg, #05060a 0%, var(--abyss-bg) 45%, var(--obsidian-surface) 100%);
   color: var(--text-primary);
-  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
 }
 
 .skip-link {
   position: absolute;
   left: -9999px;
   top: 0;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  padding: var(--space-2) var(--space-3);
-  z-index: 10;
+  background: var(--amber-action);
+  color: var(--abyss-bg);
+  padding: var(--space-3) var(--space-5);
+  z-index: 20;
 }
 
 .skip-link:focus {
-  left: var(--space-3);
-  top: var(--space-3);
+  left: var(--space-5);
+  top: var(--space-5);
 }
 
-.layout {
+/* --- Shell (Layer: shell) --- */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-header {
+  border-bottom: var(--border-weight) solid var(--structural-border);
+  background: var(--obsidian-surface);
+}
+
+.shell-header-inner {
+  max-width: 60rem;
   margin: 0 auto;
-  max-width: 46rem;
-  padding: var(--space-4) var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
 }
 
-header h1 {
-  font-size: 1.6rem;
-  margin: 0 0 var(--space-1);
+.wordmark {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  letter-spacing: 0.01em;
+}
+
+.wordmark:focus-visible {
+  outline: 3px solid var(--focus-cyan);
+  outline-offset: 3px;
+}
+
+.primary-nav ul {
+  list-style: none;
+  display: flex;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+}
+
+.primary-nav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  padding: var(--space-2) 0;
+  border-bottom: 2px solid transparent;
+}
+
+.primary-nav a:hover {
+  color: var(--text-primary);
+}
+
+.primary-nav a:focus-visible {
+  outline: 3px solid var(--focus-cyan);
+  outline-offset: 3px;
+}
+
+.primary-nav a[aria-current="page"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--amber-action);
+}
+
+/* --- Layer: page-content --- */
+
+.shell-main {
+  flex: 1;
+}
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5) var(--space-8);
+}
+
+.page-wide {
+  max-width: 60rem;
+}
+
+.page h1 {
+  font-size: 1.7rem;
+  margin: 0 0 var(--space-3);
   letter-spacing: 0.01em;
 }
 
 .tagline {
   color: var(--text-secondary);
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-5);
 }
 
 .candidate-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-3);
+  gap: var(--space-2) var(--space-5);
+  background: var(--obsidian-surface);
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
   font-size: 0.82rem;
   color: var(--text-secondary);
 }
@@ -90,20 +206,21 @@ header h1 {
 }
 
 .panel {
-  background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  margin-bottom: var(--space-3);
+  background: var(--raised-surface);
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--elevation-raised);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
 }
 
 .panel h2 {
   font-size: 1.05rem;
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
 }
 
 .panel p {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   color: var(--text-secondary);
 }
 
@@ -115,10 +232,10 @@ label {
 
 input[type="text"] {
   width: 100%;
-  padding: 0.6rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  border: var(--border-weight) solid var(--structural-border);
+  background: var(--abyss-bg);
   color: var(--text-primary);
   font: inherit;
 }
@@ -126,38 +243,47 @@ input[type="text"] {
 input[type="text"]:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--focus-cyan);
   outline-offset: 2px;
 }
 
 .field-hint {
   color: var(--text-secondary);
   font-size: 0.82rem;
-  margin: var(--space-1) 0 var(--space-2);
+  margin: var(--space-1) 0 var(--space-3);
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-3);
   align-items: center;
 }
 
 button {
   font: inherit;
   font-weight: 600;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.55rem 1rem;
+  border-radius: var(--radius-control);
+  border: var(--border-weight) solid transparent;
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--amber-action);
+  color: var(--abyss-bg);
+  transition: background-color var(--motion-immediate) ease;
+}
+
+button:hover {
+  background: var(--amber-highlight);
 }
 
 button.secondary {
   background: transparent;
-  border-color: var(--border-subtle);
+  border-color: var(--structural-border);
   color: var(--text-primary);
+}
+
+button.secondary:hover {
+  border-color: var(--amber-action);
 }
 
 button[aria-disabled="true"] {
@@ -166,26 +292,26 @@ button[aria-disabled="true"] {
 }
 
 .message {
-  border-radius: 8px;
-  padding: var(--space-2) var(--space-3);
-  margin: var(--space-2) 0 0;
-  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-5);
+  margin: var(--space-3) 0 0;
+  border: var(--border-weight) solid var(--structural-border);
 }
 
 .message-actions {
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .message.error {
-  background: var(--danger-surface);
+  background: #2c1017;
   border-color: #6d2537;
-  color: var(--danger);
+  color: var(--wound-red);
 }
 
 .message.success {
   background: #10261c;
   border-color: #23573c;
-  color: var(--success);
+  color: var(--verdant-success);
 }
 
 .record-list {
@@ -193,14 +319,14 @@ button[aria-disabled="true"] {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .record-list li {
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: var(--space-2) var(--space-3);
+  background: var(--abyss-bg);
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-5);
 }
 
 .record-note {
@@ -212,6 +338,7 @@ button[aria-disabled="true"] {
 .record-meta {
   color: var(--text-secondary);
   font-size: 0.8rem;
+  font-family: var(--font-mono);
 }
 
 .empty-state {
@@ -219,11 +346,115 @@ button[aria-disabled="true"] {
   font-style: italic;
 }
 
-footer {
+/* --- Opening identity sequence (Layer: intro-overlay) --- */
+
+.intro-overlay {
+  position: relative;
+  z-index: 10;
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-panel);
+  background: radial-gradient(circle at 50% 0%, var(--obsidian-surface), var(--abyss-bg) 80%);
+  padding: var(--space-8) var(--space-5) var(--space-7);
+  margin-bottom: var(--space-6);
+  text-align: center;
+  overflow: hidden;
+}
+
+.intro-motif {
+  color: var(--moonlit-blue);
+  opacity: 0.9;
+  margin-bottom: var(--space-5);
+}
+
+.intro-title {
+  font-size: 2.1rem;
+  margin: 0 0 var(--space-3);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: intro-rise var(--motion-cinematic) ease-out forwards;
+}
+
+.intro-subtitle {
   color: var(--text-secondary);
-  font-size: 0.8rem;
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-2);
+  max-width: 32rem;
+  margin: 0 auto var(--space-6);
+  opacity: 0;
+  animation: intro-fade var(--motion-cinematic) ease-out forwards;
+  animation-delay: var(--motion-emphasized);
+}
+
+@keyframes intro-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-title,
+  .intro-subtitle {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Footer --- */
+
+.shell-footer {
+  border-top: var(--border-weight) solid var(--structural-border);
+  background: var(--obsidian-surface);
+}
+
+.shell-footer-inner {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: var(--space-5);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  justify-content: space-between;
+}
+
+.footer-legal-links {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+}
+
+.footer-legal-links a,
+.footer-build-info a {
+  color: var(--text-secondary);
+}
+
+.footer-legal-links a:hover,
+.footer-build-info a:hover {
+  color: var(--text-primary);
+}
+
+.footer-build-info {
+  font-family: var(--font-mono);
+}
+
+/* --- Not-found page --- */
+
+.not-found-page code {
+  font-family: var(--font-mono);
+  background: var(--abyss-bg);
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: 4px;
+  padding: 0 var(--space-1);
 }
 
 .visually-hidden {
