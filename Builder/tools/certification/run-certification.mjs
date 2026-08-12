@@ -31,6 +31,7 @@ import {
   startProcessAndWait,
 } from '../arena/arena-instance.mjs';
 import { LOCAL_PROJECT_ID } from '../arena/project.mjs';
+import { runBlueprintPreflight } from '../blueprint/preflight.mjs';
 import { computeCandidateIdentity, listTrackedFiles } from '../candidate/candidate-identity.mjs';
 import { runCodeCompletenessScan } from './code-completeness-scan.mjs';
 import { collectGreenfieldEvidence } from './greenfield-evidence.mjs';
@@ -63,20 +64,34 @@ function runCommand(command, args, options) {
 }
 
 /**
- * Copies exactly the tracked candidate files into the runtime directory.
- * Nothing untracked, generated, or role-owned is carried across.
+ * Materializes the frozen candidate.
+ *
+ * The copy reproduces the `<WORKING_DIRECTORY>/Builder` layout rather than
+ * dropping the source into a bare directory, so the runtime resolves its own
+ * roots exactly as a real workspace does. Only tracked Builder Root files and
+ * the authoritative blueprint are carried across; nothing untracked,
+ * generated, or role-owned is included.
+ *
+ * @param {string} runtimeWorkingDir Working Directory of the materialized runtime.
+ * @param {import('../blueprint/preflight.mjs').BlueprintPreflight} blueprint
  */
-async function materializeCandidate(runtimeCandidateDir) {
-  await rm(runtimeCandidateDir, { recursive: true, force: true });
-  await mkdir(runtimeCandidateDir, { recursive: true });
+async function materializeCandidate(runtimeWorkingDir, blueprint) {
+  await rm(runtimeWorkingDir, { recursive: true, force: true });
+  const runtimeBuilderRoot = join(runtimeWorkingDir, 'Builder');
+  await mkdir(runtimeBuilderRoot, { recursive: true });
 
   const files = await listTrackedFiles();
   for (const relativePath of files) {
-    const destination = join(runtimeCandidateDir, relativePath);
+    const destination = join(runtimeBuilderRoot, relativePath);
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(join(BUILDER_ROOT, relativePath), destination);
   }
-  return files.length;
+
+  // The runtime carries the authoritative blueprint it was built from so its
+  // own preflight resolves against the same bytes, verified by hash below.
+  await copyFile(blueprint.path, join(runtimeWorkingDir, blueprint.fileName));
+
+  return { fileCount: files.length, runtimeBuilderRoot };
 }
 
 async function main() {
@@ -150,7 +165,17 @@ async function main() {
       : greenfield.violations.map((violation) => `${violation.rule}@${violation.path}`).join(', '),
   );
 
-  const runtimeCandidateDir = join(paths.runtimeRoot, 'candidates', candidateBefore.candidateId);
+  // The blueprint the candidate is certified against, verified before use.
+  const blueprint = await runBlueprintPreflight(paths.workingDirectory);
+  record(
+    'blueprint_preflight',
+    blueprint.ok,
+    blueprint.ok
+      ? `${blueprint.version} ${blueprint.sourceHash.slice(0, 12)} (${blueprint.lineCount} lines)`
+      : blueprint.failures.join('; '),
+  );
+
+  const runtimeWorkingDir = join(paths.runtimeRoot, 'candidates', candidateBefore.candidateId);
   const instanceDir = join(paths.runtimeRoot, 'certification', candidateBefore.candidateId);
   const evidenceDir = join(
     paths.evidenceRoot,
@@ -163,8 +188,13 @@ async function main() {
   const commandRuns = [];
 
   // 4. Materialize and build the candidate from its lockfile.
-  const copied = await materializeCandidate(runtimeCandidateDir);
-  record('candidate_materialized', true, `${copied} tracked files -> ${runtimeCandidateDir}`);
+  const materialized = await materializeCandidate(runtimeWorkingDir, blueprint);
+  const runtimeCandidateDir = materialized.runtimeBuilderRoot;
+  record(
+    'candidate_materialized',
+    true,
+    `${materialized.fileCount} tracked files -> ${runtimeCandidateDir}`,
+  );
 
   const install = runCommand('npm', ['ci', '--no-audit', '--no-fund'], {
     cwd: runtimeCandidateDir,
