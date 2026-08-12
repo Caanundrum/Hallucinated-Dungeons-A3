@@ -5,7 +5,7 @@ lifecycleState: PHASE_CERTIFIED
 blueprintVersion: ALPHA_3_V1
 blueprintSourceHash: 09d91f49c336
 certifiedCandidateId: cand-32058f47eda8
-certifiedCommit: 0c31d7f
+certifiedCommit: c39e1f3fa067f76ea0cf2db5681dad7ca85267c7
 humanGate: none
 humanGateBasis: "Section 25 assigns explicit Product Owner gates to Phases 1, 2, 5, and 7. Phase 0 has no human gate, so PLAYER_VALIDATED advances directly to PHASE_CERTIFIED under Section 1.11.19."
 builderVerification: PASSED
@@ -28,7 +28,7 @@ inferred. The Phase 1 visual gate is the first one that applies.
 | Field | Value |
 | --- | --- |
 | Candidate id | `cand-32058f47eda8` |
-| Source tree hash | see `candidate.sourceTreeHash` in the run record below |
+| Certified commit | `c39e1f3fa067f76ea0cf2db5681dad7ca85267c7` |
 | Tracked Builder Root files | 44 |
 | Dependency lock hash | `f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2` |
 | Firestore rules hash | `d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1` |
