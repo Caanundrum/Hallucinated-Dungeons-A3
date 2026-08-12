@@ -63,7 +63,9 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('vault-heading')).toBeVisible();
     await page.getByTestId('start-character').click();
-    await page.getByTestId('option-devoted-healer').check();
+    // Click rather than check: the wizard re-renders after the save and
+    // replaces the radio, which makes Playwright's checked-state wait hang.
+    await page.getByTestId('option-devoted-healer').click();
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await page.getByTestId('identity-name').fill('Smoke Spine Healer');
     await page.getByTestId('identity-name').dispatchEvent('change');

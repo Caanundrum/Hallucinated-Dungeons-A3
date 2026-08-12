@@ -27,7 +27,14 @@ async function openVault(page: Page): Promise<void> {
   await expect(page.getByTestId('vault-heading')).toBeVisible();
 }
 
-async function waitForDraftSave(page: Page): Promise<void> {
+/**
+ * Choose a radio/checkbox option. The wizard re-renders after every confirmed
+ * save, so Playwright's `.check()` (which waits to observe the checked state)
+ * hangs when the control is replaced. Click the control, then wait for the
+ * page to settle on the next rendered state.
+ */
+async function chooseOption(page: Page, testId: string): Promise<void> {
+  await page.getByTestId(testId).click();
   await expect(page.getByTestId('create-heading')).toBeVisible();
   await expect(page.locator('[data-testid="create-error"]')).toHaveCount(0);
 }
@@ -43,7 +50,7 @@ async function assignStandardArray(page: Page): Promise<void> {
   ];
   for (const [ability, score] of assignment) {
     await page.getByTestId(`ability-select-${ability}`).selectOption(score);
-    await waitForDraftSave(page);
+    await expect(page.getByTestId(`ability-select-${ability}`)).toHaveValue(score);
   }
 }
 
@@ -71,7 +78,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('create-heading')).toBeVisible();
     await expect(page.getByTestId('quick-start-options')).toBeVisible();
 
-    await page.getByTestId('option-stalwart-defender').check();
+    await chooseOption(page, 'option-stalwart-defender');
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await expect(page.getByTestId('sheet-hit-points')).not.toBeEmpty();
 
@@ -84,7 +91,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('character-sheet-heading')).toHaveText('Brannok Stone');
     await expect(page.getByTestId('character-summary')).toContainText('Fighter');
     await expect(page.getByTestId('sheet-hit-points')).not.toBeEmpty();
-    await expect(page.getByTestId('sheet-hit-points').locator('xpath=..').getByText('Why is this number?')).toBeVisible();
+    await expect(page.getByText('Why is this number?').first()).toBeVisible();
 
     await page.getByTestId('back-to-vault').click();
     await expect(page.getByTestId('character-list')).toBeVisible();
@@ -99,11 +106,9 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('start-character').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
 
-    await page.getByTestId('option-fighter').check();
-    await waitForDraftSave(page);
-    await page.getByTestId('check-athletics').check();
-    await page.getByTestId('check-perception').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'option-fighter');
+    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-perception');
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('draft-list')).toBeVisible();
@@ -111,10 +116,11 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('resume-draft').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
+    // Resume lands on the first unresolved step; open Class to confirm the
+    // earlier choice persisted on the same draft.
+    await page.getByTestId('step-class').click();
     await expect(page.getByTestId('option-fighter')).toBeChecked();
 
-    // Opening creation again resumes the same draft instead of minting another.
-    // Relative /api calls go through the same origin (and cookie jar) as the page.
     const draftBefore = await page.request.get('/api/characters/vault');
     expect(draftBefore.ok()).toBeTruthy();
     const vaultBefore = (await draftBefore.json()) as {
@@ -125,6 +131,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('nav-characters').click();
     await page.getByTestId('start-character').click();
+    await page.getByTestId('step-class').click();
     await expect(page.getByTestId('option-fighter')).toBeChecked();
     const draftAfter = await page.request.get('/api/characters/vault');
     const vaultAfter = (await draftAfter.json()) as {
@@ -134,31 +141,25 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     expect(vaultAfter.drafts[0]!.draftId).toBe(draftId);
 
     await page.getByTestId('step-background').click();
-    await page.getByTestId('option-soldier').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'option-soldier');
     await page.getByTestId('bonus-strength').selectOption('2');
-    await waitForDraftSave(page);
+    await expect(page.getByTestId('bonus-strength')).toHaveValue('2');
     await page.getByTestId('bonus-constitution').selectOption('1');
-    await waitForDraftSave(page);
+    await expect(page.getByTestId('bonus-constitution')).toHaveValue('1');
 
     await page.getByTestId('step-species').click();
-    await page.getByTestId('option-dwarf').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'option-dwarf');
 
     await page.getByTestId('step-abilities').click();
-    await page.getByTestId('option-standard-array').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'option-standard-array');
     await assignStandardArray(page);
 
     await page.getByTestId('step-equipment').click();
-    await page.getByTestId('option-fighter-a').check();
-    await waitForDraftSave(page);
-    await page.getByTestId('option-soldier-kit').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'option-fighter-a');
+    await chooseOption(page, 'option-soldier-kit');
 
     await page.getByTestId('step-features').click();
-    await page.getByTestId('check-defense').check();
-    await waitForDraftSave(page);
+    await chooseOption(page, 'check-defense');
     await expect(page.getByTestId('no-spellcasting')).toBeVisible();
 
     await page.getByTestId('step-identity').click();
@@ -178,7 +179,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await enterArenaForCharacters(page);
     await openVault(page);
     await page.getByTestId('start-character').click();
-    await page.getByTestId('option-shadow-scout').check();
+    await chooseOption(page, 'option-shadow-scout');
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await page.getByTestId('identity-name').fill('Private Scout');
     await page.getByTestId('identity-name').dispatchEvent('change');
