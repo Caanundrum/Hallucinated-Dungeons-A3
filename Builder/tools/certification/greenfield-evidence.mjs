@@ -48,6 +48,14 @@ const PROHIBITED_SECRET_PATTERNS = [
 /** Role-owned paths that must never be tracked inside Builder Root. */
 const PROHIBITED_TRACKED_PREFIXES = ['QA/', 'Evidence/', 'Runtime/', 'Checkpoints/', 'Pending-Archive/'];
 
+/**
+ * This module's own rule table necessarily contains the literals it searches
+ * for. It is excluded from its own content pass and is instead covered by the
+ * Code Completeness Scan, so no file goes unscanned.
+ */
+const SELF_EXCLUDED_FILE = 'tools/certification/greenfield-evidence.mjs';
+const SELF_EXCLUSION_COVERED_BY = 'tools/certification/code-completeness-scan.mjs';
+
 const TEXT_EXTENSIONS = new Set(['.ts', '.mjs', '.js', '.json', '.css', '.html', '.rules', '.md']);
 
 function isTextFile(path) {
@@ -124,6 +132,9 @@ export async function collectGreenfieldEvidence() {
 
   const tracked = await listTrackedFiles();
   for (const relativePath of tracked.filter(isTextFile)) {
+    if (relativePath === SELF_EXCLUDED_FILE) {
+      continue;
+    }
     const contents = await readFile(join(BUILDER_ROOT, relativePath), 'utf8');
     const lines = contents.split('\n');
     lines.forEach((line, index) => {
@@ -163,6 +174,11 @@ export async function collectGreenfieldEvidence() {
         secretAndImportRules: PROHIBITED_SECRET_PATTERNS.map((rule) => rule.id),
         trackedPathRules: PROHIBITED_TRACKED_PREFIXES,
         violationCount: violations.length,
+        selfExclusion: {
+          file: SELF_EXCLUDED_FILE,
+          reason: 'This file defines the detection patterns and would match itself.',
+          coveredBy: SELF_EXCLUSION_COVERED_BY,
+        },
       },
     },
   };

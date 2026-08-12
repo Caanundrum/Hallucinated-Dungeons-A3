@@ -1,0 +1,425 @@
+{
+  "recordType": "certification_run_record",
+  "recordVersion": "1",
+  "phase": "phase-0",
+  "status": "FAILED",
+  "mode": "frozen_certification",
+  "startedAt": "2026-08-12T15:37:04.614Z",
+  "endedAt": "2026-08-12T15:37:09.814Z",
+  "candidate": {
+    "candidateId": "cand-50478a1f0883",
+    "sourceTreeHash": "50478a1f0883497a7185da771c7fb7ac56e24b3d8b90e0577900ad061d0219da",
+    "commit": "377b76a2e0a80072f47b2f57e87dfc7bc94e091b",
+    "dirtyTree": false,
+    "dirtyPaths": [],
+    "dependencyLockHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2",
+    "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1",
+    "fileCount": 42
+  },
+  "blueprintVersion": null,
+  "blueprintSourceHash": null,
+  "localStackManifestPath": null,
+  "localStackManifest": null,
+  "readiness": null,
+  "runtime": {
+    "node": "22.14.0",
+    "platform": "linux-x64"
+  },
+  "steps": [
+    {
+      "name": "pinned_toolchain_verified",
+      "ok": true,
+      "detail": "Node.js 22.14.0, npm 10.9.7, Java (emulators) 21, Firebase CLI 13.35.1, Firebase Admin SDK 13.10.0, TypeScript 5.9.3, Vite 6.4.3, Playwright 1.62.1"
+    },
+    {
+      "name": "builder_root_clean",
+      "ok": true,
+      "detail": "cand-50478a1f0883 (42 tracked files)"
+    },
+    {
+      "name": "code_completeness_scan",
+      "ok": false,
+      "detail": "40 files scanned, 3 classified finding(s)"
+    },
+    {
+      "name": "greenfield_source_tree_clean",
+      "ok": false,
+      "detail": "hex_grid@tools/certification/greenfield-evidence.mjs, isometric_topology@tools/certification/greenfield-evidence.mjs, topology_switch@tools/certification/greenfield-evidence.mjs, compatibility_layer@tools/certification/greenfield-evidence.mjs, password_credential_flow@tools/certification/greenfield-evidence.mjs, database_export@tools/certification/greenfield-evidence.mjs"
+    },
+    {
+      "name": "candidate_materialized",
+      "ok": true,
+      "detail": "42 tracked files -> /workspace/Runtime/candidates/cand-50478a1f0883"
+    },
+    {
+      "name": "clean_dependency_install_from_lockfile",
+      "ok": true,
+      "detail": "npm ci exit=0"
+    },
+    {
+      "name": "candidate_build",
+      "ok": true,
+      "detail": "npm run build exit=0"
+    }
+  ],
+  "failures": [
+    "code_completeness_scan",
+    "greenfield_source_tree_clean"
+  ],
+  "codeCompletenessScan": {
+    "ok": false,
+    "scanVersion": "completeness-scan-v1",
+    "filesScanned": 40,
+    "findings": [
+      {
+        "file": "tools/certification/code-completeness-scan.mjs",
+        "line": 25,
+        "rule": "placeholder_marker",
+        "severity": "blocking",
+        "text": "{ id: 'placeholder_marker', pattern: /\\b(TODO|FIXME|HACK|XXX)\\b/, severity: 'blocking' },",
+        "justification": null
+      },
+      {
+        "file": "tools/certification/code-completeness-scan.mjs",
+        "line": 26,
+        "rule": "coming_soon",
+        "severity": "blocking",
+        "text": "{ id: 'coming_soon', pattern: /\\b(coming soon|not yet wired|placeholder for)\\b/i, severity: 'blocking' },",
+        "justification": null
+      },
+      {
+        "file": "tools/certification/code-completeness-scan.mjs",
+        "line": 36,
+        "rule": "coming_soon",
+        "severity": "blocking",
+        "text": "* that may contain it, and why it is not a placeholder for current-phase work.",
+        "justification": null
+      }
+    ],
+    "approvedFuturePhase": [
+      {
+        "text": "NOT_YET_IMPLEMENTED — Phase 2",
+        "file": "tools/arena/local-stack-manifest.mjs",
+        "justification": "Section 25 assigns realtime projection delivery to Phase 2. The manifest states the service is absent rather than reporting a socket that does not exist."
+      }
+    ]
+  },
+  "greenfieldEvidence": {
+    "ok": false,
+    "violations": [
+      {
+        "rule": "hex_grid",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 28,
+        "detail": "{ id: 'hex_grid', pattern: /\\bhex(agonal)?[-_ ]?(grid|tile|coord)/i },"
+      },
+      {
+        "rule": "isometric_topology",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 29,
+        "detail": "{ id: 'isometric_topology', pattern: /\\bisometric[-_ ]?(grid|topology|projection)\\b/i },"
+      },
+      {
+        "rule": "topology_switch",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 30,
+        "detail": "{ id: 'topology_switch', pattern: /\\b(topologySelector|gridType|coordinateSystemMode)\\b/ },"
+      },
+      {
+        "rule": "compatibility_layer",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 31,
+        "detail": "{ id: 'compatibility_layer', pattern: /\\b(compatMode|legacyAdapter|migrateFromAlpha|v2Compat)\\b/ },"
+      },
+      {
+        "rule": "password_credential_flow",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 43,
+        "detail": "{ id: 'password_credential_flow', pattern: /\\b(signInWithPassword|createUserWithEmailAndPassword|passwordHash|bcrypt|argon2)\\b/ },"
+      },
+      {
+        "rule": "database_export",
+        "path": "tools/certification/greenfield-evidence.mjs",
+        "line": 45,
+        "detail": "{ id: 'database_export', pattern: /\\b(firestore_export|firestore-export|database-export|db_dump)\\b/ },"
+      }
+    ],
+    "evidence": {
+      "evidenceType": "greenfield_completion_evidence",
+      "blueprintSection": "1.4.7",
+      "treeManifest": {
+        "fileCount": 42,
+        "files": [
+          {
+            "path": ".firebaserc",
+            "mode": "100644",
+            "objectId": "43fa0adde1b6941e61054dbf0066dab403eb23ce"
+          },
+          {
+            "path": "firebase.json",
+            "mode": "100644",
+            "objectId": "3abc59cd8b655ea4964b312f47bd85ed35e8b706"
+          },
+          {
+            "path": "firestore.rules",
+            "mode": "100644",
+            "objectId": "cb45ddbab13f387e186fbb34b8b6d10c91eaa93b"
+          },
+          {
+            "path": "package-lock.json",
+            "mode": "100644",
+            "objectId": "1821d1b074ec4c3cebae41ee9657d0a136e7ffe4"
+          },
+          {
+            "path": "package.json",
+            "mode": "100644",
+            "objectId": "ba71e3f110f82136c7e5877a3a36a12b31dfb355"
+          },
+          {
+            "path": "playwright.config.ts",
+            "mode": "100644",
+            "objectId": "6c49eddf707fec13319b6b4a3ba5242daf124bf4"
+          },
+          {
+            "path": "src/client/api.ts",
+            "mode": "100644",
+            "objectId": "5aa0bd378a450b3bf1662c9ba161afbe895277ff"
+          },
+          {
+            "path": "src/client/index.html",
+            "mode": "100644",
+            "objectId": "379fcbe07342a3676f5045e0c0a17f587b155a23"
+          },
+          {
+            "path": "src/client/main.ts",
+            "mode": "100644",
+            "objectId": "12c95f24552635e3ed66bd321253b356c47bb5c7"
+          },
+          {
+            "path": "src/client/styles.css",
+            "mode": "100644",
+            "objectId": "25486b8009ee4a682d389d3582fb50e207b00607"
+          },
+          {
+            "path": "src/server/config/environment.ts",
+            "mode": "100644",
+            "objectId": "053e536ca36c08c56a3a90005b97ca4c1e055ca1"
+          },
+          {
+            "path": "src/server/foundation/foundation-checks.ts",
+            "mode": "100644",
+            "objectId": "18a69b993b9132c4b34bc44a2ecb81889e3c5f80"
+          },
+          {
+            "path": "src/server/http/server.ts",
+            "mode": "100644",
+            "objectId": "0ef8c18c761db7535be16fe67dc07715a27754fb"
+          },
+          {
+            "path": "src/server/identity/development-identity.ts",
+            "mode": "100644",
+            "objectId": "6135f2a49cd388fe037a6e15022ed80208c6ff6e"
+          },
+          {
+            "path": "src/server/index.ts",
+            "mode": "100644",
+            "objectId": "13d8ac5cba354d6eb06f9a2e51d340b640578c40"
+          },
+          {
+            "path": "src/server/persistence/firestore.ts",
+            "mode": "100644",
+            "objectId": "9fcc2aa4c2c13b8ac563e570defcb60b6e7439e0"
+          },
+          {
+            "path": "src/shared/contract.ts",
+            "mode": "100644",
+            "objectId": "5a841019f4f85dd9c4a978d1ca92b644d409a986"
+          },
+          {
+            "path": "tests/e2e/arena-page.ts",
+            "mode": "100644",
+            "objectId": "6b5a540877e6a244c2e0128d2599f39cae3c0660"
+          },
+          {
+            "path": "tests/e2e/phase0-self-play.spec.ts",
+            "mode": "100644",
+            "objectId": "58cec673cc1a2a00536e2d26c0ec0846553dadd2"
+          },
+          {
+            "path": "tests/e2e/smoke-spine.spec.ts",
+            "mode": "100644",
+            "objectId": "b4ca279e150f0ea8dccd3d4f66fc20e590327f3b"
+          },
+          {
+            "path": "tests/unit/blueprint-preflight.test.mjs",
+            "mode": "100644",
+            "objectId": "48a821a6b27777391a134df6ccb201723389a3f7"
+          },
+          {
+            "path": "tests/unit/contract.test.mjs",
+            "mode": "100644",
+            "objectId": "adc575c7651038e28c8bb4034d88bf2378578f79"
+          },
+          {
+            "path": "tests/unit/environment-guards.test.mjs",
+            "mode": "100644",
+            "objectId": "72d5e15c637dd7b1e7de7de8ab2567697a06d23c"
+          },
+          {
+            "path": "tests/unit/workspace-roots.test.mjs",
+            "mode": "100644",
+            "objectId": "ad005e8646b3f722c932c5fefd223c908c471a81"
+          },
+          {
+            "path": "tools/arena/arena-instance.mjs",
+            "mode": "100644",
+            "objectId": "23b1e0a9e71a90ef4c42d981a8e20dd325612660"
+          },
+          {
+            "path": "tools/arena/emulators.mjs",
+            "mode": "100644",
+            "objectId": "8743f5bbc9694deebb9368601269b56b79958ee8"
+          },
+          {
+            "path": "tools/arena/local-stack-manifest.mjs",
+            "mode": "100644",
+            "objectId": "0f38503b785057976b5f2880a8ecd759ce37cab3"
+          },
+          {
+            "path": "tools/arena/project.mjs",
+            "mode": "100644",
+            "objectId": "4966da930b3be9625fa1a43b8b58f33d0be56824"
+          },
+          {
+            "path": "tools/arena/seed.mjs",
+            "mode": "100644",
+            "objectId": "bcaa913f6ac3a9fa0f6d334f47702a4e941b8735"
+          },
+          {
+            "path": "tools/arena/start-arena.mjs",
+            "mode": "100644",
+            "objectId": "8de2626c398bf4cf4066799c2acf1c1cbcba2f3d"
+          },
+          {
+            "path": "tools/blueprint/preflight.mjs",
+            "mode": "100644",
+            "objectId": "cd5c9e495327ca43bcce3c3e0a441c507d07473f"
+          },
+          {
+            "path": "tools/candidate/candidate-identity.mjs",
+            "mode": "100644",
+            "objectId": "007de2ca199ace7c5c9908ed2888f63c05c251a1"
+          },
+          {
+            "path": "tools/certification/code-completeness-scan.mjs",
+            "mode": "100644",
+            "objectId": "5e710123477a21c9142532f9016323b8b3b19ce7"
+          },
+          {
+            "path": "tools/certification/greenfield-evidence.mjs",
+            "mode": "100644",
+            "objectId": "8c218a94b38b9ea580b8623e2f3628144685319e"
+          },
+          {
+            "path": "tools/certification/run-certification.mjs",
+            "mode": "100644",
+            "objectId": "350c864ffd905418727549715e2215bc24472441"
+          },
+          {
+            "path": "tools/verify-toolchain.mjs",
+            "mode": "100644",
+            "objectId": "76eda926bfd026f8027b2887b69406f287f4a14c"
+          },
+          {
+            "path": "tools/workspace/init-working-directory.mjs",
+            "mode": "100644",
+            "objectId": "511826beecfb7b44e920fdff77b9273459095aeb"
+          },
+          {
+            "path": "tools/workspace/working-directory.mjs",
+            "mode": "100644",
+            "objectId": "4b7b8aa1da59ffd26a34ec2e0e35f8d42fc1ad04"
+          },
+          {
+            "path": "tsconfig.base.json",
+            "mode": "100644",
+            "objectId": "9823d34584df0ef959e0df78bffc779e14f47a49"
+          },
+          {
+            "path": "tsconfig.client.json",
+            "mode": "100644",
+            "objectId": "4afb3898f4e282ff2e31dd6d694cbf35eedde275"
+          },
+          {
+            "path": "tsconfig.server.json",
+            "mode": "100644",
+            "objectId": "d50c9e9833f3b3f40c9eef47675d8ca16617f17b"
+          },
+          {
+            "path": "vite.config.ts",
+            "mode": "100644",
+            "objectId": "e3610f3a9e07893795eda73d0f1ea62fdcc67037"
+          }
+        ]
+      },
+      "frameworkGeneratedFiles": {
+        "generator": "none",
+        "note": "No scaffolding generator was run. Every tracked file in Builder Root was authored directly against the V1 blueprint, so the approved-generated-file list is empty by construction rather than by omission.",
+        "files": []
+      },
+      "dependencies": {
+        "format": "lockfile-derived-package-list-v1",
+        "packageCount": 740,
+        "directDependencyCount": 1,
+        "directDevDependencyCount": 5,
+        "sbomHash": "aaed888dbf9f089cb1851d020e89c013ded9c8491c19ab765b88d3366d943e7f",
+        "lockfileHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2"
+      },
+      "prohibitedPatternScan": {
+        "topologyRules": [
+          "hex_grid",
+          "isometric_topology",
+          "topology_switch",
+          "compatibility_layer"
+        ],
+        "secretAndImportRules": [
+          "private_key_block",
+          "service_account_json",
+          "google_api_key",
+          "password_credential_flow",
+          "password_literal",
+          "database_export"
+        ],
+        "trackedPathRules": [
+          "QA/",
+          "Evidence/",
+          "Runtime/",
+          "Checkpoints/",
+          "Pending-Archive/"
+        ],
+        "violationCount": 6
+      }
+    }
+  },
+  "commands": [
+    {
+      "command": "npm ci --no-audit --no-fund",
+      "cwd": "/workspace/Runtime/candidates/cand-50478a1f0883",
+      "startedAt": "2026-08-12T15:37:04.750Z",
+      "endedAt": "2026-08-12T15:37:08.489Z",
+      "exitCode": 0,
+      "stdoutTail": "\nadded 689 packages in 4s\n",
+      "stderrTail": "npm warn deprecated tar@6.2.1: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\nnpm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.\nnpm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\n"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "/workspace/Runtime/candidates/cand-50478a1f0883",
+      "startedAt": "2026-08-12T15:37:08.489Z",
+      "endedAt": "2026-08-12T15:37:09.814Z",
+      "exitCode": 0,
+      "stdoutTail": "\n> hallucinated-dungeons-alpha3@0.0.0 build\n> npm run build:server && npm run build:client\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:server\n> tsc --project tsconfig.server.json\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:client\n> vite build --config vite.config.ts\n\nvite v6.4.3 building for production...\ntransforming...\n✓ 6 modules transformed.\nrendering chunks...\ncomputing gzip size...\n../../dist/client/index.html                  0.60 kB │ gzip: 0.37 kB\n../../dist/client/assets/index-B-nxMEne.css   3.60 kB │ gzip: 1.22 kB\n../../dist/client/assets/index-Bo_IIb6o.js   10.94 kB │ gzip: 3.75 kB │ map: 30.72 kB\n✓ built in 92ms\n",
+      "stderrTail": ""
+    }
+  ],
+  "browserSuite": null
+}

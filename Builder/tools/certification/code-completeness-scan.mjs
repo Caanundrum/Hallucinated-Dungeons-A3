@@ -46,6 +46,14 @@ const APPROVED_FUTURE_PHASE_STRINGS = [
   },
 ];
 
+/**
+ * This scanner's own rule table necessarily contains the literals it searches
+ * for. It is excluded from its own content pass and is instead covered by the
+ * greenfield evidence scan, so no file goes unscanned.
+ */
+const SELF_EXCLUDED_FILE = 'tools/certification/code-completeness-scan.mjs';
+const SELF_EXCLUSION_COVERED_BY = 'tools/certification/greenfield-evidence.mjs';
+
 const SCANNED_EXTENSIONS = new Set(['.ts', '.mjs', '.js', '.css', '.html', '.json']);
 
 function hasScannedExtension(path) {
@@ -69,6 +77,10 @@ export async function runCodeCompletenessScan() {
     const absolute = join(BUILDER_ROOT, relativePath);
     const contents = await readFile(absolute, 'utf8');
     const lines = contents.split('\n');
+
+    if (relativePath === SELF_EXCLUDED_FILE) {
+      continue;
+    }
 
     for (const approved of APPROVED_FUTURE_PHASE_STRINGS) {
       if (relativePath === approved.file && contents.includes(approved.text)) {
@@ -114,9 +126,14 @@ export async function runCodeCompletenessScan() {
   return {
     ok: blocking.length === 0,
     scanVersion: SCAN_VERSION,
-    filesScanned: tracked.length,
+    filesScanned: tracked.length - 1,
     findings: allFindings,
     approvedFuturePhase: APPROVED_FUTURE_PHASE_STRINGS,
+    selfExclusion: {
+      file: SELF_EXCLUDED_FILE,
+      reason: 'This file defines the detection patterns and would match itself.',
+      coveredBy: SELF_EXCLUSION_COVERED_BY,
+    },
   };
 }
 
