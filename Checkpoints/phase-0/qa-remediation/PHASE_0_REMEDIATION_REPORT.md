@@ -168,3 +168,26 @@ product, and both were corrected rather than weakened:
 All eight findings are `FIXED` with passing evidence against a newly frozen candidate. None are
 `NOT_REPRODUCED`, `BLOCKED`, or `REQUIRES_PRODUCT_DECISION`. The replacement candidate is
 returned to QA for retest; QA alone decides whether these findings close.
+
+## Retest pass 1 — response to P0-QA-009
+
+QA retested `cand-882c6c2fe4a3`, closed all eight original findings, and raised one new
+non-blocking finding.
+
+### P0-QA-009 — Focus is lost when the action removes the focused control — FIXED
+
+**Root cause.** The P0-QA-005 fix restores focus by looking the control back up after the
+re-render, which works whenever the control survives. Sign-out and an authentication failure
+delete the control that was focused, so there was nothing to restore and focus fell to `<body>`.
+
+**Fix.** When the previously focused control no longer exists, focus falls back to the message
+explaining what happened — the error panel first, then the success notice — and only then to the
+primary action. Both message elements carry `tabindex="-1"` so they can receive focus without
+entering the tab order. A keyboard user now lands on the explanation rather than at the top of
+the document.
+
+**Files.** `Builder/src/client/main.ts`.
+
+**Tests.** `P0-QA-009: focus moves to the explanation when the focused control is removed`,
+covering both sign-out and an authentication failure. The browser suite is now 23 scenarios and
+the certification runner requires all 23.

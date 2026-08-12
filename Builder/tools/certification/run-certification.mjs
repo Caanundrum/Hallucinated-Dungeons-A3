@@ -49,7 +49,7 @@ const PHASE = 'phase-0';
  * run that reports success while executing fewer than this did not run the
  * suite it claims to have run (Section 1.12.8).
  */
-const EXPECTED_BROWSER_SCENARIOS = 22;
+const EXPECTED_BROWSER_SCENARIOS = 23;
 
 /** Runs a command and captures its result for the run record. */
 function runCommand(command, args, options) {

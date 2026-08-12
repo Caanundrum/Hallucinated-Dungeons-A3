@@ -14,10 +14,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 const BASE = 'http://127.0.0.1:5274';
-const EXPECTED_CANDIDATE = 'cand-0f810c6c26d8';
+// Parameterised so the identical check set can be re-run against a
+// replacement candidate as a true regression pass.
+const EXPECTED_CANDIDATE = process.env.QA_EXPECTED_CANDIDATE ?? 'cand-0f810c6c26d8';
 const CANDIDATE_HEADER = 'x-hd-candidate';
 const COOKIE_NAME = 'hd_dev_session';
-const OUT_DIR = '/workspace/QA/evidence/api';
+const OUT_DIR = process.env.QA_OUT_DIR ?? '/workspace/QA/evidence/api';
 
 const results = [];
 

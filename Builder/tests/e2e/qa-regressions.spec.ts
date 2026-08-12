@@ -132,6 +132,34 @@ test.describe('QA regression coverage', () => {
     ).toBe('refresh-projection');
   });
 
+  test('P0-QA-009: focus moves to the explanation when the focused control is removed', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('leave-arena').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('notice-message')).toContainText('Session ended');
+
+    expect(
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+    ).toBe('notice-message');
+
+    await enterArena(page);
+    await endSessionBehindThePage(page);
+    await page.getByTestId('record-submit').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('error-message')).toHaveAttribute(
+      'data-error-code',
+      'NOT_AUTHENTICATED',
+    );
+
+    expect(
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+    ).toBe('error-message');
+  });
+
   test('P0-QA-006: a partial list says how many records exist', async ({ page }) => {
     await openArena(page);
     await enterArena(page);

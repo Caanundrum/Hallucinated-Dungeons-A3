@@ -163,7 +163,7 @@ function messageMarkup(): string {
     const retryable =
       state.pendingRequestId !== null && state.error.code === ERROR_CODES.UPSTREAM_UNAVAILABLE;
     return `
-      <div class="message error" role="alert" data-testid="error-message" data-error-code="${escapeHtml(state.error.code)}">
+      <div class="message error" role="alert" tabindex="-1" data-testid="error-message" data-error-code="${escapeHtml(state.error.code)}">
         <span>${escapeHtml(state.error.message)}</span>
         ${
           retryable
@@ -177,7 +177,7 @@ function messageMarkup(): string {
       </div>`;
   }
   if (state.notice !== null) {
-    return `<div class="message success" data-testid="notice-message">${escapeHtml(state.notice)}</div>`;
+    return `<div class="message success" tabindex="-1" data-testid="notice-message">${escapeHtml(state.notice)}</div>`;
   }
   return '';
 }
@@ -291,14 +291,32 @@ function restoreFocus(captured: { testId: string; selectionStart: number | null 
   if (captured === null) {
     return;
   }
+
   const target = layoutRoot.querySelector<HTMLElement>(`[data-testid="${captured.testId}"]`);
-  if (target === null) {
+  if (target !== null) {
+    target.focus();
+    if (target instanceof HTMLInputElement && captured.selectionStart !== null) {
+      const position = Math.min(captured.selectionStart, target.value.length);
+      target.setSelectionRange(position, position);
+    }
     return;
   }
-  target.focus();
-  if (target instanceof HTMLInputElement && captured.selectionStart !== null) {
-    const position = Math.min(captured.selectionStart, target.value.length);
-    target.setSelectionRange(position, position);
+
+  // The control that had focus no longer exists, which happens when an action
+  // signs the player out. Move focus to the message explaining why, so a
+  // keyboard user lands on the explanation instead of the top of the document.
+  const fallbackSelectors = [
+    '[data-testid="error-message"]',
+    '[data-testid="notice-message"]',
+    '[data-testid="enter-arena"]',
+    '[data-testid="record-submit"]',
+  ];
+  for (const selector of fallbackSelectors) {
+    const fallback = layoutRoot.querySelector<HTMLElement>(selector);
+    if (fallback !== null) {
+      fallback.focus();
+      return;
+    }
   }
 }
 

@@ -1,0 +1,572 @@
+{
+  "recordType": "certification_run_record",
+  "recordVersion": "1",
+  "phase": "phase-0",
+  "status": "PASSED",
+  "mode": "frozen_certification",
+  "startedAt": "2026-08-12T16:35:29.728Z",
+  "endedAt": "2026-08-12T16:35:51.081Z",
+  "candidate": {
+    "candidateId": "cand-882c6c2fe4a3",
+    "sourceTreeHash": "882c6c2fe4a3782f1cab02542b0ded10598f5f8dac73ec51256a30777d4b1884",
+    "commit": "e921a8a1cd2a56f47122608c5f9f86fca60e3c86",
+    "dirtyTree": false,
+    "dirtyPaths": [],
+    "dependencyLockHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2",
+    "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1",
+    "fileCount": 44
+  },
+  "blueprintVersion": "ALPHA_3_V1",
+  "blueprintSourceHash": "09d91f49c3366946301a38671574a7786f0f288ac7ff98efa6eb84067f00c5b0",
+  "localStackManifestPath": "/workspace/Runtime/certification/cand-882c6c2fe4a3/local-stack-manifest.json",
+  "localStackManifest": {
+    "manifestVersion": "1",
+    "generatedAt": "2026-08-12T16:35:42.030Z",
+    "phase": "phase-0",
+    "environmentClass": "local",
+    "runtimeMode": "frozen_certification",
+    "candidate": {
+      "candidateId": "cand-882c6c2fe4a3",
+      "sourceTreeHash": "882c6c2fe4a3782f1cab02542b0ded10598f5f8dac73ec51256a30777d4b1884",
+      "commit": "e921a8a1cd2a56f47122608c5f9f86fca60e3c86",
+      "clean": true,
+      "dirtyPaths": [],
+      "fileCount": 44,
+      "dependencyLockHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2",
+      "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1"
+    },
+    "blueprint": {
+      "version": "ALPHA_3_V1",
+      "fileName": "HALLUCINATED_DUNGEONS_ALPHA_3_MASTER_BLUEPRINT_V1.md",
+      "sourceHash": "09d91f49c3366946301a38671574a7786f0f288ac7ff98efa6eb84067f00c5b0",
+      "lineCount": 15537,
+      "preflightPassed": true
+    },
+    "workingDirectory": {
+      "resolved": "/workspace",
+      "resolutionSource": "derived_from_builder_root",
+      "builderRoot": "/workspace/Builder",
+      "qaRoot": "/workspace/QA",
+      "runtimeRoot": "/workspace/Runtime",
+      "evidenceRoot": "/workspace/Evidence",
+      "checkpointRoot": "/workspace/Checkpoints",
+      "pendingArchiveRoot": "/workspace/Pending-Archive"
+    },
+    "archive": {
+      "directory": null,
+      "status": "ARCHIVE_PENDING"
+    },
+    "origins": {
+      "client": "http://127.0.0.1:5274",
+      "server": "http://127.0.0.1:5274",
+      "emulatorUi": "http://127.0.0.1:4100"
+    },
+    "ports": {
+      "firestore": 8180,
+      "auth": 9199,
+      "ui": 4100,
+      "server": 5274,
+      "client": 5274
+    },
+    "emulators": {
+      "projectId": "hallucinated-dungeons-local",
+      "configPath": "/workspace/Runtime/certification/cand-882c6c2fe4a3/firebase.emulators.json",
+      "services": {
+        "firestore": "127.0.0.1:8180",
+        "auth": "127.0.0.1:9199",
+        "ui": "127.0.0.1:4100"
+      }
+    },
+    "services": {
+      "client": "implemented",
+      "server": "implemented",
+      "firestoreEmulator": "implemented",
+      "authEmulator": "implemented",
+      "websocket": "NOT_YET_IMPLEMENTED — Phase 2"
+    },
+    "toolchain": {
+      "node": "22.14.0",
+      "npm": "npm/10.9.7 node/v22.14.0 linux x64 workspaces/false",
+      "java": "21.0.10",
+      "firebaseTools": "13.35.1",
+      "typescript": "5.9.3",
+      "vite": "6.4.3",
+      "playwright": "1.62.1",
+      "firebaseAdmin": "13.10.0"
+    },
+    "seed": {
+      "version": "phase0-baseline-v1"
+    },
+    "environmentSchemaVersion": "1",
+    "isolation": {
+      "milestoneEnvironmentConfigured": false,
+      "launchProductionEnvironmentConfigured": false,
+      "productionCredentialsPresent": false,
+      "note": "Phase 0 builds and certifies the Local Execution Environment only. No Milestone or Launch Production target is configured or reachable from this stack."
+    }
+  },
+  "readiness": {
+    "ok": true,
+    "checks": [
+      {
+        "name": "client_origin_serves_page",
+        "ok": true,
+        "detail": "http://127.0.0.1:5274 -> HTTP 200"
+      },
+      {
+        "name": "server_health_ready",
+        "ok": true,
+        "detail": "status=ready firestore=true auth=true"
+      },
+      {
+        "name": "candidate_endpoint_matches_manifest",
+        "ok": true,
+        "detail": "served=cand-882c6c2fe4a3 expected=cand-882c6c2fe4a3"
+      },
+      {
+        "name": "approved_emulator_project",
+        "ok": true,
+        "detail": "served=hallucinated-dungeons-local"
+      },
+      {
+        "name": "environment_class_local",
+        "ok": true,
+        "detail": "served=local"
+      },
+      {
+        "name": "identity_route_rejects_foreign_origin",
+        "ok": true,
+        "detail": "HTTP 403"
+      },
+      {
+        "name": "baseline_seed_matches",
+        "ok": true,
+        "detail": "loaded=phase0-baseline-v1"
+      },
+      {
+        "name": "no_production_credentials_present",
+        "ok": true,
+        "detail": "none set"
+      },
+      {
+        "name": "rules_hash_recorded",
+        "ok": true,
+        "detail": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1"
+      },
+      {
+        "name": "dependency_lock_hash_recorded",
+        "ok": true,
+        "detail": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "22.14.0",
+    "platform": "linux-x64"
+  },
+  "steps": [
+    {
+      "name": "pinned_toolchain_verified",
+      "ok": true,
+      "detail": "Node.js 22.14.0, npm 10.9.7, Java (emulators) 21, Firebase CLI 13.35.1, Firebase Admin SDK 13.10.0, TypeScript 5.9.3, Vite 6.4.3, Playwright 1.62.1"
+    },
+    {
+      "name": "builder_root_clean",
+      "ok": true,
+      "detail": "cand-882c6c2fe4a3 (44 tracked files)"
+    },
+    {
+      "name": "code_completeness_scan",
+      "ok": true,
+      "detail": "41 files scanned, 0 classified finding(s)"
+    },
+    {
+      "name": "greenfield_source_tree_clean",
+      "ok": true,
+      "detail": "44 tracked files, 740 locked packages"
+    },
+    {
+      "name": "blueprint_preflight",
+      "ok": true,
+      "detail": "ALPHA_3_V1 09d91f49c336 (15537 lines)"
+    },
+    {
+      "name": "candidate_materialized",
+      "ok": true,
+      "detail": "44 tracked files -> /workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder"
+    },
+    {
+      "name": "clean_dependency_install_from_lockfile",
+      "ok": true,
+      "detail": "npm ci exit=0"
+    },
+    {
+      "name": "candidate_build",
+      "ok": true,
+      "detail": "npm run build exit=0"
+    },
+    {
+      "name": "frozen_runtime_ready",
+      "ok": true,
+      "detail": "http://127.0.0.1:5274 candidate=cand-882c6c2fe4a3"
+    },
+    {
+      "name": "focused_unit_suite",
+      "ok": true,
+      "detail": "exit=0 pass=28 fail=0 skipped=0"
+    },
+    {
+      "name": "actual_page_self_play_and_smoke_spine",
+      "ok": true,
+      "detail": "22/22 passed, 0 failed, 0 skipped"
+    },
+    {
+      "name": "browser_suite_executed_expected_scenarios",
+      "ok": true,
+      "detail": "22 scenario(s) executed, 22 expected"
+    },
+    {
+      "name": "candidate_unchanged_during_run",
+      "ok": true,
+      "detail": "cand-882c6c2fe4a3"
+    }
+  ],
+  "failures": [],
+  "codeCompletenessScan": {
+    "ok": true,
+    "scanVersion": "completeness-scan-v1",
+    "filesScanned": 41,
+    "findings": [],
+    "approvedFuturePhase": [
+      {
+        "text": "NOT_YET_IMPLEMENTED — Phase 2",
+        "file": "tools/arena/local-stack-manifest.mjs",
+        "justification": "Section 25 assigns realtime projection delivery to Phase 2. The manifest states the service is absent rather than reporting a socket that does not exist."
+      }
+    ],
+    "selfExclusion": {
+      "file": "tools/certification/code-completeness-scan.mjs",
+      "reason": "This file defines the detection patterns and would match itself.",
+      "coveredBy": "tools/certification/greenfield-evidence.mjs"
+    }
+  },
+  "greenfieldEvidence": {
+    "ok": true,
+    "violations": [],
+    "evidence": {
+      "evidenceType": "greenfield_completion_evidence",
+      "blueprintSection": "1.4.7",
+      "treeManifest": {
+        "fileCount": 44,
+        "files": [
+          {
+            "path": ".firebaserc",
+            "mode": "100644",
+            "objectId": "43fa0adde1b6941e61054dbf0066dab403eb23ce"
+          },
+          {
+            "path": "firebase.json",
+            "mode": "100644",
+            "objectId": "3abc59cd8b655ea4964b312f47bd85ed35e8b706"
+          },
+          {
+            "path": "firestore.rules",
+            "mode": "100644",
+            "objectId": "cb45ddbab13f387e186fbb34b8b6d10c91eaa93b"
+          },
+          {
+            "path": "package-lock.json",
+            "mode": "100644",
+            "objectId": "1821d1b074ec4c3cebae41ee9657d0a136e7ffe4"
+          },
+          {
+            "path": "package.json",
+            "mode": "100644",
+            "objectId": "6e4e724ec74eb526900d7fffc07571a67bf3cc54"
+          },
+          {
+            "path": "playwright.config.ts",
+            "mode": "100644",
+            "objectId": "6c49eddf707fec13319b6b4a3ba5242daf124bf4"
+          },
+          {
+            "path": "src/client/api.ts",
+            "mode": "100644",
+            "objectId": "5aa0bd378a450b3bf1662c9ba161afbe895277ff"
+          },
+          {
+            "path": "src/client/index.html",
+            "mode": "100644",
+            "objectId": "379fcbe07342a3676f5045e0c0a17f587b155a23"
+          },
+          {
+            "path": "src/client/main.ts",
+            "mode": "100644",
+            "objectId": "9d745b2f8145582ddd2dd97f90f4755d823dc6c9"
+          },
+          {
+            "path": "src/client/styles.css",
+            "mode": "100644",
+            "objectId": "eb39bb7d88929e073d9a7813cdade43301cd362e"
+          },
+          {
+            "path": "src/server/config/environment.ts",
+            "mode": "100644",
+            "objectId": "053e536ca36c08c56a3a90005b97ca4c1e055ca1"
+          },
+          {
+            "path": "src/server/foundation/foundation-checks.ts",
+            "mode": "100644",
+            "objectId": "938a3e51a8183617a908e565390e3f8b8212104d"
+          },
+          {
+            "path": "src/server/http/server.ts",
+            "mode": "100644",
+            "objectId": "cb03486e0821886bfe6abfcec78bab097e83454f"
+          },
+          {
+            "path": "src/server/identity/development-identity.ts",
+            "mode": "100644",
+            "objectId": "6135f2a49cd388fe037a6e15022ed80208c6ff6e"
+          },
+          {
+            "path": "src/server/index.ts",
+            "mode": "100644",
+            "objectId": "13d8ac5cba354d6eb06f9a2e51d340b640578c40"
+          },
+          {
+            "path": "src/server/persistence/firestore.ts",
+            "mode": "100644",
+            "objectId": "9fcc2aa4c2c13b8ac563e570defcb60b6e7439e0"
+          },
+          {
+            "path": "src/shared/contract.ts",
+            "mode": "100644",
+            "objectId": "f7ae264a7bca8a4177975fa6145e3a0b110406be"
+          },
+          {
+            "path": "tests/e2e/arena-page.ts",
+            "mode": "100644",
+            "objectId": "11f3538b986137ee90a3b77b6a78cda0b0db09d3"
+          },
+          {
+            "path": "tests/e2e/phase0-self-play.spec.ts",
+            "mode": "100644",
+            "objectId": "58cec673cc1a2a00536e2d26c0ec0846553dadd2"
+          },
+          {
+            "path": "tests/e2e/qa-regressions.spec.ts",
+            "mode": "100644",
+            "objectId": "f760eb87a7e11c92bd773a0dd2d407ced6a1e659"
+          },
+          {
+            "path": "tests/e2e/smoke-spine.spec.ts",
+            "mode": "100644",
+            "objectId": "b4ca279e150f0ea8dccd3d4f66fc20e590327f3b"
+          },
+          {
+            "path": "tests/unit/blueprint-preflight.test.mjs",
+            "mode": "100644",
+            "objectId": "48a821a6b27777391a134df6ccb201723389a3f7"
+          },
+          {
+            "path": "tests/unit/contract.test.mjs",
+            "mode": "100644",
+            "objectId": "adc575c7651038e28c8bb4034d88bf2378578f79"
+          },
+          {
+            "path": "tests/unit/environment-guards.test.mjs",
+            "mode": "100644",
+            "objectId": "72d5e15c637dd7b1e7de7de8ab2567697a06d23c"
+          },
+          {
+            "path": "tests/unit/workspace-roots.test.mjs",
+            "mode": "100644",
+            "objectId": "ad005e8646b3f722c932c5fefd223c908c471a81"
+          },
+          {
+            "path": "tools/arena/arena-instance.mjs",
+            "mode": "100644",
+            "objectId": "23b1e0a9e71a90ef4c42d981a8e20dd325612660"
+          },
+          {
+            "path": "tools/arena/emulators.mjs",
+            "mode": "100644",
+            "objectId": "8743f5bbc9694deebb9368601269b56b79958ee8"
+          },
+          {
+            "path": "tools/arena/local-stack-manifest.mjs",
+            "mode": "100644",
+            "objectId": "0f38503b785057976b5f2880a8ecd759ce37cab3"
+          },
+          {
+            "path": "tools/arena/project.mjs",
+            "mode": "100644",
+            "objectId": "4966da930b3be9625fa1a43b8b58f33d0be56824"
+          },
+          {
+            "path": "tools/arena/seed.mjs",
+            "mode": "100644",
+            "objectId": "bcaa913f6ac3a9fa0f6d334f47702a4e941b8735"
+          },
+          {
+            "path": "tools/arena/start-arena.mjs",
+            "mode": "100644",
+            "objectId": "8de2626c398bf4cf4066799c2acf1c1cbcba2f3d"
+          },
+          {
+            "path": "tools/blueprint/preflight.mjs",
+            "mode": "100644",
+            "objectId": "cd5c9e495327ca43bcce3c3e0a441c507d07473f"
+          },
+          {
+            "path": "tools/candidate/candidate-identity.mjs",
+            "mode": "100644",
+            "objectId": "007de2ca199ace7c5c9908ed2888f63c05c251a1"
+          },
+          {
+            "path": "tools/certification/code-completeness-scan.mjs",
+            "mode": "100644",
+            "objectId": "7a02ea2adfed82dac327872b0be6cb66213ebd62"
+          },
+          {
+            "path": "tools/certification/greenfield-evidence.mjs",
+            "mode": "100644",
+            "objectId": "84220d4b3c76931dc5d90a0afc01502457ddd5a9"
+          },
+          {
+            "path": "tools/certification/run-certification.mjs",
+            "mode": "100644",
+            "objectId": "af430f8803f32063f621680cb8fb6adcfd85248a"
+          },
+          {
+            "path": "tools/certification/serve-frozen.mjs",
+            "mode": "100644",
+            "objectId": "03231ecfd9067d61c0cd91478484abbca6db18a3"
+          },
+          {
+            "path": "tools/verify-toolchain.mjs",
+            "mode": "100644",
+            "objectId": "76eda926bfd026f8027b2887b69406f287f4a14c"
+          },
+          {
+            "path": "tools/workspace/init-working-directory.mjs",
+            "mode": "100644",
+            "objectId": "511826beecfb7b44e920fdff77b9273459095aeb"
+          },
+          {
+            "path": "tools/workspace/working-directory.mjs",
+            "mode": "100644",
+            "objectId": "4b7b8aa1da59ffd26a34ec2e0e35f8d42fc1ad04"
+          },
+          {
+            "path": "tsconfig.base.json",
+            "mode": "100644",
+            "objectId": "9823d34584df0ef959e0df78bffc779e14f47a49"
+          },
+          {
+            "path": "tsconfig.client.json",
+            "mode": "100644",
+            "objectId": "4afb3898f4e282ff2e31dd6d694cbf35eedde275"
+          },
+          {
+            "path": "tsconfig.server.json",
+            "mode": "100644",
+            "objectId": "d50c9e9833f3b3f40c9eef47675d8ca16617f17b"
+          },
+          {
+            "path": "vite.config.ts",
+            "mode": "100644",
+            "objectId": "e3610f3a9e07893795eda73d0f1ea62fdcc67037"
+          }
+        ]
+      },
+      "frameworkGeneratedFiles": {
+        "generator": "none",
+        "note": "No scaffolding generator was run. Every tracked file in Builder Root was authored directly against the V1 blueprint, so the approved-generated-file list is empty by construction rather than by omission.",
+        "files": []
+      },
+      "dependencies": {
+        "format": "lockfile-derived-package-list-v1",
+        "packageCount": 740,
+        "directDependencyCount": 1,
+        "directDevDependencyCount": 5,
+        "sbomHash": "aaed888dbf9f089cb1851d020e89c013ded9c8491c19ab765b88d3366d943e7f",
+        "lockfileHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2"
+      },
+      "prohibitedPatternScan": {
+        "topologyRules": [
+          "hex_grid",
+          "isometric_topology",
+          "topology_switch",
+          "compatibility_layer"
+        ],
+        "secretAndImportRules": [
+          "private_key_block",
+          "service_account_json",
+          "google_api_key",
+          "password_credential_flow",
+          "password_literal",
+          "database_export"
+        ],
+        "trackedPathRules": [
+          "QA/",
+          "Evidence/",
+          "Runtime/",
+          "Checkpoints/",
+          "Pending-Archive/"
+        ],
+        "violationCount": 0,
+        "selfExclusion": {
+          "file": "tools/certification/greenfield-evidence.mjs",
+          "reason": "This file defines the detection patterns and would match itself.",
+          "coveredBy": "tools/certification/code-completeness-scan.mjs"
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "command": "npm ci --no-audit --no-fund",
+      "cwd": "/workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder",
+      "startedAt": "2026-08-12T16:35:29.886Z",
+      "endedAt": "2026-08-12T16:35:33.749Z",
+      "exitCode": 0,
+      "stdoutTail": "\nadded 689 packages in 4s\n",
+      "stderrTail": "npm warn deprecated tar@6.2.1: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\nnpm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.\nnpm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\n"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "/workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder",
+      "startedAt": "2026-08-12T16:35:33.749Z",
+      "endedAt": "2026-08-12T16:35:35.113Z",
+      "exitCode": 0,
+      "stdoutTail": "\n> hallucinated-dungeons-alpha3@0.0.0 build\n> npm run build:server && npm run build:client\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:server\n> tsc --project tsconfig.server.json\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:client\n> vite build --config vite.config.ts\n\nvite v6.4.3 building for production...\ntransforming...\n✓ 6 modules transformed.\nrendering chunks...\ncomputing gzip size...\n../../dist/client/index.html                  0.60 kB │ gzip: 0.37 kB\n../../dist/client/assets/index-7vK97B9h.css   3.65 kB │ gzip: 1.23 kB\n../../dist/client/assets/index-IGvv20tl.js   11.86 kB │ gzip: 4.09 kB │ map: 35.59 kB\n✓ built in 93ms\n",
+      "stderrTail": ""
+    },
+    {
+      "command": "node --test tests/unit/*.test.mjs",
+      "cwd": "/workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder",
+      "startedAt": "2026-08-12T16:35:42.093Z",
+      "endedAt": "2026-08-12T16:35:42.205Z",
+      "exitCode": 0,
+      "stdoutTail": "missing blueprint fails preflight\nok 4 - a missing blueprint fails preflight\n  ---\n  duration_ms: 0.954168\n  ...\n# Subtest: a well-formed request identifier is accepted\nok 5 - a well-formed request identifier is accepted\n  ---\n  duration_ms: 0.691057\n  ...\n# Subtest: a malformed or absent request identifier is rejected\nok 6 - a malformed or absent request identifier is rejected\n  ---\n  duration_ms: 0.143725\n  ...\n# Subtest: a note is trimmed and accepted\nok 7 - a note is trimmed and accepted\n  ---\n  duration_ms: 0.133043\n  ...\n# Subtest: an empty or whitespace-only note is rejected with its own code\nok 8 - an empty or whitespace-only note is rejected with its own code\n  ---\n  duration_ms: 0.083277\n  ...\n# Subtest: a note longer than the accepted length is rejected\nok 9 - a note longer than the accepted length is rejected\n  ---\n  duration_ms: 0.081328\n  ...\n# Subtest: a non-string note is rejected as a bad request\nok 10 - a non-string note is rejected as a bad request\n  ---\n  duration_ms: 0.082513\n  ...\n# Subtest: a complete local environment is accepted and frozen\nok 11 - a complete local environment is accepted and frozen\n  ---\n  duration_ms: 1.751067\n  ...\n# Subtest: an unrecognized HD_ variable is refused rather than ignored\nok 12 - an unrecognized HD_ variable is refused rather than ignored\n  ---\n  duration_ms: 0.418892\n  ...\n# Subtest: a non-local environment class is refused\nok 13 - a non-local environment class is refused\n  ---\n  duration_ms: 0.112056\n  ...\n# Subtest: a production credential variable blocks local startup\nok 14 - a production credential variable blocks local startup\n  ---\n  duration_ms: 0.16161\n  ...\n# Subtest: a live-looking project identifier is refused\nok 15 - a live-looking project identifier is refused\n  ---\n  duration_ms: 0.270936\n  ...\n# Subtest: a non-loopback emulator or server host is refused\nok 16 - a non-loopback emulator or server host is refused\n  ---\n  duration_ms: 0.140744\n  ...\n# Subtest: a public client origin is refused\nok 17 - a public client origin is refused\n  ---\n  duration_ms: 0.127639\n  ...\n# Subtest: a missing required variable names itself\nok 18 - a missing required variable names itself\n  ---\n  duration_ms: 0.106861\n  ...\n# Subtest: frozen certification requires a built client bundle\nok 19 - frozen certification requires a built client bundle\n  ---\n  duration_ms: 0.261711\n  ...\n# Subtest: a malformed host:port is refused\nok 20 - a malformed host:port is refused\n  ---\n  duration_ms: 0.272694\n  ...\n# Subtest: every role root resolves beneath the working directory\nok 21 - every role root resolves beneath the working directory\n  ---\n  duration_ms: 1.592012\n  ...\n# Subtest: the working directory defaults to the parent of Builder Root\nok 22 - the working directory defaults to the parent of Builder Root\n  ---\n  duration_ms: 0.199834\n  ...\n# Subtest: an explicit working directory is honored when it contains Builder Root\nok 23 - an explicit working directory is honored when it contains Builder Root\n  ---\n  duration_ms: 0.322064\n  ...\n# Subtest: a working directory that does not contain this Builder Root is refused\nok 24 - a working directory that does not contain this Builder Root is refused\n  ---\n  duration_ms: 0.406567\n  ...\n# Subtest: a relative working directory is refused\nok 25 - a relative working directory is refused\n  ---\n  duration_ms: 0.147531\n  ...\n# Subtest: an archive directory inside the working directory is refused\nok 26 - an archive directory inside the working directory is refused\n  ---\n  duration_ms: 0.126282\n  ...\n# Subtest: the archive status is ARCHIVE_PENDING when none is configured\nok 27 - the archive status is ARCHIVE_PENDING when none is configured\n  ---\n  duration_ms: 0.13826\n  ...\n# Subtest: each created subtree records the role that owns writes there\nok 28 - each created subtree records the role that owns writes there\n  ---\n  duration_ms: 7.479463\n  ...\n1..28\n# tests 28\n# suites 0\n# pass 28\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 88.634863\n",
+      "stderrTail": ""
+    },
+    {
+      "command": "/workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder/node_modules/.bin/playwright test",
+      "cwd": "/workspace/Runtime/candidates/cand-882c6c2fe4a3/Builder",
+      "startedAt": "2026-08-12T16:35:42.206Z",
+      "endedAt": "2026-08-12T16:35:50.692Z",
+      "exitCode": 0,
+      "stdoutTail": "\nRunning 22 tests using 1 worker\n\n  ✓   1 [chromium] › tests/e2e/phase0-self-play.spec.ts:23:3 › Phase 0 player journey › a full pass: enter, write, read, refresh, and recover the same state (822ms)\n  ✓   2 [chromium] › tests/e2e/phase0-self-play.spec.ts:55:3 › Phase 0 player journey › failure and retry: a lost response does not commit the note twice (542ms)\n  ✓   3 [chromium] › tests/e2e/phase0-self-play.spec.ts:94:3 › Phase 0 player journey › validation failure is explained on the page and writes nothing (328ms)\n  ✓   4 [chromium] › tests/e2e/phase0-self-play.spec.ts:113:3 › Phase 0 player journey › records are owned by one account and are not visible to another (523ms)\n  ✓   5 [chromium] › tests/e2e/phase0-self-play.spec.ts:134:3 › Phase 0 player journey › a stale page cannot commit into a different candidate (249ms)\n  ✓   6 [chromium] › tests/e2e/phase0-self-play.spec.ts:159:3 › Phase 0 player journey › a request from another origin is refused (230ms)\n  ✓   7 [chromium] › tests/e2e/phase0-self-play.spec.ts:181:3 › Phase 0 player journey › direct navigation to an unknown route exposes no account state (182ms)\n  ✓   8 [chromium] › tests/e2e/phase0-self-play.spec.ts:202:3 › Phase 0 player journey › the unauthenticated API refuses to return records (60ms)\n  ✓   9 [chromium] › tests/e2e/phase0-self-play.spec.ts:210:3 › Phase 0 player journey › leaving the arena ends the session but preserves the stored records (443ms)\n  ✓  10 [chromium] › tests/e2e/phase0-self-play.spec.ts:229:3 › Phase 0 player journey › the journey is operable by keyboard alone (266ms)\n  ✓  11 [chromium] › tests/e2e/qa-regressions.spec.ts:34:3 › QA regression coverage › P0-QA-001: a session that ends mid-use is explained on the page (362ms)\n  ✓  12 [chromium] › tests/e2e/qa-regressions.spec.ts:50:3 › QA regression coverage › P0-QA-001: reloading with a dead session explains itself rather than emptying quietly (345ms)\n  ✓  13 [chromium] › tests/e2e/qa-regressions.spec.ts:67:3 › QA regression coverage › P0-QA-002: signing out is confirmed on screen (230ms)\n  ✓  14 [chromium] › tests/e2e/qa-regressions.spec.ts:77:3 › QA regression coverage › P0-QA-003: the live region survives re-rendering (284ms)\n  ✓  15 [chromium] › tests/e2e/qa-regressions.spec.ts:99:3 › QA regression coverage › P0-QA-004: a failure replaces the previous success announcement (354ms)\n  ✓  16 [chromium] › tests/e2e/qa-regressions.spec.ts:113:3 › QA regression coverage › P0-QA-005: keyboard focus is preserved across an action (327ms)\n  ✓  17 [chromium] › tests/e2e/qa-regressions.spec.ts:135:3 › QA regression coverage › P0-QA-006: a partial list says how many records exist (823ms)\n  ✓  18 [chromium] › tests/e2e/qa-regressions.spec.ts:162:3 › QA regression coverage › P0-QA-007: an oversized body is refused without stalling the connection (188ms)\n  ✓  19 [chromium] › tests/e2e/qa-regressions.spec.ts:225:3 › QA regression coverage › P0-QA-008: server responses carry their hardening headers (63ms)\n  ✓  20 [chromium] › tests/e2e/smoke-spine.spec.ts:25:3 › Permanent smoke spine › startup: the page loads and reports its candidate and environment (120ms)\n  ✓  21 [chromium] › tests/e2e/smoke-spine.spec.ts:33:3 › Permanent smoke spine › development identity: the server mints an identity the page renders (182ms)\n  ✓  22 [chromium] › tests/e2e/smoke-spine.spec.ts:41:3 › Permanent smoke spine › canonical write and read: a submitted note is persisted and rendered back (304ms)\n\n  22 passed (7.9s)\n",
+      "stderrTail": "(node:19030) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:19030) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    }
+  ],
+  "browserSuite": {
+    "total": 22,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  }
+}

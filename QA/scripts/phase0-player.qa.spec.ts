@@ -1,5 +1,10 @@
 /**
- * Independent QA browser validation of Phase 0 candidate cand-0f810c6c26d8.
+ * Independent QA browser validation of the Phase 0 player journey.
+ *
+ * Originally authored against candidate cand-0f810c6c26d8 and re-run unchanged
+ * (apart from the candidate identifier, which is now a parameter) against the
+ * replacement candidate cand-882c6c2fe4a3, so it serves as the regression
+ * guard for the remediation.
  *
  * These scenarios are QA-authored and operate the rendered page the way a
  * suspicious player would. Nothing here reuses Builder test code, and no
@@ -10,8 +15,8 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 
 const ARENA = 'http://127.0.0.1:5274';
-const CANDIDATE = 'cand-0f810c6c26d8';
-const EVIDENCE = '/workspace/QA/evidence/ui';
+const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-882c6c2fe4a3';
+const EVIDENCE = process.env.QA_EVIDENCE_DIR ?? '/workspace/QA/evidence/ui';
 
 const el = {
   candidateId: '[data-testid="candidate-id"]',
@@ -357,12 +362,12 @@ test.describe('Phase 0 independent QA — rendered page', () => {
     await expect(page.locator(el.noteInput)).toHaveCount(0);
     await expect(page.locator(el.submit)).toHaveCount(0);
 
-    const anonymous = await page.evaluate(async () => {
+    const anonymous = await page.evaluate(async (candidateId) => {
       const read = await fetch('/api/foundation-checks', { credentials: 'same-origin' });
       const write = await fetch('/api/foundation-checks', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', 'x-hd-candidate': 'cand-0f810c6c26d8' },
+        headers: { 'content-type': 'application/json', 'x-hd-candidate': candidateId },
         body: JSON.stringify({
           requestId: '33333333-3333-4333-8333-333333333333',
           note: 'unauthenticated write from the browser',
@@ -374,7 +379,7 @@ test.describe('Phase 0 independent QA — rendered page', () => {
         writeStatus: write.status,
         writeBody: await write.json(),
       };
-    });
+    }, CANDIDATE);
 
     expect(anonymous.readStatus).toBe(401);
     expect(anonymous.readBody.error).toBe('NOT_AUTHENTICATED');
@@ -527,19 +532,19 @@ test.describe('Phase 0 independent QA — rendered page', () => {
     await expect(page.locator(el.enter)).toBeVisible();
     await expect(page.locator(el.accountId)).toHaveCount(0);
 
-    const replay = await page.evaluate(async () => {
+    const replay = await page.evaluate(async (candidateId) => {
       const read = await fetch('/api/foundation-checks', { credentials: 'same-origin' });
       const write = await fetch('/api/foundation-checks', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', 'x-hd-candidate': 'cand-0f810c6c26d8' },
+        headers: { 'content-type': 'application/json', 'x-hd-candidate': candidateId },
         body: JSON.stringify({
           requestId: '44444444-4444-4444-8444-444444444444',
           note: 'written with a revoked cookie',
         }),
       });
       return { readStatus: read.status, writeStatus: write.status };
-    });
+    }, CANDIDATE);
     expect(replay.readStatus).toBe(401);
     expect(replay.writeStatus).toBe(401);
     await page.screenshot({ path: `${EVIDENCE}/s09-02-revoked-cookie-refused.png`, fullPage: true });
@@ -672,7 +677,7 @@ test.describe('Phase 0 independent QA — rendered page', () => {
     });
     await attacker.goto('http://evil.test/');
 
-    const attackResult = await attacker.evaluate(async () => {
+    const attackResult = await attacker.evaluate(async (candidateId) => {
       const attempt = async (init: RequestInit) => {
         try {
           const response = await fetch('http://127.0.0.1:5274/api/foundation-checks', init);
@@ -686,14 +691,14 @@ test.describe('Phase 0 independent QA — rendered page', () => {
         writeWithCredentials: await attempt({
           method: 'POST',
           credentials: 'include',
-          headers: { 'content-type': 'application/json', 'x-hd-candidate': 'cand-0f810c6c26d8' },
+          headers: { 'content-type': 'application/json', 'x-hd-candidate': candidateId },
           body: JSON.stringify({
             requestId: '55555555-5555-4555-8555-555555555555',
             note: 'written from evil.test',
           }),
         }),
       };
-    });
+    }, CANDIDATE);
 
     // Either the browser blocked it or the server refused it; in no case may
     // the attacker page obtain records.
@@ -848,14 +853,14 @@ test.describe('Phase 0 independent QA — failure explanation on the page', () =
 
     // End the session for real, server-side, while this tab still shows a
     // signed-in page. This is what a 4-hour expiry looks like to the tab.
-    const ended = await page.evaluate(async () => {
+    const ended = await page.evaluate(async (candidateId) => {
       const response = await fetch('/api/session', {
         method: 'DELETE',
         credentials: 'same-origin',
-        headers: { 'x-hd-candidate': 'cand-0f810c6c26d8' },
+        headers: { 'x-hd-candidate': candidateId },
       });
       return response.status;
-    });
+    }, CANDIDATE);
     expect(ended).toBe(204);
 
     // The player, unaware, presses the page's own reload control.
@@ -976,13 +981,13 @@ test.describe('Phase 0 independent QA — recovery after an expired session', ()
     await recordNote(page, 'note recorded before expiry');
     await expect(page.locator(el.recordItem)).toHaveCount(1);
 
-    await page.evaluate(async () => {
+    await page.evaluate(async (candidateId) => {
       await fetch('/api/session', {
         method: 'DELETE',
         credentials: 'same-origin',
-        headers: { 'x-hd-candidate': 'cand-0f810c6c26d8' },
+        headers: { 'x-hd-candidate': candidateId },
       });
-    });
+    }, CANDIDATE);
 
     await page.fill(el.noteInput, 'the note in flight');
     await page.click(el.submit);
