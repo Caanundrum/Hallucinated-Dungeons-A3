@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+
+# Firebase Emulator Suite (Local Arena) runtime artifacts
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+*-debug.log
+emulator-data/
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# Local environment
+.env
+.env.local
+*.local

@@ -1,0 +1,11 @@
+{
+  "name": "Hallucinated Dungeons Alpha 3",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "Local Arena (Firebase Emulators)",
+      "command": "npm run arena:start"
+    }
+  ],
+  "ports": [4000, 8080, 9099]
+}
