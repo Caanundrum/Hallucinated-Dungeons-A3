@@ -239,12 +239,17 @@ async function main() {
 
   try {
     // 6. Required suites against the frozen runtime.
-    const unit = runCommand('node', ['--test', 'tests/unit/'], {
+    const unit = runCommand('node', ['--test', 'tests/unit/*.test.mjs'], {
       cwd: runtimeCandidateDir,
       shell: true,
     });
     commandRuns.push(unit);
-    record('focused_unit_suite', unit.exitCode === 0, `exit=${unit.exitCode}`);
+    const unitCounts = parseNodeTestCounts(unit.stdout);
+    record(
+      'focused_unit_suite',
+      unit.exitCode === 0 && unitCounts.pass > 0 && unitCounts.fail === 0,
+      `exit=${unit.exitCode} pass=${unitCounts.pass} fail=${unitCounts.fail} skipped=${unitCounts.skipped}`,
+    );
 
     const e2eOutputDir = join(evidenceDir, 'browser');
     const e2e = runCommand(
@@ -317,6 +322,20 @@ async function main() {
   }
   console.log('\nPhase 0 Builder Verification PASSED against the frozen candidate.');
   console.log(`Candidate ${candidateBefore.candidateId} is READY_FOR_QA.`);
+}
+
+/**
+ * Reads the node:test TAP summary. A runner that exits zero without executing
+ * assertions is not evidence, so the counts are checked rather than the code.
+ *
+ * @param {string} stdout
+ */
+function parseNodeTestCounts(stdout) {
+  const read = (label) => {
+    const match = new RegExp(`^# ${label} (\\d+)$`, 'm').exec(stdout);
+    return match === null ? 0 : Number(match[1]);
+  };
+  return { pass: read('pass'), fail: read('fail'), skipped: read('skipped') };
 }
 
 /** @param {object | null} results */
