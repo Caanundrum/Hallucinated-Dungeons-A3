@@ -7,5 +7,9 @@
       "command": "npm run arena:start"
     }
   ],
-  "ports": [4000, 8080, 9099]
+  "ports": [
+    { "name": "Emulator UI", "port": 4000 },
+    { "name": "Firestore emulator", "port": 8080 },
+    { "name": "Auth emulator", "port": 9099 }
+  ]
 }
