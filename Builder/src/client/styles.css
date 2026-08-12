@@ -1,0 +1,242 @@
+/*
+ * Phase 0 presentation.
+ *
+ * This is deliberately a small, readable operator surface for the greenfield
+ * foundation check. The versioned Design System Manifest and the player-facing
+ * visual language are owned by Phase 1; nothing here claims to be that system.
+ */
+
+:root {
+  --surface-base: #0b1020;
+  --surface-raised: #141b31;
+  --surface-sunken: #090d19;
+  --border-subtle: #26304d;
+  --text-primary: #e8ecf7;
+  --text-secondary: #a5b0cc;
+  --accent: #6ea8ff;
+  --accent-contrast: #06101f;
+  --danger: #ff9d9d;
+  --danger-surface: #3a1420;
+  --success: #8fe3b0;
+  --radius: 10px;
+  --space-1: 0.35rem;
+  --space-2: 0.7rem;
+  --space-3: 1.15rem;
+  --space-4: 1.8rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--surface-base);
+  background-image: linear-gradient(180deg, #070b16 0%, #0b1020 45%, #0d1426 100%);
+  color: var(--text-primary);
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.55;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  padding: var(--space-2) var(--space-3);
+  z-index: 10;
+}
+
+.skip-link:focus {
+  left: var(--space-3);
+  top: var(--space-3);
+}
+
+.layout {
+  margin: 0 auto;
+  max-width: 46rem;
+  padding: var(--space-4) var(--space-3) var(--space-4);
+}
+
+header h1 {
+  font-size: 1.6rem;
+  margin: 0 0 var(--space-1);
+  letter-spacing: 0.01em;
+}
+
+.tagline {
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.candidate-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.candidate-strip b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.panel h2 {
+  font-size: 1.05rem;
+  margin: 0 0 var(--space-2);
+}
+
+.panel p {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+input[type="text"]:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field-hint {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+button.secondary {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+button[disabled] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.message {
+  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0 0;
+  border: 1px solid var(--border-subtle);
+}
+
+.message.error {
+  background: var(--danger-surface);
+  border-color: #6d2537;
+  color: var(--danger);
+}
+
+.message.success {
+  background: #10261c;
+  border-color: #23573c;
+  color: var(--success);
+}
+
+.record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.record-list li {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+}
+
+.record-note {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.record-meta {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+footer {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-2);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

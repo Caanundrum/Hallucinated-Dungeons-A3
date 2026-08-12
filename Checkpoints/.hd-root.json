@@ -1,0 +1,6 @@
+{
+  "workingDirectory": "/workspace",
+  "writeOwner": "Builder",
+  "purpose": "Durable phase checkpoints, candidate manifests, and phase certificates.",
+  "blueprintSection": "1.11.1 / 1.11.2"
+}

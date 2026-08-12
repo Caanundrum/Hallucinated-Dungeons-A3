@@ -1,0 +1,6 @@
+{
+  "workingDirectory": "/workspace",
+  "writeOwner": "Builder",
+  "purpose": "Certification run records and Builder verification evidence.",
+  "blueprintSection": "1.11.1 / 1.11.2"
+}
