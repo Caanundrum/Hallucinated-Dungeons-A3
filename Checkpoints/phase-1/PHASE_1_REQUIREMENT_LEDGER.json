@@ -1,0 +1,201 @@
+{
+  "ledgerVersion": "1",
+  "phase": "phase-1",
+  "blueprintVersion": "ALPHA_3_V1",
+  "owner": "Builder",
+  "lifecycleState": "IMPLEMENTING",
+  "priorPhase": { "phase": "phase-0", "state": "PHASE_CERTIFIED", "candidateId": "cand-32058f47eda8" },
+  "humanGate": {
+    "required": true,
+    "scope": "Primary visual direction, opening identity, character and campaign flow, and settings presentation.",
+    "timing": "After Builder and QA have already used and corrected the page.",
+    "state": "NOT_REACHED"
+  },
+  "note": "Scope control for Phase 1 only. Section 25 is the phase-scope authority. A status becomes PASSED only when the named verification actually executed against the frozen Phase 1 candidate and produced machine-readable evidence.",
+  "requirements": [
+    {
+      "id": "P1-PACK",
+      "source": "1.14.5; 1.12.2",
+      "behavior": "One phase execution pack and one lean requirement ledger exist and stay synchronized with actual implementation and evidence.",
+      "implementation": "Checkpoints/phase-1/PHASE_1_EXECUTION_PACK.md, this ledger",
+      "verification": "Reviewed against Section 25 Phase 1 scope; corrected whenever it disagrees with the blueprint",
+      "status": "PASSED"
+    },
+    {
+      "id": "P1-OWNERSHIP-CONTRACT",
+      "source": "0 hard invariants; 1.2; 7.7; 7.7.2; 25 Phase 1 stable identifiers",
+      "behavior": "One account model is fixed before the feature slices begin: a single accountId ownership key, one identity module, a non-authoritative client, one collection registry, query-enforced ownership, and seats that bind without granting ownership.",
+      "implementation": "Checkpoints/phase-1/PHASE_1_IDENTITY_AND_OWNERSHIP_CONTRACT.md, Builder/tools/certification/architecture-conformance.mjs",
+      "verification": "npm run scan:architecture; tests/unit/architecture-conformance.test.mjs proves each rule fires and is correctly scoped",
+      "status": "PASSED"
+    },
+    {
+      "id": "P1-DESIGN-SYSTEM",
+      "source": "8.17; 8.17.1; 25 Phase 1 build scope",
+      "behavior": "A version-controlled Design System Manifest defines named tokens for color, typography, spacing, iconography, motion, component anatomy and every state, responsive and accessibility adaptations, and named rendering layers. Every component and screenshot baseline identifies the manifest version it follows.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-SHELL-NAV",
+      "source": "25 Phase 1 build scope",
+      "behavior": "Responsive hosted shell with stable navigation and accessibility foundations, using the obsidian-blue direction.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-OPENING-IDENTITY",
+      "source": "1.8.6; 1.8.7",
+      "behavior": "Programmatic-first opening identity sequence with a skip control, local versioned assets only, and no dependency on runtime image generation, an AI call, a remote animation service, an iframe, a third-party script, or a WebGL-only effect. Decorative assets stay off the critical path and within the stated budgets, and the sequence remains usable under cache miss, reduced motion, autoplay denial, and individual asset failure.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-LEGAL-ROUTES",
+      "source": "1.8.4",
+      "behavior": "Stable routes /legal/terms, /legal/privacy, /legal/alpha-participation, and /legal/content-and-safety load without authentication as ordinary accessible documents showing title, version, effective date, stable anchors, and a contact path. Opening a legal link preserves pending invitation and form state.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-ACCOUNT-PROJECTION",
+      "source": "1.5.20; 25 Phase 1 build order",
+      "behavior": "The existing Development Test Identity is projected as a real account surface. No second identity provider, no password, and no Google flow are introduced.",
+      "implementation": "extends Builder/src/server/identity/",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-CHARACTER-CREATION",
+      "source": "1.5.8; 1.5.8.1; 1.5.8.2",
+      "behavior": "Custom and quick-start creation validated against the approved SRD manifest, using familiar SRD 5.2.1 terminology, with Identity and Final Review last and Create Character unavailable until all required mechanical and identity fields are valid.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-CHARACTER-VAULT",
+      "source": "25 Phase 1 build scope; 7.7",
+      "behavior": "Character Vault, derived values, drafts, validation, and ownership. Every character is owned by exactly one account, and ownership is resolved from the verified authentication context on every sensitive operation.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-CAMPAIGN-LIFECYCLE",
+      "source": "25 Phase 1 build scope; 1.5.4",
+      "behavior": "Campaign creation, invitations, membership, seats, Session Zero, safety and content settings, group-decision policy, and campaign ownership. Campaign ownership grants no character ownership.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-DIRECTOR-CONFIG-LOCK",
+      "source": "1.5.21; 25 Phase 1 build scope",
+      "behavior": "Campaign creation requires choosing Veyra or Garrick and then one approved personality. Both persist with the campaign, are not editable by ordinary users after creation, and carry a deterministic derived avatar key. Phase 1 exposes no Address-the-Director response control or other simulated AI behavior, and labels this flow truthfully as configuration for the later AI-enabled table.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-SEATS",
+      "source": "7.7; 7.7.2",
+      "behavior": "Entering a campaign requires a server-created seat. A player may select only a character whose ownerAccountId equals the verified accountId. No transfer, borrowing, seizing, or impersonation of ownership is possible.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-SETTINGS",
+      "source": "25 Phase 1 build scope",
+      "behavior": "Player and campaign settings data model, exposing only controls with real Phase 1 behavior, while reserving stable defaults for later speech and AI presentation settings without showing a nonfunctional control.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-COMMUNICATION-STRUCTURE",
+      "source": "1.5.2.1 through 1.5.2.5; 25 Phase 1 build scope",
+      "behavior": "Communication Dock with Chronicle, Party Chat, and Rules Desk as peer destinations, and a visually and behaviorally separate Action Composer. Every visible Phase 1 control performs a real Phase 1 function; future AI and mechanical controls remain absent rather than decorative.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-STABLE-IDENTIFIERS",
+      "source": "25 Phase 1 build scope; 1.12.4",
+      "behavior": "Only the minimum stable identifiers Phase 1 genuinely needs for later maps, seats, command and event references, rules versions, settings, and campaign continuity. No speculative Phase 2 or Phase 3 schema, and no field without a producer, consumer, authorization, and failure behavior.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-REENTRY-JOURNEY",
+      "source": "25 Phase 1 player journey",
+      "behavior": "From a fresh browser: enter, create a character, create a campaign with a locked Director identity and personality, invite and join a second local development identity into membership and a seat, confirm ordinary users cannot alter the locked configuration, configure settings, leave, return, and recover the same character and campaign state.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-SMOKE-SPINE-EXTENSION",
+      "source": "25.3; 26.6",
+      "behavior": "The permanent smoke spine gains its Phase 1 segment: character and campaign continuity, alongside the existing startup, development identity, and canonical write/read segments.",
+      "implementation": "extends Builder/tests/e2e/smoke-spine.spec.ts",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-COVERAGE-MODEL",
+      "source": "C.AUTONOMY.10; 1.12.9",
+      "behavior": "A published, executed Phase 1 coverage model with enumerated finite dimensions, constraints that remove only impossible combinations, exhaustive numeric boundaries, reproducible pairwise selection, explicit high-risk interactions, a complete legal journey for every supported class, independently recalculated derived values, and restart, resume, ownership, stale-state, and duplicate-submission cases.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-BUILDER-PAGE-PROOF",
+      "source": "1.11.12; 25.0 standard phase loop",
+      "behavior": "Builder operates the rendered page as a player against the frozen runtime and hunts for player-visible, authority, accessibility, and common-sense loopholes before QA handoff.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-QA-VALIDATION",
+      "source": "1.11.12 step 7; C.AUTONOMY.10",
+      "behavior": "Independent QA uses the exact Builder-verified frozen candidate from QA Root as novice, expert, impatient, keyboard-only, high-zoom, non-Chromium, tablet, and adversarial players to the extent device evidence is available, and closes its own findings.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "P1-HUMAN-GATE",
+      "source": "25 Phase 1 human gate; 1.11.20; 1.10.8",
+      "behavior": "After Builder and QA have used and corrected the page, the Product Owner reviews the primary visual direction, opening identity, character and campaign flow, and settings presentation. Approval binds to the exact candidate hash and is never inferred from silence.",
+      "implementation": "not started",
+      "verification": "not started",
+      "status": "NOT_STARTED"
+    }
+  ],
+  "systemContinuityCheck": {
+    "note": "Section 25.0 requires an architectural compatibility answer for every domain, not scaffolding for future features. This will be completed as Phase 1 slices land; the entries below record the position Phase 1 starts from.",
+    "domains": {
+      "squareGridTacticsAnd3dGeometry": "NOT_YET_IMPLEMENTED — NO CONFLICT INTRODUCED. Phase 1 introduces no coordinate model, and the greenfield scan continues to block an alternate topology or compatibility switch before Phase 2 authors the single five-foot square model.",
+      "canonicalCommandEventProjectionAuthority": "PARTIAL — COMPATIBLE. Phase 0 established server-authorized intent with request-id idempotency and page rendering bound to server projections. Phase 1 extends that shape to characters, campaigns, and seats; Phase 2 builds the full command and event core on it.",
+      "multiplayerSeatsPresenceReconnectOwnership": "IN SCOPE (partial). Phase 1 implements account-bound ownership, campaign membership, and server-created seats, and proves persistence across leave and return. Presence, reconnect, and realtime sync belong to Phases 2 and 4.",
+      "deterministicSrdRulesEngine": "PARTIAL — COMPATIBLE. Phase 1 validates character legality against the approved SRD manifest and computes derived values, but implements no adjudication, dice, or combat. Phase 3 owns the engine.",
+      "aiDirectorIntentRulingNarrationIsolation": "NOT_YET_IMPLEMENTED — NO CONFLICT INTRODUCED. Phase 1 persists a locked Director identity and personality as campaign configuration and exposes no AI behavior of any kind.",
+      "campaignPersistenceAndMemory": "PARTIAL — COMPATIBLE. Campaign records, membership, and settings persist. Campaign memory and the chapter model belong to Phase 5.",
+      "playerAndCampaignSettings": "IN SCOPE. The settings data model is authored here, exposing only controls with real Phase 1 behavior while reserving stable defaults for later speech and AI presentation settings.",
+      "communicationSurfacesAndSafety": "IN SCOPE (structural). Chronicle, Party Chat, Rules Desk, and the Action Composer are established as separate surfaces with real Phase 1 behavior only.",
+      "accessibilityBrowserBehaviorDegradedModes": "IN SCOPE (foundations). Keyboard operation, focus management, live regions, reduced motion, and high zoom are foundations here. Full browser and device certification is Phase 6.",
+      "securityPrivacyProviderPolicyHiddenInformation": "PARTIAL — COMPATIBLE. Phase 0 guards remain active and the architecture conformance scan now enforces the account model mechanically. Provider policy and hidden-information projections arrive with the features that need them.",
+      "artAudioPerformanceRenderingLayerOwnership": "PARTIAL — COMPATIBLE. The Design System Manifest and named rendering layers are authored here, with interim assets under the stated budgets. Production art and audio are Phase 5."
+    }
+  }
+}

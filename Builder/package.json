@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "certify:phase0": "node tools/certification/run-certification.mjs",
     "serve:frozen": "node tools/certification/serve-frozen.mjs",
-    "scan:completeness": "node tools/certification/code-completeness-scan.mjs"
+    "scan:completeness": "node tools/certification/code-completeness-scan.mjs",
+    "scan:architecture": "node tools/certification/architecture-conformance.mjs"
   },
   "dependencies": {
     "firebase-admin": "^13.0.2"
