@@ -18,7 +18,7 @@ const BASE = 'http://127.0.0.1:5274';
 const EXPECTED_CANDIDATE = process.env.QA_EXPECTED_CANDIDATE ?? 'cand-882c6c2fe4a3';
 const CANDIDATE_HEADER = 'x-hd-candidate';
 const COOKIE_NAME = 'hd_dev_session';
-const OUT_DIR = '/workspace/QA/evidence/retest-cand-882c6c2fe4a3/api';
+const OUT_DIR = process.env.QA_OUT_DIR ?? '/workspace/QA/evidence/retest-cand-882c6c2fe4a3/api';
 const MAX_BODY_BYTES = 8 * 1024;
 
 const results = [];

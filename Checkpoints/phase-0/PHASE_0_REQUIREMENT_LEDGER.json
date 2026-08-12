@@ -3,7 +3,7 @@
   "phase": "phase-0",
   "blueprintVersion": "ALPHA_3_V1",
   "owner": "Builder",
-  "note": "Scope control for Phase 0 only. Section 25 is the phase-scope authority; a requirement that Section 25 assigns to a later phase is recorded as NOT_APPLICABLE for this phase with the condition that makes it inapplicable, not as deferred work.",
+  "note": "Scope control for Phase 0 only. Section 25 is the phase-scope authority; a requirement that Section 25 assigns to a later phase is recorded as NOT_APPLICABLE for this phase with the condition that makes it inapplicable, not as deferred work. Statuses are PASSED only where the named verification actually executed against the frozen candidate cand-32058f47eda8 and produced machine-readable evidence.",
   "requirements": [
     {
       "id": "P0-WD-ROOTS",
@@ -11,7 +11,7 @@
       "behavior": "Resolve WORKING_DIRECTORY at runtime and create the Builder, QA, Runtime, Evidence, Checkpoints, and Pending-Archive subtrees with role write ownership.",
       "implementation": "Builder/tools/workspace/working-directory.mjs, Builder/tools/workspace/init-working-directory.mjs",
       "verification": "tests/unit/workspace-roots.test.mjs; Local Stack Manifest workingDirectory block; certification step builder_root_clean",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-REPO-STRUCTURE",
@@ -19,7 +19,7 @@
       "behavior": "Create the greenfield repository with a minimal client, server, and shared contract structure authored directly against V1.",
       "implementation": "Builder/src/client, Builder/src/server, Builder/src/shared",
       "verification": "Certification step candidate_build; greenfield tree manifest",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-TOOLCHAIN",
@@ -27,7 +27,7 @@
       "behavior": "Pin and machine-verify Node, package manager, dependency lock, Firebase CLI, Java, TypeScript, build tool, and browser automation before implementation or certification.",
       "implementation": "Builder/package.json engines and devDependencies, Builder/tools/verify-toolchain.mjs",
       "verification": "npm run verify:toolchain; certification step pinned_toolchain_verified",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-ENV-SCHEMA",
@@ -35,7 +35,7 @@
       "behavior": "Define a versioned environment-variable schema; validate every required variable and reject unknown high-risk variables at startup.",
       "implementation": "Builder/src/server/config/environment.ts",
       "verification": "tests/unit/environment-guards.test.mjs",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-ENV-GUARDS",
@@ -43,7 +43,7 @@
       "behavior": "Fail closed when a local run would reach a live project identifier, non-loopback host, public origin, or production credential.",
       "implementation": "Builder/src/server/config/environment.ts",
       "verification": "tests/unit/environment-guards.test.mjs; readiness check no_production_credentials_present",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-DEV-IDENTITY",
@@ -51,7 +51,7 @@
       "behavior": "Server-minted temporary development identity with a stable internal account identifier, expiry, and no stored password; unavailable outside the Local Execution Environment.",
       "implementation": "Builder/src/server/identity/development-identity.ts",
       "verification": "smoke-spine.spec.ts development identity; readiness check identity_route_rejects_foreign_origin; greenfield scan rule password_credential_flow",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-ARENA-START",
@@ -59,7 +59,7 @@
       "behavior": "One documented orchestration entry point starts the browser client, application server, and required emulators, and produces one Local Stack Manifest and one readiness result.",
       "implementation": "Builder/tools/arena/*.mjs",
       "verification": "npm run arena:start readiness output; Runtime/*/local-stack-manifest.json",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-CANONICAL-WRITE",
@@ -67,7 +67,7 @@
       "behavior": "One authenticated browser journey causes a server-authorized emulator write and renders the persisted result back in the page from a server projection.",
       "implementation": "Builder/src/server/foundation/foundation-checks.ts, Builder/src/client/main.ts",
       "verification": "smoke-spine.spec.ts canonical write and read; phase0-self-play.spec.ts full pass",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-OWNERSHIP",
@@ -75,7 +75,7 @@
       "behavior": "Persisted records belong to exactly one authenticated account and are never returned to another account or to an unauthenticated caller.",
       "implementation": "Builder/src/server/foundation/foundation-checks.ts, Builder/src/server/http/server.ts",
       "verification": "phase0-self-play.spec.ts ownership and unauthenticated scenarios",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-IDEMPOTENCY",
@@ -83,7 +83,7 @@
       "behavior": "A duplicate or retried submission returns the original committed record and does not advance the projection version.",
       "implementation": "Builder/src/server/foundation/foundation-checks.ts transaction",
       "verification": "phase0-self-play.spec.ts failure and retry scenario",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-STALE-CANDIDATE",
@@ -91,7 +91,7 @@
       "behavior": "A page loaded from a different candidate cannot commit into the running candidate; the player is told to reload.",
       "implementation": "Builder/src/server/http/server.ts candidate header guard, Builder/src/client/main.ts stale banner",
       "verification": "phase0-self-play.spec.ts stale page scenario",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-ORIGIN-GUARD",
@@ -99,7 +99,7 @@
       "behavior": "Requests from an origin other than the declared Local Arena client origin are refused, and the running candidate makes no outbound request beyond loopback.",
       "implementation": "Builder/src/server/http/server.ts origin guard",
       "verification": "phase0-self-play.spec.ts cross-origin scenario and outbound host assertion; readiness check identity_route_rejects_foreign_origin",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-FAILURE-RECOVERY",
@@ -107,7 +107,7 @@
       "behavior": "Validation failures, lost responses, and unauthenticated states are explained on the page with a real recovery path, and never leave a phantom record on screen.",
       "implementation": "Builder/src/client/main.ts, Builder/src/client/api.ts, Builder/src/server/http/server.ts error codes",
       "verification": "phase0-self-play.spec.ts validation and retry scenarios",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-BLUEPRINT-PREFLIGHT",
@@ -115,7 +115,7 @@
       "behavior": "Lightweight hash, controlling-heading, merge-marker, and truncation preflight of the authoritative blueprint before the stack starts.",
       "implementation": "Builder/tools/blueprint/preflight.mjs",
       "verification": "tests/unit/blueprint-preflight.test.mjs; blueprint block of the Local Stack Manifest",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-GREENFIELD-EVIDENCE",
@@ -123,7 +123,7 @@
       "behavior": "Machine-generated evidence of the initial tree manifest, generated-file inventory, dependency lock and SBOM hashes, absence of alternate topology or compatibility code, and absence of passwords, live credentials, copied evidence, and database exports.",
       "implementation": "Builder/tools/certification/greenfield-evidence.mjs",
       "verification": "certification step greenfield_source_tree_clean; greenfieldEvidence block of the Certification Run Record",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-COMPLETENESS-SCAN",
@@ -131,7 +131,7 @@
       "behavior": "Versioned Code Completeness Scan over every tracked file, classifying every finding, with declared future-phase isolation rather than silent exemptions.",
       "implementation": "Builder/tools/certification/code-completeness-scan.mjs",
       "verification": "npm run scan:completeness; certification step code_completeness_scan",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-FROZEN-CERT",
@@ -139,7 +139,7 @@
       "behavior": "Frozen Local Certification Mode uses a content-addressed candidate, clean install from the lockfile, pinned toolchain, deterministic seed, fresh processes, and invalidates the run if the source changes.",
       "implementation": "Builder/tools/certification/run-certification.mjs, Builder/tools/arena/arena-instance.mjs",
       "verification": "npm run certify:phase0 steps candidate_materialized through candidate_unchanged_during_run",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-SMOKE-SPINE",
@@ -147,7 +147,7 @@
       "behavior": "Establish the permanent smoke spine covering startup, development identity, and one canonical write/read, to be extended by later phases rather than replaced.",
       "implementation": "Builder/tests/e2e/smoke-spine.spec.ts",
       "verification": "certification step actual_page_self_play_and_smoke_spine",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-CERT-RECORD",
@@ -155,7 +155,7 @@
       "behavior": "Ordinary test-run output plus a lightweight, machine-produced Certification Run Record binding results to the candidate, environment, and commands executed; failed attempts remain visible.",
       "implementation": "Builder/tools/certification/run-certification.mjs writeAttempt",
       "verification": "Evidence/phase-0/*/certification-run-record.json",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-QA-ISOLATION",
@@ -163,7 +163,7 @@
       "behavior": "QA write isolation under <WORKING_DIRECTORY>/QA with role sentinels, and no role-owned path tracked inside Builder Root.",
       "implementation": "Builder/tools/workspace/working-directory.mjs ensureWorkspaceTree; greenfield rule role_owned_path_tracked_in_builder_root",
       "verification": "tests/unit/workspace-roots.test.mjs; certification step greenfield_source_tree_clean",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-BUILDER-PAGE-PROOF",
@@ -171,7 +171,7 @@
       "behavior": "Builder operates the rendered page as a player against the frozen runtime: development identity, write/read, refresh, retry/failure, and outbound-origin check.",
       "implementation": "Builder/tests/e2e/phase0-self-play.spec.ts plus interactive browser self-play",
       "verification": "certification browser suite executed against the frozen runtime; recorded browser session",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P0-QA-VALIDATION",
@@ -179,7 +179,7 @@
       "behavior": "Independent QA opens and uses the exact Builder-verified frozen candidate from QA Root, attempts obvious bypasses, and records findings QA alone closes.",
       "implementation": "QA Root findings and evidence",
       "verification": "QA/findings/PHASE_0_QA_FINDINGS.md",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     }
   ],
   "systemContinuityCheck": {
@@ -197,5 +197,7 @@
       "securityPrivacyProviderPolicyHiddenInformation": "PARTIAL — COMPATIBLE. Origin guard, http-only SameSite=Strict session cookie, hashed session tokens, ownership-scoped queries, deny-all client rules, and fail-closed environment guards are active. Provider policy and hidden-information projections arrive with the features that need them.",
       "artAudioPerformanceRenderingLayerOwnership": "NOT_YET_IMPLEMENTED — NO CONFLICT INTRODUCED. No renderer, asset pipeline, or layer registry exists. The Phase 0 page is a small operator surface and does not claim to be the Design System Manifest that Phase 1 owns."
     }
-  }
+  },
+  "certifiedCandidateId": "cand-32058f47eda8",
+  "lifecycleState": "PHASE_CERTIFIED"
 }

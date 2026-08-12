@@ -49,15 +49,17 @@ test('FR-01 focus after signing out with the keyboard', async ({ page }) => {
   const focus = await activeElement(page);
   test.info().annotations.push({ type: 'observed', description: JSON.stringify(focus) });
 
-  // Recorded rather than asserted as a defect on its own: the control that had
-  // focus no longer exists, so something has to happen. What matters for the
-  // player is whether the journey can continue from the keyboard.
   await page.keyboard.press('Tab');
   const firstTabStop = await activeElement(page);
   test.info().annotations.push({
     type: 'first-tab-stop-after-sign-out',
     description: JSON.stringify(firstTabStop),
   });
+
+  // Originally this probe only recorded where focus went, because losing it to
+  // the body was the finding. Since P0-QA-009 closed it asserts, so it guards
+  // the fixed behaviour instead of merely describing it.
+  expect(focus.tag, 'focus must not fall back to the document body').not.toBe('BODY');
 });
 
 test('FR-02 focus after a submission fails because the session died', async ({ page }) => {
@@ -93,4 +95,5 @@ test('FR-02 focus after a submission fails because the session died', async ({ p
   await page.screenshot({ path: `${EVIDENCE}/fr02-01-focus-after-auth-failure.png`, fullPage: true });
 
   expect(reachedEnter, 'the recovery control must be reachable by keyboard').toBe(true);
+  expect(focus.tag, 'focus must not fall back to the document body').not.toBe('BODY');
 });

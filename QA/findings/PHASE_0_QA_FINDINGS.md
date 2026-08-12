@@ -1,47 +1,49 @@
 ---
 phase: phase-0
-candidateId: cand-882c6c2fe4a3
+candidateId: cand-32058f47eda8
+previousCandidateId: cand-882c6c2fe4a3
 originalCandidateId: cand-0f810c6c26d8
-localStackManifest: /workspace/Runtime/certification/cand-882c6c2fe4a3/local-stack-manifest.json
+localStackManifest: /workspace/Runtime/certification/cand-32058f47eda8/local-stack-manifest.json
 qaRole: independent-qa
 validationStartedAt: 2026-08-12T15:54:16Z
-validationCompletedAt: 2026-08-12T16:53:00Z
-retestPass: 1
-retestStartedAt: 2026-08-12T16:37:00Z
-retestCompletedAt: 2026-08-12T16:53:00Z
+validationCompletedAt: 2026-08-12T17:15:00Z
+retestPass: 2
+retestStartedAt: 2026-08-12T17:06:00Z
+retestCompletedAt: 2026-08-12T17:15:00Z
 status: PLAYER_VALIDATED
 blockingFindingCount: 0
 totalFindingCount: 9
-originalFindingsRetested: 8
-originalFindingsClosed: 8
-originalFindingsStillOpen: 0
-findingsNewThisRetest: 1
-openFindingCount: 1
-openFindingsAllNonBlocking: true
+findingsClosed: 9
+openFindingCount: 0
+findingsNewThisRetest: 0
 ---
 
 # Phase 0 — Independent QA Findings
 
 > **Document status.** This file is append-only. The original validation of
 > `cand-0f810c6c26d8` is preserved below exactly as first reported. Retest
-> results against the replacement candidate `cand-882c6c2fe4a3` are recorded as
-> a **Retest disposition** block appended to each finding, plus a new
-> [retest section](#retest-pass-1--candidate-cand-882c6c2fe4a3) and one new
-> finding (P0-QA-009). Nothing originally reported has been removed or softened.
+> results are recorded as a **Retest disposition** block appended to each
+> finding, plus one section per pass:
+> [retest pass 1](#retest-pass-1--candidate-cand-882c6c2fe4a3) against
+> `cand-882c6c2fe4a3` and
+> [retest pass 2](#retest-pass-2--candidate-cand-32058f47eda8) against
+> `cand-32058f47eda8`. Nothing originally reported has been removed or softened.
 
 ## Current disposition at a glance
 
-| Finding | Original severity | Retest disposition |
-| --- | --- | --- |
-| P0-QA-001 session/auth failures never shown | High (blocking) | **CLOSED** |
-| P0-QA-002 no sign-out confirmation | Low | **CLOSED** |
-| P0-QA-003 live region recreated every render | Medium | **CLOSED** |
-| P0-QA-004 stale success announced after failure | Medium | **CLOSED** |
-| P0-QA-005 focus dropped to `<body>` | Medium | **CLOSED** |
-| P0-QA-006 list truncated at 20 silently | Low | **CLOSED** |
-| P0-QA-007 connection stalls after oversized body | Low | **CLOSED** |
-| P0-QA-008 missing CSP and hardening headers | Low | **CLOSED** |
-| P0-QA-009 focus lost when the focused control is removed | Low (new) | **OPEN — non-blocking** |
+Current candidate: `cand-32058f47eda8`. All nine findings are closed and none are open.
+
+| Finding | Original severity | Disposition | Closed in |
+| --- | --- | --- | --- |
+| P0-QA-001 session/auth failures never shown | High (blocking) | **CLOSED** | Retest 1 |
+| P0-QA-002 no sign-out confirmation | Low | **CLOSED** | Retest 1 |
+| P0-QA-003 live region recreated every render | Medium | **CLOSED** | Retest 1 |
+| P0-QA-004 stale success announced after failure | Medium | **CLOSED** | Retest 1 |
+| P0-QA-005 focus dropped to `<body>` | Medium | **CLOSED** | Retest 1 |
+| P0-QA-006 list truncated at 20 silently | Low | **CLOSED** | Retest 1 |
+| P0-QA-007 connection stalls after oversized body | Low | **CLOSED** | Retest 1 |
+| P0-QA-008 missing CSP and hardening headers | Low | **CLOSED** | Retest 1 |
+| P0-QA-009 focus lost when the focused control is removed | Low | **CLOSED** | Retest 2 |
 
 ---
 
@@ -605,6 +607,33 @@ genuinely fixed.
 No Phase 0 requirement fails on this, no security or ownership invariant is touched, and the journey
 remains completable, so it does not block.
 
+#### Retest disposition — `cand-32058f47eda8`, pass 2: **CLOSED**
+
+Verified directly on the page for both cases I originally reported. Focus no longer reaches
+`<body>`; it lands on the message explaining what happened.
+
+| Case | Scenario | Focus destination |
+| --- | --- | --- |
+| Sign out with the keyboard | RT2-001 | `notice-message`, text "Session ended. The stored records remain owned by that account." |
+| Authentication failure while the note field is focused | RT2-002 | `error-message`, `role="alert"`, text "Enter the Local Arena before recording a foundation check." |
+| Failure while a *stale success notice* exists | RT2-003 | `error-message` — the error wins, and the stale notice is gone rather than merely out-prioritised |
+
+Both destinations report `tabIndex: -1` and `isBody: false`. The explanation is announced as well as
+focused: the persistent live region carries the same text in both cases, and the error keeps
+`role="alert"`.
+
+I also checked the case the fix does not name. The retry button is a third control that is deleted
+by using it, and it sits on the Phase 0 "real retry path", so dropping focus there would matter
+(`RT2-108`). Focus lands on `record-submit`, not `<body>`. That is the fallback chain behaving
+correctly rather than a gap: the busy re-render that removes the retry button has no message to
+offer yet, so the chain falls through to the primary action, which is the control of the form the
+player was using. The success confirmation still reaches a screen reader through the live region.
+
+**Evidence:** `/workspace/QA/evidence/retest2-cand-32058f47eda8/ui/rt2-001-focus-on-signout-notice.png`,
+`rt2-002-focus-on-error-panel.png`, `rt2-105-focused-message-indicator.png`,
+`rt2-108-focus-after-retry.png`; scenarios RT2-001, RT2-002, RT2-003, RT2-108 in
+`/workspace/QA/results/retest2-cand-32058f47eda8/qa-browser-results.json`.
+
 ### Browser suite (22 scenarios, Chromium) — 16 passed, 6 failed
 
 | Scenario | Result | Notes |
@@ -906,12 +935,142 @@ initially treated that same valid note as an oversized leak. Both were my expect
 product behaviour was correct, and the corrected checks assert the honest thing (no note longer than
 120 characters ever reached storage).
 
+---
+
+# Retest pass 2 — candidate `cand-32058f47eda8`
+
+## Candidate confirmation
+
+```
+GET http://127.0.0.1:5274/api/candidate
+{"candidateId":"cand-32058f47eda8","blueprintVersion":"ALPHA_3_V1",
+ "environmentClass":"local","runtimeMode":"frozen_certification",
+ "firebaseProjectId":"hallucinated-dungeons-local","environmentSchemaVersion":"1"}
+```
+
+`/workspace/Runtime/certification/cand-32058f47eda8/local-stack-manifest.json` declares the same id,
+`environmentClass: local`, `runtimeMode: frozen_certification`, and a clean tree (`clean: true`,
+`dirtyPaths: []`, commit `c39e1f3f`). The serving process runs from
+`/workspace/Runtime/candidates/cand-32058f47eda8/Builder/dist/server/index.js`, its frozen `src`
+tree is byte-identical to `/workspace/Builder/src`, and the candidate strip rendered in the browser
+reads `cand-32058f47eda8`.
+
+## What I actually executed
+
+| Suite | Count | Result |
+| --- | --- | --- |
+| Browser scenarios (Chromium) | 57 | 57 passed |
+| Original raw-HTTP probe, re-run unchanged | 37 | 37 passed |
+| New-surface HTTP probe | 15 | 15 passed |
+
+The 57 browser scenarios are everything from passes 0 and 1 re-run against the new candidate (the
+full regression guard), plus 11 new `RT2-*` scenarios written for this pass. New script:
+`/workspace/QA/scripts/phase0-retest2.qa.spec.ts`; config
+`/workspace/QA/playwright.retest2.config.ts`; evidence
+`/workspace/QA/evidence/retest2-cand-32058f47eda8/`; results
+`/workspace/QA/results/retest2-cand-32058f47eda8/`.
+
+`FR-01` and `FR-02` — the two probes that originally measured P0-QA-009 — were strengthened from
+recording where focus lands to asserting it is not the document body, so they now guard the fixed
+behaviour rather than merely describing it. They corroborate the new scenarios independently,
+recording `notice-message` and `error-message` where they previously recorded `BODY`.
+
+I read the Builder's claim appended to
+`/workspace/Checkpoints/phase-0/qa-remediation/PHASE_0_REMEDIATION_REPORT.md` and treated it as a
+hypothesis to test on the running page, not as evidence.
+
+**Boundaries.** I created and edited files only under `/workspace/QA`. I did not restart, rebuild or
+modify the candidate, and committed nothing. The only files outside QA Root whose contents changed
+are `/workspace/Runtime/certification/cand-32058f47eda8/logs/server.log`,
+`/workspace/Builder/firestore-debug.log` and `/workspace/Builder/firebase-debug.log`, all written by
+the running server and emulators in response to my test traffic.
+
+## Verdict
+
+**`PLAYER_VALIDATED`.** P0-QA-009 is closed, nothing regressed, and no new finding was raised. All
+nine findings across the three passes are now closed and none are open.
+
+## Did the focusable messages leak into the tab order?
+
+No. This was the main risk of the fix, so I answered it two independent ways.
+
+**A real Tab walk** from the top of the document in three page states. The messages sit between the
+sign-in/sign-out panel and the record form in the DOM, so a leak would show up as an extra stop:
+
+```
+signed out, notice showing : skip-link → enter-arena → (left the page)
+signed out, error showing  : skip-link → enter-arena → (left the page)
+signed in, notice showing  : skip-link → leave-arena → note-input → record-submit
+                             → refresh-projection → (left the page)
+```
+
+Tab steps straight over the message in every case. The signed-in walk traverses the whole form,
+which is what makes it a real enumeration rather than a walk that stopped early — my first version
+of this helper did stop early, because Chromium keeps a sequential focus navigation starting point
+that survives a `blur()`, so the walk resumed mid-document. Fixed by focusing the first focusable
+element explicitly, and the corrected walk is the one above.
+
+**An inventory of every natively tabbable node** (`tabIndex >= 0`) in the signed-in state:
+`skip-link, leave-arena, note-input, record-submit, refresh-projection`. Neither message appears,
+and the notice reports `tabIndex: -1`.
+
+## Keyboard journey and recovery
+
+`RT2-103` completes the whole journey using only Tab, Shift+Tab, typing and Enter — reach sign-in,
+enter, reach the note field, type, submit, reload from the server, then sign out — with no mouse at
+any point.
+
+`RT2-104` covers the case the fix actually changes: an expired session. The player types a note,
+submits into the dead session, lands on the error panel, and recovers with **one Shift+Tab** to
+reach **Enter the Local Arena**, re-enters, finds the typed note still in the field, and commits it.
+
+The messages sit after the sign-in control in the DOM, so landing on one puts the player just past
+the way forward. Measured cost: one Shift+Tab backwards, or two Tabs forwards (Tab wraps to the skip
+link, then to the sign-in button). Before the fix, focus sat on `<body>` and the recovery control
+was one Tab away. So the fix trades one keystroke in one direction for landing the player on the
+explanation, which is the better trade and not a regression worth raising.
+
+## Focus indication
+
+`RT2-105` checked whether a sighted keyboard user can see where focus went, since the app's own
+`:focus-visible` outline rule only targets `input`, `button` and `a` — not the message divs. The
+computed `outline-color` is `rgb(16, 16, 16)`, which looked like a problem on a dark panel, but the
+computed value is misleading: `outline-style` is `auto`, and Chromium paints its adaptive focus
+ring for `auto`, which renders as a clear white ring on this dark surface. Confirmed visually in
+`rt2-105-focused-message-indicator.png` rather than inferred from the computed style. The element
+also matches `:focus-visible`. No finding.
+
+## Regression check
+
+Nothing regressed. The areas most worth re-checking:
+
+| Area | Re-verified by | Result |
+| --- | --- | --- |
+| P0-QA-001, the previously blocking behaviour | RT-001a, RT-001b, RT-001c, QA-S15, QA-S16 | Dead sessions still explained on screen, typed note still preserved |
+| Duplicate prevention | QA-S02, QA-S02b, QA-S02c, RT-103, RT-105, RT-106; A07a, A07b, A08 | One record per intent |
+| Ownership isolation | QA-S06; A13a, A13b, R10 | No cross-account read, write or count leak |
+| Unauthenticated access | QA-S07; A05a–A05d, R11 | All refused `401` |
+| Cross-origin rejection | QA-S12; A03a–A03g | All refused |
+| CSP and console cleanliness | RT-101, RT2-107 | 0 CSP violations, 0 uncaught page errors |
+| Injection and escaping | QA-S08, RT-108 | Zero injection |
+| Focus not stolen from outside the app | RT-110, RT2-106 | Skip link keeps focus through a render |
+
+`RT2-106` deserves a note because the new fallback chain could plausibly have caused it: a render
+that removes the sign-in button while focus sits on the skip link must not drag focus into the
+layout. It does not — the fallback only runs when the previously focused element carried a
+`data-testid`, and the skip link does not.
+
+One of my own new checks failed on first execution (`RT2-108`, which expected focus to land on the
+success notice after a retry). The product was right and my expectation was wrong; corrected in the
+test, as described in the P0-QA-009 disposition.
+
 ## Retest history
 
 | Pass | Date | Candidate | Scope | Result |
 | --- | --- | --- | --- | --- |
 | 0 (initial) | 2026-08-12 | `cand-0f810c6c26d8` | First independent validation: 22 browser scenarios plus 37 raw-HTTP checks | `DEFECTS_OPEN` — 1 blocking (P0-QA-001), 7 non-blocking |
 | 1 (retest) | 2026-08-12 | `cand-882c6c2fe4a3` | Retest of all 8 findings, plus the original 22 scenarios and 37 checks re-run as a regression guard, plus 20 new retest scenarios, 4 focused probes and 15 new-surface HTTP checks | `PLAYER_VALIDATED` — 8 closed, 0 blocking, 1 new non-blocking finding (P0-QA-009) |
+| 2 (retest) | 2026-08-12 | `cand-32058f47eda8` | Retest of P0-QA-009, plus all 46 earlier browser scenarios, 37 HTTP checks and 15 new-surface checks re-run as a regression guard, plus 11 new focus and tab-order scenarios | `PLAYER_VALIDATED` — P0-QA-009 closed, 0 open findings, no regression, no new finding |
 
 **Pass 1 detail.** Candidate id confirmed as `cand-882c6c2fe4a3` from both the manifest and the
 running `/api/candidate`, and from the candidate strip rendered in the browser. The blocking finding
@@ -920,14 +1079,16 @@ P0-QA-001 was re-verified by the method that found it — ending the session ser
 (`RT-001b`). Totals: 46 of 46 browser scenarios, 37 of 37 original HTTP checks, 15 of 15
 new-surface HTTP checks.
 
-**Reproducing this pass:**
+**Reproducing pass 1:**
 
 ```
 QA_EXPECTED_CANDIDATE=cand-882c6c2fe4a3 \
   QA_OUT_DIR=/workspace/QA/evidence/retest-cand-882c6c2fe4a3/api \
   node /workspace/QA/scripts/api-probe.mjs
 
-node /workspace/QA/scripts/retest-new-surface.mjs
+QA_EXPECTED_CANDIDATE=cand-882c6c2fe4a3 \
+  QA_OUT_DIR=/workspace/QA/evidence/retest-cand-882c6c2fe4a3/api \
+  node /workspace/QA/scripts/retest-new-surface.mjs
 
 QA_CANDIDATE_ID=cand-882c6c2fe4a3 \
   QA_EVIDENCE_DIR=/workspace/QA/evidence/retest-cand-882c6c2fe4a3/ui \
@@ -935,6 +1096,32 @@ QA_CANDIDATE_ID=cand-882c6c2fe4a3 \
   --config=/workspace/QA/playwright.retest.config.ts
 ```
 
-**For a future pass.** P0-QA-009 is the only open finding. If it is addressed, `FR-01` and `FR-02`
-are the scenarios that must flip from recording `{"tag":"BODY"}` to naming a real destination; the
-other 44 browser scenarios and all 52 HTTP checks are the regression guard and must stay green.
+**Pass 2 detail.** Candidate id confirmed as `cand-32058f47eda8` from the manifest, the running
+`/api/candidate`, and the candidate strip rendered in the browser. P0-QA-009 was re-verified for
+both cases originally reported — sign-out with the keyboard and an authentication failure while a
+control held focus — and closed. The specific risk of the fix, the two newly focusable message
+elements leaking into the tab order, was disproved by a full Tab walk in three page states and by an
+inventory of every tabbable node. Totals: 57 of 57 browser scenarios, 37 of 37 original HTTP checks,
+15 of 15 new-surface HTTP checks.
+
+**Reproducing pass 2:**
+
+```
+QA_EXPECTED_CANDIDATE=cand-32058f47eda8 \
+  QA_OUT_DIR=/workspace/QA/evidence/retest2-cand-32058f47eda8/api \
+  node /workspace/QA/scripts/api-probe.mjs
+
+QA_EXPECTED_CANDIDATE=cand-32058f47eda8 \
+  QA_OUT_DIR=/workspace/QA/evidence/retest2-cand-32058f47eda8/api \
+  node /workspace/QA/scripts/retest-new-surface.mjs
+
+QA_CANDIDATE_ID=cand-32058f47eda8 \
+  QA_EVIDENCE_DIR=/workspace/QA/evidence/retest2-cand-32058f47eda8/ui \
+  /workspace/Builder/node_modules/.bin/playwright test \
+  --config=/workspace/QA/playwright.retest2.config.ts
+```
+
+**For a future pass.** No finding is open. The full guard is 57 browser scenarios plus 52 HTTP
+checks, and all of them must stay green. `FR-01` and `FR-02` still record where focus lands when a
+control is removed, and now expect a real destination rather than `<body>`; `RT2-101` is the
+tab-order guard and will catch any future element that becomes focusable by accident.
