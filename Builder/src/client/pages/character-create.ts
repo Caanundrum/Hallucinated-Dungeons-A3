@@ -16,10 +16,16 @@
 import {
   ABILITIES,
   ABILITY_LABELS,
+  CHARACTER_NAME_MAX_LENGTH,
+  CHARACTER_TEXT_MAX_LENGTH,
   MAX_ABILITY_ROLL_ATTEMPTS,
+  POINT_BUY_BUDGET,
   STANDARD_ARRAY,
   WIZARD_STEPS,
   WIZARD_STEP_LABELS,
+  availableScoresFromPool,
+  pointBuyCost,
+  pointBuyScoresForAbility,
   type Ability,
   type CharacterChoices,
   type WizardStep,
@@ -41,8 +47,6 @@ import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
-
-const POINT_BUY_RANGE = [8, 9, 10, 11, 12, 13, 14, 15];
 
 /** Short labels for the step train — full titles stay on the step heading. */
 const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
@@ -265,18 +269,25 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly testId: string;
     readonly entries: readonly { id: string; label: string }[];
     readonly selected: readonly string[];
+    /** When set, unchecked options disable once this many are selected. */
+    readonly maxChoose?: number;
   }): string {
+    const atCap =
+      options.maxChoose !== undefined && options.selected.length >= options.maxChoose;
     return `
       <div class="option-list compact" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
-          .map(
-            (entry) => `
-          <label class="option${options.selected.includes(entry.id) ? ' selected' : ''}">
+          .map((entry) => {
+            const isSelected = options.selected.includes(entry.id);
+            const disabled = atCap && !isSelected;
+            return `
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
-              ${options.selected.includes(entry.id) ? 'checked' : ''} data-testid="check-${escapeHtml(entry.id)}" />
+              ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+              data-testid="check-${escapeHtml(entry.id)}" />
             <span class="option-label">${escapeHtml(entry.label)}</span>
-          </label>`,
-          )
+          </label>`;
+          })
           .join('')}
       </div>`;
   }
@@ -327,13 +338,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
-          Pick skills you will actually remember you have.
+          Extra skills lock once you hit that count.
         </p>
         ${checkboxList({
           name: 'class-skill',
           testId: 'class-skill-options',
           entries: detail.skillOptions,
           selected: state.draft.choices.classSkillIds,
+          maxChoose: detail.skillChoiceCount,
         })}`
       }`;
   }
@@ -509,14 +521,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const pool = state.draft.choices.rolledScorePool;
     const attempts = state.draft.choices.abilityRollAttempts;
     const rollsLeft = Math.max(0, MAX_ABILITY_ROLL_ATTEMPTS - attempts);
-    const values =
-      method === 'standard-array'
-        ? [...STANDARD_ARRAY]
-        : method === 'point-buy'
-          ? POINT_BUY_RANGE
-          : pool === null
-            ? []
-            : [...pool];
+    const assignedList = ABILITIES.map((ability) => scores[ability]).filter(
+      (score): score is number => score !== undefined,
+    );
+    const pointBuySpent = pointBuyCost(assignedList) ?? 0;
 
     return `
       <h3>Ability Scores</h3>
@@ -534,9 +542,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
           {
             id: 'standard-array',
             label: 'Standard array',
-            summary: `Assign ${STANDARD_ARRAY.join(', ')} across the six Ability Scores.`,
+            summary: `Assign ${STANDARD_ARRAY.join(', ')} across the six Ability Scores. Each number is used once.`,
           },
-          { id: 'point-buy', label: 'Point buy', summary: 'Spend 27 points on scores from 8 to 15.' },
+          {
+            id: 'point-buy',
+            label: 'Point buy',
+            summary: `Spend ${POINT_BUY_BUDGET} points on scores from 8 to 15. Options that blow the budget are not offered.`,
+          },
           {
             id: 'rolled',
             label: 'Roll (4d6 drop lowest)',
@@ -570,14 +582,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
           <p class="nav-hint">Rolling again replaces this pool and clears your assignments. Previous rolls cannot be restored.</p>
         </div>`
       }
+      ${
+        method === 'point-buy'
+          ? `<p class="nav-hint" data-testid="point-buy-budget">
+              Points spent: ${pointBuySpent} of ${POINT_BUY_BUDGET}. Remaining: ${Math.max(0, POINT_BUY_BUDGET - pointBuySpent)}.
+            </p>`
+          : ''
+      }
       <h3>Assign Ability Scores</h3>
       ${
         method === 'rolled' && pool === null
           ? '<p class="empty-state" data-testid="ability-roll-needed">Roll for scores before assigning them.</p>'
           : `
       <div class="ability-assign" data-testid="ability-assignment">
-        ${ABILITIES.map(
-          (ability) => `
+        ${ABILITIES.map((ability) => {
+          const values =
+            method === 'point-buy'
+              ? pointBuyScoresForAbility(scores, ability)
+              : method === 'standard-array'
+                ? availableScoresFromPool([...STANDARD_ARRAY], scores, ability)
+                : availableScoresFromPool(pool ?? [], scores, ability);
+          const current = scores[ability];
+          return `
           <label>
             <span>${escapeHtml(ABILITY_LABELS[ability])}</span>
             <select data-ability="${ability}" data-testid="ability-select-${ability}">
@@ -585,12 +611,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
               ${values
                 .map(
                   (score) =>
-                    `<option value="${score}" ${scores[ability] === score ? 'selected' : ''}>${score}</option>`,
+                    `<option value="${score}" ${current === score ? 'selected' : ''}>${score}</option>`,
                 )
                 .join('')}
             </select>
-          </label>`,
-        ).join('')}
+          </label>`;
+        }).join('')}
       </div>`
       }`;
   }
@@ -640,12 +666,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .map(
         (choice) => `
       <h3>${escapeHtml(choice.label)}</h3>
-      <p>Choose ${choice.choose}.</p>
+      <p>Choose ${choice.choose}. Extra options lock once you hit that count.</p>
       ${checkboxList({
         name: `class-choice-${choice.id}`,
         testId: `class-choice-${escapeHtml(choice.id)}`,
         entries: choice.from,
         selected: state.draft.choices.classChoiceIds[choice.id] ?? [],
+        maxChoose: choice.choose,
       })}`,
       )
       .join('');
@@ -655,7 +682,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ? `<p class="empty-state" data-testid="no-spellcasting">${escapeHtml(detail.label)} does not cast spells at level 1.</p>`
         : `
         <h3>Cantrips</h3>
-        <p>Choose ${detail.spellcasting.cantripsKnown}. Spellcasting ability: ${escapeHtml(detail.spellcasting.abilityLabel)}.</p>
+        <p>Choose ${detail.spellcasting.cantripsKnown}. Spellcasting ability: ${escapeHtml(detail.spellcasting.abilityLabel)}. Extra cantrips lock at that count.</p>
         ${
           detail.spellcasting.cantripsKnown === 0
             ? '<p class="empty-state">This Class knows no cantrips at level 1.</p>'
@@ -664,17 +691,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 testId: 'cantrip-options',
                 entries: detail.spellcasting.cantripOptions,
                 selected: state.draft.choices.cantripIds,
+                maxChoose: detail.spellcasting.cantripsKnown,
               })
         }
         <h3>Level 1 Spells</h3>
         <p>Choose ${detail.spellcasting.spellsAvailable} to ${
           detail.spellcasting.preparationStyle === 'prepared' ? 'prepare' : 'know'
-        }.</p>
+        }. Extra spells lock at that count.</p>
         ${checkboxList({
           name: 'spell',
           testId: 'spell-options',
           entries: detail.spellcasting.spellOptions,
           selected: state.draft.choices.spellIds,
+          maxChoose: detail.spellcasting.spellsAvailable,
         })}`;
 
     return `
@@ -704,15 +733,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
       <label for="character-name">Name</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
+        maxlength="${CHARACTER_NAME_MAX_LENGTH}"
         value="${escapeHtml(identity.name)}" autocomplete="off" placeholder="Something the bard can pronounce" />
       <label for="character-pronouns">Pronouns</label>
       <input id="character-pronouns" type="text" data-identity="pronouns" data-testid="identity-pronouns"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
         value="${escapeHtml(identity.pronouns)}" autocomplete="off" placeholder="Optional" />
       <label for="character-appearance">Appearance</label>
       <input id="character-appearance" type="text" data-identity="appearance" data-testid="identity-appearance"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
         value="${escapeHtml(identity.appearance)}" autocomplete="off" placeholder="Optional — scar, hat, ominous vibes…" />
       <label for="character-concept">Concept</label>
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
 
       <h3>Final review</h3>
@@ -927,22 +960,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]').forEach((input) => {
       input.addEventListener('change', () => {
-        const selected = [...container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]:checked')].map(
+        const max = state.options.classDetail?.skillChoiceCount;
+        let selected = [...container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]:checked')].map(
           (checked) => checked.value,
         );
+        if (max !== undefined && selected.length > max) {
+          selected = selected.slice(0, max);
+        }
         void commitChoices({ ...base, classSkillIds: selected });
       });
     });
 
-    for (const [name, key] of [
-      ['cantrip', 'cantripIds'],
-      ['spell', 'spellIds'],
+    for (const [name, key, maxOf] of [
+      ['cantrip', 'cantripIds', () => state.options.classDetail?.spellcasting?.cantripsKnown],
+      ['spell', 'spellIds', () => state.options.classDetail?.spellcasting?.spellsAvailable],
     ] as const) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
         input.addEventListener('change', () => {
-          const selected = [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(
+          const max = maxOf();
+          let selected = [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(
             (checked) => checked.value,
           );
+          if (max !== undefined && selected.length > max) {
+            selected = selected.slice(0, max);
+          }
           void commitChoices({ ...base, [key]: selected });
         });
       });
@@ -952,9 +993,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
       input.addEventListener('change', () => {
         const name = input.name;
         const choiceId = name.replace('class-choice-', '');
-        const selected = [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(
+        const max = state.options.classDetail?.choices.find((choice) => choice.id === choiceId)?.choose;
+        let selected = [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(
           (checked) => checked.value,
         );
+        if (max !== undefined && selected.length > max) {
+          selected = selected.slice(0, max);
+        }
         void commitChoices({ ...base, classChoiceIds: { ...base.classChoiceIds, [choiceId]: selected } });
       });
     });
@@ -966,7 +1011,23 @@ export function mountCharacterCreatePage(host: PageHost): void {
         if (select.value === '') {
           delete scores[ability];
         } else {
-          scores[ability] = Number(select.value);
+          const nextScore = Number(select.value);
+          if (base.abilityMethod === 'point-buy') {
+            const legal = pointBuyScoresForAbility(scores, ability);
+            if (!legal.includes(nextScore)) {
+              return;
+            }
+          } else {
+            const pool =
+              base.abilityMethod === 'standard-array'
+                ? [...STANDARD_ARRAY]
+                : [...(base.rolledScorePool ?? [])];
+            const legal = availableScoresFromPool(pool, scores, ability);
+            if (!legal.includes(nextScore)) {
+              return;
+            }
+          }
+          scores[ability] = nextScore;
         }
         void commitChoices({ ...base, baseAbilityScores: scores });
       });

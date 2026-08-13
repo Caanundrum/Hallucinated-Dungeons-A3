@@ -261,6 +261,54 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
   });
 
+  test('wizard prevents illegal over-selects instead of only coaching afterward', async ({ page }) => {
+    await enterArenaForCharacters(page);
+    await openVault(page);
+    await page.getByTestId('start-character').click();
+
+    await chooseOption(page, 'option-fighter');
+    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-perception');
+    // Fighter wants exactly two skills — a third must be locked, not merely rejected later.
+    await expect(page.getByTestId('check-survival')).toBeDisabled();
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-soldier');
+    await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-dwarf');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-standard-array');
+    await page.getByTestId('ability-select-strength').selectOption('15');
+    await expect(page.getByTestId('ability-select-strength')).toHaveValue('15');
+    // 15 is consumed — other abilities cannot reuse it.
+    await expect(page.getByTestId('ability-select-dexterity').locator('option[value="15"]')).toHaveCount(0);
+
+    await chooseOption(page, 'option-point-buy');
+    await expect(page.getByTestId('point-buy-budget')).toContainText(`0 of ${27}`);
+    await page.getByTestId('ability-select-strength').selectOption('15');
+    await expect(page.getByTestId('ability-select-strength')).toHaveValue('15');
+    await page.getByTestId('ability-select-dexterity').selectOption('15');
+    await expect(page.getByTestId('ability-select-dexterity')).toHaveValue('15');
+    await page.getByTestId('ability-select-constitution').selectOption('15');
+    await expect(page.getByTestId('ability-select-constitution')).toHaveValue('15');
+    await expect(page.getByTestId('point-buy-budget')).toContainText('27 of 27');
+    // Budget spent — remaining abilities only offer 8.
+    await expect(page.getByTestId('ability-select-intelligence').locator('option[value="9"]')).toHaveCount(0);
+    await expect(page.getByTestId('ability-select-intelligence').locator('option[value="8"]')).toHaveCount(1);
+
+    await page.getByTestId('step-features').click();
+    await chooseOption(page, 'check-defense');
+    // Fighting Style choose 1 — a second style is locked.
+    await expect(page.getByTestId('check-archery')).toBeDisabled();
+
+    await page.getByTestId('step-identity').click();
+    await expect(page.getByTestId('identity-name')).toHaveAttribute('maxlength', '40');
+    await expect(page.getByTestId('identity-concept')).toHaveAttribute('maxlength', '300');
+  });
+
   test('another account cannot read a character by id or see it in the vault', async ({
     page,
   }) => {

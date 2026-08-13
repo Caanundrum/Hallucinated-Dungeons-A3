@@ -754,6 +754,15 @@ button[aria-disabled="true"] {
   background: color-mix(in srgb, var(--amber-action) 12%, var(--abyss-bg));
 }
 
+.option.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.option.disabled input {
+  cursor: not-allowed;
+}
+
 .option-label {
   font-weight: 600;
   color: var(--text-primary);

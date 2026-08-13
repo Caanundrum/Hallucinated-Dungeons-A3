@@ -370,3 +370,75 @@ export function pointBuyCost(scores: readonly number[]): number | null {
   }
   return total;
 }
+
+/**
+ * Points still available for `forAbility` under point buy, given the other
+ * assigned scores. Unset abilities cost nothing yet.
+ */
+export function remainingPointBuyBudget(
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): number {
+  let spent = 0;
+  for (const ability of ABILITIES) {
+    if (ability === forAbility) {
+      continue;
+    }
+    const score = scores[ability];
+    if (score === undefined) {
+      continue;
+    }
+    const cost = POINT_BUY_COSTS[score];
+    if (cost !== undefined) {
+      spent += cost;
+    }
+  }
+  return POINT_BUY_BUDGET - spent;
+}
+
+/**
+ * Legal point-buy scores (8–15) for one ability that fit the remaining budget.
+ * The ability's current score is always included so the control can show it.
+ */
+export function pointBuyScoresForAbility(
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): readonly number[] {
+  const remaining = remainingPointBuyBudget(scores, forAbility);
+  const current = scores[forAbility];
+  const legal: number[] = [];
+  for (let score = 8; score <= 15; score += 1) {
+    const cost = POINT_BUY_COSTS[score] ?? Number.POSITIVE_INFINITY;
+    if (cost <= remaining || score === current) {
+      legal.push(score);
+    }
+  }
+  return legal;
+}
+
+/**
+ * Scores still available to assign to `forAbility` from a fixed pool (standard
+ * array or a rolled pool). Already-assigned scores on other abilities are
+ * removed as a multiset, so duplicate rolled values remain usable once each.
+ */
+export function availableScoresFromPool(
+  pool: readonly number[],
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): readonly number[] {
+  const remaining = [...pool];
+  for (const ability of ABILITIES) {
+    if (ability === forAbility) {
+      continue;
+    }
+    const score = scores[ability];
+    if (score === undefined) {
+      continue;
+    }
+    const index = remaining.indexOf(score);
+    if (index >= 0) {
+      remaining.splice(index, 1);
+    }
+  }
+  return remaining;
+}
