@@ -17,7 +17,7 @@ test('director catalog exposes both identities and five personalities', () => {
   assert.equal(catalog.identities.length, DIRECTOR_IDENTITIES.length);
   assert.equal(catalog.personalities.length, DIRECTOR_PERSONALITIES.length);
   assert.ok(catalog.configurationNotice.includes('later AI-enabled table'));
-  assert.ok(!catalog.configurationNotice.toLowerCase().includes('coming soon'));
+  assert.ok(!/\bcoming\s+soon\b/i.test(catalog.configurationNotice));
 
   const recommended = catalog.personalities.filter((entry) => entry.recommended);
   assert.equal(recommended.length, 1);

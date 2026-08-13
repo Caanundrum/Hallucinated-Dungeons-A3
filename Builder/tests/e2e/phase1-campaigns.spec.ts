@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import { enterAccountFromShell, readCandidate } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1e: campaign creation with locked Director configuration,
@@ -79,7 +79,14 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(ownerPage.getByTestId('director-avatar-key')).toHaveText('veyra__dry_storyteller');
     await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Locked after creation');
 
+    const origin = new URL(ownerPage.url()).origin;
+    const candidate = await readCandidate(ownerPage);
     const locked = await ownerPage.request.patch(`/api/campaigns/${campaignId}`, {
+      headers: {
+        origin,
+        'content-type': 'application/json',
+        'x-hd-candidate': candidate.candidateId,
+      },
       data: { directorIdentity: 'garrick', directorPersonality: 'friendly_adventurer' },
     });
     expect(locked.status()).toBe(409);
@@ -91,7 +98,10 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     const invitePath = (await ownerPage.getByTestId('invite-path').innerText()).trim();
     expect(invitePath).toMatch(/^\/invite\/[A-Za-z0-9]{8,32}$/);
 
-    await ownerPage.getByTestId('seat-character-select').selectOption({ label: /Campaign Owner Scout/ });
+    const ownerSeatSelect = ownerPage.getByTestId('seat-character-select');
+    const ownerCharacterId = await ownerSeatSelect.locator('option').nth(1).getAttribute('value');
+    expect(ownerCharacterId).toBeTruthy();
+    await ownerSeatSelect.selectOption(ownerCharacterId!);
     await ownerPage.getByTestId('create-seat').click();
     await expect(ownerPage.getByTestId('own-seat')).toContainText('Campaign Owner Scout');
 
@@ -114,15 +124,26 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await createQuickCharacter(guestPage, 'Guest Blade');
     await guestPage.goto(`/campaigns/${campaignId}`);
     await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
-    await guestPage.getByTestId('seat-character-select').selectOption({ label: /Guest Blade/ });
-    await guestPage.getByTestId('create-seat').click();
-    await expect(guestPage.getByTestId('own-seat')).toContainText('Guest Blade');
 
-    // Foreign character id cannot be seated by this account.
+    // Foreign / unknown character id cannot be seated by this account.
+    const guestOrigin = new URL(guestPage.url()).origin;
+    const guestCandidate = await readCandidate(guestPage);
     const foreignSeat = await guestPage.request.post(`/api/campaigns/${campaignId}/seats`, {
+      headers: {
+        origin: guestOrigin,
+        'content-type': 'application/json',
+        'x-hd-candidate': guestCandidate.candidateId,
+      },
       data: { characterId: '00000000-0000-4000-8000-000000000099' },
     });
     expect(foreignSeat.status()).toBe(404);
+
+    const guestSeatSelect = guestPage.getByTestId('seat-character-select');
+    const guestCharacterId = await guestSeatSelect.locator('option').nth(1).getAttribute('value');
+    expect(guestCharacterId).toBeTruthy();
+    await guestSeatSelect.selectOption(guestCharacterId!);
+    await guestPage.getByTestId('create-seat').click();
+    await expect(guestPage.getByTestId('own-seat')).toContainText('Guest Blade');
 
     // Reentry recovers the same locked Director configuration.
     await guestPage.reload();
