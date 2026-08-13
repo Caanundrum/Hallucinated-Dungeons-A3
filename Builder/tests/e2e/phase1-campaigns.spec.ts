@@ -49,11 +49,18 @@ async function createCampaignWithDirector(
   await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
   await expect(page.getByTestId('director-config-notice')).toContainText('later AI-enabled table');
   await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('personality-gated')).toBeVisible();
+  await expect(page.getByTestId('personality-friendly_adventurer').locator('input')).toBeDisabled();
 
   await page.getByTestId('campaign-name').fill(options.name);
   await page.getByTestId('campaign-name').dispatchEvent('change');
   await page.getByTestId(options.identityTestId).click();
+  await expect(page.getByTestId('personality-gated')).toHaveCount(0);
+  await expect(page.getByTestId('personality-friendly_adventurer').locator('input')).toBeEnabled();
   await page.getByTestId(options.personalityTestId).click();
+  await expect(page.getByTestId('campaign-preview')).toBeVisible();
+  await expect(page.getByTestId('preview-sample-scene')).not.toBeEmpty();
+  await expect(page.getByTestId('preview-play-rhythm')).not.toBeEmpty();
   await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'false');
   await page.getByTestId('create-campaign-submit').click();
   await expect(page.getByTestId('campaign-detail-heading')).toHaveText(options.name);
@@ -77,7 +84,9 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Veyra');
     await expect(ownerPage.getByTestId('director-personality-label')).toHaveText('Dry Storyteller');
     await expect(ownerPage.getByTestId('director-avatar-key')).toHaveText('veyra__dry_storyteller');
-    await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Locked after creation');
+    await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Fixed after creation');
+    await expect(ownerPage.getByTestId('director-lock-badge')).toHaveText('Fixed');
+    await expect(ownerPage.getByTestId('campaign-next-step')).toBeVisible();
 
     const origin = new URL(ownerPage.url()).origin;
     const candidate = await readCandidate(ownerPage);
@@ -116,6 +125,7 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(guestPage.getByTestId('invite-sign-in')).toBeVisible();
 
     await guestPage.getByTestId('invite-sign-in').click();
+    await expect(guestPage.getByTestId('invite-joining-as')).toBeVisible();
     await expect(guestPage.getByTestId('invite-accept')).toBeVisible();
     await guestPage.getByTestId('invite-accept').click();
     await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
@@ -165,9 +175,15 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await page.getByTestId('nav-campaigns').click();
     await page.getByTestId('start-campaign').click();
     await expect(page.getByTestId('personality-recommended')).toBeVisible();
+    await expect(page.getByTestId('personality-gated')).toBeVisible();
     await expect(page.locator('input[name="director-personality"]:checked')).toHaveCount(0);
     await expect(page.locator('input[name="director-identity"]:checked')).toHaveCount(0);
     await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'true');
+
+    await page.getByTestId('identity-veyra').click();
+    await expect(page.getByTestId('personality-gated')).toHaveCount(0);
+    await expect(page.locator('input[name="director-personality"]:checked')).toHaveCount(0);
+    await expect(page.getByTestId('campaign-preview-pending')).toBeVisible();
   });
 
   test('foreign account cannot read another account campaign', async ({ browser }) => {

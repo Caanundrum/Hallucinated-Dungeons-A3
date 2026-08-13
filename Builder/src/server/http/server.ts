@@ -58,6 +58,7 @@ import {
   CampaignNotFoundError,
   CampaignValidationError,
   DirectorConfigLockedError,
+  InvitationRateLimitedError,
   InvitationUnavailableError,
   acceptInvitation,
   createCampaign,
@@ -66,6 +67,7 @@ import {
   listCampaigns,
   previewInvitation,
   readCampaignDetail,
+  revokeInvitation,
   updateCampaign,
 } from '../campaigns/campaigns.js';
 import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
@@ -120,6 +122,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.FORBIDDEN_ORIGIN]: 403,
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]: 403,
   [ERROR_CODES.INVITATION_UNAVAILABLE]: 404,
+  [ERROR_CODES.INVITATION_RATE_LIMITED]: 429,
   [ERROR_CODES.NOT_AUTHENTICATED]: 401,
   [ERROR_CODES.NOT_FOUND]: 404,
   [ERROR_CODES.NOTE_EMPTY]: 400,
@@ -149,6 +152,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Development identities are available only in the Local Execution Environment.',
   [ERROR_CODES.INVITATION_UNAVAILABLE]:
     'That invitation is not available. Ask the campaign owner for a current invite link.',
+  [ERROR_CODES.INVITATION_RATE_LIMITED]:
+    'Too many invitation links were created recently. Wait a bit, then try again.',
   [ERROR_CODES.NOT_AUTHENTICATED]:
     'Sign in with a Local Arena development account before continuing.',
   [ERROR_CODES.NOT_FOUND]: 'No such route.',
@@ -937,6 +942,23 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const invitationRevokeMatch =
+        /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/invitations\/revoke$/.exec(path);
+      if (invitationRevokeMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        await revokeInvitation({
+          firestore,
+          accountId,
+          campaignId: invitationRevokeMatch[1]!,
+        });
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+
       const seatCreateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/seats$/.exec(path);
       if (seatCreateMatch !== null) {
         if (method !== 'POST') {
@@ -971,6 +993,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof InvitationUnavailableError) {
         sendError(response, ERROR_CODES.INVITATION_UNAVAILABLE);
+        return;
+      }
+      if (error instanceof InvitationRateLimitedError) {
+        sendError(response, ERROR_CODES.INVITATION_RATE_LIMITED);
         return;
       }
       if (error instanceof DirectorConfigLockedError) {

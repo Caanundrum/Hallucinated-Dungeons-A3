@@ -18,6 +18,9 @@ import {
   CAMPAIGN_SUMMARY_MAX_LENGTH,
   DIRECTOR_IDENTITY_LABELS,
   DIRECTOR_PERSONALITY_LABELS,
+  INVITATION_RATE_LIMIT_MAX,
+  INVITATION_RATE_LIMIT_WINDOW_MS,
+  INVITATION_TTL_MS,
   type CampaignDetailProjection,
   type CampaignListProjection,
   type CampaignMemberRole,
@@ -72,6 +75,7 @@ interface StoredInvitation {
   readonly campaignId: string;
   readonly createdByAccountId: string;
   readonly createdAt: Timestamp | Date;
+  readonly expiresAt: Timestamp | Date;
   readonly status: 'open' | 'revoked';
 }
 
@@ -107,6 +111,13 @@ export class InvitationUnavailableError extends Error {
   constructor() {
     super('This invitation is not available');
     this.name = 'InvitationUnavailableError';
+  }
+}
+
+export class InvitationRateLimitedError extends Error {
+  constructor() {
+    super('Too many invitation links were created recently');
+    this.name = 'InvitationRateLimitedError';
   }
 }
 
@@ -292,22 +303,6 @@ async function listSeats(firestore: Firestore, campaignId: string): Promise<Stor
   return snapshot.docs.map((doc) => doc.data() as StoredSeat);
 }
 
-async function findOpenInvitation(
-  firestore: Firestore,
-  campaignId: string,
-): Promise<StoredInvitation | null> {
-  const snapshot = await firestore
-    .collection(COLLECTIONS.campaignInvitations)
-    .where('campaignId', '==', campaignId)
-    .where('status', '==', 'open')
-    .limit(1)
-    .get();
-  if (snapshot.empty) {
-    return null;
-  }
-  return snapshot.docs[0]!.data() as StoredInvitation;
-}
-
 function projectCampaign(
   stored: StoredCampaign,
   membership: StoredMembership,
@@ -336,7 +331,42 @@ function invitationCreatedProjection(stored: StoredInvitation): InvitationCreate
     invitePath: `/invite/${stored.inviteCode}`,
     campaignId: stored.campaignId,
     createdAt: toIso(stored.createdAt),
+    expiresAt: toIso(stored.expiresAt),
   };
+}
+
+function invitationIsOpen(invitation: StoredInvitation, now: Date): boolean {
+  if (invitation.status !== 'open') {
+    return false;
+  }
+  if (invitation.expiresAt === undefined || invitation.expiresAt === null) {
+    return false;
+  }
+  const expiresAt =
+    invitation.expiresAt instanceof Date
+      ? invitation.expiresAt
+      : invitation.expiresAt.toDate();
+  return expiresAt.getTime() > now.getTime();
+}
+
+async function findOpenInvitation(
+  firestore: Firestore,
+  campaignId: string,
+  now: Date = new Date(),
+): Promise<StoredInvitation | null> {
+  const snapshot = await firestore
+    .collection(COLLECTIONS.campaignInvitations)
+    .where('campaignId', '==', campaignId)
+    .where('status', '==', 'open')
+    .limit(5)
+    .get();
+  for (const doc of snapshot.docs) {
+    const invitation = doc.data() as StoredInvitation;
+    if (invitationIsOpen(invitation, now)) {
+      return invitation;
+    }
+  }
+  return null;
 }
 
 /** Creates a campaign with an explicit, immediately locked Director configuration. */
@@ -528,16 +558,33 @@ export async function createInvitation(options: {
   }
   await loadCampaign(firestore, campaignId);
 
-  const existing = await findOpenInvitation(firestore, campaignId);
+  const now = new Date();
+  const existing = await findOpenInvitation(firestore, campaignId, now);
   if (existing !== null) {
     return invitationCreatedProjection(existing);
+  }
+
+  const recentCutoff = now.getTime() - INVITATION_RATE_LIMIT_WINDOW_MS;
+  const recent = await firestore
+    .collection(COLLECTIONS.campaignInvitations)
+    .where('createdByAccountId', '==', accountId)
+    .get();
+  const recentCount = recent.docs.filter((doc) => {
+    const createdAt = (doc.data() as StoredInvitation).createdAt;
+    const createdMs =
+      createdAt instanceof Date ? createdAt.getTime() : createdAt.toDate().getTime();
+    return createdMs >= recentCutoff;
+  }).length;
+  if (recentCount >= INVITATION_RATE_LIMIT_MAX) {
+    throw new InvitationRateLimitedError();
   }
 
   const invitation: StoredInvitation = {
     inviteCode: newInviteCode(),
     campaignId,
     createdByAccountId: accountId,
-    createdAt: new Date(),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
     status: 'open',
   };
   await firestore
@@ -545,6 +592,28 @@ export async function createInvitation(options: {
     .doc(invitation.inviteCode)
     .set(invitation);
   return invitationCreatedProjection(invitation);
+}
+
+/** Owner revokes the current open invitation (Section 7.6). */
+export async function revokeInvitation(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  const { firestore, accountId, campaignId } = options;
+  const membership = await requireMembership(firestore, campaignId, accountId);
+  if (membership.role !== 'owner') {
+    throw new CampaignNotFoundError();
+  }
+
+  const open = await findOpenInvitation(firestore, campaignId);
+  if (open === null) {
+    return;
+  }
+  await firestore.collection(COLLECTIONS.campaignInvitations).doc(open.inviteCode).set({
+    ...open,
+    status: 'revoked',
+  });
 }
 
 /**
@@ -568,7 +637,7 @@ export async function previewInvitation(options: {
     throw new InvitationUnavailableError();
   }
   const invitation = snapshot.data() as StoredInvitation;
-  if (invitation.status !== 'open') {
+  if (!invitationIsOpen(invitation, new Date())) {
     throw new InvitationUnavailableError();
   }
 
@@ -583,6 +652,7 @@ export async function previewInvitation(options: {
     directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[campaign.directorIdentity],
     directorPersonalityLabel: DIRECTOR_PERSONALITY_LABELS[campaign.directorPersonality],
     configurationNotice: DIRECTOR_CONFIGURATION_NOTICE,
+    expiresAt: toIso(invitation.expiresAt),
   };
 }
 
@@ -606,7 +676,7 @@ export async function acceptInvitation(options: {
     throw new InvitationUnavailableError();
   }
   const invitation = snapshot.data() as StoredInvitation;
-  if (invitation.status !== 'open') {
+  if (!invitationIsOpen(invitation, new Date())) {
     throw new InvitationUnavailableError();
   }
 

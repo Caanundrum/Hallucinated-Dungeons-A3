@@ -249,6 +249,16 @@ export async function createCampaignInvitation(options: {
   )) as InvitationCreatedProjection;
 }
 
+export async function revokeCampaignInvitation(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  await request<null>(`/api/campaigns/${options.campaignId}/invitations/revoke`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+  });
+}
+
 export async function fetchInvitationPreview(inviteCode: string): Promise<InvitationPreview> {
   return (await request<InvitationPreview>(
     `/api/invitations/${inviteCode}`,

@@ -69,7 +69,7 @@ export function mountHomePage(host: PageHost): void {
         <h2 id="status-heading">What's here right now</h2>
         <p>
           Sign in with a Local Arena development account, create characters in the Character
-          Vault, and create or join campaigns with a locked Game Director configuration.
+          Vault, and create or join campaigns with a fixed Game Director identity and personality.
           Diagnostics remains available for the Phase 0 foundation write/read path.
         </p>
         <div class="actions">

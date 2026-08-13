@@ -3,7 +3,7 @@
  *
  * Blueprint ownership: Sections 7.6 and 8.8 — before authentication, only the
  * bounded preview is shown. Membership requires a signed-in development
- * account.
+ * account, and the joining account must be named clearly before accept.
  */
 
 import type { InvitationPreview } from '../../shared/campaign-contract.js';
@@ -17,6 +17,11 @@ import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
+
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
 
 export function mountInvitePage(host: PageHost, inviteCode: string): void {
   const { container, shell, candidate } = host;
@@ -38,7 +43,8 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
         <div class="page">
           <h1 data-testid="invite-heading">Invitation unavailable</h1>
           <p class="tagline">
-            That invite link is not available. Ask the campaign owner for a current link.
+            That invite link is not available. It may have expired or been revoked. Ask the
+            campaign owner for a current link.
           </p>
           ${
             error === null
@@ -88,9 +94,21 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
                 ${escapeHtml(preview.directorIdentityLabel)} · ${escapeHtml(preview.directorPersonalityLabel)}
               </dd>
             </div>
+            <div>
+              <dt>Invite expires</dt>
+              <dd data-testid="invite-expires-at">${escapeHtml(formatTimestamp(preview.expiresAt))}</dd>
+            </div>
           </dl>
           <p class="message notice" data-testid="invite-config-notice">${escapeHtml(preview.configurationNotice)}</p>
         </section>
+        ${
+          account === null
+            ? ''
+            : `<p class="message notice" data-testid="invite-joining-as">
+                 You will join as <strong>${escapeHtml(account.displayLabel)}</strong>
+                 (<code>${escapeHtml(account.accountId)}</code>).
+               </p>`
+        }
         <div class="actions">
           ${
             account === null
@@ -100,7 +118,7 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
                  </button>`
               : `<button type="button" data-testid="invite-accept"
                    aria-disabled="${busy || candidate === null}">
-                   ${busy ? 'Joining…' : 'Accept invitation'}
+                   ${busy ? 'Joining…' : `Accept as ${escapeHtml(account.displayLabel)}`}
                  </button>`
           }
           <a href="/campaigns" data-link data-testid="invite-campaigns-link">Open campaigns</a>

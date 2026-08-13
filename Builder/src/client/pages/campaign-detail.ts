@@ -13,6 +13,7 @@ import {
   createCampaignInvitation,
   createCampaignSeat,
   fetchCampaignDetail,
+  revokeCampaignInvitation,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -33,6 +34,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   let unavailable = false;
   let busy = false;
   let selectedCharacterId: string | null = null;
+  let copyFeedback: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
   const mountToken = beginPageMount(container);
@@ -62,6 +64,15 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         ? null
         : `${window.location.origin}${openInvitation.invitePath}`;
 
+    const nextStep =
+      ownSeat === null
+        ? campaign.isCampaignOwner
+          ? 'Next: seat a character you own, then share an invite link with a second Local Arena account.'
+          : 'Next: seat a character you own to finish joining this table’s membership proof.'
+        : campaign.isCampaignOwner && members.length < 2
+          ? 'Next: share the invite link so a second development account can join and seat their own character.'
+          : 'Membership and seating are recorded. This Phase 1 build proves ownership continuity; the live tactical table is a later phase.';
+
     container.innerHTML = `
       <div class="page">
         <h1 data-testid="campaign-detail-heading">${escapeHtml(campaign.name)}</h1>
@@ -72,19 +83,25 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               : escapeHtml(campaign.summary)
           }
         </p>
+        <p class="message notice" data-testid="campaign-next-step">${escapeHtml(nextStep)}</p>
         ${
           error === null
             ? ''
             : `<div class="message error" role="alert" tabindex="-1" data-testid="campaign-detail-error">${escapeHtml(error)}</div>`
         }
 
-        <section class="panel" aria-labelledby="director-heading">
-          <h2 id="director-heading">Game Director configuration</h2>
+        <section class="panel locked-panel" aria-labelledby="director-heading">
+          <h2 id="director-heading">
+            <span class="lock-mark" aria-hidden="true">▣</span>
+            Game Director configuration
+            <span class="lock-badge" data-testid="director-lock-badge">Fixed</span>
+          </h2>
           <p class="message notice" data-testid="director-locked-notice">
-            Locked after creation for ordinary users. This is configuration for the later
-            AI-enabled table; it does not activate AI narration in this build.
+            Fixed after creation for ordinary users — there is no edit control here. This is
+            configuration for the later AI-enabled table; it does not activate AI narration in this
+            build.
           </p>
-          <dl class="account-details" data-testid="director-config">
+          <dl class="account-details locked-details" data-testid="director-config">
             <div>
               <dt>Identity</dt>
               <dd data-testid="director-identity-label">${escapeHtml(campaign.director.identityLabel)}</dd>
@@ -98,7 +115,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               <dd><code data-testid="director-avatar-key">${escapeHtml(campaign.director.avatarKey)}</code></dd>
             </div>
             <div>
-              <dt>Locked at</dt>
+              <dt>Fixed at</dt>
               <dd data-testid="director-locked-at">${escapeHtml(formatTimestamp(campaign.director.lockedAt))}</dd>
             </div>
           </dl>
@@ -129,7 +146,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           <h2 id="invite-heading">Invitation</h2>
           <p>
             Share an invite link with a second Local Arena development account. The link shows a
-            bounded preview before sign-in.
+            bounded preview before sign-in, expires after 48 hours, and can be revoked.
           </p>
           ${
             invitePath === null
@@ -142,9 +159,23 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  <p><code data-testid="invite-path">${escapeHtml(openInvitation!.invitePath)}</code></p>
                  <p class="record-meta">Full local URL</p>
                  <p><code data-testid="invite-url">${escapeHtml(invitePath)}</code></p>
+                 <p class="record-meta" data-testid="invite-expires">
+                   Expires ${escapeHtml(formatTimestamp(openInvitation!.expiresAt))}
+                 </p>
+                 ${
+                   copyFeedback === null
+                     ? ''
+                     : `<p class="message success" data-testid="invite-copy-feedback">${escapeHtml(copyFeedback)}</p>`
+                 }
                  <div class="actions">
+                   <button type="button" data-testid="copy-invite" aria-disabled="${busy}">
+                     Copy invite URL
+                   </button>
                    <button type="button" class="secondary" data-testid="create-invite" aria-disabled="${busy}">
-                     ${busy ? 'Working…' : 'Refresh invite link'}
+                     ${busy ? 'Working…' : 'Show current invite'}
+                   </button>
+                   <button type="button" class="secondary" data-testid="revoke-invite" aria-disabled="${busy}">
+                     Revoke invite
                    </button>
                  </div>`
           }
@@ -178,6 +209,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             ownSeat !== null
               ? `<p class="message success" data-testid="own-seat">
                    You are seated as <strong>${escapeHtml(ownSeat.characterName)}</strong>.
+                 </p>
+                 <p class="record-meta" data-testid="seat-complete-note">
+                   Your seat binds this account, this campaign, and that owned character. Hosting
+                   still grants no ownership of anyone else’s character.
                  </p>`
               : ownCharacters.length === 0
                 ? `<p class="record-meta" data-testid="seat-need-character">
@@ -220,6 +255,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
           busy = true;
           error = null;
+          copyFeedback = null;
           render();
           try {
             await createCampaignInvitation({
@@ -233,6 +269,54 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               failure instanceof ApiFailure
                 ? failure.message
                 : 'The invitation could not be created.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="copy-invite"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (invitePath === null) {
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(invitePath);
+            copyFeedback = 'Invite URL copied.';
+            shell.announce('Invite URL copied.');
+          } catch {
+            copyFeedback = 'Could not copy automatically — select the URL above and copy it.';
+          }
+          render();
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="revoke-invite"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          busy = true;
+          error = null;
+          copyFeedback = null;
+          render();
+          try {
+            await revokeCampaignInvitation({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            detail = await fetchCampaignDetail(campaignId);
+            shell.announce('Invite revoked.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The invitation could not be revoked.';
           } finally {
             busy = false;
             render();

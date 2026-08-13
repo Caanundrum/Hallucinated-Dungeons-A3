@@ -59,11 +59,58 @@ export const DIRECTOR_IDENTITY_SUMMARIES: Record<DirectorIdentity, string> = {
 /** Friendly Adventurer may be visually recommended; never auto-committed. */
 export const RECOMMENDED_DIRECTOR_PERSONALITY: DirectorPersonality = 'friendly_adventurer';
 
+/**
+ * Phase 1 campaign-creation preview copy (Section 7.5). Static, approved text —
+ * not AI narration. Shown only after identity and personality are both chosen.
+ */
+export const DIRECTOR_CREATION_PREVIEW: Record<
+  DirectorPersonality,
+  { readonly sampleScene: string; readonly playRhythm: string }
+> = {
+  friendly_adventurer: {
+    sampleScene:
+      'A lantern-lit doorway opens onto a quiet hall. The Director greets the table warmly, names what everyone can see, and invites the first careful look around.',
+    playRhythm:
+      'Steady scenes with clear choices. Light humor when it fits. Good for mixed-experience tables.',
+  },
+  encouraging_guide: {
+    sampleScene:
+      'At a scratched table map, the Director restates the goal in plain words, points out safe options, and waits for the party to decide together.',
+    playRhythm:
+      'Patient pacing with frequent orientation. Strong support when the table is unsure what to try next.',
+  },
+  sassy_companion: {
+    sampleScene:
+      'A smug merchant finishes a pitch. The Director lets the line hang, then offers a wry aside about the price — without stealing the players’ reply.',
+    playRhythm:
+      'Quicker banter and playful pushback. Wit stays directed at the fiction, never at the players.',
+  },
+  dry_storyteller: {
+    sampleScene:
+      'Rain ticks on stone. The Director reports what changed, what is still unknown, and asks for the next action without embroidery.',
+    playRhythm:
+      'Concise beats and understated humor. Outcomes arrive cleanly; flourish stays spare.',
+  },
+  dramatic_chronicler: {
+    sampleScene:
+      'Thunder answers a slammed gate. The Director frames the stakes in bold strokes, then returns control to the party for the next move.',
+    playRhythm:
+      'Higher tension and cinematic framing, still mechanically clear when rolls and costs matter.',
+  },
+};
+
 /** Maximum length of a campaign title. */
 export const CAMPAIGN_NAME_MAX_LENGTH = 80;
 
 /** Maximum length of an optional campaign summary. */
 export const CAMPAIGN_SUMMARY_MAX_LENGTH = 280;
+
+/** Invitation lifetime after creation (Section 7.6 — invites must expire). */
+export const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
+
+/** Max invitation mint attempts per account per rolling window (Section 7.6 rate limit). */
+export const INVITATION_RATE_LIMIT_MAX = 8;
+export const INVITATION_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 export type CampaignMemberRole = 'owner' | 'player';
 
@@ -150,6 +197,7 @@ export interface InvitationPreview {
   readonly directorIdentityLabel: string;
   readonly directorPersonalityLabel: string;
   readonly configurationNotice: string;
+  readonly expiresAt: string;
 }
 
 export interface InvitationCreatedProjection {
@@ -157,6 +205,7 @@ export interface InvitationCreatedProjection {
   readonly invitePath: string;
   readonly campaignId: string;
   readonly createdAt: string;
+  readonly expiresAt: string;
 }
 
 export interface MembershipProjection {

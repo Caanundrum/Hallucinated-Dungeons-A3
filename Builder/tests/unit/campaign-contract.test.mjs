@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   CAMPAIGN_NAME_MAX_LENGTH,
+  DIRECTOR_CREATION_PREVIEW,
   DIRECTOR_IDENTITIES,
   DIRECTOR_PERSONALITIES,
   RECOMMENDED_DIRECTOR_PERSONALITY,
@@ -22,6 +23,14 @@ test('director catalog exposes both identities and five personalities', () => {
   const recommended = catalog.personalities.filter((entry) => entry.recommended);
   assert.equal(recommended.length, 1);
   assert.equal(recommended[0].id, RECOMMENDED_DIRECTOR_PERSONALITY);
+});
+
+test('every personality has creation preview copy for sample scene and rhythm', () => {
+  for (const id of DIRECTOR_PERSONALITIES) {
+    const preview = DIRECTOR_CREATION_PREVIEW[id];
+    assert.ok(preview.sampleScene.length > 20, `${id} sample scene`);
+    assert.ok(preview.playRhythm.length > 20, `${id} play rhythm`);
+  }
 });
 
 test('avatar keys are deterministic from identity and personality', () => {
