@@ -171,6 +171,50 @@ test('Armor Class uses worn armor with its Dexterity cap, and adds a Shield', ()
   assert.ok(sheet.armorClass.components.some((component) => component.label === 'Shield'));
 });
 
+test('Fighting Style Defense adds +1 Armor Class while wearing armor', () => {
+  const withDefense = legalCharacterFor('fighter', {
+    classChoiceIds: { 'fighting-style': ['defense'] },
+    classEquipmentOptionId: 'fighter-a',
+  });
+  const withoutDefense = legalCharacterFor('fighter', {
+    classChoiceIds: { 'fighting-style': ['archery'] },
+    classEquipmentOptionId: 'fighter-a',
+  });
+  const defended = deriveSheet(withDefense);
+  const undefeated = deriveSheet(withoutDefense);
+
+  assert.equal(defended.armorClass.value, undefeated.armorClass.value + 1);
+  assert.ok(
+    defended.armorClass.components.some((component) => component.label === 'Fighting Style: Defense'),
+  );
+  assert.ok(
+    defended.features.some((feature) => feature.name === 'Fighting Style: Defense'),
+    'Chosen fighting style must appear on the sheet by name',
+  );
+});
+
+test('species choices appear on the sheet with their selected option label', () => {
+  const choices = legalCharacterFor('fighter', {
+    speciesId: 'goliath',
+    speciesChoiceIds: { 'giant-ancestry': 'stone' },
+  });
+  const sheet = deriveSheet(choices);
+  const feature = sheet.features.find((entry) => entry.name === "Giant Ancestry: Stone's Endurance");
+  assert.ok(feature);
+  assert.match(feature.summary, /Reaction/i);
+});
+
+test('Fighting Style Archery adds +2 to ranged attack rolls', () => {
+  const choices = legalCharacterFor('fighter', {
+    classChoiceIds: { 'fighting-style': ['archery'] },
+    classEquipmentOptionId: 'fighter-b',
+  });
+  const sheet = deriveSheet(choices);
+  const longbow = sheet.attacks.find((attack) => attack.name === 'Longbow');
+  assert.ok(longbow);
+  assert.ok(longbow.attackBonus.components.some((component) => component.label === 'Fighting Style: Archery'));
+});
+
 test('Unarmored Defense replaces the ordinary Armor Class formula for the Barbarian', () => {
   const choices = legalCharacterFor('barbarian', {
     baseAbilityScores: { strength: 15, dexterity: 14, constitution: 14, intelligence: 12, wisdom: 10, charisma: 8 },

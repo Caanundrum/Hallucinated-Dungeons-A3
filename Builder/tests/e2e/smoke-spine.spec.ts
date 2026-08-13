@@ -65,6 +65,11 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('start-character').click();
     // Click rather than check: the wizard re-renders after the save and
     // replaces the radio, which makes Playwright's checked-state wait hang.
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) {
+      await tutorialNo.click();
+    }
+    await page.getByTestId('open-quick-start').click();
     await page.getByTestId('option-devoted-healer').click();
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await page.getByTestId('identity-name').fill('Smoke Spine Healer');

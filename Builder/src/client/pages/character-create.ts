@@ -72,10 +72,32 @@ const STEP_HELPERS: Record<WizardStep, string> = {
   equipment:
     'Pack for adventure, not for a weekend city break. If it does not fit in a backpack, the dungeon will notice.',
   features:
-    'Lock in the clever tricks your Class actually knows at level 1. Spoiler: nobody starts as the final boss.',
+    'Lock in the clever tricks your Class actually knows at level 1. Each choice below has a short explanation — read it before you pick.',
   identity:
-    'Mechanics done. Now name them, glance at the sheet, and commit before you invent a tragic backstory mid-session.',
+    'Mechanics done. Name them, skim the sheet (hover numbers for How we got this), and commit when you are ready.',
 };
+
+const TUTORIAL_STEPS: readonly { title: string; body: string }[] = [
+  {
+    title: 'What you are building',
+    body: 'A character is the adventurer you play. Numbers on the sheet come from rules choices — Class, Background, Species, and Ability Scores — not from guesswork.',
+  },
+  {
+    title: 'The steps in order',
+    body: 'Class is your job in a fight or party. Background is your past. Species is your people. Ability Scores are Strength, Dexterity, and the rest. Gear and features come next; you name them last.',
+  },
+  {
+    title: 'How the sheet stays honest',
+    body: 'The server checks every pick against the SRD. Continue stays locked until a step is legal. Hover any highlighted number later for “How we got this.”',
+  },
+  {
+    title: 'Ready-made option',
+    body: 'If you want to skip custom building, use “In a hurry?” for a ready-made adventurer you can rename. That path is optional — custom building stays the main flow.',
+  },
+];
+
+/** Dismissed for this page session only (non-authoritative UI preference). */
+let tutorialDismissedThisSession = false;
 
 type BonusPattern = 'plus-two-plus-one' | 'plus-one-each';
 
@@ -120,7 +142,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let backgroundBonusPattern: BonusPattern | null = null;
   let backgroundPlusTwo: Ability | '' = '';
   let backgroundPlusOne: Ability | '' = '';
+  let quickStartOpen = false;
+  let tutorialOpen = false;
+  let tutorialStep = 0;
   const mountToken = beginPageMount(container);
+
+  function tutorialDismissed(): boolean {
+    return tutorialDismissedThisSession;
+  }
+
+  function dismissTutorialPermanently(): void {
+    tutorialDismissedThisSession = true;
+  }
 
   async function openOwnedDraft(): Promise<void> {
     if (candidate === null) {
@@ -267,7 +300,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   function checkboxList(options: {
     readonly name: string;
     readonly testId: string;
-    readonly entries: readonly { id: string; label: string }[];
+    readonly entries: readonly { id: string; label: string; summary?: string }[];
     readonly selected: readonly string[];
     /** When set, unchecked options disable once this many are selected. */
     readonly maxChoose?: number;
@@ -286,6 +319,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
               data-testid="check-${escapeHtml(entry.id)}" />
             <span class="option-label">${escapeHtml(entry.label)}</span>
+            ${
+              entry.summary === undefined
+                ? ''
+                : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`
+            }
           </label>`;
           })
           .join('')}
@@ -298,30 +336,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '';
     }
     const detail = state.options.classDetail;
-    const quickStart =
-      state.draft.choices.classId !== null
-        ? ''
-        : `
-        <section class="panel" aria-labelledby="quick-start-heading">
-          <h3 id="quick-start-heading">In a hurry?</h3>
-          <p>
-            Grab a ready-made adventurer, then rename them at the end. You can still poke every
-            choice afterward — this is a head start, not a trap.
-          </p>
-          ${optionList({
-            name: 'quick-start',
-            testId: 'quick-start-options',
-            entries: state.options.quickStartTemplates.map((template) => ({
-              id: template.id,
-              label: template.label,
-              summary: template.summary,
-            })),
-            selected: null,
-          })}
-        </section>`;
 
     return `
-      ${quickStart}
+      <div class="wizard-side-actions">
+        <button type="button" class="secondary" data-testid="open-quick-start">
+          In a hurry? Use a ready-made character
+        </button>
+        <button type="button" class="secondary" data-testid="open-tutorial">
+          New to tabletop RPGs? Short tour
+        </button>
+      </div>
       <h3>Choose a Class</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
       ${optionList({
@@ -490,21 +514,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
           .map(
             (choice) => `
           <h3>${escapeHtml(choice.label)}</h3>
-          <div class="ability-assign">
-            <label>
-              <span class="visually-hidden">${escapeHtml(choice.label)}</span>
-              <select data-species-choice="${escapeHtml(choice.id)}" data-testid="species-choice-${escapeHtml(choice.id)}">
-                <option value="">Choose…</option>
-                ${choice.from
-                  .map(
-                    (option) =>
-                      `<option value="${escapeHtml(option.id)}" ${
-                        state.draft.choices.speciesChoiceIds[choice.id] === option.id ? 'selected' : ''
-                      }>${escapeHtml(option.label)}</option>`,
-                  )
-                  .join('')}
-              </select>
-            </label>
+          <p class="step-helper" data-testid="choice-helper-${escapeHtml(choice.id)}">${escapeHtml(choice.helper)}</p>
+          <div class="option-list compact" data-testid="species-choice-list-${escapeHtml(choice.id)}">
+            ${choice.from
+              .map(
+                (option) => `
+              <label class="option${
+                state.draft.choices.speciesChoiceIds[choice.id] === option.id ? ' selected' : ''
+              }">
+                <input type="radio" name="species-choice-${escapeHtml(choice.id)}"
+                  value="${escapeHtml(option.id)}"
+                  ${state.draft.choices.speciesChoiceIds[choice.id] === option.id ? 'checked' : ''}
+                  data-species-choice="${escapeHtml(choice.id)}"
+                  data-testid="species-choice-${escapeHtml(choice.id)}-${escapeHtml(option.id)}" />
+                <span class="option-label">${escapeHtml(option.label)}</span>
+                ${
+                  option.summary === undefined
+                    ? ''
+                    : `<span class="option-summary">${escapeHtml(option.summary)}</span>`
+                }
+              </label>`,
+              )
+              .join('')}
           </div>`,
           )
           .join('')}`
@@ -666,6 +697,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .map(
         (choice) => `
       <h3>${escapeHtml(choice.label)}</h3>
+      <p class="step-helper" data-testid="choice-helper-${escapeHtml(choice.id)}">${escapeHtml(choice.helper)}</p>
       <p>Choose ${choice.choose}. Extra options lock once you hit that count.</p>
       ${checkboxList({
         name: `class-choice-${choice.id}`,
@@ -749,7 +781,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
 
       <h3>Final review</h3>
-      <p>Open any “Why is this number?” control if a total looks suspicious. The server did the math.</p>
+      <p>Hover or focus any highlighted number for <b>How we got this</b>. The server did the math.</p>
       ${
         state.draft.sheet === null
           ? '<p class="empty-state">Finish Class, Background, and Species to preview the sheet.</p>'
@@ -808,6 +840,77 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </aside>`;
   }
 
+  function quickStartModal(): string {
+    const state = current;
+    if (state === null || !quickStartOpen) {
+      return '';
+    }
+    return `
+      <div class="modal-backdrop" data-testid="quick-start-modal" role="presentation">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-start-heading">
+          <h2 id="quick-start-heading">Ready-made characters</h2>
+          <p>
+            These are complete, rules-valid adventurers. Pick one, rename them at Identity, and you
+            can still edit every choice afterward. This is a head start — not a trap.
+          </p>
+          ${optionList({
+            name: 'quick-start',
+            testId: 'quick-start-options',
+            entries: state.options.quickStartTemplates.map((template) => ({
+              id: template.id,
+              label: template.label,
+              summary: template.summary,
+            })),
+            selected: null,
+          })}
+          <div class="modal-actions">
+            <button type="button" class="secondary" data-testid="close-quick-start">Back to custom creation</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function tutorialModal(): string {
+    if (!tutorialOpen) {
+      return '';
+    }
+    const step = TUTORIAL_STEPS[tutorialStep]!;
+    const isLast = tutorialStep >= TUTORIAL_STEPS.length - 1;
+    return `
+      <div class="modal-backdrop" data-testid="tutorial-modal" role="presentation">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="tutorial-heading">
+          <h2 id="tutorial-heading">${escapeHtml(step.title)}</h2>
+          <p data-testid="tutorial-body">${escapeHtml(step.body)}</p>
+          <p class="record-meta">Step ${tutorialStep + 1} of ${TUTORIAL_STEPS.length}</p>
+          <div class="modal-actions">
+            <button type="button" class="secondary" data-testid="tutorial-skip">Skip tour</button>
+            ${
+              tutorialStep > 0
+                ? `<button type="button" class="secondary" data-testid="tutorial-back">Back</button>`
+                : ''
+            }
+            <button type="button" data-testid="tutorial-next">
+              ${isLast ? 'Start creating' : 'Next'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function tutorialAskBanner(): string {
+    if (tutorialDismissed() || tutorialOpen || current === null) {
+      return '';
+    }
+    return `
+      <div class="message notice" data-testid="tutorial-ask" role="region" aria-label="Tutorial offer">
+        <span>New to tabletop or RPG character sheets? A short tour explains the steps without changing any rules.</span>
+        <div class="actions message-actions">
+          <button type="button" data-testid="tutorial-ask-yes">Show me the tour</button>
+          <button type="button" class="secondary" data-testid="tutorial-ask-no">No thanks</button>
+        </div>
+      </div>`;
+  }
+
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -854,6 +957,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
             ? ''
             : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>`
         }
+        ${tutorialAskBanner()}
         ${state === null ? '<p class="empty-state">Opening your draft…</p>' : ''}
         ${state === null ? '' : stepTrain()}
         ${
@@ -869,6 +973,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
           ${liveSheetPreview()}
         </div>`
         }
+        ${quickStartModal()}
+        ${tutorialModal()}
       </div>`;
 
     bindEvents();
@@ -910,6 +1016,73 @@ export function mountCharacterCreatePage(host: PageHost): void {
         render();
       });
 
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="open-quick-start"]')
+      ?.addEventListener('click', () => {
+        quickStartOpen = true;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="close-quick-start"]')
+      ?.addEventListener('click', () => {
+        quickStartOpen = false;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="open-tutorial"]')
+      ?.addEventListener('click', () => {
+        tutorialOpen = true;
+        tutorialStep = 0;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tutorial-ask-yes"]')
+      ?.addEventListener('click', () => {
+        tutorialOpen = true;
+        tutorialStep = 0;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tutorial-ask-no"]')
+      ?.addEventListener('click', () => {
+        dismissTutorialPermanently();
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tutorial-skip"]')
+      ?.addEventListener('click', () => {
+        dismissTutorialPermanently();
+        tutorialOpen = false;
+        tutorialStep = 0;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tutorial-back"]')
+      ?.addEventListener('click', () => {
+        tutorialStep = Math.max(0, tutorialStep - 1);
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tutorial-next"]')
+      ?.addEventListener('click', () => {
+        if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
+          dismissTutorialPermanently();
+          tutorialOpen = false;
+          tutorialStep = 0;
+          render();
+          return;
+        }
+        tutorialStep += 1;
+        render();
+      });
+
     container.querySelectorAll<HTMLInputElement>('input[name="quick-start"]').forEach((input) => {
       input.addEventListener('change', () => {
         void (async () => {
@@ -918,6 +1091,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           }
           busy = true;
           error = null;
+          quickStartOpen = false;
           render();
           try {
             current = await applyQuickStartTemplate({
@@ -1109,16 +1283,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         })();
       });
 
-    container.querySelectorAll<HTMLSelectElement>('[data-species-choice]').forEach((select) => {
-      select.addEventListener('change', () => {
-        const choiceId = select.dataset.speciesChoice ?? '';
-        const selections = { ...base.speciesChoiceIds };
-        if (select.value === '') {
-          delete selections[choiceId];
-        } else {
-          selections[choiceId] = select.value;
-        }
-        void commitChoices({ ...base, speciesChoiceIds: selections });
+    container.querySelectorAll<HTMLInputElement>('[data-species-choice]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const choiceId = input.dataset.speciesChoice ?? '';
+        void commitChoices({
+          ...base,
+          speciesChoiceIds: { ...base.speciesChoiceIds, [choiceId]: input.value },
+        });
       });
     });
 

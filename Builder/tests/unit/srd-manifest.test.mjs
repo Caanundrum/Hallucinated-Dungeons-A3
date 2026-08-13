@@ -91,8 +91,12 @@ test('every class is internally consistent', () => {
     }
 
     for (const choice of entry.choices) {
+      assert.ok(choice.helper.length > 0, `${entry.id} choice ${choice.id} needs helper text`);
       assert.ok(choice.from.length >= choice.choose, `${entry.id} choice ${choice.id} cannot be satisfied`);
       assert.equal(new Set(choice.from.map((option) => option.id)).size, choice.from.length);
+      for (const option of choice.from) {
+        assert.ok(option.summary.length > 0, `${entry.id}.${choice.id}.${option.id} needs a summary`);
+      }
     }
 
     assert.ok(entry.features.length > 0, `${entry.id} must have at least one level 1 feature`);
@@ -129,7 +133,11 @@ test('every species is internally consistent', () => {
     assert.ok(['Small', 'Medium'].includes(entry.size), `${entry.id} has an unexpected size`);
     assert.ok(entry.hitPointsPerLevel >= 0);
     for (const choice of entry.choices) {
+      assert.ok(choice.helper.length > 0, `${entry.id} choice ${choice.id} needs helper text`);
       assert.ok(choice.from.length >= choice.choose, `${entry.id} choice ${choice.id} cannot be satisfied`);
+      for (const option of choice.from) {
+        assert.ok(option.summary.length > 0, `${entry.id} option ${option.id} needs a summary`);
+      }
       if (choice.grantsSkillProficiency === true) {
         for (const option of choice.from) {
           assert.ok(skillIds.has(option.id), `${entry.id} offers unknown skill ${option.id}`);

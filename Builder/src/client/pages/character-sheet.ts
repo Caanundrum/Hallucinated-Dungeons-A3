@@ -47,7 +47,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
 
     shell.setDocumentTitle(character.identity.name);
     container.innerHTML = `
-      <div class="page">
+      <div class="page page-wide">
         <h1 data-testid="character-sheet-heading">${escapeHtml(character.identity.name)}</h1>
         <p class="tagline" data-testid="character-summary">
           Level ${character.level} ${escapeHtml(character.speciesLabel)} ${escapeHtml(character.classLabel)}

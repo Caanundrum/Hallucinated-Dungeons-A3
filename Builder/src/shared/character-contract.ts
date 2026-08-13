@@ -291,11 +291,13 @@ export interface CatalogEntry {
 export interface SelectableOption {
   readonly id: string;
   readonly label: string;
+  readonly summary?: string;
 }
 
 export interface OptionChoiceView {
   readonly id: string;
   readonly label: string;
+  readonly helper: string;
   readonly choose: number;
   readonly from: readonly SelectableOption[];
 }
