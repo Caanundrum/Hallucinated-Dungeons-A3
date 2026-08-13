@@ -36,6 +36,7 @@ import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -51,8 +52,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
-  let pageActive = true;
   let draftOpened = false;
+  const mountToken = beginPageMount(container);
 
   async function openOwnedDraft(): Promise<void> {
     if (candidate === null) {
@@ -500,7 +501,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function render(): void {
-    if (!pageActive) {
+    if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
 
@@ -778,7 +779,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   render();
 
-  const unsubscribe = subscribeAccount(() => {
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     if (getAccount() === null) {
       current = null;
       draftOpened = false;
@@ -789,18 +793,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
       void openOwnedDraft();
     }
   });
-
-  const observer = new MutationObserver(() => {
-    if (
-      !container.querySelector('[data-testid="create-heading"]') &&
-      !container.querySelector('[data-testid="signed-out-heading"]')
-    ) {
-      pageActive = false;
-      unsubscribe();
-      observer.disconnect();
-    }
-  });
-  observer.observe(container, { childList: true });
 
   void openOwnedDraft();
 }

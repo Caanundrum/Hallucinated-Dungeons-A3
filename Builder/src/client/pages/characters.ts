@@ -13,6 +13,7 @@ import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchVault } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -29,7 +30,7 @@ export function mountCharactersPage(host: PageHost): void {
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
-  let active = true;
+  const mountToken = beginPageMount(container);
 
   function renderSignedIn(): void {
     const characters = vault?.characters ?? [];
@@ -108,7 +109,7 @@ export function mountCharactersPage(host: PageHost): void {
   }
 
   function render(): void {
-    if (!active) {
+    if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
     if (getAccount() === null) {
@@ -157,7 +158,10 @@ export function mountCharactersPage(host: PageHost): void {
     render();
   }
 
-  const unsubscribe = subscribeAccount(() => {
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     if (getAccount() === null) {
       vault = null;
       render();
@@ -165,18 +169,6 @@ export function mountCharactersPage(host: PageHost): void {
     }
     void loadVault();
   });
-
-  const observer = new MutationObserver(() => {
-    if (
-      !container.querySelector('[data-testid="vault-heading"]') &&
-      !container.querySelector('[data-testid="signed-out-heading"]')
-    ) {
-      active = false;
-      unsubscribe();
-      observer.disconnect();
-    }
-  });
-  observer.observe(container, { childList: true });
 
   render();
   if (getAccount() !== null) {

@@ -10,6 +10,7 @@
 import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -23,10 +24,10 @@ export function mountAccountPage(host: PageHost): void {
 
   let busy = false;
   let error: string | null = null;
-  let active = true;
+  const mountToken = beginPageMount(container);
 
   function render(): void {
-    if (!active) {
+    if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
     const account = getAccount();
@@ -154,21 +155,12 @@ export function mountAccountPage(host: PageHost): void {
       });
   }
 
-  const unsubscribe = subscribeAccount(() => {
-    if (!busy) {
-      render();
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken) || busy) {
+      return;
     }
+    render();
   });
-
-  // When the router remounts another page into this container, stop updating.
-  const observer = new MutationObserver(() => {
-    if (!container.querySelector('[data-testid="account-heading"]')) {
-      active = false;
-      unsubscribe();
-      observer.disconnect();
-    }
-  });
-  observer.observe(container, { childList: true });
 
   render();
 }

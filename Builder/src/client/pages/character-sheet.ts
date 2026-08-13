@@ -13,6 +13,7 @@ import { ApiFailure, fetchCharacter } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
 
 export function mountCharacterSheetPage(host: PageHost, characterId: string): void {
@@ -23,7 +24,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
-  let active = true;
+  const mountToken = beginPageMount(container);
 
   function renderSignedIn(): void {
     if (error !== null) {
@@ -70,7 +71,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   }
 
   function render(): void {
-    if (!active) {
+    if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
     if (getAccount() === null) {
@@ -120,7 +121,10 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
     render();
   }
 
-  const unsubscribe = subscribeAccount(() => {
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     if (getAccount() === null) {
       character = null;
       error = null;
@@ -129,18 +133,6 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
     }
     void loadCharacter();
   });
-
-  const observer = new MutationObserver(() => {
-    if (
-      !container.querySelector('[data-testid="character-sheet-heading"]') &&
-      !container.querySelector('[data-testid="signed-out-heading"]')
-    ) {
-      active = false;
-      unsubscribe();
-      observer.disconnect();
-    }
-  });
-  observer.observe(container, { childList: true });
 
   render();
   if (getAccount() !== null) {
