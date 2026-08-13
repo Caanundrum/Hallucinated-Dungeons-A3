@@ -118,6 +118,9 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await chooseOption(page, 'option-fighter');
     await chooseOption(page, 'check-athletics');
     await chooseOption(page, 'check-perception');
+    await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('wizard-continue').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Background');
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('draft-list')).toBeVisible();
@@ -155,23 +158,28 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('bonus-strength')).toHaveValue('2');
     await page.getByTestId('bonus-constitution').selectOption('1');
     await expect(page.getByTestId('bonus-constitution')).toHaveValue('1');
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-species').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Species');
     await chooseOption(page, 'option-dwarf');
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-abilities').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Ability');
     await chooseOption(page, 'option-standard-array');
     await assignStandardArray(page);
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-equipment').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Equipment');
     await chooseOption(page, 'option-fighter-a');
     await chooseOption(page, 'option-soldier-kit');
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-features').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Class Features');
     await chooseOption(page, 'check-defense');
     await expect(page.getByTestId('no-spellcasting')).toBeVisible();
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-identity').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Identity');
     await page.getByTestId('identity-name').fill('Kara Ironwake');
     await page.getByTestId('identity-name').dispatchEvent('change');
     await expect(page.getByTestId('nothing-unresolved')).toBeVisible();

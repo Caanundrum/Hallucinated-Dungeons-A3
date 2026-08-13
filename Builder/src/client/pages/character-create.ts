@@ -42,6 +42,35 @@ import type { PageHost } from './home.js';
 
 const POINT_BUY_RANGE = [8, 9, 10, 11, 12, 13, 14, 15];
 
+/** Short labels for the step train — full titles stay on the step heading. */
+const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
+  class: 'Class',
+  background: 'Background',
+  species: 'Species',
+  abilities: 'Abilities',
+  equipment: 'Gear',
+  features: 'Features',
+  identity: 'Identity',
+};
+
+/** One helpful (and lightly humorous) guide line per step. */
+const STEP_HELPERS: Record<WizardStep, string> = {
+  class:
+    'Pick the job description first. “Professional door-kicker” and “professional spell-haver” are both valid career paths.',
+  background:
+    'Where did you learn to be like this? “Raised by wolves” is sadly not on the SRD menu, but Soldier and Sage are close enough.',
+  species:
+    'This is the “what kind of person walks into the tavern” step. Tall, short, horned, or stubbornly average — the rules have you covered.',
+  abilities:
+    'Assign the numbers that make your hero impressive in the ways you care about. Yes, dumping Charisma is a personality choice.',
+  equipment:
+    'Pack for adventure, not for a weekend city break. If it does not fit in a backpack, the dungeon will notice.',
+  features:
+    'Lock in the clever tricks your Class actually knows at level 1. Spoiler: nobody starts as the final boss.',
+  identity:
+    'Mechanics done. Now name them, glance at the sheet, and commit before you invent a tragic backstory mid-session.',
+};
+
 export function mountCharacterCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Create a character');
@@ -97,24 +126,82 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
   }
 
-  function stepChecklist(): string {
+  function stepIsComplete(step: WizardStep): boolean {
+    return current?.draft.unresolved.every((item) => item.step !== step) === true;
+  }
+
+  function blockersForStep(step: WizardStep): readonly string[] {
+    return (current?.draft.unresolved ?? [])
+      .filter((item) => item.step === step)
+      .map((item) => item.message);
+  }
+
+  function stepTrain(): string {
     const draft = current?.draft;
     return `
-      <ol class="wizard-steps" data-testid="wizard-steps">
-        ${WIZARD_STEPS.map((step, index) => {
-          const done = draft?.completedSteps.includes(step) === true;
-          const isActive = step === activeStep;
-          return `
-            <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''}">
-              <button type="button" data-step="${step}" data-testid="step-${step}"
-                aria-current="${isActive ? 'step' : 'false'}">
-                <span class="step-number">${index + 1}</span>
-                <span>${escapeHtml(WIZARD_STEP_LABELS[step])}</span>
-                <span class="step-state">${done ? 'Resolved' : 'Unresolved'}</span>
-              </button>
-            </li>`;
-        }).join('')}
-      </ol>`;
+      <nav class="wizard-train" aria-label="Character creation steps" data-testid="wizard-steps">
+        <ol class="wizard-steps">
+          ${WIZARD_STEPS.map((step, index) => {
+            const done = draft?.completedSteps.includes(step) === true;
+            const isActive = step === activeStep;
+            return `
+              <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''}">
+                <button type="button" data-step="${step}" data-testid="step-${step}"
+                  aria-current="${isActive ? 'step' : 'false'}">
+                  <span class="step-number">${index + 1}</span>
+                  <span class="step-label">${escapeHtml(STEP_TRAIN_LABELS[step])}</span>
+                </button>
+              </li>`;
+          }).join('')}
+        </ol>
+      </nav>`;
+  }
+
+  function wizardNav(): string {
+    const state = current;
+    if (state === null) {
+      return '';
+    }
+    const stepIndex = WIZARD_STEPS.indexOf(activeStep);
+    const isFirst = stepIndex <= 0;
+    const isLast = activeStep === 'identity';
+    const complete = stepIsComplete(activeStep);
+    const blockers = blockersForStep(activeStep);
+
+    const primary = isLast
+      ? `
+        <button type="button" data-testid="create-character"
+          aria-disabled="${!state.draft.canCreate || busy}">
+          ${busy ? 'Working…' : 'Create Character'}
+        </button>`
+      : `
+        <button type="button" data-testid="wizard-continue"
+          aria-disabled="${!complete || busy}">
+          ${busy ? 'Saving…' : 'Continue'}
+        </button>`;
+
+    return `
+      <div class="wizard-nav" data-testid="wizard-nav">
+        ${
+          blockers.length === 0
+            ? isLast && state.draft.canCreate
+              ? `<p class="wizard-ready" data-testid="nothing-unresolved">Everything required is ready. Create them when you are.</p>`
+              : `<p class="wizard-coach" data-testid="step-coach">Looking good — keep going.</p>`
+            : `<p class="wizard-coach" data-testid="step-blockers" role="status">${escapeHtml(blockers[0]!)}${
+                blockers.length > 1 ? ` (+${blockers.length - 1} more on this step)` : ''
+              }</p>`
+        }
+        <div class="wizard-nav-actions">
+          <button type="button" class="secondary" data-testid="wizard-back"
+            aria-disabled="${isFirst || busy}">
+            Back
+          </button>
+          <button type="button" class="secondary" data-testid="discard-draft" aria-disabled="${busy}">
+            Discard draft
+          </button>
+          ${primary}
+        </div>
+      </div>`;
   }
 
   function optionList(options: {
@@ -171,10 +258,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ? ''
         : `
         <section class="panel" aria-labelledby="quick-start-heading">
-          <h3 id="quick-start-heading">Quick start</h3>
+          <h3 id="quick-start-heading">In a hurry?</h3>
           <p>
-            Start from a mechanically complete template, then review or change any legal choice.
-            You still supply your character's identity at the final step.
+            Grab a ready-made adventurer, then rename them at the end. You can still poke every
+            choice afterward — this is a head start, not a trap.
           </p>
           ${optionList({
             name: 'quick-start',
@@ -191,6 +278,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return `
       ${quickStart}
       <h3>Choose a Class</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
       ${optionList({
         name: 'class',
         testId: 'class-options',
@@ -202,8 +290,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
           ? ''
           : `
         <h3>${escapeHtml(detail.label)} skill proficiencies</h3>
-        <p>Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
-          ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.</p>
+        <p>
+          Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
+          ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
+          Pick skills you will actually remember you have.
+        </p>
         ${checkboxList({
           name: 'class-skill',
           testId: 'class-skill-options',
@@ -223,6 +314,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     return `
       <h3>Choose a Background</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.background)}</p>
       ${optionList({
         name: 'background',
         testId: 'background-options',
@@ -237,7 +329,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Assign either +2 and +1 across two of these abilities, or +1 to each of the three.
           Grants ${escapeHtml(detail.skillLabels.join(' and '))}, ${escapeHtml(detail.toolProficiency)},
-          and the ${escapeHtml(detail.originFeat)} feat.
+          and the ${escapeHtml(detail.originFeat)} feat — the universe's way of saying “you used to have a day job.”
         </p>
         <div class="ability-assign" data-testid="background-bonus-options">
           ${detail.abilityOptions
@@ -269,6 +361,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     return `
       <h3>Choose a Species</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.species)}</p>
       ${optionList({
         name: 'species',
         testId: 'species-options',
@@ -318,11 +411,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const values = method === 'standard-array' ? [...STANDARD_ARRAY] : POINT_BUY_RANGE;
 
     return `
+      <h3>Ability Scores</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.abilities)}</p>
       <h3>Ability-generation method</h3>
       <p>
-        This campaign supports the standard array and point buy. Rolled abilities are not offered
-        here: an authoritative roll belongs to the server-side dice system built in a later phase,
-        and this page will not pretend to roll one.
+        Standard array is the “I trust the recipe” option. Point buy is for people who enjoy
+        spreadsheets and mild regret. Rolled scores wait for the real dice system later — this
+        page will not fake a roll.
       </p>
       ${optionList({
         name: 'ability-method',
@@ -366,6 +461,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
 
     return `
+      <h3>Starting equipment</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.equipment)}</p>
       <h3>${escapeHtml(classDetail.label)} starting equipment</h3>
       ${optionList({
         name: 'class-equipment',
@@ -435,6 +532,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     return `
       <h3>${escapeHtml(detail.label)} level 1 features</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
       <ul class="record-list">
         ${detail.features
           .map(
@@ -455,28 +553,26 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const identity = state.draft.choices.identity;
 
     return `
-      <h3>Identity</h3>
-      <p>
-        Your character is defined mechanically above. Name them last, then review the complete
-        sheet before creating them.
-      </p>
+      <h3>Identity & final review</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
       <label for="character-name">Name</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
-        value="${escapeHtml(identity.name)}" autocomplete="off" />
+        value="${escapeHtml(identity.name)}" autocomplete="off" placeholder="Something the bard can pronounce" />
       <label for="character-pronouns">Pronouns</label>
       <input id="character-pronouns" type="text" data-identity="pronouns" data-testid="identity-pronouns"
-        value="${escapeHtml(identity.pronouns)}" autocomplete="off" />
+        value="${escapeHtml(identity.pronouns)}" autocomplete="off" placeholder="Optional" />
       <label for="character-appearance">Appearance</label>
       <input id="character-appearance" type="text" data-identity="appearance" data-testid="identity-appearance"
-        value="${escapeHtml(identity.appearance)}" autocomplete="off" />
+        value="${escapeHtml(identity.appearance)}" autocomplete="off" placeholder="Optional — scar, hat, ominous vibes…" />
       <label for="character-concept">Concept</label>
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
-        value="${escapeHtml(identity.concept)}" autocomplete="off" />
+        value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
 
       <h3>Final review</h3>
+      <p>Open any “Why is this number?” control if a total looks suspicious. The server did the math.</p>
       ${
         state.draft.sheet === null
-          ? '<p class="empty-state">Choose a Class, Background, and Species to see the sheet.</p>'
+          ? '<p class="empty-state">Finish Class, Background, and Species to preview the sheet.</p>'
           : renderCharacterSheet(state.draft.sheet)
       }`;
   }
@@ -537,8 +633,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <div class="page page-wide">
         <h1 data-testid="create-heading">Create a character</h1>
         <p class="tagline">
-          Every choice is checked by the server against the SRD rules. The Create Character action
-          stays unavailable while any required decision is unresolved.
+          Follow the steps in order — or hop the train above if you need to revisit a choice.
+          The server checks every decision against the SRD, so Continue waits until this step is legal.
         </p>
         ${
           error === null
@@ -546,42 +642,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
             : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>`
         }
         ${state === null ? '<p class="empty-state">Opening your draft…</p>' : ''}
-        ${state === null ? '' : stepChecklist()}
+        ${state === null ? '' : stepTrain()}
         ${
           state === null
             ? ''
             : `
-        <section class="panel" aria-labelledby="step-heading">
+        <section class="panel wizard-step-panel" aria-labelledby="step-heading">
           <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
           ${renderStepBody()}
-        </section>
-
-        <section class="panel" aria-labelledby="unresolved-heading">
-          <h2 id="unresolved-heading">Remaining decisions</h2>
-          ${
-            state.draft.unresolved.length === 0
-              ? '<p data-testid="nothing-unresolved">Everything required is resolved.</p>'
-              : `<ul class="record-list" data-testid="unresolved-list">
-                  ${state.draft.unresolved
-                    .map(
-                      (item) => `
-                    <li data-testid="unresolved-${escapeHtml(item.code)}">
-                      <span class="record-note">${escapeHtml(WIZARD_STEP_LABELS[item.step])}</span>
-                      <span class="record-meta">${escapeHtml(item.message)}</span>
-                    </li>`,
-                    )
-                    .join('')}
-                </ul>`
-          }
-          <div class="actions">
-            <button type="button" data-testid="create-character"
-              aria-disabled="${!state.draft.canCreate || busy}">
-              ${busy ? 'Working…' : 'Create Character'}
-            </button>
-            <button type="button" class="secondary" data-testid="discard-draft" aria-disabled="${busy}">
-              Discard draft
-            </button>
-          </div>
+          ${wizardNav()}
         </section>`
         }
       </div>`;
@@ -602,6 +671,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
         render();
       });
     });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="wizard-back"]')
+      ?.addEventListener('click', () => {
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (index <= 0 || busy) {
+          return;
+        }
+        activeStep = WIZARD_STEPS[index - 1]!;
+        render();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="wizard-continue"]')
+      ?.addEventListener('click', () => {
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (index < 0 || index >= WIZARD_STEPS.length - 1 || busy || !stepIsComplete(activeStep)) {
+          return;
+        }
+        activeStep = WIZARD_STEPS[index + 1]!;
+        render();
+      });
 
     container.querySelectorAll<HTMLInputElement>('input[name="quick-start"]').forEach((input) => {
       input.addEventListener('change', () => {
