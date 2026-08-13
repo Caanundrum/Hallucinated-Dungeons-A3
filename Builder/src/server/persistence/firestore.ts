@@ -19,6 +19,8 @@ export const COLLECTIONS = {
   foundationChecks: 'foundationChecks',
   foundationProjections: 'foundationProjections',
   arenaBaseline: 'arenaBaseline',
+  characterDrafts: 'characterDrafts',
+  characters: 'characters',
 } as const;
 
 export interface CanonicalStore {

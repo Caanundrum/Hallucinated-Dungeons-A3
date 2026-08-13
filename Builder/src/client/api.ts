@@ -16,6 +16,19 @@ import {
   type ErrorCode,
   type FoundationProjection,
 } from '../shared/contract.js';
+import type {
+  CharacterChoices,
+  CharacterProjection,
+  CharacterVaultProjection,
+  DraftOptions,
+  DraftProjection,
+} from '../shared/character-contract.js';
+
+/** A draft always travels with the options legal for its current state. */
+export interface DraftResponse {
+  readonly draft: DraftProjection;
+  readonly options: DraftOptions;
+}
 
 /** A failure the page can explain to the person using it. */
 export class ApiFailure extends Error {
@@ -102,6 +115,74 @@ export async function leaveLocalArena(candidateId: string): Promise<void> {
 
 export async function fetchProjection(): Promise<FoundationProjection> {
   return (await request<FoundationProjection>('/api/foundation-checks')) as FoundationProjection;
+}
+
+export async function fetchVault(): Promise<CharacterVaultProjection> {
+  return (await request<CharacterVaultProjection>(
+    '/api/characters/vault',
+  )) as CharacterVaultProjection;
+}
+
+/** Opens the account's draft, resuming the existing one when there is one. */
+export async function openDraft(candidateId: string): Promise<DraftResponse> {
+  return (await request<DraftResponse>('/api/characters/drafts', {
+    method: 'POST',
+    candidateId,
+  })) as DraftResponse;
+}
+
+export async function fetchDraft(draftId: string): Promise<DraftResponse> {
+  return (await request<DraftResponse>(`/api/characters/drafts/${draftId}`)) as DraftResponse;
+}
+
+export async function saveDraft(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+  readonly choices: CharacterChoices;
+}): Promise<DraftResponse> {
+  return (await request<DraftResponse>(`/api/characters/drafts/${options.draftId}`, {
+    method: 'PUT',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ choices: options.choices }),
+  })) as DraftResponse;
+}
+
+export async function applyQuickStartTemplate(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+  readonly templateId: string;
+}): Promise<DraftResponse> {
+  return (await request<DraftResponse>(`/api/characters/drafts/${options.draftId}/quick-start`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ templateId: options.templateId }),
+  })) as DraftResponse;
+}
+
+export async function createCharacter(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+}): Promise<CharacterProjection> {
+  return (await request<CharacterProjection>(
+    `/api/characters/drafts/${options.draftId}/commit`,
+    { method: 'POST', candidateId: options.candidateId },
+  )) as CharacterProjection;
+}
+
+export async function discardDraft(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+}): Promise<void> {
+  await request<null>(`/api/characters/drafts/${options.draftId}`, {
+    method: 'DELETE',
+    candidateId: options.candidateId,
+  });
+}
+
+export async function fetchCharacter(characterId: string): Promise<CharacterProjection> {
+  return (await request<CharacterProjection>(
+    `/api/characters/${characterId}`,
+  )) as CharacterProjection;
 }
 
 export async function recordFoundationCheck(options: {

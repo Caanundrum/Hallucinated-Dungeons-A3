@@ -7,8 +7,11 @@
  */
 
 import type { CandidateIdentity } from '../shared/contract.js';
-import { isSpaRoute } from '../shared/routes.js';
+import { characterIdFromPath, isSpaRoute } from '../shared/routes.js';
 import { fetchCandidate } from './api.js';
+import { mountCharacterCreatePage } from './pages/character-create.js';
+import { mountCharacterSheetPage } from './pages/character-sheet.js';
+import { mountCharactersPage } from './pages/characters.js';
 import { mountDiagnosticsPage } from './pages/diagnostics.js';
 import { mountHomePage, type PageHost } from './pages/home.js';
 import { mountNotFoundPage } from './pages/not-found.js';
@@ -41,10 +44,18 @@ async function start(): Promise<void> {
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };
 
+    const characterId = characterIdFromPath(path);
+
     if (path === '/') {
       mountHomePage(host);
     } else if (path === '/diagnostics') {
       mountDiagnosticsPage(host);
+    } else if (path === '/characters') {
+      mountCharactersPage(host);
+    } else if (path === '/characters/new') {
+      mountCharacterCreatePage(host);
+    } else if (characterId !== null) {
+      mountCharacterSheetPage(host, characterId);
     } else if (isSpaRoute(path)) {
       // Every declared SPA route must have a mount call above; reaching this
       // branch means one was added to the shared route table without a page.

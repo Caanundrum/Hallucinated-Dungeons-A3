@@ -68,15 +68,14 @@ export function mountHomePage(host: PageHost): void {
       <section class="panel" aria-labelledby="status-heading">
         <h2 id="status-heading">What's here right now</h2>
         <p>
-          Character creation, campaigns, and the tactical table are being built in later slices of
-          this phase. What already works end to end is the local write/read path proven in Phase
-          0: a development identity, a server-authorized write through the Firestore emulator, and
-          the result rendered back from the server.
+          Character creation and the Character Vault are live for Local Arena development
+          identities. Campaigns and the tactical table arrive in later slices of this phase. The
+          Phase 0 foundation write/read path remains available under diagnostics.
         </p>
-        <p>
-          <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Open the Local Arena diagnostics page</a>
-          to try that path yourself.
-        </p>
+        <div class="actions">
+          <a href="/characters" data-link data-testid="home-characters-link">Open the Character Vault</a>
+          <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Open Local Arena diagnostics</a>
+        </div>
       </section>
       <div class="candidate-strip" data-testid="candidate-strip">
         ${

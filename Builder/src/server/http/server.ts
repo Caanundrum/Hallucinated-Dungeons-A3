@@ -38,11 +38,28 @@ import {
   mintDevelopmentIdentity,
   resolveSession,
 } from '../identity/development-identity.js';
+import {
+  CharacterIncompleteError,
+  CharacterNotFoundError,
+  applyQuickStart,
+  commitDraft,
+  discardDraft,
+  openOrResumeDraft,
+  readCharacter,
+  readDraft,
+  readVault,
+  updateDraft,
+} from '../characters/characters.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
 import { renderLegalPage } from '../legal/render-legal-page.js';
+import { buildDraftOptions } from '../rules/character-rules.js';
+import { parseChoices } from '../characters/parse-choices.js';
 
 /** Largest request body the server will buffer, in bytes. */
 const MAX_REQUEST_BODY_BYTES = 8 * 1024;
+
+/** Sentinel meaning the body was already answered with an error response. */
+const BODY_REJECTED = Symbol('body-rejected');
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -76,6 +93,7 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.BAD_REQUEST]: 400,
   [ERROR_CODES.CANDIDATE_MISMATCH]: 409,
+  [ERROR_CODES.CHARACTER_INCOMPLETE]: 409,
   [ERROR_CODES.FORBIDDEN_ORIGIN]: 403,
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]: 403,
   [ERROR_CODES.NOT_AUTHENTICATED]: 401,
@@ -93,6 +111,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ERROR_CODES.BAD_REQUEST]: 'The request body was not valid JSON in the expected shape.',
   [ERROR_CODES.CANDIDATE_MISMATCH]:
     'This page was loaded from a different candidate than the one now running. Reload the page to continue.',
+  [ERROR_CODES.CHARACTER_INCOMPLETE]:
+    'This character still has required choices to resolve, so it was not created.',
   [ERROR_CODES.FORBIDDEN_ORIGIN]:
     'This request did not come from the declared Local Arena client origin.',
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]:
@@ -549,7 +569,155 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (path === '/api/characters' || path.startsWith('/api/characters/')) {
+      await handleCharacterRequest(request, response, method, path);
+      return;
+    }
+
     sendError(response, ERROR_CODES.NOT_FOUND);
+  }
+
+  /**
+   * Character creation, drafts, and the Character Vault.
+   *
+   * Every route resolves the session first and passes only the authenticated
+   * account id downward. No route accepts an owner from the caller.
+   */
+  async function handleCharacterRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    method: string,
+    path: string,
+  ): Promise<void> {
+    const session = await resolveSession({ firestore, sessionToken: sessionTokenFrom(request) });
+    if (session === null) {
+      sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+      return;
+    }
+    const accountId = session.accountId;
+
+    const readBody = async (): Promise<unknown | typeof BODY_REJECTED> => {
+      try {
+        return await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return BODY_REJECTED;
+      }
+    };
+
+    try {
+      if (path === '/api/characters/vault' && method === 'GET') {
+        sendJson(response, 200, await readVault({ firestore, accountId }));
+        return;
+      }
+
+      if (path === '/api/characters/drafts' && method === 'POST') {
+        const draft = await openOrResumeDraft({ firestore, accountId });
+        sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+        return;
+      }
+
+      const draftMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})$/.exec(path);
+      if (draftMatch !== null) {
+        const draftId = draftMatch[1]!;
+
+        if (method === 'GET') {
+          const draft = await readDraft({ firestore, accountId, draftId });
+          sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+          return;
+        }
+
+        if (method === 'PUT') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const parsed = parseChoices((body as { choices?: unknown } | undefined)?.choices);
+          if (parsed === null) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          const draft = await updateDraft({ firestore, accountId, draftId, choices: parsed });
+          sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+          return;
+        }
+
+        if (method === 'DELETE') {
+          await discardDraft({ firestore, accountId, draftId });
+          response.writeHead(204);
+          response.end();
+          return;
+        }
+
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const quickStartMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/quick-start$/.exec(path);
+      if (quickStartMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const templateId = (body as { templateId?: unknown } | undefined)?.templateId;
+        if (typeof templateId !== 'string' || templateId.length > 64) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const draft = await applyQuickStart({
+          firestore,
+          accountId,
+          draftId: quickStartMatch[1]!,
+          templateId,
+        });
+        sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+        return;
+      }
+
+      const commitMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/commit$/.exec(path);
+      if (commitMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const character = await commitDraft({ firestore, accountId, draftId: commitMatch[1]! });
+        sendJson(response, 201, character);
+        return;
+      }
+
+      const characterMatch = /^\/api\/characters\/([A-Za-z0-9-]{1,64})$/.exec(path);
+      if (characterMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        sendJson(response, 200, await readCharacter({ firestore, accountId, characterId: characterMatch[1]! }));
+        return;
+      }
+
+      sendError(response, ERROR_CODES.NOT_FOUND);
+    } catch (error) {
+      if (error instanceof CharacterNotFoundError) {
+        // A record owned by another account is reported exactly like one that
+        // does not exist, so the response cannot be used to probe for the
+        // existence of other accounts' characters.
+        sendError(response, ERROR_CODES.NOT_FOUND);
+        return;
+      }
+      if (error instanceof CharacterIncompleteError) {
+        sendError(response, ERROR_CODES.CHARACTER_INCOMPLETE);
+        return;
+      }
+      throw error;
+    }
   }
 
   return {
