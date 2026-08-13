@@ -18,6 +18,7 @@ import {
   ABILITY_METHODS,
   CHARACTER_NAME_MAX_LENGTH,
   CHARACTER_TEXT_MAX_LENGTH,
+  MAX_ABILITY_ROLL_ATTEMPTS,
   POINT_BUY_BUDGET,
   STANDARD_ARRAY,
   WIZARD_STEPS,
@@ -34,6 +35,7 @@ import {
   type UnresolvedChoice,
   type WizardStep,
 } from '../../shared/character-contract.js';
+import { randomInt } from 'node:crypto';
 import {
   BACKGROUNDS,
   CLASSES,
@@ -64,6 +66,8 @@ export function emptyChoices(): CharacterChoices {
     speciesId: null,
     abilityMethod: 'standard-array',
     baseAbilityScores: {},
+    rolledScorePool: null,
+    abilityRollAttempts: 0,
     backgroundAbilityBonuses: {},
     classSkillIds: [],
     speciesChoiceIds: {},
@@ -75,6 +79,19 @@ export function emptyChoices(): CharacterChoices {
     identity: { name: '', pronouns: '', appearance: '', concept: '' },
   };
 }
+
+/** One Ability Score: 4d6, drop the lowest die. */
+export function rollOneAbilityScore(rollDie: () => number = () => randomInt(1, 7)): number {
+  const dice = [rollDie(), rollDie(), rollDie(), rollDie()].sort((a, b) => a - b);
+  return dice[1]! + dice[2]! + dice[3]!;
+}
+
+/** Six Ability Scores for a rolled pool, highest first for display. */
+export function rollAbilityScorePool(rollDie: () => number = () => randomInt(1, 7)): readonly number[] {
+  return Array.from({ length: 6 }, () => rollOneAbilityScore(rollDie)).sort((a, b) => b - a);
+}
+
+export { MAX_ABILITY_ROLL_ATTEMPTS };
 
 export function buildCatalog(): RulesCatalog {
   return {
@@ -185,6 +202,19 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
     problems.push(unresolved('abilities', 'ABILITY_METHOD_INVALID', 'Choose a supported ability-generation method.'));
   }
 
+  if (
+    choices.abilityMethod === 'rolled' &&
+    (choices.rolledScorePool === null || choices.rolledScorePool.length !== 6)
+  ) {
+    problems.push(
+      unresolved(
+        'abilities',
+        'ABILITY_ROLL_REQUIRED',
+        `Roll for Ability Scores (up to ${MAX_ABILITY_ROLL_ATTEMPTS} times). Each roll replaces the previous one.`,
+      ),
+    );
+  }
+
   const assigned = ABILITIES.map((ability) => choices.baseAbilityScores[ability]);
   if (assigned.some((score) => score === undefined)) {
     problems.push(
@@ -204,7 +234,7 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
           ),
         );
       }
-    } else {
+    } else if (choices.abilityMethod === 'point-buy') {
       const cost = pointBuyCost(scores);
       if (cost === null) {
         problems.push(
@@ -213,6 +243,18 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
       } else if (cost > POINT_BUY_BUDGET) {
         problems.push(
           unresolved('abilities', 'POINT_BUY_OVER_BUDGET', `Point buy allows ${POINT_BUY_BUDGET} points. That array costs ${cost}.`),
+        );
+      }
+    } else if (choices.abilityMethod === 'rolled' && choices.rolledScorePool !== null) {
+      const sortedChosen = [...scores].sort((a, b) => b - a).join(',');
+      const sortedPool = [...choices.rolledScorePool].sort((a, b) => b - a).join(',');
+      if (sortedChosen !== sortedPool) {
+        problems.push(
+          unresolved(
+            'abilities',
+            'ROLLED_POOL_MISMATCH',
+            `Assign exactly the rolled scores (${choices.rolledScorePool.join(', ')}) across the six Ability Scores.`,
+          ),
         );
       }
     }

@@ -160,6 +160,17 @@ export async function applyQuickStartTemplate(options: {
   })) as DraftResponse;
 }
 
+/** Server-authoritative Ability Score roll (4d6 drop lowest × 6). Max 3 per draft. */
+export async function rollDraftAbilities(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+}): Promise<DraftResponse> {
+  return (await request<DraftResponse>(`/api/characters/drafts/${options.draftId}/roll-abilities`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+  })) as DraftResponse;
+}
+
 export async function createCharacter(options: {
   readonly candidateId: string;
   readonly draftId: string;

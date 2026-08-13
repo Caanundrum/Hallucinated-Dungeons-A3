@@ -16,6 +16,7 @@
 import {
   ABILITIES,
   ABILITY_LABELS,
+  MAX_ABILITY_ROLL_ATTEMPTS,
   STANDARD_ARRAY,
   WIZARD_STEPS,
   WIZARD_STEP_LABELS,
@@ -29,12 +30,13 @@ import {
   createCharacter,
   discardDraft,
   openDraft,
+  rollDraftAbilities,
   saveDraft,
   type DraftResponse,
 } from '../api.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
-import { renderCharacterSheet } from '../character-sheet-view.js';
+import { renderCharacterSheet, renderLiveSheetPreview } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
@@ -53,16 +55,16 @@ const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
   identity: 'Identity',
 };
 
-/** One helpful (and lightly humorous) guide line per step. */
+/** One helpful guide line per step. Humor is fine; inventing fake options is not. */
 const STEP_HELPERS: Record<WizardStep, string> = {
   class:
-    'Pick the job description first. “Professional door-kicker” and “professional spell-haver” are both valid career paths.',
+    'Class is your adventuring job on the SRD roster — Fighter, Wizard, and the rest. Pick one, then choose its skill proficiencies below.',
   background:
-    'Where did you learn to be like this? “Raised by wolves” is sadly not on the SRD menu, but Soldier and Sage are close enough.',
+    'Your Background is life before the dungeon. Clicking an option shows its details at the bottom — skills, tools, feat, and ability increases.',
   species:
-    'This is the “what kind of person walks into the tavern” step. Tall, short, horned, or stubbornly average — the rules have you covered.',
+    'Species is who walks into the tavern. Pick one to see size, senses, and any lineage or skill choices below.',
   abilities:
-    'Assign the numbers that make your hero impressive in the ways you care about. Yes, dumping Charisma is a personality choice.',
+    'Assign the numbers that make your hero impressive in the ways you care about. Standard array, point buy, or up to three rolls — your call.',
   equipment:
     'Pack for adventure, not for a weekend city break. If it does not fit in a backpack, the dungeon will notice.',
   features:
@@ -70,6 +72,34 @@ const STEP_HELPERS: Record<WizardStep, string> = {
   identity:
     'Mechanics done. Now name them, glance at the sheet, and commit before you invent a tragic backstory mid-session.',
 };
+
+type BonusPattern = 'plus-two-plus-one' | 'plus-one-each';
+
+function inferBonusPattern(
+  bonuses: Partial<Record<Ability, number>>,
+  abilityOptions: readonly Ability[],
+): BonusPattern | null {
+  const amounts = abilityOptions
+    .map((ability) => bonuses[ability] ?? 0)
+    .filter((amount) => amount !== 0)
+    .sort((a, b) => b - a);
+  const key = amounts.join(',');
+  if (key === '1,1,1') {
+    return 'plus-one-each';
+  }
+  if (key === '2,1') {
+    return 'plus-two-plus-one';
+  }
+  return null;
+}
+
+function bonusesForPlusOneEach(abilityOptions: readonly Ability[]): Partial<Record<Ability, number>> {
+  const bonuses: Partial<Record<Ability, number>> = {};
+  for (const ability of abilityOptions) {
+    bonuses[ability] = 1;
+  }
+  return bonuses;
+}
 
 export function mountCharacterCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
@@ -311,10 +341,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
     const detail = state.options.backgroundDetail;
     const bonuses = state.draft.choices.backgroundAbilityBonuses;
+    const pattern = detail === null ? null : inferBonusPattern(bonuses, detail.abilityOptions);
+    const plusTwoAbility =
+      pattern === 'plus-two-plus-one'
+        ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 2) ?? null)
+        : null;
+    const plusOneAbility =
+      pattern === 'plus-two-plus-one'
+        ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 1) ?? null)
+        : null;
 
     return `
       <h3>Choose a Background</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.background)}</p>
+      <p class="nav-hint" data-testid="background-nav-hint">
+        Clicking an option shows details at the bottom.
+      </p>
       ${optionList({
         name: 'background',
         testId: 'background-options',
@@ -325,29 +367,76 @@ export function mountCharacterCreatePage(host: PageHost): void {
         detail === null
           ? ''
           : `
-        <h3>${escapeHtml(detail.label)} ability increases</h3>
-        <p>
-          Assign either +2 and +1 across two of these abilities, or +1 to each of the three.
-          Grants ${escapeHtml(detail.skillLabels.join(' and '))}, ${escapeHtml(detail.toolProficiency)},
-          and the ${escapeHtml(detail.originFeat)} feat — the universe's way of saying “you used to have a day job.”
-        </p>
-        <div class="ability-assign" data-testid="background-bonus-options">
-          ${detail.abilityOptions
-            .map(
-              (ability) => `
-            <label>
-              <span>${escapeHtml(ABILITY_LABELS[ability])}</span>
-              <select data-bonus-ability="${ability}" data-testid="bonus-${ability}">
-                ${[0, 1, 2]
-                  .map(
-                    (amount) =>
-                      `<option value="${amount}" ${(bonuses[ability] ?? 0) === amount ? 'selected' : ''}>+${amount}</option>`,
-                  )
-                  .join('')}
-              </select>
-            </label>`,
-            )
-            .join('')}
+        <div class="detail-panel" data-testid="background-detail">
+          <h3>${escapeHtml(detail.label)}</h3>
+          <p>
+            Grants ${escapeHtml(detail.skillLabels.join(' and '))}, ${escapeHtml(detail.toolProficiency)},
+            and the ${escapeHtml(detail.originFeat)} feat.
+          </p>
+          <h3>Ability increases</h3>
+          <p>
+            Choose one legal pattern only — either +2 and +1 on two of these abilities, or +1 on each
+            of the three. Illegal combinations are not offered.
+          </p>
+          <div class="option-list compact" data-testid="bonus-pattern-options">
+            <label class="option${pattern === 'plus-two-plus-one' ? ' selected' : ''}">
+              <input type="radio" name="bonus-pattern" value="plus-two-plus-one"
+                ${pattern === 'plus-two-plus-one' ? 'checked' : ''}
+                data-testid="bonus-pattern-plus-two-plus-one" />
+              <span class="option-label">+2 and +1</span>
+              <span class="option-summary">Two different abilities from the list below.</span>
+            </label>
+            <label class="option${pattern === 'plus-one-each' ? ' selected' : ''}">
+              <input type="radio" name="bonus-pattern" value="plus-one-each"
+                ${pattern === 'plus-one-each' ? 'checked' : ''}
+                data-testid="bonus-pattern-plus-one-each" />
+              <span class="option-label">+1 to each</span>
+              <span class="option-summary">${detail.abilityOptions
+                .map((ability) => ABILITY_LABELS[ability])
+                .join(', ')}.</span>
+            </label>
+          </div>
+          ${
+            pattern !== 'plus-two-plus-one'
+              ? pattern === 'plus-one-each'
+                ? `<p class="wizard-coach" data-testid="bonus-plus-one-each-summary">
+                    +1 applied to ${escapeHtml(
+                      detail.abilityOptions.map((ability) => ABILITY_LABELS[ability]).join(', '),
+                    )}.
+                  </p>`
+                : ''
+              : `
+            <div class="ability-assign" data-testid="background-bonus-options">
+              <label>
+                <span>+2 to</span>
+                <select data-testid="bonus-plus-two" data-bonus-role="plus-two">
+                  <option value="">Choose…</option>
+                  ${detail.abilityOptions
+                    .map(
+                      (ability) =>
+                        `<option value="${ability}" ${plusTwoAbility === ability ? 'selected' : ''} ${
+                          plusOneAbility === ability ? 'disabled' : ''
+                        }>${escapeHtml(ABILITY_LABELS[ability])}</option>`,
+                    )
+                    .join('')}
+                </select>
+              </label>
+              <label>
+                <span>+1 to</span>
+                <select data-testid="bonus-plus-one" data-bonus-role="plus-one">
+                  <option value="">Choose…</option>
+                  ${detail.abilityOptions
+                    .map(
+                      (ability) =>
+                        `<option value="${ability}" ${plusOneAbility === ability ? 'selected' : ''} ${
+                          plusTwoAbility === ability ? 'disabled' : ''
+                        }>${escapeHtml(ABILITY_LABELS[ability])}</option>`,
+                    )
+                    .join('')}
+                </select>
+              </label>
+            </div>`
+          }
         </div>`
       }`;
   }
@@ -408,7 +497,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
     const method = state.draft.choices.abilityMethod;
     const scores = state.draft.choices.baseAbilityScores;
-    const values = method === 'standard-array' ? [...STANDARD_ARRAY] : POINT_BUY_RANGE;
+    const pool = state.draft.choices.rolledScorePool;
+    const attempts = state.draft.choices.abilityRollAttempts;
+    const rollsLeft = Math.max(0, MAX_ABILITY_ROLL_ATTEMPTS - attempts);
+    const values =
+      method === 'standard-array'
+        ? [...STANDARD_ARRAY]
+        : method === 'point-buy'
+          ? POINT_BUY_RANGE
+          : pool === null
+            ? []
+            : [...pool];
 
     return `
       <h3>Ability Scores</h3>
@@ -416,19 +515,57 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <h3>Ability-generation method</h3>
       <p>
         Standard array is the “I trust the recipe” option. Point buy is for people who enjoy
-        spreadsheets and mild regret. Rolled scores wait for the real dice system later — this
-        page will not fake a roll.
+        spreadsheets. Rolled scores use 4d6 drop lowest — you get ${MAX_ABILITY_ROLL_ATTEMPTS} rolls
+        max, and each new roll replaces the previous one (no going back).
       </p>
       ${optionList({
         name: 'ability-method',
         testId: 'ability-method-options',
         entries: [
-          { id: 'standard-array', label: 'Standard array', summary: `Assign ${STANDARD_ARRAY.join(', ')} across the six Ability Scores.` },
+          {
+            id: 'standard-array',
+            label: 'Standard array',
+            summary: `Assign ${STANDARD_ARRAY.join(', ')} across the six Ability Scores.`,
+          },
           { id: 'point-buy', label: 'Point buy', summary: 'Spend 27 points on scores from 8 to 15.' },
+          {
+            id: 'rolled',
+            label: 'Roll (4d6 drop lowest)',
+            summary: `Up to ${MAX_ABILITY_ROLL_ATTEMPTS} rolls. Each roll replaces the last — earlier pools are gone.`,
+          },
         ],
         selected: method,
       })}
+      ${
+        method !== 'rolled'
+          ? ''
+          : `
+        <div class="roll-panel" data-testid="ability-roll-panel">
+          <p data-testid="ability-roll-status">
+            ${
+              pool === null
+                ? `No roll yet. You have ${MAX_ABILITY_ROLL_ATTEMPTS} attempts.`
+                : `Current pool: ${pool.join(', ')}. Attempts used: ${attempts} of ${MAX_ABILITY_ROLL_ATTEMPTS}.`
+            }
+          </p>
+          <button type="button" data-testid="roll-abilities"
+            aria-disabled="${rollsLeft === 0 || busy}">
+            ${
+              rollsLeft === 0
+                ? 'No rolls left'
+                : pool === null
+                  ? `Roll Ability Scores (${rollsLeft} left)`
+                  : `Roll again (${rollsLeft} left)`
+            }
+          </button>
+          <p class="nav-hint">Rolling again replaces this pool and clears your assignments. Previous rolls cannot be restored.</p>
+        </div>`
+      }
       <h3>Assign Ability Scores</h3>
+      ${
+        method === 'rolled' && pool === null
+          ? '<p class="empty-state" data-testid="ability-roll-needed">Roll for scores before assigning them.</p>'
+          : `
       <div class="ability-assign" data-testid="ability-assignment">
         ${ABILITIES.map(
           (ability) => `
@@ -445,7 +582,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
             </select>
           </label>`,
         ).join('')}
-      </div>`;
+      </div>`
+      }`;
   }
 
   function renderEquipmentStep(): string {
@@ -596,6 +734,38 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
   }
 
+  function liveSheetPreview(): string {
+    const state = current;
+    if (state === null) {
+      return '';
+    }
+    const choices = state.draft.choices;
+    const classLabel =
+      state.options.catalog.classes.find((entry) => entry.id === choices.classId)?.label ?? null;
+    const backgroundLabel =
+      state.options.catalog.backgrounds.find((entry) => entry.id === choices.backgroundId)?.label ??
+      null;
+    const speciesLabel =
+      state.options.catalog.species.find((entry) => entry.id === choices.speciesId)?.label ?? null;
+
+    return `
+      <aside class="wizard-sheet-preview panel" data-testid="wizard-sheet-preview" aria-label="Live character sheet">
+        <h2>Character so far</h2>
+        <p class="record-meta" data-testid="preview-identity-line">
+          ${escapeHtml(classLabel ?? 'Class unchosen')} ·
+          ${escapeHtml(backgroundLabel ?? 'Background unchosen')} ·
+          ${escapeHtml(speciesLabel ?? 'Species unchosen')}
+        </p>
+        ${
+          state.draft.sheet === null
+            ? `<p class="empty-state" data-testid="preview-waiting">
+                Choose Class, Background, and Species to build the sheet here as you go.
+              </p>`
+            : renderLiveSheetPreview(state.draft.sheet)
+        }
+      </aside>`;
+  }
+
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -635,6 +805,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p class="tagline">
           Follow the steps in order — or hop the train above if you need to revisit a choice.
           The server checks every decision against the SRD, so Continue waits until this step is legal.
+          On a wide screen, the sheet builds on the side so you can compare as you choose.
         </p>
         ${
           error === null
@@ -647,11 +818,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
           state === null
             ? ''
             : `
-        <section class="panel wizard-step-panel" aria-labelledby="step-heading">
-          <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
-          ${renderStepBody()}
-          ${wizardNav()}
-        </section>`
+        <div class="wizard-layout">
+          <section class="panel wizard-step-panel" aria-labelledby="step-heading">
+            <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
+            ${renderStepBody()}
+            ${wizardNav()}
+          </section>
+          ${liveSheetPreview()}
+        </div>`
         }
       </div>`;
 
@@ -781,19 +955,73 @@ export function mountCharacterCreatePage(host: PageHost): void {
       });
     });
 
-    container.querySelectorAll<HTMLSelectElement>('[data-bonus-ability]').forEach((select) => {
-      select.addEventListener('change', () => {
-        const ability = select.dataset.bonusAbility as Ability;
-        const bonuses = { ...base.backgroundAbilityBonuses };
-        const amount = Number(select.value);
-        if (amount === 0) {
-          delete bonuses[ability];
-        } else {
-          bonuses[ability] = amount;
+    container.querySelectorAll<HTMLInputElement>('input[name="bonus-pattern"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const detail = state.options.backgroundDetail;
+        if (detail === null) {
+          return;
         }
-        void commitChoices({ ...base, backgroundAbilityBonuses: bonuses });
+        const nextPattern = input.value as BonusPattern;
+        if (nextPattern === 'plus-one-each') {
+          void commitChoices({
+            ...base,
+            backgroundAbilityBonuses: bonusesForPlusOneEach(detail.abilityOptions),
+          });
+          return;
+        }
+        void commitChoices({ ...base, backgroundAbilityBonuses: {} });
       });
     });
+
+    const plusTwoSelect = container.querySelector<HTMLSelectElement>('[data-bonus-role="plus-two"]');
+    const plusOneSelect = container.querySelector<HTMLSelectElement>('[data-bonus-role="plus-one"]');
+    const commitPlusTwoPlusOne = (): void => {
+      const plusTwo = plusTwoSelect?.value ?? '';
+      const plusOne = plusOneSelect?.value ?? '';
+      if (plusTwo === '' || plusOne === '' || plusTwo === plusOne) {
+        void commitChoices({ ...base, backgroundAbilityBonuses: {} });
+        return;
+      }
+      void commitChoices({
+        ...base,
+        backgroundAbilityBonuses: {
+          [plusTwo as Ability]: 2,
+          [plusOne as Ability]: 1,
+        },
+      });
+    };
+    plusTwoSelect?.addEventListener('change', commitPlusTwoPlusOne);
+    plusOneSelect?.addEventListener('change', commitPlusTwoPlusOne);
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="roll-abilities"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || current === null || busy) {
+            return;
+          }
+          if (current.draft.choices.abilityRollAttempts >= MAX_ABILITY_ROLL_ATTEMPTS) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            current = await rollDraftAbilities({
+              candidateId: candidate.candidateId,
+              draftId: current.draft.draftId,
+            });
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Those Ability Scores could not be rolled.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
 
     container.querySelectorAll<HTMLSelectElement>('[data-species-choice]').forEach((select) => {
       select.addEventListener('change', () => {

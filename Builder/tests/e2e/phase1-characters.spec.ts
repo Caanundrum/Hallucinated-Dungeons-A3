@@ -154,14 +154,20 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('step-background').click();
     await chooseOption(page, 'option-soldier');
-    await page.getByTestId('bonus-strength').selectOption('2');
-    await expect(page.getByTestId('bonus-strength')).toHaveValue('2');
-    await page.getByTestId('bonus-constitution').selectOption('1');
-    await expect(page.getByTestId('bonus-constitution')).toHaveValue('1');
+    await expect(page.getByTestId('background-nav-hint')).toBeVisible();
+    await expect(page.getByTestId('background-detail')).toBeVisible();
+    await chooseOption(page, 'bonus-pattern-plus-two-plus-one');
+    await page.getByTestId('bonus-plus-two').selectOption('strength');
+    await expect(page.getByTestId('bonus-plus-two')).toHaveValue('strength');
+    await page.getByTestId('bonus-plus-one').selectOption('constitution');
+    await expect(page.getByTestId('bonus-plus-one')).toHaveValue('constitution');
+    await expect(page.getByTestId('wizard-sheet-preview')).toBeVisible();
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Species');
     await chooseOption(page, 'option-dwarf');
+    await expect(page.getByTestId('preview-waiting')).toHaveCount(0);
+    await expect(page.getByTestId('live-sheet-stats')).toBeVisible();
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Ability');
@@ -188,6 +194,64 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('character-sheet-heading')).toHaveText('Kara Ironwake');
     await expect(page.getByTestId('character-summary')).toContainText('Dwarf');
     await expect(page.getByTestId('character-summary')).toContainText('Fighter');
+  });
+
+  test('ability rolls are capped at three and replace the previous pool', async ({ page }) => {
+    await enterArenaForCharacters(page);
+    await openVault(page);
+    await page.getByTestId('start-character').click();
+
+    await chooseOption(page, 'option-fighter');
+    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-perception');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-soldier');
+    await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await expect(page.getByTestId('bonus-plus-one-each-summary')).toBeVisible();
+    // Illegal free +2/+2/+2 selects are gone — only pattern controls exist.
+    await expect(page.getByTestId('bonus-strength')).toHaveCount(0);
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-human');
+    await page.getByTestId('species-choice-human-skillful').selectOption({ index: 1 });
+    await expect(page.getByTestId('species-choice-human-skillful')).not.toHaveValue('');
+    const skillfulLabel = await page.locator('h3', { hasText: 'Skillful' }).first().innerText();
+    expect(skillfulLabel).not.toContain('Skillful skill proficiency');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-rolled');
+    await expect(page.getByTestId('ability-roll-needed')).toBeVisible();
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 1 of 3');
+    const firstPool = await page.getByTestId('ability-roll-status').innerText();
+
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 2 of 3');
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 3 of 3');
+    await expect(page.getByTestId('roll-abilities')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('ability-roll-status')).not.toHaveText(firstPool);
+
+    const poolMatch = (await page.getByTestId('ability-roll-status').innerText()).match(
+      /Current pool: ([0-9, ]+)\./,
+    );
+    expect(poolMatch).not.toBeNull();
+    const pool = poolMatch![1]!.split(',').map((part) => part.trim());
+    expect(pool).toHaveLength(6);
+
+    const abilities = [
+      'strength',
+      'dexterity',
+      'constitution',
+      'intelligence',
+      'wisdom',
+      'charisma',
+    ] as const;
+    for (let index = 0; index < abilities.length; index += 1) {
+      await page.getByTestId(`ability-select-${abilities[index]}`).selectOption(pool[index]!);
+    }
+    await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
   });
 
   test('another account cannot read a character by id or see it in the vault', async ({

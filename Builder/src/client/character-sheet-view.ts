@@ -202,3 +202,48 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
         .join(' · ')}</p>
     </section>`;
 }
+
+/**
+ * Compact live preview for the creation wizard sidebar. Same server-derived
+ * numbers as the full sheet — just fewer panels so it fits beside the steps.
+ */
+export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
+  const abilityBlock = ABILITIES.map((ability) => {
+    const score = sheet.abilityScores[ability];
+    return `
+      <div class="ability-card compact">
+        <span class="ability-name">${escapeHtml(ABILITY_LABELS[ability])}</span>
+        <span class="ability-score">${score.value}</span>
+        <span class="ability-modifier">${escapeHtml(formatModifier(sheet.abilityModifiers[ability]))}</span>
+      </div>`;
+  }).join('');
+
+  const proficientSkills = sheet.skills
+    .filter((skill) => skill.proficient)
+    .map((skill) => skill.label)
+    .join(', ');
+
+  return `
+    <div class="live-sheet-body" data-testid="live-sheet-stats">
+      <div class="stat-grid compact">
+        ${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
+        ${explained('Armor Class', sheet.armorClass, 'preview-armor-class')}
+        ${explained('Initiative', sheet.initiative, 'preview-initiative', formatModifier)}
+        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}
+      </div>
+      <div class="ability-grid compact">${abilityBlock}</div>
+      <p class="record-meta"><b>Skills:</b> ${
+        proficientSkills.length === 0 ? 'None yet' : escapeHtml(proficientSkills)
+      }</p>
+      <p class="record-meta"><b>Features:</b> ${
+        sheet.features.length === 0
+          ? 'None yet'
+          : escapeHtml(sheet.features.map((feature) => feature.name).join(', '))
+      }</p>
+      <p class="record-meta"><b>Gear:</b> ${
+        sheet.equipment.length === 0
+          ? 'None yet'
+          : escapeHtml(sheet.equipment.map((item) => item.name).join(', '))
+      }</p>
+    </div>`;
+}

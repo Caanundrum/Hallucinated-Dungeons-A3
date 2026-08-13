@@ -59,10 +59,17 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
 };
 
 /** Ability-generation methods this phase supports. */
-export const ABILITY_METHODS = ['standard-array', 'point-buy'] as const;
+export const ABILITY_METHODS = ['standard-array', 'point-buy', 'rolled'] as const;
 export type AbilityMethod = (typeof ABILITY_METHODS)[number];
 
 export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8] as const;
+
+/**
+ * Rolled Ability Scores: 4d6 drop lowest, six times. The player may roll at
+ * most this many times per draft. Each new roll replaces the previous pool;
+ * earlier pools cannot be restored.
+ */
+export const MAX_ABILITY_ROLL_ATTEMPTS = 3;
 
 /** Point-buy budget and per-score cost, per the SRD point-buy rules. */
 export const POINT_BUY_BUDGET = 27;
@@ -89,6 +96,16 @@ export interface CharacterChoices {
   readonly abilityMethod: AbilityMethod;
   /** Base scores before background increases, keyed by ability. */
   readonly baseAbilityScores: Partial<AbilityScores>;
+  /**
+   * Server-authored pool from the latest Ability Score roll (4d6 drop lowest
+   * × 6). Null until the player rolls. The client must never invent this.
+   */
+  readonly rolledScorePool: readonly number[] | null;
+  /**
+   * How many times this draft has rolled Ability Scores. Caps at
+   * `MAX_ABILITY_ROLL_ATTEMPTS`. Server-authored; the client cannot reset it.
+   */
+  readonly abilityRollAttempts: number;
   /**
    * The Background ability increases, which the SRD allows as either +2 and
    * +1 across two of the Background's three abilities, or +1 to each of the

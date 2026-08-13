@@ -232,7 +232,7 @@ export const SPECIES: readonly SpeciesRecord[] = [
     choices: [
       {
         id: 'human-skillful',
-        label: 'Skillful skill proficiency',
+        label: 'Skillful — choose one skill',
         choose: 1,
         grantsSkillProficiency: true,
         from: SKILLS.map((skill) => ({ id: skill.id, label: skill.label })),
@@ -280,7 +280,7 @@ export const SPECIES: readonly SpeciesRecord[] = [
       },
       {
         id: 'elf-keen-senses',
-        label: 'Keen Senses skill proficiency',
+        label: 'Keen Senses — choose Insight, Perception, or Survival',
         choose: 1,
         grantsSkillProficiency: true,
         from: [

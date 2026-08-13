@@ -39,6 +39,7 @@ import {
   resolveSession,
 } from '../identity/development-identity.js';
 import {
+  AbilityRollsExhaustedError,
   CharacterIncompleteError,
   CharacterNotFoundError,
   applyQuickStart,
@@ -48,6 +49,7 @@ import {
   readCharacter,
   readDraft,
   readVault,
+  rollDraftAbilities,
   updateDraft,
 } from '../characters/characters.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
@@ -91,6 +93,7 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
+  [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]: 409,
   [ERROR_CODES.BAD_REQUEST]: 400,
   [ERROR_CODES.CANDIDATE_MISMATCH]: 409,
   [ERROR_CODES.CHARACTER_INCOMPLETE]: 409,
@@ -108,6 +111,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
 };
 
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
+  [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]:
+    'You have already used all three Ability Score rolls. Earlier rolls cannot be restored.',
   [ERROR_CODES.BAD_REQUEST]: 'The request body was not valid JSON in the expected shape.',
   [ERROR_CODES.CANDIDATE_MISMATCH]:
     'This page was loaded from a different candidate than the one now running. Reload the page to continue.',
@@ -684,6 +689,23 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const rollAbilitiesMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/roll-abilities$/.exec(
+        path,
+      );
+      if (rollAbilitiesMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const draft = await rollDraftAbilities({
+          firestore,
+          accountId,
+          draftId: rollAbilitiesMatch[1]!,
+        });
+        sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+        return;
+      }
+
       const commitMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/commit$/.exec(path);
       if (commitMatch !== null) {
         if (method !== 'POST') {
@@ -716,6 +738,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof CharacterIncompleteError) {
         sendError(response, ERROR_CODES.CHARACTER_INCOMPLETE);
+        return;
+      }
+      if (error instanceof AbilityRollsExhaustedError) {
+        sendError(response, ERROR_CODES.ABILITY_ROLLS_EXHAUSTED);
         return;
       }
       throw error;
