@@ -63,6 +63,23 @@ async function assignStandardArray(page: Page): Promise<void> {
   }
 }
 
+async function assignScorePool(page: Page, pool: readonly string[]): Promise<void> {
+  const abilities = [
+    'strength',
+    'dexterity',
+    'constitution',
+    'intelligence',
+    'wisdom',
+    'charisma',
+  ] as const;
+  for (let index = 0; index < abilities.length; index += 1) {
+    const ability = abilities[index]!;
+    const score = pool[index]!;
+    await page.getByTestId(`ability-select-${ability}`).selectOption(score);
+    await expect(page.getByTestId(`ability-select-${ability}`)).toHaveValue(score);
+  }
+}
+
 test.describe('Phase 1 character creation and Character Vault', () => {
   test('home and nav reach an empty Character Vault after entering the Local Arena', async ({
     page,
@@ -240,17 +257,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     const pool = poolMatch![1]!.split(',').map((part) => part.trim());
     expect(pool).toHaveLength(6);
 
-    const abilities = [
-      'strength',
-      'dexterity',
-      'constitution',
-      'intelligence',
-      'wisdom',
-      'charisma',
-    ] as const;
-    for (let index = 0; index < abilities.length; index += 1) {
-      await page.getByTestId(`ability-select-${abilities[index]}`).selectOption(pool[index]!);
-    }
+    await assignScorePool(page, pool);
     await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
   });
 
@@ -272,9 +279,8 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     const characterId = characterUrl.split('/').pop();
     expect(characterId).toMatch(/^[A-Za-z0-9-]{1,64}$/);
 
-    await page.getByTestId('nav-diagnostics').click();
-    await page.getByTestId('leave-arena').click();
-    await expect(page.getByTestId('enter-arena')).toBeVisible();
+    await page.getByTestId('shell-leave-account').click();
+    await expect(page.getByTestId('shell-enter-account')).toBeVisible();
     await enterArena(page);
 
     await openVault(page);

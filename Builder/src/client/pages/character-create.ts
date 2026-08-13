@@ -112,6 +112,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let gateBusy = false;
   let gateError: string | null = null;
   let draftOpened = false;
+  /** UI-only: remembers +2/+1 vs +1/+1/+1 before bonuses are fully assigned. */
+  let backgroundBonusPattern: BonusPattern | null = null;
+  let backgroundPlusTwo: Ability | '' = '';
+  let backgroundPlusOne: Ability | '' = '';
   const mountToken = beginPageMount(container);
 
   async function openOwnedDraft(): Promise<void> {
@@ -341,15 +345,20 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
     const detail = state.options.backgroundDetail;
     const bonuses = state.draft.choices.backgroundAbilityBonuses;
-    const pattern = detail === null ? null : inferBonusPattern(bonuses, detail.abilityOptions);
-    const plusTwoAbility =
-      pattern === 'plus-two-plus-one'
-        ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 2) ?? null)
-        : null;
-    const plusOneAbility =
-      pattern === 'plus-two-plus-one'
-        ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 1) ?? null)
-        : null;
+    const inferred = detail === null ? null : inferBonusPattern(bonuses, detail.abilityOptions);
+    const pattern = backgroundBonusPattern ?? inferred;
+    const plusTwoAbility: Ability | '' =
+      backgroundPlusTwo !== ''
+        ? backgroundPlusTwo
+        : pattern === 'plus-two-plus-one'
+          ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 2) ?? '')
+          : '';
+    const plusOneAbility: Ability | '' =
+      backgroundPlusOne !== ''
+        ? backgroundPlusOne
+        : pattern === 'plus-two-plus-one'
+          ? (detail!.abilityOptions.find((ability) => bonuses[ability] === 1) ?? '')
+          : '';
 
     return `
       <h3>Choose a Background</h3>
@@ -896,7 +905,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     const radioHandlers: ReadonlyArray<[string, (value: string) => CharacterChoices]> = [
       ['class', (value) => ({ ...base, classId: value, classSkillIds: [], classChoiceIds: {}, classEquipmentOptionId: null, cantripIds: [], spellIds: [] })],
-      ['background', (value) => ({ ...base, backgroundId: value, backgroundAbilityBonuses: {}, backgroundEquipmentOptionId: null })],
+      [
+        'background',
+        (value) => {
+          backgroundBonusPattern = null;
+          backgroundPlusTwo = '';
+          backgroundPlusOne = '';
+          return { ...base, backgroundId: value, backgroundAbilityBonuses: {}, backgroundEquipmentOptionId: null };
+        },
+      ],
       ['species', (value) => ({ ...base, speciesId: value, speciesChoiceIds: {} })],
       ['ability-method', (value) => ({ ...base, abilityMethod: value as CharacterChoices['abilityMethod'], baseAbilityScores: {} })],
       ['class-equipment', (value) => ({ ...base, classEquipmentOptionId: value })],
@@ -962,6 +979,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           return;
         }
         const nextPattern = input.value as BonusPattern;
+        backgroundBonusPattern = nextPattern;
+        backgroundPlusTwo = '';
+        backgroundPlusOne = '';
         if (nextPattern === 'plus-one-each') {
           void commitChoices({
             ...base,
@@ -976,17 +996,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const plusTwoSelect = container.querySelector<HTMLSelectElement>('[data-bonus-role="plus-two"]');
     const plusOneSelect = container.querySelector<HTMLSelectElement>('[data-bonus-role="plus-one"]');
     const commitPlusTwoPlusOne = (): void => {
-      const plusTwo = plusTwoSelect?.value ?? '';
-      const plusOne = plusOneSelect?.value ?? '';
-      if (plusTwo === '' || plusOne === '' || plusTwo === plusOne) {
-        void commitChoices({ ...base, backgroundAbilityBonuses: {} });
+      backgroundPlusTwo = (plusTwoSelect?.value ?? '') as Ability | '';
+      backgroundPlusOne = (plusOneSelect?.value ?? '') as Ability | '';
+      if (
+        backgroundPlusTwo === '' ||
+        backgroundPlusOne === '' ||
+        backgroundPlusTwo === backgroundPlusOne
+      ) {
+        // Keep local picks visible; only persist once both abilities are set.
+        render();
         return;
       }
       void commitChoices({
         ...base,
         backgroundAbilityBonuses: {
-          [plusTwo as Ability]: 2,
-          [plusOne as Ability]: 1,
+          [backgroundPlusTwo]: 2,
+          [backgroundPlusOne]: 1,
         },
       });
     };
