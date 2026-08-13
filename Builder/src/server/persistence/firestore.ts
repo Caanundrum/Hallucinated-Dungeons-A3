@@ -21,6 +21,10 @@ export const COLLECTIONS = {
   arenaBaseline: 'arenaBaseline',
   characterDrafts: 'characterDrafts',
   characters: 'characters',
+  campaigns: 'campaigns',
+  campaignMemberships: 'campaignMemberships',
+  campaignInvitations: 'campaignInvitations',
+  campaignSeats: 'campaignSeats',
 } as const;
 
 export interface CanonicalStore {

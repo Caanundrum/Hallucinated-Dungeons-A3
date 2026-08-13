@@ -97,25 +97,25 @@
       "id": "P1-CAMPAIGN-LIFECYCLE",
       "source": "25 Phase 1 build scope; 1.5.4",
       "behavior": "Campaign creation, invitations, membership, seats, Session Zero, safety and content settings, group-decision policy, and campaign ownership. Campaign ownership grants no character ownership.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/server/campaigns/campaigns.ts, Builder/src/client/pages/campaigns.ts, campaign-create.ts, campaign-detail.ts, invite.ts, COLLECTIONS.campaigns/campaignMemberships/campaignInvitations/campaignSeats. Session Zero deep UI, safety settings, and group-decision policy remain for the settings slice.",
+      "verification": "tests/e2e/phase1-campaigns.spec.ts; tests/unit/campaign-contract.test.mjs",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-DIRECTOR-CONFIG-LOCK",
       "source": "1.5.21; 25 Phase 1 build scope",
       "behavior": "Campaign creation requires choosing Veyra or Garrick and then one approved personality. Both persist with the campaign, are not editable by ordinary users after creation, and carry a deterministic derived avatar key. Phase 1 exposes no Address-the-Director response control or other simulated AI behavior, and labels this flow truthfully as configuration for the later AI-enabled table.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/campaign-contract.ts, Builder/src/server/campaigns/director-catalog.ts, createCampaign + updateCampaign Director lock, campaign-create UI with recommended-but-not-default Friendly Adventurer",
+      "verification": "tests/e2e/phase1-campaigns.spec.ts (explicit choice, PATCH lock 409 DIRECTOR_CONFIG_LOCKED, avatar key persistence); tests/unit/campaign-contract.test.mjs",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-SEATS",
       "source": "7.7; 7.7.2",
       "behavior": "Entering a campaign requires a server-created seat. A player may select only a character whose ownerAccountId equals the verified accountId. No transfer, borrowing, seizing, or impersonation of ownership is possible.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/server/campaigns/campaigns.ts createSeat; campaign-detail seat UI; seat binds account, campaign, owned character, role, and deviceSessionId",
+      "verification": "tests/e2e/phase1-campaigns.spec.ts (owner and guest seat owned characters; foreign characterId returns 404)",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-SETTINGS",

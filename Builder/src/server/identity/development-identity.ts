@@ -30,6 +30,8 @@ export interface MintedSession {
 export interface ResolvedSession {
   readonly accountId: string;
   readonly identity: DevelopmentIdentityProjection;
+  /** Opaque device-session identifier used when binding a seat (Section 7.7.2). */
+  readonly deviceSessionId: string;
 }
 
 export class IdentityUnavailableError extends Error {
@@ -188,6 +190,7 @@ export async function resolveSession(options: {
       identityMode: 'development_test_identity',
       expiresAt: toIsoString(identity.expiresAt),
     },
+    deviceSessionId: sessionTokenHash,
   };
 }
 

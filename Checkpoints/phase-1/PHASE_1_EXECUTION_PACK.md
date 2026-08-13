@@ -181,6 +181,6 @@ Internal workstream checkpoints, not gates. QA handoff happens once, at the phas
 4. Account projection surface over the existing development identity. **(done — chunk 1d)**
 5. Character creation: mechanical steps, validation, derived values, drafts. **(done — chunk 1c)**
 6. Identity & Final Review, Create Character, Character Vault, ownership. **(done — chunk 1c)**
-7. Campaign creation with Veyra/Garrick and personality lock, invitations, membership, seats.
+7. Campaign creation with Veyra/Garrick and personality lock, invitations, membership, seats. **(done — chunk 1e)**
 8. Settings model and the controls with real behavior; Dock and Action Composer structure.
 9. Reentry journey, coverage model, freeze, Builder Verification, QA, human gate.

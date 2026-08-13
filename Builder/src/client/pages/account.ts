@@ -97,6 +97,7 @@ export function mountAccountPage(host: PageHost): void {
                 ${busy ? 'Signing out…' : 'Sign out'}
               </button>
               <a href="/characters" data-link data-testid="account-characters-link">Open Character Vault</a>
+              <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Campaigns</a>
             </div>
           </section>
           <p class="record-meta">

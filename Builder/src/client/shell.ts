@@ -85,6 +85,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
               <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
+              <li><a href="/campaigns" data-link data-testid="nav-campaigns">Campaigns</a></li>
               <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
               <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Local Arena diagnostics</a></li>
             </ul>
@@ -199,6 +200,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
         const matches =
           linkPath === path ||
           (linkPath === '/characters' && path.startsWith('/characters/')) ||
+          (linkPath === '/campaigns' && path.startsWith('/campaigns/')) ||
           (linkPath === '/account' && path === '/account');
         if (matches) {
           link.setAttribute('aria-current', 'page');

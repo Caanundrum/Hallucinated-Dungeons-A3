@@ -52,6 +52,23 @@ import {
   rollDraftAbilities,
   updateDraft,
 } from '../characters/characters.js';
+import {
+  AlreadyMemberError,
+  AlreadySeatedError,
+  CampaignNotFoundError,
+  CampaignValidationError,
+  DirectorConfigLockedError,
+  InvitationUnavailableError,
+  acceptInvitation,
+  createCampaign,
+  createInvitation,
+  createSeat,
+  listCampaigns,
+  previewInvitation,
+  readCampaignDetail,
+  updateCampaign,
+} from '../campaigns/campaigns.js';
+import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
 import { renderLegalPage } from '../legal/render-legal-page.js';
 import { buildDraftOptions } from '../rules/character-rules.js';
@@ -94,11 +111,15 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]: 409,
+  [ERROR_CODES.ALREADY_MEMBER]: 409,
+  [ERROR_CODES.ALREADY_SEATED]: 409,
   [ERROR_CODES.BAD_REQUEST]: 400,
   [ERROR_CODES.CANDIDATE_MISMATCH]: 409,
   [ERROR_CODES.CHARACTER_INCOMPLETE]: 409,
+  [ERROR_CODES.DIRECTOR_CONFIG_LOCKED]: 409,
   [ERROR_CODES.FORBIDDEN_ORIGIN]: 403,
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]: 403,
+  [ERROR_CODES.INVITATION_UNAVAILABLE]: 404,
   [ERROR_CODES.NOT_AUTHENTICATED]: 401,
   [ERROR_CODES.NOT_FOUND]: 404,
   [ERROR_CODES.NOTE_EMPTY]: 400,
@@ -113,15 +134,21 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]:
     'You have already used all three Ability Score rolls. Earlier rolls cannot be restored.',
+  [ERROR_CODES.ALREADY_MEMBER]: 'This development account is already a member of that campaign.',
+  [ERROR_CODES.ALREADY_SEATED]: 'This development account already has a seat in that campaign.',
   [ERROR_CODES.BAD_REQUEST]: 'The request body was not valid JSON in the expected shape.',
   [ERROR_CODES.CANDIDATE_MISMATCH]:
     'This page was loaded from a different candidate than the one now running. Reload the page to continue.',
   [ERROR_CODES.CHARACTER_INCOMPLETE]:
     'This character still has required choices to resolve, so it was not created.',
+  [ERROR_CODES.DIRECTOR_CONFIG_LOCKED]:
+    'Game Director identity and personality are locked after campaign creation and cannot be changed by ordinary users.',
   [ERROR_CODES.FORBIDDEN_ORIGIN]:
     'This request did not come from the declared Local Arena client origin.',
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]:
     'Development identities are available only in the Local Execution Environment.',
+  [ERROR_CODES.INVITATION_UNAVAILABLE]:
+    'That invitation is not available. Ask the campaign owner for a current invite link.',
   [ERROR_CODES.NOT_AUTHENTICATED]:
     'Sign in with a Local Arena development account before continuing.',
   [ERROR_CODES.NOT_FOUND]: 'No such route.',
@@ -581,6 +608,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (
+      path === '/api/campaigns' ||
+      path.startsWith('/api/campaigns/') ||
+      path === '/api/directors/catalog' ||
+      path.startsWith('/api/invitations/')
+    ) {
+      await handleCampaignRequest(request, response, method, path);
+      return;
+    }
+
     sendError(response, ERROR_CODES.NOT_FOUND);
   }
 
@@ -742,6 +779,217 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof AbilityRollsExhaustedError) {
         sendError(response, ERROR_CODES.ABILITY_ROLLS_EXHAUSTED);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Campaigns, Director catalog, invitations, membership, and seats.
+   *
+   * Director identity/personality is locked at create. Ordinary PATCH that
+   * tries to change it fails closed. Foreign campaigns resolve as not found.
+   */
+  async function handleCampaignRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    method: string,
+    path: string,
+  ): Promise<void> {
+    const readBody = async (): Promise<unknown | typeof BODY_REJECTED> => {
+      try {
+        return await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return BODY_REJECTED;
+      }
+    };
+
+    try {
+      if (path === '/api/directors/catalog' && method === 'GET') {
+        sendJson(response, 200, buildDirectorCatalog());
+        return;
+      }
+
+      const invitePreviewMatch = /^\/api\/invitations\/([A-Za-z0-9]{8,32})$/.exec(path);
+      if (invitePreviewMatch !== null && method === 'GET') {
+        sendJson(
+          response,
+          200,
+          await previewInvitation({
+            firestore,
+            inviteCode: invitePreviewMatch[1]!,
+          }),
+        );
+        return;
+      }
+
+      const inviteAcceptMatch = /^\/api\/invitations\/([A-Za-z0-9]{8,32})\/accept$/.exec(path);
+      if (inviteAcceptMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const session = await resolveSession({ firestore, sessionToken: sessionTokenFrom(request) });
+        if (session === null) {
+          sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+          return;
+        }
+        const campaign = await acceptInvitation({
+          firestore,
+          accountId: session.accountId,
+          displayLabel: session.identity.displayLabel,
+          inviteCode: inviteAcceptMatch[1]!,
+        });
+        sendJson(response, 200, campaign);
+        return;
+      }
+
+      const session = await resolveSession({ firestore, sessionToken: sessionTokenFrom(request) });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      const accountId = session.accountId;
+
+      if (path === '/api/campaigns' && method === 'GET') {
+        sendJson(response, 200, await listCampaigns({ firestore, accountId }));
+        return;
+      }
+
+      if (path === '/api/campaigns' && method === 'POST') {
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          name?: unknown;
+          summary?: unknown;
+          directorIdentity?: unknown;
+          directorPersonality?: unknown;
+        };
+        const campaign = await createCampaign({
+          firestore,
+          accountId,
+          displayLabel: session.identity.displayLabel,
+          name: payload.name,
+          summary: payload.summary,
+          directorIdentity: payload.directorIdentity,
+          directorPersonality: payload.directorPersonality,
+        });
+        sendJson(response, 201, campaign);
+        return;
+      }
+
+      const campaignMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})$/.exec(path);
+      if (campaignMatch !== null) {
+        const campaignId = campaignMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, await readCampaignDetail({ firestore, accountId, campaignId }));
+          return;
+        }
+        if (method === 'PATCH') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const payload = body as {
+            name?: unknown;
+            summary?: unknown;
+            directorIdentity?: unknown;
+            directorPersonality?: unknown;
+          };
+          const campaign = await updateCampaign({
+            firestore,
+            accountId,
+            campaignId,
+            name: payload.name,
+            summary: payload.summary,
+            directorIdentity: payload.directorIdentity,
+            directorPersonality: payload.directorPersonality,
+          });
+          sendJson(response, 200, campaign);
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const invitationCreateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/invitations$/.exec(
+        path,
+      );
+      if (invitationCreateMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const invitation = await createInvitation({
+          firestore,
+          accountId,
+          campaignId: invitationCreateMatch[1]!,
+        });
+        sendJson(response, 201, invitation);
+        return;
+      }
+
+      const seatCreateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/seats$/.exec(path);
+      if (seatCreateMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const characterId = (body as { characterId?: unknown } | undefined)?.characterId;
+        if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 64) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const seat = await createSeat({
+          firestore,
+          accountId,
+          campaignId: seatCreateMatch[1]!,
+          characterId,
+          deviceSessionId: session.deviceSessionId,
+        });
+        sendJson(response, 201, seat);
+        return;
+      }
+
+      sendError(response, ERROR_CODES.NOT_FOUND);
+    } catch (error) {
+      if (error instanceof CampaignNotFoundError || error instanceof CharacterNotFoundError) {
+        sendError(response, ERROR_CODES.NOT_FOUND);
+        return;
+      }
+      if (error instanceof InvitationUnavailableError) {
+        sendError(response, ERROR_CODES.INVITATION_UNAVAILABLE);
+        return;
+      }
+      if (error instanceof DirectorConfigLockedError) {
+        sendError(response, ERROR_CODES.DIRECTOR_CONFIG_LOCKED);
+        return;
+      }
+      if (error instanceof AlreadyMemberError) {
+        sendError(response, ERROR_CODES.ALREADY_MEMBER);
+        return;
+      }
+      if (error instanceof AlreadySeatedError) {
+        sendError(response, ERROR_CODES.ALREADY_SEATED);
+        return;
+      }
+      if (error instanceof CampaignValidationError) {
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error.message,
+        } satisfies ApiErrorBody);
         return;
       }
       throw error;
