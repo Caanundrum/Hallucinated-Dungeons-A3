@@ -218,7 +218,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                 ? `<p class="record-meta" data-testid="seat-need-character">
                      Create a character you own in the Character Vault before seating.
                    </p>
-                   <p><a href="/characters" data-link data-testid="seat-vault-link">Open Character Vault</a></p>`
+                   <p><a href="/characters/new?returnCampaign=${escapeHtml(campaignId)}" data-link data-testid="seat-vault-link">Create a character for this campaign</a></p>`
                 : `<div class="actions seat-actions">
                      <label class="field">
                        <span>Seat a character you own</span>

@@ -1318,6 +1318,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
               draftId: current.draft.draftId,
             });
             shell.announce(`${character.identity.name} created.`);
+            const returnCampaign = new URLSearchParams(window.location.search).get('returnCampaign');
+            if (
+              returnCampaign !== null &&
+              /^[A-Za-z0-9-]{1,64}$/.test(returnCampaign) &&
+              returnCampaign !== 'new'
+            ) {
+              navigate(`/campaigns/${returnCampaign}`);
+              return;
+            }
             navigate(`/characters/${character.characterId}`);
             return;
           } catch (failure) {
