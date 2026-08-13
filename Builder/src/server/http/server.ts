@@ -117,7 +117,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'This request did not come from the declared Local Arena client origin.',
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]:
     'Development identities are available only in the Local Execution Environment.',
-  [ERROR_CODES.NOT_AUTHENTICATED]: 'Enter the Local Arena before recording a foundation check.',
+  [ERROR_CODES.NOT_AUTHENTICATED]:
+    'Sign in with a Local Arena development account before continuing.',
   [ERROR_CODES.NOT_FOUND]: 'No such route.',
   [ERROR_CODES.NOTE_EMPTY]: 'Enter a short note before recording a foundation check.',
   [ERROR_CODES.NOTE_TOO_LONG]: 'That note is longer than the 120 characters this record accepts.',
@@ -126,7 +127,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'That request body is larger than this route accepts, so it was refused before being read.',
   [ERROR_CODES.REQUEST_ID_INVALID]:
     'The submission was missing a valid request identifier, so it could not be made retry-safe.',
-  [ERROR_CODES.SESSION_EXPIRED]: 'This development session expired. Enter the Local Arena again.',
+  [ERROR_CODES.SESSION_EXPIRED]:
+    'This development session expired. Sign in again with a Local Arena development account.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };

@@ -32,6 +32,8 @@ import {
   saveDraft,
   type DraftResponse,
 } from '../api.js';
+import { getAccount, subscribeAccount } from '../account-session.js';
+import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { navigate } from '../router.js';
@@ -47,6 +49,31 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let activeStep: WizardStep = 'class';
   let busy = false;
   let error: string | null = null;
+  let gateBusy = false;
+  let gateError: string | null = null;
+  let pageActive = true;
+  let draftOpened = false;
+
+  async function openOwnedDraft(): Promise<void> {
+    if (candidate === null) {
+      error = 'The Local Arena server did not respond.';
+      render();
+      return;
+    }
+    if (getAccount() === null) {
+      render();
+      return;
+    }
+    try {
+      current = await openDraft(candidate.candidateId);
+      draftOpened = true;
+      activeStep =
+        WIZARD_STEPS.find((step) => !current?.draft.completedSteps.includes(step)) ?? 'identity';
+    } catch (failure) {
+      error = failure instanceof ApiFailure ? failure.message : 'Your draft could not be opened.';
+    }
+    render();
+  }
 
   async function commitChoices(next: CharacterChoices): Promise<void> {
     if (candidate === null || current === null || busy) {
@@ -473,6 +500,36 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function render(): void {
+    if (!pageActive) {
+      return;
+    }
+
+    if (getAccount() === null) {
+      container.innerHTML = renderSignedOutGate({
+        title: 'Create a character',
+        body: 'Sign in with a Local Arena development account before starting character creation. Your draft will be owned by that account.',
+        candidate,
+        busy: gateBusy,
+        error: gateError,
+      });
+      bindSignedOutGate({
+        container,
+        shell,
+        candidate,
+        onSignedIn: () => {
+          void openOwnedDraft();
+        },
+        setBusy: (next) => {
+          gateBusy = next;
+        },
+        setError: (message) => {
+          gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+
     const state = current;
 
     container.innerHTML = `
@@ -721,20 +778,29 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   render();
 
-  void (async () => {
-    if (candidate === null) {
-      error = 'The Local Arena server did not respond.';
+  const unsubscribe = subscribeAccount(() => {
+    if (getAccount() === null) {
+      current = null;
+      draftOpened = false;
       render();
       return;
     }
-    try {
-      current = await openDraft(candidate.candidateId);
-      // Resume where the draft actually is: the first step still unresolved.
-      activeStep =
-        WIZARD_STEPS.find((step) => !current?.draft.completedSteps.includes(step)) ?? 'identity';
-    } catch (failure) {
-      error = failure instanceof ApiFailure ? failure.message : 'Your draft could not be opened.';
+    if (!draftOpened) {
+      void openOwnedDraft();
     }
-    render();
-  })();
+  });
+
+  const observer = new MutationObserver(() => {
+    if (
+      !container.querySelector('[data-testid="create-heading"]') &&
+      !container.querySelector('[data-testid="signed-out-heading"]')
+    ) {
+      pageActive = false;
+      unsubscribe();
+      observer.disconnect();
+    }
+  });
+  observer.observe(container, { childList: true });
+
+  void openOwnedDraft();
 }

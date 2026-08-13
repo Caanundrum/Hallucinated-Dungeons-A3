@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterArena, openArena } from './arena-page.js';
+import { enterArena } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1c actual-page journey: Character Vault, custom and
@@ -18,8 +18,17 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 }
 
 async function enterArenaForCharacters(page: Page): Promise<string> {
-  await openArena(page);
-  return enterArena(page);
+  await page.goto('/');
+  const skip = page.getByTestId('skip-intro');
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click();
+  }
+  await page.getByTestId('shell-enter-account').click();
+  await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  // Resolve the account id from the Account page rather than diagnostics.
+  await page.getByTestId('nav-account').click();
+  await expect(page.getByTestId('account-page-id')).toBeVisible();
+  return (await page.getByTestId('account-page-id').innerText()).trim();
 }
 
 async function openVault(page: Page): Promise<void> {

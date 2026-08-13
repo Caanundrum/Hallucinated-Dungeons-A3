@@ -116,6 +116,69 @@ h3 {
   gap: var(--space-4) var(--space-6);
 }
 
+.shell-account {
+  margin-left: auto;
+}
+
+.account-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.account-chip-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-decoration: none;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.account-chip-label {
+  color: var(--amber-highlight);
+  font-weight: 600;
+}
+
+a.account-chip-label:hover,
+a.account-chip-label:focus-visible {
+  color: var(--amber-action);
+}
+
+.account-details {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.account-details > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--border-weight) solid var(--structural-border);
+}
+
+.account-details dt {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.account-details dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.account-details code {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .wordmark {
   font-family: var(--font-heading);
   font-size: 1.25rem;

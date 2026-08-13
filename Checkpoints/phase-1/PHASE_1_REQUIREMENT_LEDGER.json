@@ -73,9 +73,9 @@
       "id": "P1-ACCOUNT-PROJECTION",
       "source": "1.5.20; 25 Phase 1 build order",
       "behavior": "The existing Development Test Identity is projected as a real account surface. No second identity provider, no password, and no Google flow are introduced.",
-      "implementation": "extends Builder/src/server/identity/",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/client/account-session.ts, Builder/src/client/pages/account.ts, Builder/src/client/auth-gate.ts, shell account chip in Builder/src/client/shell.ts; AccountProjection alias in shared/contract.ts",
+      "verification": "tests/e2e/phase1-account.spec.ts (shell sign-in, Account page, Character Vault gate, create without diagnostics, diagnostics sync); character and Phase 0 journeys still pass",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-CHARACTER-CREATION",

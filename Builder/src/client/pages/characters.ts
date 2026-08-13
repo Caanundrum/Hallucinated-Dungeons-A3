@@ -9,7 +9,9 @@
  */
 
 import type { CharacterVaultProjection } from '../../shared/character-contract.js';
+import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchVault } from '../api.js';
+import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
@@ -20,13 +22,16 @@ function formatTimestamp(iso: string): string {
 }
 
 export function mountCharactersPage(host: PageHost): void {
-  const { container, shell } = host;
+  const { container, shell, candidate } = host;
   shell.setDocumentTitle('Character Vault');
 
   let vault: CharacterVaultProjection | null = null;
   let error: string | null = null;
+  let gateBusy = false;
+  let gateError: string | null = null;
+  let active = true;
 
-  function render(): void {
+  function renderSignedIn(): void {
     const characters = vault?.characters ?? [];
     const drafts = vault?.drafts ?? [];
 
@@ -102,17 +107,79 @@ export function mountCharactersPage(host: PageHost): void {
       ?.addEventListener('click', () => navigate('/characters/new'));
   }
 
-  render();
+  function render(): void {
+    if (!active) {
+      return;
+    }
+    if (getAccount() === null) {
+      container.innerHTML = renderSignedOutGate({
+        title: 'Character Vault',
+        body: 'Sign in with a Local Arena development account to see and create characters you own.',
+        candidate,
+        busy: gateBusy,
+        error: gateError,
+      });
+      bindSignedOutGate({
+        container,
+        shell,
+        candidate,
+        onSignedIn: () => {
+          void loadVault();
+        },
+        setBusy: (busy) => {
+          gateBusy = busy;
+        },
+        setError: (message) => {
+          gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+    renderSignedIn();
+  }
 
-  void (async () => {
+  async function loadVault(): Promise<void> {
+    error = null;
     try {
       vault = await fetchVault();
     } catch (failure) {
+      if (failure instanceof ApiFailure && failure.code === 'NOT_AUTHENTICATED') {
+        vault = null;
+        render();
+        return;
+      }
       error =
         failure instanceof ApiFailure
           ? failure.message
           : 'The Character Vault could not be loaded.';
     }
     render();
-  })();
+  }
+
+  const unsubscribe = subscribeAccount(() => {
+    if (getAccount() === null) {
+      vault = null;
+      render();
+      return;
+    }
+    void loadVault();
+  });
+
+  const observer = new MutationObserver(() => {
+    if (
+      !container.querySelector('[data-testid="vault-heading"]') &&
+      !container.querySelector('[data-testid="signed-out-heading"]')
+    ) {
+      active = false;
+      unsubscribe();
+      observer.disconnect();
+    }
+  });
+  observer.observe(container, { childList: true });
+
+  render();
+  if (getAccount() !== null) {
+    void loadVault();
+  }
 }

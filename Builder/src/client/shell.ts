@@ -10,10 +10,20 @@
  * destroyed-and-recreated live region cannot reliably announce anything,
  * which is exactly the defect Phase 0 QA found and fixed), and focus
  * management on navigation.
+ *
+ * Phase 1 chunk 1d adds the account chip: the Development Test Identity
+ * projected as the ordinary signed-in account (P1-ACCOUNT-PROJECTION).
  */
 
-import type { CandidateIdentity } from '../shared/contract.js';
+import type { AccountProjection, CandidateIdentity } from '../shared/contract.js';
 import { LEGAL_ROUTES } from '../shared/routes.js';
+import {
+  getAccount,
+  signInAccount,
+  signOutAccount,
+  subscribeAccount,
+} from './account-session.js';
+import { ApiFailure } from './api.js';
 import { escapeHtml } from './dom-utils.js';
 import { navigate } from './router.js';
 
@@ -36,6 +46,29 @@ const LEGAL_LABELS: Record<string, string> = {
   '/legal/content-and-safety': 'Content and Safety Notice',
 };
 
+function accountChipMarkup(account: AccountProjection | null, busy: boolean): string {
+  if (account === null) {
+    return `
+      <div class="account-chip" data-testid="shell-account-chip">
+        <span class="account-chip-label" data-testid="shell-account-status">Not signed in</span>
+        <button type="button" data-testid="shell-enter-account" aria-disabled="${busy}">
+          ${busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </div>`;
+  }
+
+  return `
+    <div class="account-chip" data-testid="shell-account-chip">
+      <a class="account-chip-label" href="/account" data-link data-testid="shell-account-link"
+        title="${escapeHtml(account.accountId)}">
+        ${escapeHtml(account.displayLabel)}
+      </a>
+      <button type="button" class="secondary" data-testid="shell-leave-account" aria-disabled="${busy}">
+        ${busy ? 'Signing out…' : 'Sign out'}
+      </button>
+    </div>`;
+}
+
 /** Builds the shell chrome once and returns a handle pages use for the rest of the session. */
 export function mountShell(root: HTMLElement, candidate: CandidateIdentity | null): ShellHandle {
   const legalLinks = LEGAL_ROUTES.map(
@@ -52,9 +85,11 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
               <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
+              <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
               <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Local Arena diagnostics</a></li>
             </ul>
           </nav>
+          <div class="shell-account" data-testid="shell-account-slot"></div>
         </div>
       </header>
       <main id="main" class="shell-main" tabindex="-1"></main>
@@ -74,27 +109,97 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
     <div class="visually-hidden" role="status" aria-live="polite" data-testid="live-region"></div>`;
 
   const mainElement = root.querySelector<HTMLElement>('#main');
-  const liveRegion = root.querySelector<HTMLElement>('[data-testid="live-region"]');
-  if (mainElement === null || liveRegion === null) {
+  const liveRegionElement = root.querySelector<HTMLElement>('[data-testid="live-region"]');
+  const accountSlotElement = root.querySelector<HTMLElement>('[data-testid="shell-account-slot"]');
+  if (mainElement === null || liveRegionElement === null || accountSlotElement === null) {
     throw new Error('Shell failed to initialize its main landmark and live region.');
   }
+  const liveRegion = liveRegionElement;
+  const accountSlot = accountSlotElement;
 
   let lastAnnouncement = '';
+  let accountBusy = false;
+
+  function announce(message: string): void {
+    if (message === lastAnnouncement) {
+      return;
+    }
+    lastAnnouncement = message;
+    liveRegion.textContent = message;
+  }
+
+  function bindAccountChip(): void {
+    accountSlot
+      .querySelector<HTMLButtonElement>('[data-testid="shell-enter-account"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || accountBusy || getAccount() !== null) {
+            return;
+          }
+          accountBusy = true;
+          renderAccountChip();
+          try {
+            const account = await signInAccount(candidate);
+            announce(`Signed in as ${account.displayLabel}.`);
+          } catch (failure) {
+            announce(
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Could not mint a development account.',
+            );
+          } finally {
+            accountBusy = false;
+            renderAccountChip();
+          }
+        })();
+      });
+
+    accountSlot
+      .querySelector<HTMLButtonElement>('[data-testid="shell-leave-account"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || accountBusy || getAccount() === null) {
+            return;
+          }
+          accountBusy = true;
+          renderAccountChip();
+          try {
+            await signOutAccount(candidate);
+            announce('Signed out.');
+          } catch (failure) {
+            announce(
+              failure instanceof ApiFailure ? failure.message : 'Could not sign out.',
+            );
+          } finally {
+            accountBusy = false;
+            renderAccountChip();
+          }
+        })();
+      });
+  }
+
+  function renderAccountChip(): void {
+    accountSlot.innerHTML = accountChipMarkup(getAccount(), accountBusy);
+    bindAccountChip();
+  }
+
+  renderAccountChip();
+  subscribeAccount(() => {
+    if (!accountBusy) {
+      renderAccountChip();
+    }
+  });
 
   return {
     mainElement,
-    announce(message: string): void {
-      if (message === lastAnnouncement) {
-        return;
-      }
-      lastAnnouncement = message;
-      liveRegion.textContent = message;
-    },
+    announce,
     setActiveRoute(path: string): void {
       root.querySelectorAll<HTMLAnchorElement>('.primary-nav a[data-link]').forEach((link) => {
         const linkPath = new URL(link.href, window.location.href).pathname;
         const matches =
-          linkPath === path || (linkPath === '/characters' && path.startsWith('/characters/'));
+          linkPath === path ||
+          (linkPath === '/characters' && path.startsWith('/characters/')) ||
+          (linkPath === '/account' && path === '/account');
         if (matches) {
           link.setAttribute('aria-current', 'page');
         } else {

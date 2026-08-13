@@ -8,19 +8,24 @@
  */
 
 import type { CharacterProjection } from '../../shared/character-contract.js';
+import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchCharacter } from '../api.js';
+import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import type { PageHost } from './home.js';
 
 export function mountCharacterSheetPage(host: PageHost, characterId: string): void {
-  const { container, shell } = host;
+  const { container, shell, candidate } = host;
   shell.setDocumentTitle('Character');
 
   let character: CharacterProjection | null = null;
   let error: string | null = null;
+  let gateBusy = false;
+  let gateError: string | null = null;
+  let active = true;
 
-  function render(): void {
+  function renderSignedIn(): void {
     if (error !== null) {
       container.innerHTML = `
         <div class="page">
@@ -64,17 +69,81 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </div>`;
   }
 
-  render();
+  function render(): void {
+    if (!active) {
+      return;
+    }
+    if (getAccount() === null) {
+      container.innerHTML = renderSignedOutGate({
+        title: 'Character',
+        body: 'Sign in with a Local Arena development account to view characters you own.',
+        candidate,
+        busy: gateBusy,
+        error: gateError,
+      });
+      bindSignedOutGate({
+        container,
+        shell,
+        candidate,
+        onSignedIn: () => {
+          void loadCharacter();
+        },
+        setBusy: (busy) => {
+          gateBusy = busy;
+        },
+        setError: (message) => {
+          gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+    renderSignedIn();
+  }
 
-  void (async () => {
+  async function loadCharacter(): Promise<void> {
+    error = null;
+    character = null;
+    render();
     try {
       character = await fetchCharacter(characterId);
     } catch (failure) {
+      if (failure instanceof ApiFailure && failure.code === 'NOT_AUTHENTICATED') {
+        render();
+        return;
+      }
       error =
         failure instanceof ApiFailure
           ? failure.message
           : 'That character could not be loaded.';
     }
     render();
-  })();
+  }
+
+  const unsubscribe = subscribeAccount(() => {
+    if (getAccount() === null) {
+      character = null;
+      error = null;
+      render();
+      return;
+    }
+    void loadCharacter();
+  });
+
+  const observer = new MutationObserver(() => {
+    if (
+      !container.querySelector('[data-testid="character-sheet-heading"]') &&
+      !container.querySelector('[data-testid="signed-out-heading"]')
+    ) {
+      active = false;
+      unsubscribe();
+      observer.disconnect();
+    }
+  });
+  observer.observe(container, { childList: true });
+
+  render();
+  if (getAccount() !== null) {
+    void loadCharacter();
+  }
 }

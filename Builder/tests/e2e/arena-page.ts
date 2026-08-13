@@ -32,9 +32,27 @@ export async function openArena(page: Page): Promise<void> {
 
 /** Signs in with a server-minted development identity and returns its account id. */
 export async function enterArena(page: Page): Promise<string> {
+  // Prefer the product account surface (shell), falling back to diagnostics
+  // for Phase 0 journeys that still live on that page.
+  const shellEnter = page.getByTestId('shell-enter-account');
+  if (await shellEnter.isVisible().catch(() => false)) {
+    await shellEnter.click();
+    await expect(page.getByTestId('shell-account-link')).toBeVisible();
+    await page.getByTestId('nav-diagnostics').click();
+    await expect(page.getByTestId('account-id')).toBeVisible();
+    return (await page.getByTestId('account-id').innerText()).trim();
+  }
+
   await page.getByTestId('enter-arena').click();
   await expect(page.getByTestId('account-id')).toBeVisible();
   return (await page.getByTestId('account-id').innerText()).trim();
+}
+
+/** Signs in from the shell account chip without visiting diagnostics. */
+export async function enterAccountFromShell(page: Page): Promise<void> {
+  await expect(page.getByTestId('shell-enter-account')).toBeVisible();
+  await page.getByTestId('shell-enter-account').click();
+  await expect(page.getByTestId('shell-account-link')).toBeVisible();
 }
 
 /** Submits a foundation check and waits for the page to settle. */

@@ -8,7 +8,9 @@
 
 import type { CandidateIdentity } from '../shared/contract.js';
 import { characterIdFromPath, isSpaRoute } from '../shared/routes.js';
+import { hydrateAccount } from './account-session.js';
 import { fetchCandidate } from './api.js';
+import { mountAccountPage } from './pages/account.js';
 import { mountCharacterCreatePage } from './pages/character-create.js';
 import { mountCharacterSheetPage } from './pages/character-sheet.js';
 import { mountCharactersPage } from './pages/characters.js';
@@ -33,6 +35,7 @@ async function start(): Promise<void> {
   }
 
   const shell = mountShell(root as HTMLDivElement, candidate);
+  await hydrateAccount();
 
   // Focus is moved to the new page's heading only on a client-side route
   // change, not on the very first render. Stealing focus on the initial page
@@ -48,6 +51,8 @@ async function start(): Promise<void> {
 
     if (path === '/') {
       mountHomePage(host);
+    } else if (path === '/account') {
+      mountAccountPage(host);
     } else if (path === '/diagnostics') {
       mountDiagnosticsPage(host);
     } else if (path === '/characters') {

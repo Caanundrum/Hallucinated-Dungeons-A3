@@ -68,6 +68,13 @@ export interface DevelopmentIdentityProjection {
   readonly expiresAt: string;
 }
 
+/**
+ * Phase 1 account surface. Same Development Test Identity, projected as the
+ * ordinary account the product uses for ownership and navigation. No second
+ * identity provider is introduced (Section 1.5.20; P1-ACCOUNT-PROJECTION).
+ */
+export type AccountProjection = DevelopmentIdentityProjection;
+
 /** Server-produced projection of one persisted foundation check. */
 export interface FoundationCheckProjection {
   readonly checkId: string;
