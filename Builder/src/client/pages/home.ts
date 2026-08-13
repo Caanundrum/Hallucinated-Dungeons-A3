@@ -68,11 +68,12 @@ export function mountHomePage(host: PageHost): void {
       <section class="panel" aria-labelledby="status-heading">
         <h2 id="status-heading">What's here right now</h2>
         <p>
-          Character creation and the Character Vault are live for Local Arena development
-          identities. Campaigns and the tactical table arrive in later slices of this phase. The
-          Phase 0 foundation write/read path remains available under diagnostics.
+          Sign in with a Local Arena development account, then create characters in the Character
+          Vault. Campaigns arrive in the next slices. Diagnostics remains available for the Phase 0
+          foundation write/read path.
         </p>
         <div class="actions">
+          <a href="/account" data-link data-testid="home-account-link">Open Account</a>
           <a href="/characters" data-link data-testid="home-characters-link">Open the Character Vault</a>
           <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Open Local Arena diagnostics</a>
         </div>

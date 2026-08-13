@@ -28,6 +28,7 @@ import {
   leaveLocalArena,
   recordFoundationCheck,
 } from '../api.js';
+import { setAccountFromServer } from '../account-session.js';
 import { escapeHtml } from '../dom-utils.js';
 import type { PageHost } from './home.js';
 
@@ -325,6 +326,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
         failure.code === ERROR_CODES.SESSION_EXPIRED
       ) {
         state.identity = null;
+        setAccountFromServer(null);
         state.projection = null;
         state.pendingRequestId = null;
       }
@@ -345,6 +347,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
     try {
       state.identity = await enterLocalArena(candidate.candidateId);
+      setAccountFromServer(state.identity);
       state.projection = await fetchProjection();
       state.notice = `Signed in as ${state.identity.accountId}.`;
     } catch (failure) {
@@ -367,6 +370,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     try {
       await leaveLocalArena(candidate.candidateId);
       state.identity = null;
+      setAccountFromServer(null);
       state.projection = null;
       state.pendingRequestId = null;
       state.pendingNote = '';
@@ -440,6 +444,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
   void (async () => {
     try {
       state.identity = await fetchSession();
+      setAccountFromServer(state.identity);
       state.projection = await fetchProjection();
       render();
     } catch (failure) {

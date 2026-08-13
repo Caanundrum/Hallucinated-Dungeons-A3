@@ -13,7 +13,7 @@
  * a hard navigation or reload.
  */
 
-export const SPA_ROUTES = ['/', '/diagnostics', '/characters', '/characters/new'] as const;
+export const SPA_ROUTES = ['/', '/account', '/diagnostics', '/characters', '/characters/new'] as const;
 export type SpaRoute = (typeof SPA_ROUTES)[number];
 
 /**

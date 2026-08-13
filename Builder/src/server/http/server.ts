@@ -39,6 +39,7 @@ import {
   resolveSession,
 } from '../identity/development-identity.js';
 import {
+  AbilityRollsExhaustedError,
   CharacterIncompleteError,
   CharacterNotFoundError,
   applyQuickStart,
@@ -48,6 +49,7 @@ import {
   readCharacter,
   readDraft,
   readVault,
+  rollDraftAbilities,
   updateDraft,
 } from '../characters/characters.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
@@ -91,6 +93,7 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
+  [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]: 409,
   [ERROR_CODES.BAD_REQUEST]: 400,
   [ERROR_CODES.CANDIDATE_MISMATCH]: 409,
   [ERROR_CODES.CHARACTER_INCOMPLETE]: 409,
@@ -108,6 +111,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
 };
 
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
+  [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]:
+    'You have already used all three Ability Score rolls. Earlier rolls cannot be restored.',
   [ERROR_CODES.BAD_REQUEST]: 'The request body was not valid JSON in the expected shape.',
   [ERROR_CODES.CANDIDATE_MISMATCH]:
     'This page was loaded from a different candidate than the one now running. Reload the page to continue.',
@@ -117,7 +122,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'This request did not come from the declared Local Arena client origin.',
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]:
     'Development identities are available only in the Local Execution Environment.',
-  [ERROR_CODES.NOT_AUTHENTICATED]: 'Enter the Local Arena before recording a foundation check.',
+  [ERROR_CODES.NOT_AUTHENTICATED]:
+    'Sign in with a Local Arena development account before continuing.',
   [ERROR_CODES.NOT_FOUND]: 'No such route.',
   [ERROR_CODES.NOTE_EMPTY]: 'Enter a short note before recording a foundation check.',
   [ERROR_CODES.NOTE_TOO_LONG]: 'That note is longer than the 120 characters this record accepts.',
@@ -126,7 +132,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'That request body is larger than this route accepts, so it was refused before being read.',
   [ERROR_CODES.REQUEST_ID_INVALID]:
     'The submission was missing a valid request identifier, so it could not be made retry-safe.',
-  [ERROR_CODES.SESSION_EXPIRED]: 'This development session expired. Enter the Local Arena again.',
+  [ERROR_CODES.SESSION_EXPIRED]:
+    'This development session expired. Sign in again with a Local Arena development account.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };
@@ -682,6 +689,23 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const rollAbilitiesMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/roll-abilities$/.exec(
+        path,
+      );
+      if (rollAbilitiesMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const draft = await rollDraftAbilities({
+          firestore,
+          accountId,
+          draftId: rollAbilitiesMatch[1]!,
+        });
+        sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
+        return;
+      }
+
       const commitMatch = /^\/api\/characters\/drafts\/([A-Za-z0-9-]{1,64})\/commit$/.exec(path);
       if (commitMatch !== null) {
         if (method !== 'POST') {
@@ -714,6 +738,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof CharacterIncompleteError) {
         sendError(response, ERROR_CODES.CHARACTER_INCOMPLETE);
+        return;
+      }
+      if (error instanceof AbilityRollsExhaustedError) {
+        sendError(response, ERROR_CODES.ABILITY_ROLLS_EXHAUSTED);
         return;
       }
       throw error;

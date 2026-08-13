@@ -177,6 +177,10 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
     speciesId,
     abilityMethod: abilityMethod as AbilityMethod,
     baseAbilityScores,
+    // Roll state is server-authored. Parsing defaults these; updateDraft
+    // always restores the stored values so a client cannot forge or rewind.
+    rolledScorePool: null,
+    abilityRollAttempts: 0,
     backgroundAbilityBonuses,
     classSkillIds,
     speciesChoiceIds,

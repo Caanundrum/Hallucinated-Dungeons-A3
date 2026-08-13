@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterArena, openArena } from './arena-page.js';
+import { enterArena } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1c actual-page journey: Character Vault, custom and
@@ -18,8 +18,17 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 }
 
 async function enterArenaForCharacters(page: Page): Promise<string> {
-  await openArena(page);
-  return enterArena(page);
+  await page.goto('/');
+  const skip = page.getByTestId('skip-intro');
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click();
+  }
+  await page.getByTestId('shell-enter-account').click();
+  await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  // Resolve the account id from the Account page rather than diagnostics.
+  await page.getByTestId('nav-account').click();
+  await expect(page.getByTestId('account-page-id')).toBeVisible();
+  return (await page.getByTestId('account-page-id').innerText()).trim();
 }
 
 async function openVault(page: Page): Promise<void> {
@@ -54,6 +63,23 @@ async function assignStandardArray(page: Page): Promise<void> {
   }
 }
 
+async function assignScorePool(page: Page, pool: readonly string[]): Promise<void> {
+  const abilities = [
+    'strength',
+    'dexterity',
+    'constitution',
+    'intelligence',
+    'wisdom',
+    'charisma',
+  ] as const;
+  for (let index = 0; index < abilities.length; index += 1) {
+    const ability = abilities[index]!;
+    const score = pool[index]!;
+    await page.getByTestId(`ability-select-${ability}`).selectOption(score);
+    await expect(page.getByTestId(`ability-select-${ability}`)).toHaveValue(score);
+  }
+}
+
 test.describe('Phase 1 character creation and Character Vault', () => {
   test('home and nav reach an empty Character Vault after entering the Local Arena', async ({
     page,
@@ -76,11 +102,16 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('start-character').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
+    await page.getByTestId('tutorial-ask-no').click();
+    await expect(page.getByTestId('tutorial-ask')).toHaveCount(0);
+    await page.getByTestId('open-quick-start').click();
     await expect(page.getByTestId('quick-start-options')).toBeVisible();
 
     await chooseOption(page, 'option-stalwart-defender');
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await expect(page.getByTestId('sheet-hit-points')).not.toBeEmpty();
+    await expect(page.getByTestId('sheet-breakdown-legend')).toContainText('How we got this');
+    await expect(page.getByTestId('feature-fighting-style-defense')).toBeVisible();
 
     await page.getByTestId('identity-name').fill('Brannok Stone');
     await page.getByTestId('identity-name').dispatchEvent('change');
@@ -91,7 +122,9 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('character-sheet-heading')).toHaveText('Brannok Stone');
     await expect(page.getByTestId('character-summary')).toContainText('Fighter');
     await expect(page.getByTestId('sheet-hit-points')).not.toBeEmpty();
-    await expect(page.getByText('Why is this number?').first()).toBeVisible();
+    await expect(page.getByTestId('sheet-breakdown-legend')).toContainText('How we got this');
+    // Defense on Stalwart Defender / fighter kit must show in AC breakdown via tooltip markup.
+    await expect(page.getByTestId('sheet-armor-class')).toContainText('How we got this');
 
     await page.getByTestId('back-to-vault').click();
     await expect(page.getByTestId('character-list')).toBeVisible();
@@ -105,10 +138,14 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await openVault(page);
     await page.getByTestId('start-character').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
+    await page.getByTestId('tutorial-ask-no').click();
 
     await chooseOption(page, 'option-fighter');
     await chooseOption(page, 'check-athletics');
     await chooseOption(page, 'check-perception');
+    await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('wizard-continue').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Background');
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('draft-list')).toBeVisible();
@@ -142,27 +179,38 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('step-background').click();
     await chooseOption(page, 'option-soldier');
-    await page.getByTestId('bonus-strength').selectOption('2');
-    await expect(page.getByTestId('bonus-strength')).toHaveValue('2');
-    await page.getByTestId('bonus-constitution').selectOption('1');
-    await expect(page.getByTestId('bonus-constitution')).toHaveValue('1');
+    await expect(page.getByTestId('background-nav-hint')).toBeVisible();
+    await expect(page.getByTestId('background-detail')).toBeVisible();
+    await chooseOption(page, 'bonus-pattern-plus-two-plus-one');
+    await page.getByTestId('bonus-plus-two').selectOption('strength');
+    await expect(page.getByTestId('bonus-plus-two')).toHaveValue('strength');
+    await page.getByTestId('bonus-plus-one').selectOption('constitution');
+    await expect(page.getByTestId('bonus-plus-one')).toHaveValue('constitution');
+    await expect(page.getByTestId('wizard-sheet-preview')).toBeVisible();
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-species').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Species');
     await chooseOption(page, 'option-dwarf');
+    await expect(page.getByTestId('preview-waiting')).toHaveCount(0);
+    await expect(page.getByTestId('live-sheet-stats')).toBeVisible();
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-abilities').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Ability');
     await chooseOption(page, 'option-standard-array');
     await assignStandardArray(page);
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-equipment').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Equipment');
     await chooseOption(page, 'option-fighter-a');
     await chooseOption(page, 'option-soldier-kit');
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-features').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Class Features');
     await chooseOption(page, 'check-defense');
     await expect(page.getByTestId('no-spellcasting')).toBeVisible();
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-identity').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText('Identity');
     await page.getByTestId('identity-name').fill('Kara Ironwake');
     await page.getByTestId('identity-name').dispatchEvent('change');
     await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
@@ -173,12 +221,115 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('character-summary')).toContainText('Fighter');
   });
 
+  test('ability rolls are capped at three and replace the previous pool', async ({ page }) => {
+    await enterArenaForCharacters(page);
+    await openVault(page);
+    await page.getByTestId('start-character').click();
+    await page.getByTestId('tutorial-ask-no').click();
+
+    await chooseOption(page, 'option-fighter');
+    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-perception');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-soldier');
+    await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await expect(page.getByTestId('bonus-plus-one-each-summary')).toBeVisible();
+    // Illegal free +2/+2/+2 selects are gone — only pattern controls exist.
+    await expect(page.getByTestId('bonus-strength')).toHaveCount(0);
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-human');
+    await chooseOption(page, 'species-choice-human-skillful-medicine');
+    await expect(page.getByTestId('choice-helper-human-skillful')).toBeVisible();
+    await expect(page.getByTestId('choice-helper-human-skillful')).not.toHaveText('');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-rolled');
+    await expect(page.getByTestId('ability-roll-needed')).toBeVisible();
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 1 of 3');
+    const firstPool = await page.getByTestId('ability-roll-status').innerText();
+
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 2 of 3');
+    await page.getByTestId('roll-abilities').click();
+    await expect(page.getByTestId('ability-roll-status')).toContainText('Attempts used: 3 of 3');
+    await expect(page.getByTestId('roll-abilities')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('ability-roll-status')).not.toHaveText(firstPool);
+
+    const poolMatch = (await page.getByTestId('ability-roll-status').innerText()).match(
+      /Current pool: ([0-9, ]+)\./,
+    );
+    expect(poolMatch).not.toBeNull();
+    const pool = poolMatch![1]!.split(',').map((part) => part.trim());
+    expect(pool).toHaveLength(6);
+
+    await assignScorePool(page, pool);
+    await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  test('wizard prevents illegal over-selects instead of only coaching afterward', async ({ page }) => {
+    await enterArenaForCharacters(page);
+    await openVault(page);
+    await page.getByTestId('start-character').click();
+    await page.getByTestId('tutorial-ask-no').click();
+
+    await chooseOption(page, 'option-fighter');
+    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-perception');
+    // Fighter wants exactly two skills — a third must be locked, not merely rejected later.
+    await expect(page.getByTestId('check-survival')).toBeDisabled();
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-soldier');
+    await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-goliath');
+    await expect(page.getByTestId('choice-helper-giant-ancestry')).toContainText('Giant Ancestry');
+    await chooseOption(page, 'species-choice-giant-ancestry-stone');
+    await page.getByTestId('wizard-continue').click();
+
+    await chooseOption(page, 'option-standard-array');
+    await page.getByTestId('ability-select-strength').selectOption('15');
+    await expect(page.getByTestId('ability-select-strength')).toHaveValue('15');
+    // 15 is consumed — other abilities cannot reuse it.
+    await expect(page.getByTestId('ability-select-dexterity').locator('option[value="15"]')).toHaveCount(0);
+
+    await chooseOption(page, 'option-point-buy');
+    await expect(page.getByTestId('point-buy-budget')).toContainText(`0 of ${27}`);
+    await page.getByTestId('ability-select-strength').selectOption('15');
+    await expect(page.getByTestId('ability-select-strength')).toHaveValue('15');
+    await page.getByTestId('ability-select-dexterity').selectOption('15');
+    await expect(page.getByTestId('ability-select-dexterity')).toHaveValue('15');
+    await page.getByTestId('ability-select-constitution').selectOption('15');
+    await expect(page.getByTestId('ability-select-constitution')).toHaveValue('15');
+    await expect(page.getByTestId('point-buy-budget')).toContainText('27 of 27');
+    // Budget spent — remaining abilities only offer 8.
+    await expect(page.getByTestId('ability-select-intelligence').locator('option[value="9"]')).toHaveCount(0);
+    await expect(page.getByTestId('ability-select-intelligence').locator('option[value="8"]')).toHaveCount(1);
+
+    await page.getByTestId('step-features').click();
+    await expect(page.getByTestId('choice-helper-fighting-style')).toBeVisible();
+    await chooseOption(page, 'check-defense');
+    // Fighting Style choose 1 — a second style is locked.
+    await expect(page.getByTestId('check-archery')).toBeDisabled();
+    await expect(page.getByTestId('preview-chosen-options')).toContainText('Fighting Style: Defense');
+
+    await page.getByTestId('step-identity').click();
+    await expect(page.getByTestId('identity-name')).toHaveAttribute('maxlength', '40');
+    await expect(page.getByTestId('identity-concept')).toHaveAttribute('maxlength', '300');
+  });
+
   test('another account cannot read a character by id or see it in the vault', async ({
     page,
   }) => {
     await enterArenaForCharacters(page);
     await openVault(page);
     await page.getByTestId('start-character').click();
+    await page.getByTestId('tutorial-ask-no').click();
+    await page.getByTestId('open-quick-start').click();
     await chooseOption(page, 'option-shadow-scout');
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await page.getByTestId('identity-name').fill('Private Scout');
@@ -191,9 +342,8 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     const characterId = characterUrl.split('/').pop();
     expect(characterId).toMatch(/^[A-Za-z0-9-]{1,64}$/);
 
-    await page.getByTestId('nav-diagnostics').click();
-    await page.getByTestId('leave-arena').click();
-    await expect(page.getByTestId('enter-arena')).toBeVisible();
+    await page.getByTestId('shell-leave-account').click();
+    await expect(page.getByTestId('shell-enter-account')).toBeVisible();
     await enterArena(page);
 
     await openVault(page);

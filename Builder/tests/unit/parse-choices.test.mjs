@@ -55,7 +55,7 @@ test('parseChoices rejects malformed structure', () => {
   assert.equal(parseChoices(null), null);
   assert.equal(parseChoices('fighter'), null);
   assert.equal(parseChoices([]), null);
-  assert.equal(parseChoices(completePayload({ abilityMethod: 'rolled' })), null);
+  assert.equal(parseChoices(completePayload({ abilityMethod: 'not-a-method' })), null);
   assert.equal(
     parseChoices(
       completePayload({
@@ -72,6 +72,20 @@ test('parseChoices rejects malformed structure', () => {
     ),
     null,
   );
+});
+
+test('parseChoices accepts rolled method but never trusts client roll state', () => {
+  const parsed = parseChoices(
+    completePayload({
+      abilityMethod: 'rolled',
+      rolledScorePool: [18, 18, 18, 18, 18, 18],
+      abilityRollAttempts: 99,
+    }),
+  );
+  assert.ok(parsed);
+  assert.equal(parsed.abilityMethod, 'rolled');
+  assert.equal(parsed.rolledScorePool, null);
+  assert.equal(parsed.abilityRollAttempts, 0);
 });
 
 test('parseChoices accepts null optional ids so the rules engine can explain them', () => {

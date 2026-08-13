@@ -1,14 +1,14 @@
 /**
  * Renders a server-derived character sheet.
  *
- * Blueprint ownership: Section 6.5 — "Every derived value must be
- * recomputable. The character sheet must expose a 'Why is this number?'
- * control for important values. The explanation must list base value,
- * modifiers, conditions, equipment, temporary effects, and rule identifiers."
+ * Blueprint ownership: Section 6.5 — every derived value must be recomputable,
+ * and important values must expose an explanation control listing base value,
+ * modifiers, conditions, equipment, and rule identifiers. The player-facing
+ * label for that control is “How we got this” (hover/focus tooltip); the
+ * blueprint’s older “Why is this number?” phrasing names the same requirement.
  *
  * Every number here comes from the server's `DerivedValue`, including its
- * components. The client performs no arithmetic of its own, so what the
- * explanation shows and what the number says cannot disagree.
+ * components. The client performs no arithmetic of its own.
  */
 
 import {
@@ -20,7 +20,20 @@ import {
 } from '../shared/character-contract.js';
 import { escapeHtml } from './dom-utils.js';
 
-/** A value with its "Why is this number?" explanation attached. */
+function breakdownList(derived: DerivedValue): string {
+  return `
+    <ul class="stat-breakdown-list">
+      ${derived.components
+        .map(
+          (component) =>
+            `<li>${escapeHtml(component.label)}: ${escapeHtml(formatModifier(component.amount))}
+              <code>${escapeHtml(component.ruleId)}</code></li>`,
+        )
+        .join('')}
+    </ul>`;
+}
+
+/** A value with a hover/focus “How we got this” breakdown tooltip. */
 function explained(
   label: string,
   derived: DerivedValue,
@@ -30,19 +43,14 @@ function explained(
   return `
     <div class="stat">
       <span class="stat-label">${escapeHtml(label)}</span>
-      <span class="stat-value" data-testid="${escapeHtml(testId)}">${escapeHtml(format(derived.value))}</span>
-      <details class="stat-why">
-        <summary>Why is this number?</summary>
-        <ul>
-          ${derived.components
-            .map(
-              (component) =>
-                `<li>${escapeHtml(component.label)}: ${escapeHtml(formatModifier(component.amount))}
-                  <code>${escapeHtml(component.ruleId)}</code></li>`,
-            )
-            .join('')}
-        </ul>
-      </details>
+      <span class="stat-value has-breakdown" tabindex="0" data-testid="${escapeHtml(testId)}"
+        aria-describedby="${escapeHtml(testId)}-how">
+        ${escapeHtml(format(derived.value))}
+        <span class="stat-tooltip" role="tooltip" id="${escapeHtml(testId)}-how">
+          <span class="stat-tooltip-title">How we got this</span>
+          ${breakdownList(derived)}
+        </span>
+      </span>
     </div>`;
 }
 
@@ -52,20 +60,15 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
     return `
       <div class="ability-card">
         <span class="ability-name">${escapeHtml(ABILITY_LABELS[ability])}</span>
-        <span class="ability-score" data-testid="ability-${ability}">${score.value}</span>
+        <span class="ability-score has-breakdown" tabindex="0" data-testid="ability-${ability}"
+          aria-describedby="ability-${ability}-how">
+          ${score.value}
+          <span class="stat-tooltip" role="tooltip" id="ability-${ability}-how">
+            <span class="stat-tooltip-title">How we got this</span>
+            ${breakdownList(score)}
+          </span>
+        </span>
         <span class="ability-modifier">${escapeHtml(formatModifier(sheet.abilityModifiers[ability]))}</span>
-        <details class="stat-why">
-          <summary>Why is this number?</summary>
-          <ul>
-            ${score.components
-              .map(
-                (component) =>
-                  `<li>${escapeHtml(component.label)}: ${escapeHtml(formatModifier(component.amount))}
-                    <code>${escapeHtml(component.ruleId)}</code></li>`,
-              )
-              .join('')}
-          </ul>
-        </details>
       </div>`;
   }).join('');
 
@@ -74,7 +77,14 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
       (skill) => `
       <li${skill.proficient ? ' class="proficient"' : ''} data-testid="skill-${escapeHtml(skill.id)}">
         <span>${escapeHtml(skill.label)}</span>
-        <span>${escapeHtml(formatModifier(skill.bonus.value))}${skill.proficient ? ' · proficient' : ''}</span>
+        <span class="has-breakdown" tabindex="0"
+          aria-describedby="skill-${escapeHtml(skill.id)}-how">
+          ${escapeHtml(formatModifier(skill.bonus.value))}${skill.proficient ? ' · proficient' : ''}
+          <span class="stat-tooltip" role="tooltip" id="skill-${escapeHtml(skill.id)}-how">
+            <span class="stat-tooltip-title">How we got this</span>
+            ${breakdownList(skill.bonus)}
+          </span>
+        </span>
       </li>`,
     )
     .join('');
@@ -83,7 +93,14 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
     (ability) => `
       <li${sheet.savingThrowProficiencies.includes(ability) ? ' class="proficient"' : ''}>
         <span>${escapeHtml(ABILITY_LABELS[ability])}</span>
-        <span>${escapeHtml(formatModifier(sheet.savingThrows[ability].value))}</span>
+        <span class="has-breakdown" tabindex="0"
+          aria-describedby="save-${ability}-how">
+          ${escapeHtml(formatModifier(sheet.savingThrows[ability].value))}
+          <span class="stat-tooltip" role="tooltip" id="save-${ability}-how">
+            <span class="stat-tooltip-title">How we got this</span>
+            ${breakdownList(sheet.savingThrows[ability])}
+          </span>
+        </span>
       </li>`,
   ).join('');
 
@@ -97,8 +114,14 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
             <li>
               <span class="record-note">${escapeHtml(attack.name)}</span>
               <span class="record-meta">
-                ${escapeHtml(formatModifier(attack.attackBonus.value))} to hit ·
-                ${escapeHtml(attack.damage)} ${escapeHtml(attack.damageType)}
+                <span class="has-breakdown" tabindex="0">
+                  ${escapeHtml(formatModifier(attack.attackBonus.value))} to hit
+                  <span class="stat-tooltip" role="tooltip">
+                    <span class="stat-tooltip-title">How we got this</span>
+                    ${breakdownList(attack.attackBonus)}
+                  </span>
+                </span>
+                · ${escapeHtml(attack.damage)} ${escapeHtml(attack.damageType)}
                 ${attack.properties.length > 0 ? `· ${escapeHtml(attack.properties.join(', '))}` : ''}
               </span>
             </li>`,
@@ -110,7 +133,7 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
     sheet.spellcasting === null
       ? ''
       : `
-      <section class="panel" aria-labelledby="spellcasting-heading">
+      <section class="panel sheet-panel" aria-labelledby="spellcasting-heading">
         <h2 id="spellcasting-heading">Spellcasting</h2>
         <div class="stat-grid">
           ${explained('Spell Save DC', sheet.spellcasting.spellSaveDc, 'spell-save-dc')}
@@ -133,72 +156,135 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
       </section>`;
 
   return `
-    <section class="panel" aria-labelledby="core-stats-heading">
-      <h2 id="core-stats-heading">Core statistics</h2>
-      <div class="stat-grid">
-        ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points')}
-        ${explained('Armor Class', sheet.armorClass, 'sheet-armor-class')}
-        ${explained('Initiative', sheet.initiative, 'sheet-initiative', formatModifier)}
-        ${explained('Speed', sheet.speed, 'sheet-speed', (value) => `${value} ft.`)}
-        ${explained('Proficiency Bonus', sheet.proficiencyBonus, 'sheet-proficiency-bonus', formatModifier)}
-        ${explained('Passive Perception', sheet.passivePerception, 'sheet-passive-perception')}
+    <p class="sheet-legend" data-testid="sheet-breakdown-legend">
+      Hover or focus any highlighted number for <b>How we got this</b> — the breakdown of that total.
+    </p>
+    <div class="sheet-layout" data-testid="character-sheet-layout">
+      <div class="sheet-column">
+        <section class="panel sheet-panel" aria-labelledby="core-stats-heading">
+          <h2 id="core-stats-heading">Core statistics</h2>
+          <div class="stat-grid">
+            ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points')}
+            ${explained('Armor Class', sheet.armorClass, 'sheet-armor-class')}
+            ${explained('Initiative', sheet.initiative, 'sheet-initiative', formatModifier)}
+            ${explained('Speed', sheet.speed, 'sheet-speed', (value) => `${value} ft.`)}
+            ${explained('Proficiency Bonus', sheet.proficiencyBonus, 'sheet-proficiency-bonus', formatModifier)}
+            ${explained('Passive Perception', sheet.passivePerception, 'sheet-passive-perception')}
+          </div>
+          <p class="record-meta">Hit Dice ${escapeHtml(sheet.hitDice)} · Level ${sheet.level} · ${sheet.experiencePoints} XP</p>
+        </section>
+
+        <section class="panel sheet-panel" aria-labelledby="abilities-heading">
+          <h2 id="abilities-heading">Ability Scores</h2>
+          <div class="ability-grid">${abilityBlock}</div>
+        </section>
+
+        <section class="panel sheet-panel" aria-labelledby="saves-heading">
+          <h2 id="saves-heading">Saving Throws</h2>
+          <ul class="stat-list">${savingThrowRows}</ul>
+        </section>
+
+        <section class="panel sheet-panel" aria-labelledby="skills-heading">
+          <h2 id="skills-heading">Skills</h2>
+          <ul class="stat-list">${skillRows}</ul>
+        </section>
       </div>
-      <p class="record-meta">Hit Dice ${escapeHtml(sheet.hitDice)} · Level ${sheet.level} · ${sheet.experiencePoints} XP</p>
-    </section>
 
-    <section class="panel" aria-labelledby="abilities-heading">
-      <h2 id="abilities-heading">Ability Scores</h2>
-      <div class="ability-grid">${abilityBlock}</div>
-    </section>
+      <div class="sheet-column">
+        <section class="panel sheet-panel" aria-labelledby="attacks-heading">
+          <h2 id="attacks-heading">Attacks</h2>
+          ${attackRows}
+        </section>
 
-    <section class="panel" aria-labelledby="saves-heading">
-      <h2 id="saves-heading">Saving Throws</h2>
-      <ul class="stat-list">${savingThrowRows}</ul>
-    </section>
+        ${spellBlock}
 
-    <section class="panel" aria-labelledby="skills-heading">
-      <h2 id="skills-heading">Skills</h2>
-      <ul class="stat-list">${skillRows}</ul>
-    </section>
+        <section class="panel sheet-panel" aria-labelledby="features-heading">
+          <h2 id="features-heading">Features and Traits</h2>
+          <ul class="record-list" data-testid="feature-list">
+            ${sheet.features
+              .map(
+                (feature) => `
+              <li data-testid="feature-${escapeHtml(feature.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">
+                <span class="record-note">${escapeHtml(feature.name)}</span>
+                <span class="record-meta">${escapeHtml(feature.source)} — ${escapeHtml(feature.summary)}</span>
+              </li>`,
+              )
+              .join('')}
+          </ul>
+        </section>
 
-    <section class="panel" aria-labelledby="attacks-heading">
-      <h2 id="attacks-heading">Attacks</h2>
-      ${attackRows}
-    </section>
+        <section class="panel sheet-panel" aria-labelledby="equipment-heading">
+          <h2 id="equipment-heading">Equipment and Proficiencies</h2>
+          <p data-testid="sheet-equipment">${
+            sheet.equipment.length === 0
+              ? 'No starting equipment chosen.'
+              : escapeHtml(
+                  sheet.equipment
+                    .map((item) => (item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name))
+                    .join(', '),
+                )
+          }</p>
+          <p><b>Gold:</b> ${sheet.currencyGold} GP</p>
+          <p><b>Senses:</b> ${sheet.senses.length === 0 ? 'Normal vision' : escapeHtml(sheet.senses.join(', '))}</p>
+          <p><b>Languages:</b> ${escapeHtml(sheet.languages.join(', '))}</p>
+          <p class="record-meta">${sheet.proficiencies
+            .map((proficiency) => `${escapeHtml(proficiency.label)} (${escapeHtml(proficiency.sourceLabel)})`)
+            .join(' · ')}</p>
+        </section>
+      </div>
+    </div>`;
+}
 
-    ${spellBlock}
+/**
+ * Compact live preview for the creation wizard sidebar. Same server-derived
+ * numbers as the full sheet — just fewer panels so it fits beside the steps.
+ */
+export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
+  const abilityBlock = ABILITIES.map((ability) => {
+    const score = sheet.abilityScores[ability];
+    return `
+      <div class="ability-card compact">
+        <span class="ability-name">${escapeHtml(ABILITY_LABELS[ability])}</span>
+        <span class="ability-score">${score.value}</span>
+        <span class="ability-modifier">${escapeHtml(formatModifier(sheet.abilityModifiers[ability]))}</span>
+      </div>`;
+  }).join('');
 
-    <section class="panel" aria-labelledby="features-heading">
-      <h2 id="features-heading">Features and Traits</h2>
-      <ul class="record-list" data-testid="feature-list">
-        ${sheet.features
-          .map(
-            (feature) => `
-          <li>
-            <span class="record-note">${escapeHtml(feature.name)}</span>
-            <span class="record-meta">${escapeHtml(feature.source)} — ${escapeHtml(feature.summary)}</span>
-          </li>`,
-          )
-          .join('')}
-      </ul>
-    </section>
+  const proficientSkills = sheet.skills
+    .filter((skill) => skill.proficient)
+    .map((skill) => skill.label)
+    .join(', ');
 
-    <section class="panel" aria-labelledby="equipment-heading">
-      <h2 id="equipment-heading">Equipment and Proficiencies</h2>
-      <p data-testid="sheet-equipment">${
-        sheet.equipment.length === 0
-          ? 'No starting equipment chosen.'
-          : escapeHtml(
-              sheet.equipment
-                .map((item) => (item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name))
-                .join(', '),
-            )
+  const chosenFeatures = sheet.features
+    .filter((feature) => feature.name.includes(':'))
+    .map((feature) => feature.name)
+    .join(', ');
+
+  return `
+    <div class="live-sheet-body" data-testid="live-sheet-stats">
+      <p class="sheet-legend compact">Hover highlighted totals for <b>How we got this</b>.</p>
+      <div class="stat-grid compact">
+        ${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
+        ${explained('Armor Class', sheet.armorClass, 'preview-armor-class')}
+        ${explained('Initiative', sheet.initiative, 'preview-initiative', formatModifier)}
+        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}
+      </div>
+      <div class="ability-grid compact">${abilityBlock}</div>
+      <p class="record-meta"><b>Skills:</b> ${
+        proficientSkills.length === 0 ? 'None yet' : escapeHtml(proficientSkills)
       }</p>
-      <p><b>Gold:</b> ${sheet.currencyGold} GP</p>
-      <p><b>Senses:</b> ${sheet.senses.length === 0 ? 'Normal vision' : escapeHtml(sheet.senses.join(', '))}</p>
-      <p><b>Languages:</b> ${escapeHtml(sheet.languages.join(', '))}</p>
-      <p class="record-meta">${sheet.proficiencies
-        .map((proficiency) => `${escapeHtml(proficiency.label)} (${escapeHtml(proficiency.sourceLabel)})`)
-        .join(' · ')}</p>
-    </section>`;
+      <p class="record-meta" data-testid="preview-chosen-options"><b>Chosen options:</b> ${
+        chosenFeatures.length === 0 ? 'None yet' : escapeHtml(chosenFeatures)
+      }</p>
+      <p class="record-meta"><b>Features:</b> ${
+        sheet.features.length === 0
+          ? 'None yet'
+          : escapeHtml(sheet.features.map((feature) => feature.name).join(', '))
+      }</p>
+      <p class="record-meta"><b>Gear:</b> ${
+        sheet.equipment.length === 0
+          ? 'None yet'
+          : escapeHtml(sheet.equipment.map((item) => item.name).join(', '))
+      }</p>
+    </div>`;
 }

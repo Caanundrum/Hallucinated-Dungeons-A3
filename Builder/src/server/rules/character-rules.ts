@@ -18,6 +18,7 @@ import {
   ABILITY_METHODS,
   CHARACTER_NAME_MAX_LENGTH,
   CHARACTER_TEXT_MAX_LENGTH,
+  MAX_ABILITY_ROLL_ATTEMPTS,
   POINT_BUY_BUDGET,
   STANDARD_ARRAY,
   WIZARD_STEPS,
@@ -34,6 +35,7 @@ import {
   type UnresolvedChoice,
   type WizardStep,
 } from '../../shared/character-contract.js';
+import { randomInt } from 'node:crypto';
 import {
   BACKGROUNDS,
   CLASSES,
@@ -64,6 +66,8 @@ export function emptyChoices(): CharacterChoices {
     speciesId: null,
     abilityMethod: 'standard-array',
     baseAbilityScores: {},
+    rolledScorePool: null,
+    abilityRollAttempts: 0,
     backgroundAbilityBonuses: {},
     classSkillIds: [],
     speciesChoiceIds: {},
@@ -75,6 +79,19 @@ export function emptyChoices(): CharacterChoices {
     identity: { name: '', pronouns: '', appearance: '', concept: '' },
   };
 }
+
+/** One Ability Score: 4d6, drop the lowest die. */
+export function rollOneAbilityScore(rollDie: () => number = () => randomInt(1, 7)): number {
+  const dice = [rollDie(), rollDie(), rollDie(), rollDie()].sort((a, b) => a - b);
+  return dice[1]! + dice[2]! + dice[3]!;
+}
+
+/** Six Ability Scores for a rolled pool, highest first for display. */
+export function rollAbilityScorePool(rollDie: () => number = () => randomInt(1, 7)): readonly number[] {
+  return Array.from({ length: 6 }, () => rollOneAbilityScore(rollDie)).sort((a, b) => b - a);
+}
+
+export { MAX_ABILITY_ROLL_ATTEMPTS };
 
 export function buildCatalog(): RulesCatalog {
   return {
@@ -185,6 +202,19 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
     problems.push(unresolved('abilities', 'ABILITY_METHOD_INVALID', 'Choose a supported ability-generation method.'));
   }
 
+  if (
+    choices.abilityMethod === 'rolled' &&
+    (choices.rolledScorePool === null || choices.rolledScorePool.length !== 6)
+  ) {
+    problems.push(
+      unresolved(
+        'abilities',
+        'ABILITY_ROLL_REQUIRED',
+        `Roll for Ability Scores (up to ${MAX_ABILITY_ROLL_ATTEMPTS} times). Each roll replaces the previous one.`,
+      ),
+    );
+  }
+
   const assigned = ABILITIES.map((ability) => choices.baseAbilityScores[ability]);
   if (assigned.some((score) => score === undefined)) {
     problems.push(
@@ -204,7 +234,7 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
           ),
         );
       }
-    } else {
+    } else if (choices.abilityMethod === 'point-buy') {
       const cost = pointBuyCost(scores);
       if (cost === null) {
         problems.push(
@@ -213,6 +243,18 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
       } else if (cost > POINT_BUY_BUDGET) {
         problems.push(
           unresolved('abilities', 'POINT_BUY_OVER_BUDGET', `Point buy allows ${POINT_BUY_BUDGET} points. That array costs ${cost}.`),
+        );
+      }
+    } else if (choices.abilityMethod === 'rolled' && choices.rolledScorePool !== null) {
+      const sortedChosen = [...scores].sort((a, b) => b - a).join(',');
+      const sortedPool = [...choices.rolledScorePool].sort((a, b) => b - a).join(',');
+      if (sortedChosen !== sortedPool) {
+        problems.push(
+          unresolved(
+            'abilities',
+            'ROLLED_POOL_MISMATCH',
+            `Assign exactly the rolled scores (${choices.rolledScorePool.join(', ')}) across the six Ability Scores.`,
+          ),
         );
       }
     }
@@ -353,6 +395,14 @@ function equipmentOptionFor(
   return options.find((option) => option.id === id) ?? null;
 }
 
+function selectedClassChoiceIds(choices: CharacterChoices, choiceId: string): readonly string[] {
+  return choices.classChoiceIds[choiceId] ?? [];
+}
+
+function hasFightingStyle(choices: CharacterChoices, styleId: string): boolean {
+  return selectedClassChoiceIds(choices, 'fighting-style').includes(styleId);
+}
+
 /**
  * Best Armor Class available from the chosen equipment and features.
  *
@@ -364,12 +414,14 @@ function deriveArmorClass(
   classRecord: ClassRecord,
   classEquipment: EquipmentOption | null,
   modifiers: Record<Ability, number>,
+  choices: CharacterChoices,
 ): DerivedValue {
   const armorIds = classEquipment?.armorIds ?? [];
   const bodyArmor = armorIds
     .map((id) => findArmor(id))
     .filter((armor): armor is NonNullable<typeof armor> => armor !== null && armor.category !== 'shield');
   const shield = armorIds.some((id) => findArmor(id)?.category === 'shield');
+  const wearingArmor = bodyArmor.length > 0;
 
   if (classRecord.unarmoredDefenseAbility !== null && bodyArmor.length === 0) {
     // The Monk's Unarmored Defense also requires no Shield; the Barbarian's
@@ -390,6 +442,21 @@ function deriveArmorClass(
       }
       return value(components);
     }
+  }
+
+  // Armor of Shadows (Warlock): Mage Armor while not wearing armor.
+  if (
+    !wearingArmor &&
+    selectedClassChoiceIds(choices, 'eldritch-invocation').includes('armor-of-shadows')
+  ) {
+    const components = [
+      { label: 'Armor of Shadows (Mage Armor)', amount: 13, ruleId: 'class.warlock.eldritch-invocation.armor-of-shadows' },
+      { label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' },
+    ];
+    if (shield) {
+      components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
+    }
+    return value(components);
   }
 
   const best = bodyArmor.sort((a, b) => b.baseArmorClass - a.baseArmorClass)[0];
@@ -413,42 +480,74 @@ function deriveArmorClass(
   if (shield) {
     components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
   }
+  if (hasFightingStyle(choices, 'defense') && wearingArmor) {
+    components.push({
+      label: 'Fighting Style: Defense',
+      amount: 1,
+      ruleId: `class.${classRecord.id}.fighting-style.defense`,
+    });
+  }
   return value(components);
 }
 
 function deriveAttacks(
+  classRecord: ClassRecord,
   classEquipment: EquipmentOption | null,
   modifiers: Record<Ability, number>,
   proficiencyBonus: number,
+  choices: CharacterChoices,
 ): readonly DerivedAttack[] {
   // Only the Class equipment option produces attack lines: the character is
   // proficient with everything in their own Class kit by construction, so no
   // proficiency has to be inferred. Background items are carried as
   // equipment without an attack line rather than assuming proficiency.
   const weaponIds = classEquipment?.weaponIds ?? [];
-  return weaponIds
+  const weapons = weaponIds
     .map((id) => findWeapon(id))
-    .filter((weapon): weapon is NonNullable<typeof weapon> => weapon !== null)
-    .map((weapon) => {
-      const ranged = weapon.category.endsWith('ranged');
-      const finesse = weapon.properties.includes('Finesse');
-      const ability: Ability = ranged
+    .filter((weapon): weapon is NonNullable<typeof weapon> => weapon !== null);
+
+  const meleeWeaponCount = weapons.filter((weapon) => !weapon.category.endsWith('ranged')).length;
+  const archery = hasFightingStyle(choices, 'archery');
+  const dueling = hasFightingStyle(choices, 'dueling');
+
+  return weapons.map((weapon) => {
+    const ranged = weapon.category.endsWith('ranged');
+    const finesse = weapon.properties.includes('Finesse');
+    const twoHanded = weapon.properties.includes('Two-Handed');
+    const ability: Ability = ranged
+      ? 'dexterity'
+      : finesse && modifiers.dexterity > modifiers.strength
         ? 'dexterity'
-        : finesse && modifiers.dexterity > modifiers.strength
-          ? 'dexterity'
-          : 'strength';
-      return {
-        name: weapon.label,
-        attackBonus: value([
-          { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
-          { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
-        ]),
-        damage: weapon.damage,
-        damageType: weapon.damageType,
-        properties: weapon.properties,
-        ruleId: `weapon.${weapon.id}`,
-      };
-    });
+        : 'strength';
+    const attackComponents = [
+      { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
+      { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
+    ];
+    if (archery && ranged) {
+      attackComponents.push({
+        label: 'Fighting Style: Archery',
+        amount: 2,
+        ruleId: `class.${classRecord.id}.fighting-style.archery`,
+      });
+    }
+
+    let damage = weapon.damage;
+    const properties = [...weapon.properties];
+    if (dueling && !ranged && !twoHanded && meleeWeaponCount === 1) {
+      // Sheet-facing reminder: +2 damage under Dueling conditions.
+      damage = `${weapon.damage}+2`;
+      properties.push('Dueling +2 damage');
+    }
+
+    return {
+      name: weapon.label,
+      attackBonus: value(attackComponents),
+      damage,
+      damageType: weapon.damageType,
+      properties,
+      ruleId: `weapon.${weapon.id}`,
+    };
+  });
 }
 
 /**
@@ -585,8 +684,45 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
   ].map((item) => ({ name: item.name, quantity: item.quantity }));
 
   const features = [
-    ...classRecord.features.map((feature) => ({ name: feature.name, source: classRecord.label, summary: feature.summary })),
-    ...speciesRecord.features.map((feature) => ({ name: feature.name, source: speciesRecord.label, summary: feature.summary })),
+    ...classRecord.features
+      .filter((feature) => !classRecord.choices.some((choice) => choice.label === feature.name))
+      .map((feature) => ({ name: feature.name, source: classRecord.label, summary: feature.summary })),
+    ...classRecord.choices.flatMap((choice) => {
+      const selected = choices.classChoiceIds[choice.id] ?? [];
+      return selected.flatMap((optionId) => {
+        const option = choice.from.find((entry) => entry.id === optionId);
+        if (option === undefined) {
+          return [];
+        }
+        return [
+          {
+            name: `${choice.label}: ${option.label}`,
+            source: classRecord.label,
+            summary: option.summary,
+          },
+        ];
+      });
+    }),
+    ...speciesRecord.features
+      .filter((feature) => !speciesRecord.choices.some((choice) => choice.label.startsWith(feature.name)))
+      .map((feature) => ({ name: feature.name, source: speciesRecord.label, summary: feature.summary })),
+    ...speciesRecord.choices.flatMap((choice) => {
+      const selected = choices.speciesChoiceIds[choice.id];
+      if (selected === undefined) {
+        return [];
+      }
+      const option = choice.from.find((entry) => entry.id === selected);
+      if (option === undefined) {
+        return [];
+      }
+      return [
+        {
+          name: `${choice.label}: ${option.label}`,
+          source: speciesRecord.label,
+          summary: option.summary,
+        },
+      ];
+    }),
     { name: backgroundRecord.originFeat, source: backgroundRecord.label, summary: 'Origin feat granted by your Background.' },
   ];
 
@@ -624,7 +760,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     abilityModifiers: modifiers,
     hitPoints: value(hitPointComponents),
     hitDice: `1d${classRecord.hitDie}`,
-    armorClass: deriveArmorClass(classRecord, classEquipment, modifiers),
+    armorClass: deriveArmorClass(classRecord, classEquipment, modifiers, choices),
     initiative: value([{ label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' }]),
     speed: value([{ label: `${speciesRecord.label} Speed`, amount: speciesRecord.speed, ruleId: `species.${speciesRecord.id}.speed` }]),
     passivePerception,
@@ -635,7 +771,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     proficiencies,
     languages: ['Common'],
     features,
-    attacks: deriveAttacks(classEquipment, modifiers, proficiencyBonus.value),
+    attacks: deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices),
     equipment,
     currencyGold: (classEquipment?.gold ?? 0) + (backgroundEquipment?.gold ?? 0),
     spellcasting,
@@ -677,8 +813,13 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
             choices: classRecord.choices.map((choice) => ({
               id: choice.id,
               label: choice.label,
+              helper: choice.helper,
               choose: choice.choose,
-              from: choice.from.map((option) => ({ id: option.id, label: option.label })),
+              from: choice.from.map((option) => ({
+                id: option.id,
+                label: option.label,
+                summary: option.summary,
+              })),
             })),
             equipmentOptions: classRecord.equipmentOptions.map((option) => ({
               id: option.id,
@@ -716,8 +857,13 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
             choices: speciesRecord.choices.map((choice) => ({
               id: choice.id,
               label: choice.label,
+              helper: choice.helper,
               choose: choice.choose,
-              from: choice.from.map((option) => ({ id: option.id, label: option.label })),
+              from: choice.from.map((option) => ({
+                id: option.id,
+                label: option.label,
+                summary: option.summary,
+              })),
             })),
           },
     backgroundDetail:

@@ -8,19 +8,25 @@
  */
 
 import type { CharacterProjection } from '../../shared/character-contract.js';
+import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchCharacter } from '../api.js';
+import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
 
 export function mountCharacterSheetPage(host: PageHost, characterId: string): void {
-  const { container, shell } = host;
+  const { container, shell, candidate } = host;
   shell.setDocumentTitle('Character');
 
   let character: CharacterProjection | null = null;
   let error: string | null = null;
+  let gateBusy = false;
+  let gateError: string | null = null;
+  const mountToken = beginPageMount(container);
 
-  function render(): void {
+  function renderSignedIn(): void {
     if (error !== null) {
       container.innerHTML = `
         <div class="page">
@@ -41,7 +47,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
 
     shell.setDocumentTitle(character.identity.name);
     container.innerHTML = `
-      <div class="page">
+      <div class="page page-wide">
         <h1 data-testid="character-sheet-heading">${escapeHtml(character.identity.name)}</h1>
         <p class="tagline" data-testid="character-summary">
           Level ${character.level} ${escapeHtml(character.speciesLabel)} ${escapeHtml(character.classLabel)}
@@ -64,17 +70,72 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </div>`;
   }
 
-  render();
+  function render(): void {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    if (getAccount() === null) {
+      container.innerHTML = renderSignedOutGate({
+        title: 'Character',
+        body: 'Sign in with a Local Arena development account to view characters you own.',
+        candidate,
+        busy: gateBusy,
+        error: gateError,
+      });
+      bindSignedOutGate({
+        container,
+        shell,
+        candidate,
+        onSignedIn: () => {
+          void loadCharacter();
+        },
+        setBusy: (busy) => {
+          gateBusy = busy;
+        },
+        setError: (message) => {
+          gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+    renderSignedIn();
+  }
 
-  void (async () => {
+  async function loadCharacter(): Promise<void> {
+    error = null;
+    character = null;
+    render();
     try {
       character = await fetchCharacter(characterId);
     } catch (failure) {
+      if (failure instanceof ApiFailure && failure.code === 'NOT_AUTHENTICATED') {
+        render();
+        return;
+      }
       error =
         failure instanceof ApiFailure
           ? failure.message
           : 'That character could not be loaded.';
     }
     render();
-  })();
+  }
+
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    if (getAccount() === null) {
+      character = null;
+      error = null;
+      render();
+      return;
+    }
+    void loadCharacter();
+  });
+
+  render();
+  if (getAccount() !== null) {
+    void loadCharacter();
+  }
 }

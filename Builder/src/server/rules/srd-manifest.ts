@@ -67,7 +67,14 @@ export interface OptionChoice {
   readonly id: string;
   readonly label: string;
   readonly choose: number;
-  readonly from: readonly { readonly id: string; readonly label: string }[];
+  /** Short player-facing help for what this choice is asking. */
+  readonly helper: string;
+  readonly from: readonly {
+    readonly id: string;
+    readonly label: string;
+    /** What this option does, shown in the wizard and on the sheet. */
+    readonly summary: string;
+  }[];
   /** When set, the options are skill ids and the result grants skill proficiency. */
   readonly grantsSkillProficiency?: boolean;
 }
@@ -232,10 +239,15 @@ export const SPECIES: readonly SpeciesRecord[] = [
     choices: [
       {
         id: 'human-skillful',
-        label: 'Skillful skill proficiency',
+        label: 'Skillful — choose one skill',
+        helper: 'Humans train broadly. Pick one extra skill you are proficient with.',
         choose: 1,
         grantsSkillProficiency: true,
-        from: SKILLS.map((skill) => ({ id: skill.id, label: skill.label })),
+        from: SKILLS.map((skill) => ({
+          id: skill.id,
+          label: skill.label,
+          summary: `Gain proficiency in ${skill.label}.`,
+        })),
       },
     ],
   },
@@ -271,22 +283,24 @@ export const SPECIES: readonly SpeciesRecord[] = [
       {
         id: 'elven-lineage',
         label: 'Elven Lineage',
+        helper: 'Your Elven Lineage shapes magic and movement. Pick the one that fits this character.',
         choose: 1,
         from: [
-          { id: 'drow', label: 'Drow' },
-          { id: 'high-elf', label: 'High Elf' },
-          { id: 'wood-elf', label: 'Wood Elf' },
+          { id: 'drow', label: 'Drow', summary: 'Superior Darkvision and the Dancing Lights cantrip.' },
+          { id: 'high-elf', label: 'High Elf', summary: 'You know one Wizard cantrip of your choice.' },
+          { id: 'wood-elf', label: 'Wood Elf', summary: 'Speed 35 feet, and you can Hide when lightly obscured by nature.' },
         ],
       },
       {
         id: 'elf-keen-senses',
-        label: 'Keen Senses skill proficiency',
+        label: 'Keen Senses — choose Insight, Perception, or Survival',
+        helper: 'Elves notice more. Choose which of these three skills you are proficient with.',
         choose: 1,
         grantsSkillProficiency: true,
         from: [
-          { id: 'insight', label: 'Insight' },
-          { id: 'perception', label: 'Perception' },
-          { id: 'survival', label: 'Survival' },
+          { id: 'insight', label: 'Insight', summary: 'Gain proficiency in Insight.' },
+          { id: 'perception', label: 'Perception', summary: 'Gain proficiency in Perception.' },
+          { id: 'survival', label: 'Survival', summary: 'Gain proficiency in Survival.' },
         ],
       },
     ],
@@ -324,18 +338,19 @@ export const SPECIES: readonly SpeciesRecord[] = [
       {
         id: 'draconic-ancestry',
         label: 'Draconic Ancestry',
+        helper: 'Your dragon blood sets your Breath Weapon damage type and Resistance. Pick one ancestry.',
         choose: 1,
         from: [
-          { id: 'black', label: 'Black (Acid)' },
-          { id: 'blue', label: 'Blue (Lightning)' },
-          { id: 'brass', label: 'Brass (Fire)' },
-          { id: 'bronze', label: 'Bronze (Lightning)' },
-          { id: 'copper', label: 'Copper (Acid)' },
-          { id: 'gold', label: 'Gold (Fire)' },
-          { id: 'green', label: 'Green (Poison)' },
-          { id: 'red', label: 'Red (Fire)' },
-          { id: 'silver', label: 'Silver (Cold)' },
-          { id: 'white', label: 'White (Cold)' },
+          { id: 'black', label: 'Black (Acid)', summary: 'Breath Weapon and Resistance deal with Acid.' },
+          { id: 'blue', label: 'Blue (Lightning)', summary: 'Breath Weapon and Resistance deal with Lightning.' },
+          { id: 'brass', label: 'Brass (Fire)', summary: 'Breath Weapon and Resistance deal with Fire.' },
+          { id: 'bronze', label: 'Bronze (Lightning)', summary: 'Breath Weapon and Resistance deal with Lightning.' },
+          { id: 'copper', label: 'Copper (Acid)', summary: 'Breath Weapon and Resistance deal with Acid.' },
+          { id: 'gold', label: 'Gold (Fire)', summary: 'Breath Weapon and Resistance deal with Fire.' },
+          { id: 'green', label: 'Green (Poison)', summary: 'Breath Weapon and Resistance deal with Poison.' },
+          { id: 'red', label: 'Red (Fire)', summary: 'Breath Weapon and Resistance deal with Fire.' },
+          { id: 'silver', label: 'Silver (Cold)', summary: 'Breath Weapon and Resistance deal with Cold.' },
+          { id: 'white', label: 'White (Cold)', summary: 'Breath Weapon and Resistance deal with Cold.' },
         ],
       },
     ],
@@ -355,10 +370,11 @@ export const SPECIES: readonly SpeciesRecord[] = [
       {
         id: 'gnomish-lineage',
         label: 'Gnomish Lineage',
+        helper: 'Forest and Rock Gnomes lean different ways with magic and craft. Pick one lineage.',
         choose: 1,
         from: [
-          { id: 'forest-gnome', label: 'Forest Gnome' },
-          { id: 'rock-gnome', label: 'Rock Gnome' },
+          { id: 'forest-gnome', label: 'Forest Gnome', summary: 'You know the Minor Illusion cantrip.' },
+          { id: 'rock-gnome', label: 'Rock Gnome', summary: 'You know the Mending and Prestidigitation cantrips.' },
         ],
       },
     ],
@@ -379,14 +395,15 @@ export const SPECIES: readonly SpeciesRecord[] = [
       {
         id: 'giant-ancestry',
         label: 'Giant Ancestry',
+        helper: 'Your Giant Ancestry grants a special trick tied to a giant kind. Pick one — details appear with the option.',
         choose: 1,
         from: [
-          { id: 'cloud', label: "Cloud's Jaunt" },
-          { id: 'fire', label: "Fire's Burn" },
-          { id: 'frost', label: "Frost's Chill" },
-          { id: 'hill', label: "Hill's Tumble" },
-          { id: 'stone', label: "Stone's Endurance" },
-          { id: 'storm', label: "Storm's Thunder" },
+          { id: 'cloud', label: "Cloud's Jaunt", summary: 'As a Bonus Action, teleport up to 30 feet to an unoccupied space you can see.' },
+          { id: 'fire', label: "Fire's Burn", summary: 'When you hit with an attack roll, deal extra Fire damage once per turn.' },
+          { id: 'frost', label: "Frost's Chill", summary: 'When you hit with an attack roll, deal extra Cold damage and reduce Speed once per turn.' },
+          { id: 'hill', label: "Hill's Tumble", summary: 'When you hit a Large or smaller creature, you can knock it Prone once per turn.' },
+          { id: 'stone', label: "Stone's Endurance", summary: 'When you take damage, use your Reaction to reduce it by 1d12 + your Constitution modifier.' },
+          { id: 'storm', label: "Storm's Thunder", summary: 'When you take damage from a creature within 60 feet, deal Thunder damage back once per turn.' },
         ],
       },
     ],
@@ -420,11 +437,12 @@ export const SPECIES: readonly SpeciesRecord[] = [
       {
         id: 'fiendish-legacy',
         label: 'Fiendish Legacy',
+        helper: 'Your Fiendish Legacy picks the spell list your innate magic follows. Choose one legacy.',
         choose: 1,
         from: [
-          { id: 'abyssal', label: 'Abyssal' },
-          { id: 'chthonic', label: 'Chthonic' },
-          { id: 'infernal', label: 'Infernal' },
+          { id: 'abyssal', label: 'Abyssal', summary: 'Poison Resistance and Abyssal legacy spells as you gain levels.' },
+          { id: 'chthonic', label: 'Chthonic', summary: 'Necrotic Resistance and Chthonic legacy spells as you gain levels.' },
+          { id: 'infernal', label: 'Infernal', summary: 'Fire Resistance and Infernal legacy spells as you gain levels.' },
         ],
       },
     ],
@@ -710,7 +728,16 @@ export const CLASSES: readonly ClassRecord[] = [
       { name: 'Spellcasting', summary: 'You cast Cleric spells using Wisdom.' },
     ],
     choices: [
-      { id: 'divine-order', label: 'Divine Order', choose: 1, from: [{ id: 'protector', label: 'Protector' }, { id: 'thaumaturge', label: 'Thaumaturge' }] },
+      {
+        id: 'divine-order',
+        label: 'Divine Order',
+        helper: 'Clerics swear to a Divine Order that shapes their training. Pick Protector or Thaumaturge.',
+        choose: 1,
+        from: [
+          { id: 'protector', label: 'Protector', summary: 'Training with Martial weapons and Heavy armor.' },
+          { id: 'thaumaturge', label: 'Thaumaturge', summary: 'An extra cantrip and Arcana or Religion expertise-style benefit at the table.' },
+        ],
+      },
     ],
     unarmoredDefenseAbility: null,
     spellcasting: { ability: 'wisdom', cantripsKnown: 3, spellsAvailable: 4, preparationStyle: 'prepared', level1SlotCount: 2, spellListId: 'cleric' },
@@ -730,7 +757,16 @@ export const CLASSES: readonly ClassRecord[] = [
       { name: 'Spellcasting', summary: 'You cast Druid spells using Wisdom.' },
     ],
     choices: [
-      { id: 'primal-order', label: 'Primal Order', choose: 1, from: [{ id: 'magician', label: 'Magician' }, { id: 'warden', label: 'Warden' }] },
+      {
+        id: 'primal-order',
+        label: 'Primal Order',
+        helper: 'Druids follow a Primal Order. Magician leans spells; Warden leans steel and hide.',
+        choose: 1,
+        from: [
+          { id: 'magician', label: 'Magician', summary: 'An extra cantrip and a boost when you use a Druidic Focus.' },
+          { id: 'warden', label: 'Warden', summary: 'Martial weapon proficiency and Medium armor training.' },
+        ],
+      },
     ],
     unarmoredDefenseAbility: null,
     spellcasting: { ability: 'wisdom', cantripsKnown: 2, spellsAvailable: 4, preparationStyle: 'prepared', level1SlotCount: 2, spellListId: 'druid' },
@@ -751,11 +787,17 @@ export const CLASSES: readonly ClassRecord[] = [
     ],
     choices: [
       {
-        id: 'fighting-style', label: 'Fighting Style', choose: 1,
+        id: 'fighting-style',
+        label: 'Fighting Style',
+        helper: 'A Fighting Style is a permanent combat habit. Pick one — its bonus applies on your sheet when the conditions match.',
+        choose: 1,
         from: [
-          { id: 'archery', label: 'Archery' }, { id: 'defense', label: 'Defense' }, { id: 'dueling', label: 'Dueling' },
-          { id: 'great-weapon-fighting', label: 'Great Weapon Fighting' }, { id: 'protection', label: 'Protection' },
-          { id: 'two-weapon-fighting', label: 'Two-Weapon Fighting' },
+          { id: 'archery', label: 'Archery', summary: '+2 to attack rolls you make with ranged weapons.' },
+          { id: 'defense', label: 'Defense', summary: '+1 to Armor Class while you are wearing armor.' },
+          { id: 'dueling', label: 'Dueling', summary: '+2 damage when attacking with a one-handed melee weapon and no other weapons.' },
+          { id: 'great-weapon-fighting', label: 'Great Weapon Fighting', summary: 'Reroll 1s and 2s on damage dice for two-handed or versatile melee weapons.' },
+          { id: 'protection', label: 'Protection', summary: 'With a Shield, impose Disadvantage on an attack against a nearby ally (Reaction).' },
+          { id: 'two-weapon-fighting', label: 'Two-Weapon Fighting', summary: 'Add your ability modifier to the bonus attack when fighting with two weapons.' },
         ],
       },
     ],
@@ -859,11 +901,17 @@ export const CLASSES: readonly ClassRecord[] = [
     ],
     choices: [
       {
-        id: 'eldritch-invocation', label: 'Eldritch Invocation', choose: 1,
+        id: 'eldritch-invocation',
+        label: 'Eldritch Invocation',
+        helper: 'Invocations are permanent pact tricks. Pick one you know at level 1.',
+        choose: 1,
         from: [
-          { id: 'agonizing-blast', label: 'Agonizing Blast' }, { id: 'armor-of-shadows', label: 'Armor of Shadows' },
-          { id: 'devils-sight', label: "Devil's Sight" }, { id: 'eldritch-mind', label: 'Eldritch Mind' },
-          { id: 'mask-of-many-faces', label: 'Mask of Many Faces' }, { id: 'pact-of-the-blade', label: 'Pact of the Blade' },
+          { id: 'agonizing-blast', label: 'Agonizing Blast', summary: 'Add your Charisma modifier to Eldritch Blast damage.' },
+          { id: 'armor-of-shadows', label: 'Armor of Shadows', summary: 'Cast Mage Armor on yourself at will (AC 13 + Dexterity while unarmored).' },
+          { id: 'devils-sight', label: "Devil's Sight", summary: 'See normally in Magical and nonmagical Darkness out to 120 feet.' },
+          { id: 'eldritch-mind', label: 'Eldritch Mind', summary: 'Advantage on Constitution saving throws to maintain Concentration.' },
+          { id: 'mask-of-many-faces', label: 'Mask of Many Faces', summary: 'Cast Disguise Self at will without a spell slot.' },
+          { id: 'pact-of-the-blade', label: 'Pact of the Blade', summary: 'Conjure or bond a pact weapon and use it as your spellcasting focus.' },
         ],
       },
     ],

@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 import {
+  MAX_ABILITY_ROLL_ATTEMPTS,
   type CharacterChoices,
   type CharacterProjection,
   type CharacterVaultProjection,
@@ -30,6 +31,7 @@ import {
   deriveSheet,
   describeChoices,
   emptyChoices,
+  rollAbilityScorePool,
   validateChoices,
 } from '../rules/character-rules.js';
 
@@ -66,26 +68,60 @@ export class CharacterIncompleteError extends Error {
   }
 }
 
+export class AbilityRollsExhaustedError extends Error {
+  constructor() {
+    super(`You have already used all ${MAX_ABILITY_ROLL_ATTEMPTS} Ability Score rolls.`);
+    this.name = 'AbilityRollsExhaustedError';
+  }
+}
+
+/**
+ * Backfills fields added after a draft was first written so older documents
+ * still project cleanly under the current contract.
+ */
+function normalizeChoices(choices: CharacterChoices): CharacterChoices {
+  const base = emptyChoices();
+  return {
+    ...base,
+    ...choices,
+    baseAbilityScores: choices.baseAbilityScores ?? base.baseAbilityScores,
+    backgroundAbilityBonuses: choices.backgroundAbilityBonuses ?? base.backgroundAbilityBonuses,
+    classSkillIds: choices.classSkillIds ?? base.classSkillIds,
+    speciesChoiceIds: choices.speciesChoiceIds ?? base.speciesChoiceIds,
+    classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
+    cantripIds: choices.cantripIds ?? base.cantripIds,
+    spellIds: choices.spellIds ?? base.spellIds,
+    identity: choices.identity ?? base.identity,
+    rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
+    abilityRollAttempts:
+      typeof choices.abilityRollAttempts === 'number' && Number.isInteger(choices.abilityRollAttempts)
+        ? Math.max(0, choices.abilityRollAttempts)
+        : 0,
+  };
+}
+
 function toIso(value: Timestamp | Date): string {
   return value instanceof Date ? value.toISOString() : value.toDate().toISOString();
 }
 
 function projectDraft(stored: StoredDraft): DraftProjection {
-  const problems = validateChoices(stored.choices);
+  const choices = normalizeChoices(stored.choices);
+  const problems = validateChoices(choices);
   return {
     draftId: stored.draftId,
     rulesVersion: stored.rulesVersion,
     updatedAt: toIso(stored.updatedAt),
-    choices: stored.choices,
-    sheet: deriveSheet(stored.choices),
+    choices,
+    sheet: deriveSheet(choices),
     unresolved: problems,
-    completedSteps: completedSteps(stored.choices),
+    completedSteps: completedSteps(choices),
     canCreate: problems.length === 0,
   };
 }
 
 function projectCharacter(stored: StoredCharacter): CharacterProjection {
-  const sheet = deriveSheet(stored.choices);
+  const choices = normalizeChoices(stored.choices);
+  const sheet = deriveSheet(choices);
   if (sheet === null) {
     // A committed character always has Class, Background, and Species, since
     // commitment requires a clean validation. Reaching here means the stored
@@ -93,17 +129,17 @@ function projectCharacter(stored: StoredCharacter): CharacterProjection {
     // quarantine case) and must not be presented as a playable sheet.
     throw new Error(`Stored character ${stored.characterId} cannot be derived under ${RULES_VERSION}`);
   }
-  const labels = describeChoices(stored.choices);
+  const labels = describeChoices(choices);
   return {
     characterId: stored.characterId,
     rulesVersion: stored.rulesVersion,
     createdAt: toIso(stored.createdAt),
-    identity: stored.choices.identity,
+    identity: choices.identity,
     classLabel: labels.classLabel,
     speciesLabel: labels.speciesLabel,
     backgroundLabel: labels.backgroundLabel,
     level: sheet.level,
-    choices: stored.choices,
+    choices,
     sheet,
   };
 }
@@ -172,6 +208,53 @@ export async function updateDraft(options: {
 }): Promise<DraftProjection> {
   const { firestore, accountId, draftId, choices } = options;
   const stored = await loadOwnedDraft(firestore, accountId, draftId);
+  const previous = normalizeChoices(stored.choices);
+
+  // Roll state is server-authored. A PUT cannot forge a pool, rewind attempts,
+  // or restore a previous roll by shipping those fields from the client.
+  const merged: CharacterChoices = {
+    ...choices,
+    rolledScorePool: previous.rolledScorePool,
+    abilityRollAttempts: previous.abilityRollAttempts,
+  };
+
+  const updated: StoredDraft = {
+    ...stored,
+    choices: merged,
+    rulesVersion: RULES_VERSION,
+    updatedAt: new Date(),
+  };
+  await firestore.collection(COLLECTIONS.characterDrafts).doc(draftId).set(updated);
+  return projectDraft(updated);
+}
+
+/**
+ * Rolls a fresh Ability Score pool for the draft (4d6 drop lowest × 6).
+ *
+ * Each roll replaces the previous pool and clears assigned base scores. The
+ * player may roll at most `MAX_ABILITY_ROLL_ATTEMPTS` times; earlier pools
+ * cannot be restored.
+ */
+export async function rollDraftAbilities(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly draftId: string;
+}): Promise<DraftProjection> {
+  const { firestore, accountId, draftId } = options;
+  const stored = await loadOwnedDraft(firestore, accountId, draftId);
+  const previous = normalizeChoices(stored.choices);
+
+  if (previous.abilityRollAttempts >= MAX_ABILITY_ROLL_ATTEMPTS) {
+    throw new AbilityRollsExhaustedError();
+  }
+
+  const choices: CharacterChoices = {
+    ...previous,
+    abilityMethod: 'rolled',
+    rolledScorePool: rollAbilityScorePool(),
+    abilityRollAttempts: previous.abilityRollAttempts + 1,
+    baseAbilityScores: {},
+  };
 
   const updated: StoredDraft = {
     ...stored,
@@ -256,8 +339,9 @@ export async function commitDraft(options: {
 }): Promise<CharacterProjection> {
   const { firestore, accountId, draftId } = options;
   const stored = await loadOwnedDraft(firestore, accountId, draftId);
+  const choices = normalizeChoices(stored.choices);
 
-  if (validateChoices(stored.choices).length > 0) {
+  if (validateChoices(choices).length > 0) {
     throw new CharacterIncompleteError();
   }
 
@@ -266,7 +350,7 @@ export async function commitDraft(options: {
     characterId: randomUUID(),
     ownerAccountId: accountId,
     rulesVersion: RULES_VERSION,
-    choices: stored.choices,
+    choices,
     createdAt: now,
     revisions: [{ at: now.toISOString(), reason: 'Character created' }],
   };

@@ -10,9 +10,9 @@ import {
   CANDIDATE_HEADER,
   ERROR_CODES,
   type ApiErrorBody,
+  type AccountProjection,
   type CandidateIdentity,
   type CreateFoundationCheckResponse,
-  type DevelopmentIdentityProjection,
   type ErrorCode,
   type FoundationProjection,
 } from '../shared/contract.js';
@@ -94,19 +94,20 @@ export async function fetchCandidate(): Promise<CandidateIdentity> {
   return (await request<CandidateIdentity>('/api/candidate')) as CandidateIdentity;
 }
 
-export async function fetchSession(): Promise<DevelopmentIdentityProjection> {
-  return (await request<DevelopmentIdentityProjection>(
-    '/api/session',
-  )) as DevelopmentIdentityProjection;
+export async function fetchSession(): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/session')) as AccountProjection;
 }
 
-export async function enterLocalArena(
-  candidateId: string,
-): Promise<DevelopmentIdentityProjection> {
-  return (await request<DevelopmentIdentityProjection>('/api/identity/development-session', {
+/** Alias for the product-facing account surface; same Development Test Identity. */
+export async function fetchAccount(): Promise<AccountProjection> {
+  return fetchSession();
+}
+
+export async function enterLocalArena(candidateId: string): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/identity/development-session', {
     method: 'POST',
     candidateId,
-  })) as DevelopmentIdentityProjection;
+  })) as AccountProjection;
 }
 
 export async function leaveLocalArena(candidateId: string): Promise<void> {
@@ -156,6 +157,17 @@ export async function applyQuickStartTemplate(options: {
     method: 'POST',
     candidateId: options.candidateId,
     body: JSON.stringify({ templateId: options.templateId }),
+  })) as DraftResponse;
+}
+
+/** Server-authoritative Ability Score roll (4d6 drop lowest × 6). Max 3 per draft. */
+export async function rollDraftAbilities(options: {
+  readonly candidateId: string;
+  readonly draftId: string;
+}): Promise<DraftResponse> {
+  return (await request<DraftResponse>(`/api/characters/drafts/${options.draftId}/roll-abilities`, {
+    method: 'POST',
+    candidateId: options.candidateId,
   })) as DraftResponse;
 }
 

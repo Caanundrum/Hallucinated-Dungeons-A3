@@ -59,10 +59,17 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
 };
 
 /** Ability-generation methods this phase supports. */
-export const ABILITY_METHODS = ['standard-array', 'point-buy'] as const;
+export const ABILITY_METHODS = ['standard-array', 'point-buy', 'rolled'] as const;
 export type AbilityMethod = (typeof ABILITY_METHODS)[number];
 
 export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8] as const;
+
+/**
+ * Rolled Ability Scores: 4d6 drop lowest, six times. The player may roll at
+ * most this many times per draft. Each new roll replaces the previous pool;
+ * earlier pools cannot be restored.
+ */
+export const MAX_ABILITY_ROLL_ATTEMPTS = 3;
 
 /** Point-buy budget and per-score cost, per the SRD point-buy rules. */
 export const POINT_BUY_BUDGET = 27;
@@ -89,6 +96,16 @@ export interface CharacterChoices {
   readonly abilityMethod: AbilityMethod;
   /** Base scores before background increases, keyed by ability. */
   readonly baseAbilityScores: Partial<AbilityScores>;
+  /**
+   * Server-authored pool from the latest Ability Score roll (4d6 drop lowest
+   * × 6). Null until the player rolls. The client must never invent this.
+   */
+  readonly rolledScorePool: readonly number[] | null;
+  /**
+   * How many times this draft has rolled Ability Scores. Caps at
+   * `MAX_ABILITY_ROLL_ATTEMPTS`. Server-authored; the client cannot reset it.
+   */
+  readonly abilityRollAttempts: number;
   /**
    * The Background ability increases, which the SRD allows as either +2 and
    * +1 across two of the Background's three abilities, or +1 to each of the
@@ -274,11 +291,13 @@ export interface CatalogEntry {
 export interface SelectableOption {
   readonly id: string;
   readonly label: string;
+  readonly summary?: string;
 }
 
 export interface OptionChoiceView {
   readonly id: string;
   readonly label: string;
+  readonly helper: string;
   readonly choose: number;
   readonly from: readonly SelectableOption[];
 }
@@ -352,4 +371,76 @@ export function pointBuyCost(scores: readonly number[]): number | null {
     total += cost;
   }
   return total;
+}
+
+/**
+ * Points still available for `forAbility` under point buy, given the other
+ * assigned scores. Unset abilities cost nothing yet.
+ */
+export function remainingPointBuyBudget(
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): number {
+  let spent = 0;
+  for (const ability of ABILITIES) {
+    if (ability === forAbility) {
+      continue;
+    }
+    const score = scores[ability];
+    if (score === undefined) {
+      continue;
+    }
+    const cost = POINT_BUY_COSTS[score];
+    if (cost !== undefined) {
+      spent += cost;
+    }
+  }
+  return POINT_BUY_BUDGET - spent;
+}
+
+/**
+ * Legal point-buy scores (8–15) for one ability that fit the remaining budget.
+ * The ability's current score is always included so the control can show it.
+ */
+export function pointBuyScoresForAbility(
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): readonly number[] {
+  const remaining = remainingPointBuyBudget(scores, forAbility);
+  const current = scores[forAbility];
+  const legal: number[] = [];
+  for (let score = 8; score <= 15; score += 1) {
+    const cost = POINT_BUY_COSTS[score] ?? Number.POSITIVE_INFINITY;
+    if (cost <= remaining || score === current) {
+      legal.push(score);
+    }
+  }
+  return legal;
+}
+
+/**
+ * Scores still available to assign to `forAbility` from a fixed pool (standard
+ * array or a rolled pool). Already-assigned scores on other abilities are
+ * removed as a multiset, so duplicate rolled values remain usable once each.
+ */
+export function availableScoresFromPool(
+  pool: readonly number[],
+  scores: Partial<AbilityScores>,
+  forAbility: Ability,
+): readonly number[] {
+  const remaining = [...pool];
+  for (const ability of ABILITIES) {
+    if (ability === forAbility) {
+      continue;
+    }
+    const score = scores[ability];
+    if (score === undefined) {
+      continue;
+    }
+    const index = remaining.indexOf(score);
+    if (index >= 0) {
+      remaining.splice(index, 1);
+    }
+  }
+  return remaining;
 }
