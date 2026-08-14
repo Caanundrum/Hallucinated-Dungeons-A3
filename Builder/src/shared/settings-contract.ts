@@ -78,11 +78,27 @@ export type PvpPolicy = (typeof PVP_POLICIES)[number];
 export const CHARACTER_CONFLICT_POLICIES = ['collaborative', 'allowed_with_consent'] as const;
 export type CharacterConflictPolicy = (typeof CHARACTER_CONFLICT_POLICIES)[number];
 
+export const CHARACTER_CONFLICT_POLICY_LABELS: Record<CharacterConflictPolicy, string> = {
+  collaborative: 'Collaborative — party conflict stays light',
+  allowed_with_consent: 'Allowed with consent',
+};
+
 export const ROMANCE_POLICIES = ['fade_to_black', 'none'] as const;
 export type RomancePolicy = (typeof ROMANCE_POLICIES)[number];
 
+export const ROMANCE_POLICY_LABELS: Record<RomancePolicy, string> = {
+  fade_to_black: 'Fade to black',
+  none: 'None',
+};
+
 export const LETHALITY_PREFERENCES = ['standard', 'careful', 'deadly'] as const;
 export type LethalityPreference = (typeof LETHALITY_PREFERENCES)[number];
+
+export const LETHALITY_PREFERENCE_LABELS: Record<LethalityPreference, string> = {
+  standard: 'Standard',
+  careful: 'Careful',
+  deadly: 'Deadly',
+};
 
 export const DIRECTOR_DISCRETION_LEVELS = ['moderate_bounded'] as const;
 export type DirectorDiscretionLevel = (typeof DIRECTOR_DISCRETION_LEVELS)[number];
@@ -90,8 +106,18 @@ export type DirectorDiscretionLevel = (typeof DIRECTOR_DISCRETION_LEVELS)[number
 export const DROP_IN_OUT_POLICIES = ['flexible', 'session_committed'] as const;
 export type DropInOutPolicy = (typeof DROP_IN_OUT_POLICIES)[number];
 
+export const DROP_IN_OUT_POLICY_LABELS: Record<DropInOutPolicy, string> = {
+  flexible: 'Flexible drop-in / drop-out',
+  session_committed: 'Session-committed attendance',
+};
+
 export const CONTENT_SOURCE_FLAGS = ['original', 'homebrew_allowed'] as const;
 export type ContentSourceFlag = (typeof CONTENT_SOURCE_FLAGS)[number];
+
+export const CONTENT_SOURCE_FLAG_LABELS: Record<ContentSourceFlag, string> = {
+  original: 'Original campaign content',
+  homebrew_allowed: 'Homebrew allowed',
+};
 
 export const SAFETY_BOUNDARIES_MAX_LENGTH = 600;
 export const ACCESSIBILITY_NOTES_MAX_LENGTH = 400;

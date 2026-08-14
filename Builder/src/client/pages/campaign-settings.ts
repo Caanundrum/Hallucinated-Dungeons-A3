@@ -11,17 +11,22 @@ import {
   CONTENT_PROFILE_LABELS,
   CONTENT_PROFILE_SUMMARIES,
   CHARACTER_CONFLICT_POLICIES,
+  CHARACTER_CONFLICT_POLICY_LABELS,
   CONTENT_SOURCE_FLAGS,
+  CONTENT_SOURCE_FLAG_LABELS,
   DROP_IN_OUT_POLICIES,
+  DROP_IN_OUT_POLICY_LABELS,
   ENEMY_HEALTH_PRESENTATIONS,
   ENEMY_HEALTH_PRESENTATION_LABELS,
   GROUP_DECISION_POLICIES,
   GROUP_DECISION_POLICY_LABELS,
   GROUP_DECISION_POLICY_SUMMARIES,
   LETHALITY_PREFERENCES,
+  LETHALITY_PREFERENCE_LABELS,
   REACTION_WINDOW_SECONDS_MAX,
   REACTION_WINDOW_SECONDS_MIN,
   ROMANCE_POLICIES,
+  ROMANCE_POLICY_LABELS,
   SESSION_TONES,
   SESSION_TONE_LABELS,
 } from '../../shared/settings-contract.js';
@@ -186,7 +191,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <select data-testid="character-conflict" ${disabled ? 'disabled' : ''}>
               ${CHARACTER_CONFLICT_POLICIES.map(
                 (policy) =>
-                  `<option value="${policy}" ${draft!.sessionZero.characterConflictPolicy === policy ? 'selected' : ''}>${escapeHtml(policy)}</option>`,
+                  `<option value="${policy}" ${draft!.sessionZero.characterConflictPolicy === policy ? 'selected' : ''}>${escapeHtml(CHARACTER_CONFLICT_POLICY_LABELS[policy])}</option>`,
               ).join('')}
             </select>
           </label>
@@ -195,7 +200,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <select data-testid="romance-policy" ${disabled ? 'disabled' : ''}>
               ${ROMANCE_POLICIES.map(
                 (policy) =>
-                  `<option value="${policy}" ${draft!.sessionZero.romancePolicy === policy ? 'selected' : ''}>${escapeHtml(policy)}</option>`,
+                  `<option value="${policy}" ${draft!.sessionZero.romancePolicy === policy ? 'selected' : ''}>${escapeHtml(ROMANCE_POLICY_LABELS[policy])}</option>`,
               ).join('')}
             </select>
           </label>
@@ -204,7 +209,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <select data-testid="lethality" ${disabled ? 'disabled' : ''}>
               ${LETHALITY_PREFERENCES.map(
                 (policy) =>
-                  `<option value="${policy}" ${draft!.sessionZero.lethalityPreference === policy ? 'selected' : ''}>${escapeHtml(policy)}</option>`,
+                  `<option value="${policy}" ${draft!.sessionZero.lethalityPreference === policy ? 'selected' : ''}>${escapeHtml(LETHALITY_PREFERENCE_LABELS[policy])}</option>`,
               ).join('')}
             </select>
           </label>
@@ -217,7 +222,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <select data-testid="drop-in-out" ${disabled ? 'disabled' : ''}>
               ${DROP_IN_OUT_POLICIES.map(
                 (policy) =>
-                  `<option value="${policy}" ${draft!.sessionZero.dropInOutPolicy === policy ? 'selected' : ''}>${escapeHtml(policy)}</option>`,
+                  `<option value="${policy}" ${draft!.sessionZero.dropInOutPolicy === policy ? 'selected' : ''}>${escapeHtml(DROP_IN_OUT_POLICY_LABELS[policy])}</option>`,
               ).join('')}
             </select>
           </label>
@@ -238,7 +243,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <select data-testid="content-source" ${disabled ? 'disabled' : ''}>
               ${CONTENT_SOURCE_FLAGS.map(
                 (flag) =>
-                  `<option value="${flag}" ${draft!.sessionZero.contentSource === flag ? 'selected' : ''}>${escapeHtml(flag)}</option>`,
+                  `<option value="${flag}" ${draft!.sessionZero.contentSource === flag ? 'selected' : ''}>${escapeHtml(CONTENT_SOURCE_FLAG_LABELS[flag])}</option>`,
               ).join('')}
             </select>
           </label>
