@@ -71,6 +71,13 @@ import {
   updateCampaign,
 } from '../campaigns/campaigns.js';
 import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
+import { listChronicleEntries } from '../communication/chronicle.js';
+import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
+import {
+  readCampaignSettings,
+  updateCampaignSettings,
+} from '../settings/campaign-settings.js';
+import { readPlayerSettings, updatePlayerSettings } from '../settings/player-settings.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
 import { renderLegalPage } from '../legal/render-legal-page.js';
 import { buildDraftOptions } from '../rules/character-rules.js';
@@ -546,6 +553,51 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (path === '/api/account/settings') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      if (method === 'GET') {
+        sendJson(
+          response,
+          200,
+          await readPlayerSettings({ firestore, accountId: session.accountId }),
+        );
+        return;
+      }
+      if (method === 'PUT') {
+        let body: unknown;
+        try {
+          body = await readJsonBody(request);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
+          return;
+        }
+        try {
+          const settings = await updatePlayerSettings({
+            firestore,
+            accountId: session.accountId,
+            reducedMotion: (body as { reducedMotion?: unknown }).reducedMotion,
+          });
+          sendJson(response, 200, settings);
+        } catch {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return;
+      }
+      sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+      return;
+    }
+
     if (path === '/api/foundation-checks') {
       const session = await resolveSession({
         firestore,
@@ -982,6 +1034,70 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           deviceSessionId: session.deviceSessionId,
         });
         sendJson(response, 201, seat);
+        return;
+      }
+
+      const settingsMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/settings$/.exec(path);
+      if (settingsMatch !== null) {
+        const campaignId = settingsMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, await readCampaignSettings({ firestore, accountId, campaignId }));
+          return;
+        }
+        if (method === 'PUT') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const settings = await updateCampaignSettings({
+            firestore,
+            accountId,
+            campaignId,
+            payload: (body ?? {}) as Record<string, unknown>,
+          });
+          sendJson(response, 200, settings);
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const chronicleMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/chronicle$/.exec(path);
+      if (chronicleMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = chronicleMatch[1]!;
+        await readCampaignDetail({ firestore, accountId, campaignId });
+        sendJson(response, 200, await listChronicleEntries({ firestore, campaignId }));
+        return;
+      }
+
+      const partyChatMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/party-chat$/.exec(path);
+      if (partyChatMatch !== null) {
+        const campaignId = partyChatMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, await listPartyChat({ firestore, accountId, campaignId }));
+          return;
+        }
+        if (method === 'POST') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const payload = body as { mode?: unknown; body?: unknown };
+          const message = await postPartyChatMessage({
+            firestore,
+            accountId,
+            campaignId,
+            mode: payload.mode,
+            body: payload.body,
+          });
+          sendJson(response, 201, message);
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
         return;
       }
 

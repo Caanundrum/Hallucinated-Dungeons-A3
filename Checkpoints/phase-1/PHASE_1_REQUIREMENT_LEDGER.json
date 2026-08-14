@@ -97,7 +97,7 @@
       "id": "P1-CAMPAIGN-LIFECYCLE",
       "source": "25 Phase 1 build scope; 1.5.4",
       "behavior": "Campaign creation, invitations, membership, seats, Session Zero, safety and content settings, group-decision policy, and campaign ownership. Campaign ownership grants no character ownership.",
-      "implementation": "Builder/src/server/campaigns/campaigns.ts, Builder/src/client/pages/campaigns.ts, campaign-create.ts, campaign-detail.ts, invite.ts, COLLECTIONS.campaigns/campaignMemberships/campaignInvitations/campaignSeats. Session Zero deep UI, safety settings, and group-decision policy remain for the settings slice.",
+      "implementation": "Builder/src/server/campaigns/campaigns.ts, Builder/src/client/pages/campaigns.ts, campaign-create.ts, campaign-detail.ts, invite.ts, COLLECTIONS.campaigns/campaignMemberships/campaignInvitations/campaignSeats. Session Zero UI, safety settings, and group-decision policy live in the settings slice (P1-SETTINGS).",
       "verification": "tests/e2e/phase1-campaigns.spec.ts; tests/unit/campaign-contract.test.mjs",
       "status": "IMPLEMENTED_UNVERIFIED"
     },
@@ -121,17 +121,17 @@
       "id": "P1-SETTINGS",
       "source": "25 Phase 1 build scope",
       "behavior": "Player and campaign settings data model, exposing only controls with real Phase 1 behavior, while reserving stable defaults for later speech and AI presentation settings without showing a nonfunctional control.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/settings-contract.ts; Builder/src/server/settings/campaign-settings.ts + player-settings.ts; client campaign-settings.ts and account Presentation panel; COLLECTIONS.campaignSettings/accountSettings; Session Zero + content profile + group-decision + reaction window + enemy health presentation",
+      "verification": "tests/unit/settings-communication-contract.test.mjs; tests/e2e/phase1-settings-dock.spec.ts",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-COMMUNICATION-STRUCTURE",
       "source": "1.5.2.1 through 1.5.2.5; 25 Phase 1 build scope",
       "behavior": "Communication Dock with Chronicle, Party Chat, and Rules Desk as peer destinations, and a visually and behaviorally separate Action Composer. Every visible Phase 1 control performs a real Phase 1 function; future AI and mechanical controls remain absent rather than decorative.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/communication-contract.ts; Builder/src/server/communication/chronicle.ts + party-chat.ts; client campaign-table.ts Dock tabs + Party Chat send + structural Action Composer; COLLECTIONS.chronicleEntries/partyChatMessages",
+      "verification": "tests/unit/settings-communication-contract.test.mjs; tests/e2e/phase1-settings-dock.spec.ts",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-STABLE-IDENTIFIERS",

@@ -8,7 +8,7 @@
  */
 
 import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../account-session.js';
-import { ApiFailure } from '../api.js';
+import { ApiFailure, fetchPlayerSettings, savePlayerSettings } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
@@ -24,7 +24,12 @@ export function mountAccountPage(host: PageHost): void {
 
   let busy = false;
   let error: string | null = null;
+  let reducedMotion = false;
   const mountToken = beginPageMount(container);
+
+  function applyReducedMotionClass(enabled: boolean): void {
+    document.documentElement.classList.toggle('hd-reduced-motion', enabled);
+  }
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
@@ -104,6 +109,17 @@ export function mountAccountPage(host: PageHost): void {
               <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Campaigns</a>
             </div>
           </section>
+          <section class="panel" aria-labelledby="presentation-heading">
+            <h2 id="presentation-heading">Presentation</h2>
+            <p class="record-meta">
+              Speech and AI presentation controls stay reserved until later phases. Reduced motion
+              is available now because the shell already honors it.
+            </p>
+            <label class="option">
+              <input type="checkbox" data-testid="account-reduced-motion" ${reducedMotion ? 'checked' : ''} />
+              <span class="option-label">Prefer reduced motion</span>
+            </label>
+          </section>
           <p class="record-meta">
             Signing out ends this browser session. It does not delete characters or other
             records already stored for this account.
@@ -143,6 +159,38 @@ export function mountAccountPage(host: PageHost): void {
       });
 
     container
+      .querySelector<HTMLInputElement>('[data-testid="account-reduced-motion"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion: event.target.checked,
+            });
+            reducedMotion = settings.reducedMotion;
+            applyReducedMotionClass(reducedMotion);
+            shell.announce(
+              reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Presentation settings could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="account-leave"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -171,7 +219,31 @@ export function mountAccountPage(host: PageHost): void {
       return;
     }
     render();
+    if (getAccount() !== null) {
+      void (async () => {
+        try {
+          const settings = await fetchPlayerSettings();
+          reducedMotion = settings.reducedMotion;
+          applyReducedMotionClass(reducedMotion);
+          render();
+        } catch {
+          // Presentation settings are optional on first paint.
+        }
+      })();
+    }
   });
 
   render();
+  if (getAccount() !== null) {
+    void (async () => {
+      try {
+        const settings = await fetchPlayerSettings();
+        reducedMotion = settings.reducedMotion;
+        applyReducedMotionClass(reducedMotion);
+        render();
+      } catch {
+        // ignore
+      }
+    })();
+  }
 }

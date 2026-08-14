@@ -124,6 +124,9 @@ it is not implemented as a no-op, it is simply absent until a component needs it
 | Panel/card | yes | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | Nav link | yes | yes | yes | — | yes (`aria-current="page"`) | — | — | — | — | — | — | — | — | — |
 | Message banner | — | — | yes (`tabindex="-1"` target for focus fallback) | — | — | — | — | — | — | yes | — | yes (error) | — | — |
+| Dock tab | yes | yes | yes | — | yes (`aria-selected`) | — | — | — | — | — | — | — | — | — |
+| Dock composer (Party Chat) | yes | — | yes | — | yes (mode radio) | yes | — | — | — | — | — | — | — | — |
+| Action Composer (structural) | yes | — | yes | — | — | — | yes (`aria-disabled`, Phase 1 unavailable) | — | — | — | — | — | — | — |
 
 `disconnected` and `stale` are realtime-table concepts owned by Phases 2 and 4 and are recorded
 here as not-yet-applicable, not as a missing requirement.
@@ -135,7 +138,7 @@ here as not-yet-applicable, not as a missing requirement.
 | Desktop | Supported — primary target |
 | Keyboard | Supported — full journey operable without a mouse, focus management on route change |
 | Screen reader | Supported — landmarks, `aria-current`, single persistent live region, `role="alert"` on errors |
-| Reduced motion | Supported — global `prefers-reduced-motion` handling |
+| Reduced motion | Supported — global `prefers-reduced-motion` handling plus account `hd-reduced-motion` preference |
 | Tablet | Foundations only — fluid layout, no dedicated tablet interaction pass yet |
 | High zoom | Foundations only — relative units, no dedicated 200%+ zoom test pass yet |
 | Companion-mobile | Not yet implemented — Phase 1 does not require phone tactical control, but a companion text layout is not yet built |
@@ -162,9 +165,11 @@ Components reference these names; no component may invent an arbitrary z-index.
 | --- | --- |
 | Form | Implemented — the diagnostics foundation-check form |
 | Empty state | Implemented — `.empty-state` |
+| Communication Dock | Implemented — peer tabs Chronicle / Party Chat / Rules Desk (`.communication-dock`) |
+| Action Composer shell | Implemented — visually separate `.action-composer`; Phase 1 submit stays unavailable |
 | Chart, dice, map-overlay, targeting-template | Not yet applicable — Phases 2/3 |
 | Tooltip, modal, drawer, toast | Not yet implemented |
-| Chronicle-card | Not yet applicable — Phase 4 communication surfaces |
+| Chronicle-card | Foundations only — server-authored Chronicle list entries in Phase 1; rich cards arrive with later narration |
 
 ## 10. Asset provenance
 

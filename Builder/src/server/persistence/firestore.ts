@@ -25,6 +25,10 @@ export const COLLECTIONS = {
   campaignMemberships: 'campaignMemberships',
   campaignInvitations: 'campaignInvitations',
   campaignSeats: 'campaignSeats',
+  campaignSettings: 'campaignSettings',
+  accountSettings: 'accountSettings',
+  partyChatMessages: 'partyChatMessages',
+  chronicleEntries: 'chronicleEntries',
 } as const;
 
 export interface CanonicalStore {
