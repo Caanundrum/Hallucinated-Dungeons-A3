@@ -70,9 +70,9 @@
       "id": "P2-TWO-CLIENT-SYNC",
       "source": "25 Phase 2 player journey",
       "behavior": "Two local clients share the same campaign table state, refresh/reconnect, and recover identical canonical positions and visibility.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "campaign-table projection poll + Refresh table projection; shared table-state/map/timing-authority fetches; two-browser e2e",
+      "verification": "tests/e2e/phase2-two-client-sync.spec.ts",
+      "status": "PASSED"
     },
     {
       "id": "P2-TABLE-A11Y-SETTINGS",

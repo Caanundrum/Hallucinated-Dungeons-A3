@@ -67,7 +67,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let gateError: string | null = null;
   let stageHandle: TableStageHandle | null = null;
   let stageMounting = false;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollInFlight = false;
   const mountToken = beginPageMount(container);
+
+  /** Local poll interval for two-client table projection sync (Phase 2e). */
+  const TABLE_PROJECTION_POLL_MS = 2000;
+
+  function mapSyncFingerprint(map: MapBundleProjection | null): string {
+    if (map === null) {
+      return '';
+    }
+    const tokens = map.tokens
+      .map(
+        (token) =>
+          `${token.seatId}:${token.footprint.anchor.column},${token.footprint.anchor.row}`,
+      )
+      .sort()
+      .join('|');
+    const doors = map.edges
+      .filter((edge) => edge.kind === 'door')
+      .map((edge) => `${edge.edgeId}:${edge.doorState ?? 'closed'}`)
+      .sort()
+      .join('|');
+    return `${tokens}#${doors}#${map.exploredSquareIds.join(',')}#${map.visibleSquareIds.join(',')}`;
+  }
 
   function holdsOwnAuthority(): boolean {
     return (
@@ -180,6 +204,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         Table state version ${version} · last event sequence ${sequence}
       </p>
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      <div class="action-composer-controls">
+        <button type="button" data-testid="refresh-table-projection"
+          aria-disabled="${busy || candidate === null}">
+          Refresh table projection
+        </button>
+      </div>
       ${
         seated
           ? ''
@@ -339,6 +369,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     input?.addEventListener('input', () => {
       draft = input.value;
     });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="refresh-table-projection"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            await refreshSharedProjections({ forceRender: true });
+            shell.announce('Table projection refreshed from server.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Table projection could not be refreshed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
 
     panels
       .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
@@ -671,7 +724,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
       <p class="tagline">
         Tactical map stage, Communication Dock, and Action Composer. Party Chat stays social;
-        table sync goes through the command gateway.
+        table sync goes through the command gateway. This client polls shared table projections
+        so a second local seat can recover the same state.
       </p>
       <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
       ${
@@ -714,6 +768,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) return;
     if (getAccount() === null) {
+      stopProjectionPoll();
       stageHandle?.destroy();
       stageHandle = null;
       container.innerHTML = renderSignedOutGate({
@@ -741,8 +796,80 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     renderTable();
   }
 
+  async function refreshSharedProjections(options?: {
+    readonly forceRender?: boolean;
+  }): Promise<void> {
+    if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
+      return;
+    }
+    const [tableFeed, mapFeed, timingFeed] = await Promise.all([
+      fetchTableState(campaignId),
+      fetchCampaignMap(campaignId),
+      fetchTimingAuthority(campaignId),
+    ]);
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    const priorVersion = tableState?.stateVersion ?? -1;
+    const priorMap = mapSyncFingerprint(mapBundle);
+    const priorAuthorityId = timingAuthority?.timingAuthorityId ?? null;
+    const priorAuthorityState = timingAuthority?.state ?? null;
+    tableState = tableFeed;
+    mapBundle = mapFeed;
+    timingAuthority = timingFeed.authority;
+    const changed =
+      options?.forceRender === true ||
+      tableFeed.stateVersion !== priorVersion ||
+      mapSyncFingerprint(mapFeed) !== priorMap ||
+      (timingFeed.authority?.timingAuthorityId ?? null) !== priorAuthorityId ||
+      (timingFeed.authority?.state ?? null) !== priorAuthorityState;
+    if (changed) {
+      render();
+    } else if (mapBundle !== null && stageHandle !== null) {
+      stageHandle.renderMap(mapBundle);
+    }
+  }
+
+  function stopProjectionPoll(): void {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startProjectionPoll(): void {
+    stopProjectionPoll();
+    pollTimer = setInterval(() => {
+      if (!isPageMountCurrent(container, mountToken)) {
+        stopProjectionPoll();
+        return;
+      }
+      if (busy || pollInFlight || getAccount() === null || candidate === null) {
+        return;
+      }
+      pollInFlight = true;
+      void refreshSharedProjections()
+        .catch(() => {
+          // Soft-fail: keep showing the last good projection until the next tick.
+        })
+        .finally(() => {
+          pollInFlight = false;
+        });
+    }, TABLE_PROJECTION_POLL_MS);
+  }
+
+  function onVisibilityRefresh(): void {
+    if (document.visibilityState !== 'visible' || busy || getAccount() === null) {
+      return;
+    }
+    void refreshSharedProjections({ forceRender: true }).catch(() => {
+      // Soft-fail on focus refresh.
+    });
+  }
+
   async function load(): Promise<void> {
     if (getAccount() === null) {
+      stopProjectionPoll();
       render();
       return;
     }
@@ -765,12 +892,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableState = tableFeed;
       mapBundle = mapFeed;
       timingAuthority = timingFeed.authority;
+      startProjectionPoll();
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
+      stopProjectionPoll();
     }
     render();
   }
 
+  document.addEventListener('visibilitychange', onVisibilityRefresh);
   subscribeAccount(() => {
     void load();
   });
