@@ -72,10 +72,9 @@ test.describe('Phase 2b map schemas and Pixi stage', () => {
     await expect(page.getByTestId('map-bundle-meta')).toContainText('procedural local placeholder');
 
     await expect(page.getByTestId('table-stage-canvas')).toBeVisible();
+    await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
+    await expect(page.getByTestId('table-stage-semantic').locator('[data-token]')).toHaveCount(1);
     await expect(page.getByTestId('table-stage-error')).toHaveCount(0);
-    const renderer = await page.getByTestId('table-stage-canvas').getAttribute('data-renderer');
-    expect(renderer).toBeTruthy();
-    expect(renderer!.length).toBeGreaterThan(0);
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);
