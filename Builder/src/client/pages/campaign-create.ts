@@ -107,13 +107,69 @@ export function mountCampaignCreatePage(host: PageHost): void {
       </section>`;
   }
 
+  function updateCreateControls(): void {
+    const submit = container.querySelector<HTMLButtonElement>(
+      '[data-testid="create-campaign-submit"]',
+    );
+    if (submit !== null) {
+      submit.setAttribute('aria-disabled', canSubmit() ? 'false' : 'true');
+      submit.textContent = busy ? 'Creating…' : 'Create campaign';
+    }
+
+    const missing: string[] = [];
+    if (name.trim().length === 0) {
+      missing.push('a campaign title');
+    }
+    if (directorIdentity === null) {
+      missing.push('a Game Director identity');
+    }
+    if (directorPersonality === null) {
+      missing.push('a Game Director personality');
+    }
+
+    let requirements = container.querySelector<HTMLElement>(
+      '[data-testid="create-campaign-requirements"]',
+    );
+    if (canSubmit()) {
+      requirements?.remove();
+      return;
+    }
+    const text = `Still needed: ${missing.join(', ')}.`;
+    if (requirements === null) {
+      const actions = container.querySelector('.actions');
+      requirements = document.createElement('p');
+      requirements.className = 'record-meta';
+      requirements.dataset.testid = 'create-campaign-requirements';
+      actions?.insertAdjacentElement('afterend', requirements);
+    }
+    requirements.textContent = text;
+
+    const previewName = container.querySelector<HTMLElement>('[data-testid="preview-campaign-name"]');
+    if (previewName !== null) {
+      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
+    }
+  }
+
   function renderForm(): void {
     if (catalog === null) {
       container.innerHTML = `
         <div class="page">
           <h1 data-testid="create-campaign-heading">Create a campaign</h1>
-          <p class="tagline">Loading Game Director options…</p>
+          ${
+            error === null
+              ? `<p class="tagline">Loading Game Director options…</p>`
+              : `<div class="message error" role="alert" tabindex="-1" data-testid="create-campaign-error">${escapeHtml(error)}</div>
+                 <div class="actions">
+                   <button type="button" data-testid="retry-director-catalog">Retry</button>
+                   <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to campaigns</a>
+                 </div>`
+          }
         </div>`;
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="retry-director-catalog"]')
+        ?.addEventListener('click', () => {
+          void load();
+        });
       return;
     }
 
@@ -230,10 +286,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     const nameInput = container.querySelector<HTMLInputElement>('[data-testid="campaign-name"]');
     nameInput?.addEventListener('input', () => {
       name = nameInput.value;
-    });
-    nameInput?.addEventListener('change', () => {
-      name = nameInput.value;
-      render();
+      updateCreateControls();
     });
 
     const summaryInput = container.querySelector<HTMLTextAreaElement>(
@@ -351,7 +404,20 @@ export function mountCampaignCreatePage(host: PageHost): void {
     render();
   }
 
+  let lastAccountId: string | null = getAccount()?.accountId ?? null;
+
   subscribeAccount(() => {
+    const nextAccountId = getAccount()?.accountId ?? null;
+    if (nextAccountId !== lastAccountId) {
+      lastAccountId = nextAccountId;
+      name = '';
+      summary = '';
+      directorIdentity = null;
+      directorPersonality = null;
+      catalog = null;
+      error = null;
+      busy = false;
+    }
     void load();
   });
   void load();

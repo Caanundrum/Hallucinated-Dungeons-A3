@@ -49,7 +49,9 @@ export function mountCharactersPage(host: PageHost): void {
             : `<div class="message error" role="alert" tabindex="-1" data-testid="vault-error">${escapeHtml(error)}</div>`
         }
         <div class="actions">
-          <button type="button" data-testid="start-character">Create a character</button>
+          <button type="button" data-testid="start-character">
+            ${drafts.length > 0 ? 'Resume draft' : 'Create a character'}
+          </button>
         </div>
 
         <section class="panel" aria-labelledby="characters-heading">

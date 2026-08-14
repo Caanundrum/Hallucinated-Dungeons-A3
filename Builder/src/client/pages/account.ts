@@ -52,10 +52,14 @@ export function mountAccountPage(host: PageHost): void {
               There is no password to create or store. Google Sign-In arrives in a later phase.
             </p>
             <div class="actions">
-              <button type="button" data-testid="account-enter"
-                aria-disabled="${busy || candidate === null}">
-                ${busy ? 'Signing in…' : 'Sign in for local testing'}
-              </button>
+              ${
+                candidate === null
+                  ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
+                  : `<button type="button" data-testid="account-enter"
+                       aria-disabled="${busy}">
+                       ${busy ? 'Signing in…' : 'Sign in for local testing'}
+                     </button>`
+              }
             </div>
           </section>
         </div>`;
@@ -106,6 +110,12 @@ export function mountAccountPage(host: PageHost): void {
           </p>
         </div>`;
     }
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="account-retry-candidate"]')
+      ?.addEventListener('click', () => {
+        window.location.reload();
+      });
 
     container
       .querySelector<HTMLButtonElement>('[data-testid="account-enter"]')

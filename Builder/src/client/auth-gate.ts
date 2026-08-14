@@ -34,13 +34,21 @@ export function renderSignedOutGate(options: {
             ? ''
             : `<div class="message error" role="alert" tabindex="-1" data-testid="account-gate-error">${escapeHtml(options.error)}</div>`
         }
-        <div class="actions">
-          <button type="button" data-testid="gate-enter-account"
-            aria-disabled="${options.busy || options.candidate === null}">
-            ${options.busy ? 'Signing in…' : 'Sign in for local testing'}
-          </button>
-          <a href="/account" data-link data-testid="gate-account-link">Open Account</a>
-        </div>
+        ${
+          options.candidate === null
+            ? `<p class="message notice" data-testid="gate-candidate-missing">
+                 Still contacting the Local Arena server.
+               </p>
+               <div class="actions">
+                 <button type="button" data-testid="gate-retry-candidate">Retry connection</button>
+               </div>`
+            : `<div class="actions">
+                 <button type="button" data-testid="gate-enter-account"
+                   aria-disabled="${options.busy}">
+                   ${options.busy ? 'Signing in…' : 'Sign in for local testing'}
+                 </button>
+               </div>`
+        }
       </section>
     </div>`;
 }
@@ -54,6 +62,12 @@ export function bindSignedOutGate(options: {
   readonly setError: (message: string | null) => void;
   readonly render: () => void;
 }): void {
+  options.container
+    .querySelector<HTMLButtonElement>('[data-testid="gate-retry-candidate"]')
+    ?.addEventListener('click', () => {
+      window.location.reload();
+    });
+
   options.container
     .querySelector<HTMLButtonElement>('[data-testid="gate-enter-account"]')
     ?.addEventListener('click', () => {

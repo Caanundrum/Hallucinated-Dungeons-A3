@@ -644,6 +644,7 @@ export async function previewInvitation(options: {
   const campaign = await loadCampaign(firestore, invitation.campaignId);
   return {
     inviteCode: invitation.inviteCode,
+    campaignId: campaign.campaignId,
     campaignName: campaign.name,
     hostDisplayLabel: campaign.ownerDisplayLabel,
     contentProfileSummary: CONTENT_PROFILE_SUMMARY,
@@ -683,7 +684,12 @@ export async function acceptInvitation(options: {
   const campaign = await loadCampaign(firestore, invitation.campaignId);
   const existing = await loadMembership(firestore, invitation.campaignId, accountId);
   if (existing !== null) {
-    throw new AlreadyMemberError();
+    // Idempotent accept: already-members (including the owner) reopen the campaign.
+    const [memberCount, seatCount] = await Promise.all([
+      countMembers(firestore, invitation.campaignId),
+      countSeats(firestore, invitation.campaignId),
+    ]);
+    return projectCampaign(campaign, existing, memberCount, seatCount);
   }
 
   const now = new Date();

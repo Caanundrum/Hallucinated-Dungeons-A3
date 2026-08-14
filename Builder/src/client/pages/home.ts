@@ -76,8 +76,11 @@ export function mountHomePage(host: PageHost): void {
           <a href="/account" data-link data-testid="home-account-link">Open Account</a>
           <a href="/characters" data-link data-testid="home-characters-link">Open the Character Vault</a>
           <a href="/campaigns" data-link data-testid="home-campaigns-link">Open Campaigns</a>
-          <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Open Local Arena diagnostics</a>
         </div>
+        <p class="record-meta">
+          <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Local Arena diagnostics</a>
+          (foundation write/read path for builders — not required for play).
+        </p>
       </section>
       <div class="candidate-strip" data-testid="candidate-strip">
         ${

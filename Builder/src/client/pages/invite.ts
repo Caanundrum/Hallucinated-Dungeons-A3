@@ -121,6 +121,13 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
                    ${busy ? 'Joining…' : `Accept as ${escapeHtml(account.displayLabel)}`}
                  </button>`
           }
+          ${
+            account === null
+              ? ''
+              : `<a href="/campaigns/${escapeHtml(preview.campaignId)}" data-link data-testid="invite-open-campaign">
+                   Open campaign
+                 </a>`
+          }
           <a href="/campaigns" data-link data-testid="invite-campaigns-link">Open campaigns</a>
         </div>
       </div>`;
@@ -168,6 +175,17 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
             shell.announce(`Joined ${campaign.name}.`);
             navigate(`/campaigns/${campaign.campaignId}`);
           } catch (failure) {
+            if (
+              failure instanceof ApiFailure &&
+              (failure.code === 'INVITATION_UNAVAILABLE' || failure.code === 'NOT_FOUND')
+            ) {
+              preview = null;
+              unavailable = true;
+              error = failure.message;
+              busy = false;
+              render();
+              return;
+            }
             error =
               failure instanceof ApiFailure
                 ? failure.message

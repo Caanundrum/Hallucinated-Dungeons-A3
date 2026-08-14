@@ -82,3 +82,17 @@ export function setAccountFromServer(next: AccountProjection | null): void {
   hydrated = true;
   notify();
 }
+
+/**
+ * Clears the local account when the server reports an expired or missing
+ * session. Called from the API transport so product pages do not keep a
+ * stale signed-in chip after auth death.
+ */
+export function clearAccountOnAuthFailure(): void {
+  if (account === null && hydrated) {
+    return;
+  }
+  account = null;
+  hydrated = true;
+  notify();
+}

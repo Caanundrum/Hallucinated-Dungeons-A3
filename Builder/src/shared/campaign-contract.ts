@@ -201,6 +201,8 @@ export interface CampaignListProjection {
 /** Bounded preview before authentication (Section 7.6 / 8.8). */
 export interface InvitationPreview {
   readonly inviteCode: string;
+  /** Present so already-members can open the campaign without a second lookup. */
+  readonly campaignId: string;
   readonly campaignName: string;
   readonly hostDisplayLabel: string;
   readonly contentProfileSummary: string;

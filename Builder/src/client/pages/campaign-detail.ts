@@ -33,7 +33,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   let error: string | null = null;
   let unavailable = false;
   let busy = false;
-  let selectedCharacterId: string | null = null;
+  const seatCharacterFromQuery = new URLSearchParams(window.location.search).get('seatCharacter');
+  let selectedCharacterId: string | null =
+    seatCharacterFromQuery !== null && /^[A-Za-z0-9-]{1,64}$/.test(seatCharacterFromQuery)
+      ? seatCharacterFromQuery
+      : null;
   let copyFeedback: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
@@ -84,6 +88,15 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
         </p>
         <p class="message notice" data-testid="campaign-next-step">${escapeHtml(nextStep)}</p>
+        ${
+          ownSeat === null &&
+          selectedCharacterId !== null &&
+          ownCharacters.some((character) => character.characterId === selectedCharacterId)
+            ? `<p class="message success" data-testid="seat-return-prompt">
+                 Your new character is ready to seat below.
+               </p>`
+            : ''
+        }
         ${
           error === null
             ? ''
@@ -172,7 +185,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                      Copy invite URL
                    </button>
                    <button type="button" class="secondary" data-testid="create-invite" aria-disabled="${busy}">
-                     ${busy ? 'Working…' : 'Show current invite'}
+                     ${busy ? 'Working…' : 'Refresh invite'}
                    </button>
                    <button type="button" class="secondary" data-testid="revoke-invite" aria-disabled="${busy}">
                      Revoke invite
@@ -209,10 +222,6 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             ownSeat !== null
               ? `<p class="message success" data-testid="own-seat">
                    You are seated as <strong>${escapeHtml(ownSeat.characterName)}</strong>.
-                 </p>
-                 <p class="record-meta" data-testid="seat-complete-note">
-                   Your seat binds this account, this campaign, and that owned character. Hosting
-                   still grants no ownership of anyone else’s character.
                  </p>`
               : ownCharacters.length === 0
                 ? `<p class="record-meta" data-testid="seat-need-character">
@@ -350,6 +359,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             });
             detail = await fetchCampaignDetail(campaignId);
             shell.announce('Seat created.');
+            selectedCharacterId = null;
+            if (window.location.search.includes('seatCharacter=')) {
+              window.history.replaceState({}, '', `/campaigns/${campaignId}`);
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure ? failure.message : 'The seat could not be created.';

@@ -53,6 +53,13 @@ export class ApiFailure extends Error {
 const NETWORK_FAILURE_MESSAGE =
   'The Local Arena server did not respond. Confirm it is running, then retry.';
 
+let authFailureHandler: (() => void) | null = null;
+
+/** Registers the shared session clear used when the server reports auth death. */
+export function onAuthFailure(handler: () => void): void {
+  authFailureHandler = handler;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit & { candidateId?: string } = {},
@@ -93,6 +100,12 @@ async function request<T>(
   if (!response.ok) {
     const body = payload as Partial<ApiErrorBody>;
     const code = (body.error ?? ERROR_CODES.UPSTREAM_UNAVAILABLE) as ErrorCode;
+    if (
+      (code === ERROR_CODES.NOT_AUTHENTICATED || code === ERROR_CODES.SESSION_EXPIRED) &&
+      authFailureHandler !== null
+    ) {
+      authFailureHandler();
+    }
     throw new ApiFailure(code, body.message ?? NETWORK_FAILURE_MESSAGE);
   }
 

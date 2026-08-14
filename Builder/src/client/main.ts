@@ -13,8 +13,8 @@ import {
   inviteCodeFromPath,
   isSpaRoute,
 } from '../shared/routes.js';
-import { hydrateAccount } from './account-session.js';
-import { fetchCandidate } from './api.js';
+import { hydrateAccount, clearAccountOnAuthFailure } from './account-session.js';
+import { fetchCandidate, onAuthFailure } from './api.js';
 import { mountAccountPage } from './pages/account.js';
 import { mountCampaignCreatePage } from './pages/campaign-create.js';
 import { mountCampaignDetailPage } from './pages/campaign-detail.js';
@@ -26,7 +26,7 @@ import { mountDiagnosticsPage } from './pages/diagnostics.js';
 import { mountHomePage, type PageHost } from './pages/home.js';
 import { mountInvitePage } from './pages/invite.js';
 import { mountNotFoundPage } from './pages/not-found.js';
-import { startRouter } from './router.js';
+import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -35,6 +35,10 @@ if (root === null) {
 }
 
 async function start(): Promise<void> {
+  onAuthFailure(() => {
+    clearAccountOnAuthFailure();
+  });
+
   let candidate: CandidateIdentity | null = null;
   try {
     candidate = await fetchCandidate();
@@ -52,7 +56,8 @@ async function start(): Promise<void> {
   // sequence a keyboard user expects when a page first opens.
   let isFirstRender = true;
 
-  startRouter((path) => {
+  startRouter((locationKey) => {
+    const path = pathnameOf(locationKey);
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };
 
