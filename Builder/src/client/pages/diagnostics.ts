@@ -270,6 +270,10 @@ export function mountDiagnosticsPage(host: PageHost): void {
     }
     syncIdentityFromAccount();
     const captured = captureFocus();
+    const preserveHeadingFocus =
+      captured?.testId === 'diagnostics-heading' ||
+      (document.activeElement instanceof HTMLElement &&
+        document.activeElement.dataset.testid === 'diagnostics-heading');
 
     container.innerHTML = `
       <div class="page">
@@ -305,6 +309,13 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
     bindEvents();
     restoreFocus(captured);
+    if (preserveHeadingFocus) {
+      const heading = container.querySelector<HTMLElement>('[data-testid="diagnostics-heading"]');
+      if (heading !== null) {
+        heading.setAttribute('tabindex', '-1');
+        heading.focus();
+      }
+    }
     shell.announce(state.error?.message ?? state.notice ?? '');
   }
 
@@ -480,8 +491,11 @@ export function mountDiagnosticsPage(host: PageHost): void {
   void (async () => {
     try {
       state.identity = await fetchSession();
-      setAccountFromServer(state.identity);
+      // Load the projection before publishing the shared account session so a
+      // reload cannot show a signed-in account with an empty record list for a
+      // tick (Phase 0 self-play leave/return proof).
       state.projection = await fetchProjection();
+      setAccountFromServer(state.identity);
       render();
     } catch (failure) {
       if (!(failure instanceof ApiFailure) || failure.code !== ERROR_CODES.NOT_AUTHENTICATED) {

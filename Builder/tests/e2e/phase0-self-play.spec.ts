@@ -40,6 +40,7 @@ test.describe('Phase 0 player journey', () => {
     // The session and the persisted records survive a full page reload, which
     // is the Phase 0 proof that state lives in the emulator, not in the tab.
     await expect(page.getByTestId('account-id')).toHaveText(accountId);
+    await expect(page.getByTestId('record-note').first()).toBeVisible();
     expect(await renderedNotes(page)).toEqual([
       'second check before refresh',
       'first check before refresh',

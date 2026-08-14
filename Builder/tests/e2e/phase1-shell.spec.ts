@@ -246,9 +246,11 @@ test.describe('Phase 1 shell, navigation, opening sequence, and legal routes', (
 
     await page.getByTestId('nav-diagnostics').click();
     await expect(page.getByTestId('diagnostics-heading')).toBeVisible();
-    expect(
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
-    ).toBe('diagnostics-heading');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+      )
+      .toBe('diagnostics-heading');
   });
 
   test('the build info in the footer names the running candidate and blueprint version', async ({
