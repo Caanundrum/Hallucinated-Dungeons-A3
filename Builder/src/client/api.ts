@@ -38,6 +38,10 @@ import type {
   PartyChatMessageProjection,
 } from '../shared/communication-contract.js';
 import type {
+  TableCommandAcceptResponse,
+  TableStateProjection,
+} from '../shared/command-contract.js';
+import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
 } from '../shared/settings-contract.js';
@@ -344,6 +348,28 @@ export async function postPartyChat(options: {
     candidateId: options.candidateId,
     body: JSON.stringify({ mode: options.mode, body: options.body }),
   })) as PartyChatMessageProjection;
+}
+
+export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {
+  return (await request(`/api/campaigns/${campaignId}/table-state`)) as TableStateProjection;
+}
+
+export async function submitTableCommand(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly requestId: string;
+  readonly commandType: string;
+  readonly expectedStateVersion: number;
+}): Promise<TableCommandAcceptResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/commands`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      requestId: options.requestId,
+      commandType: options.commandType,
+      expectedStateVersion: options.expectedStateVersion,
+    }),
+  })) as TableCommandAcceptResponse;
 }
 
 export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsProjection> {

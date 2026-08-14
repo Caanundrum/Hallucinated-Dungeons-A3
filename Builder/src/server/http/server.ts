@@ -74,6 +74,11 @@ import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
 import {
+  acceptTableCommand,
+  fetchTableState,
+  TableCommandError,
+} from '../table/commands.js';
+import {
   readCampaignSettings,
   updateCampaignSettings,
 } from '../settings/campaign-settings.js';
@@ -138,6 +143,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.PAYLOAD_TOO_LARGE]: 413,
   [ERROR_CODES.REQUEST_ID_INVALID]: 400,
   [ERROR_CODES.SESSION_EXPIRED]: 401,
+  [ERROR_CODES.STALE_STATE_VERSION]: 409,
+  [ERROR_CODES.NOT_SEATED]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
 };
 
@@ -173,6 +180,10 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'The submission was missing a valid request identifier, so it could not be made retry-safe.',
   [ERROR_CODES.SESSION_EXPIRED]:
     'This development session expired. Sign in again with a Local Arena development account.',
+  [ERROR_CODES.STALE_STATE_VERSION]:
+    'This table moved on since you last loaded it. Reload the table state, then retry.',
+  [ERROR_CODES.NOT_SEATED]:
+    'Seat a character you own in this campaign before submitting table commands.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };
@@ -1101,8 +1112,68 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const tableStateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/table-state$/.exec(path);
+      if (tableStateMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = tableStateMatch[1]!;
+        sendJson(response, 200, await fetchTableState({ firestore, accountId, campaignId }));
+        return;
+      }
+
+      const tableCommandsMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/commands$/.exec(path);
+      if (tableCommandsMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = tableCommandsMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          requestId?: unknown;
+          commandType?: unknown;
+          expectedStateVersion?: unknown;
+        };
+        if (!isValidRequestId(payload.requestId)) {
+          sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
+          return;
+        }
+        const result = await acceptTableCommand({
+          firestore,
+          accountId,
+          campaignId,
+          requestId: payload.requestId,
+          commandType: payload.commandType as never,
+          expectedStateVersion: payload.expectedStateVersion as number,
+          // Device binding comes from the authenticated session, same as seats.
+          deviceSessionId: session.deviceSessionId,
+        });
+        sendJson(response, result.duplicate ? 200 : 201, result);
+        return;
+      }
+
       sendError(response, ERROR_CODES.NOT_FOUND);
     } catch (error) {
+      if (error instanceof TableCommandError) {
+        const code = error.code as ErrorCode;
+        if (code in ERROR_STATUS) {
+          sendJson(response, ERROR_STATUS[code], {
+            error: code,
+            message: error.message,
+          } satisfies ApiErrorBody);
+          return;
+        }
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error.message,
+        } satisfies ApiErrorBody);
+        return;
+      }
       if (error instanceof CampaignNotFoundError || error instanceof CharacterNotFoundError) {
         sendError(response, ERROR_CODES.NOT_FOUND);
         return;

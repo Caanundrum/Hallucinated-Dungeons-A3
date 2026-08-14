@@ -1205,3 +1205,10 @@ html.hd-reduced-motion * {
 .action-composer h2 {
   color: var(--amber-highlight);
 }
+
+.action-composer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}

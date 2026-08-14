@@ -1,11 +1,12 @@
 /**
- * Campaign table shell: Communication Dock + structural Action Composer.
+ * Campaign table shell: Communication Dock + Action Composer.
  *
- * Blueprint ownership: Sections 1.5.2.1–1.5.2.5. Phase 1 exposes real Party Chat
- * and server-authored Chronicle entries. Rules Desk and Action Composer are
- * honest structural panels without fake AI or mechanical submission.
+ * Blueprint ownership: Sections 1.5.2.1–1.5.2.5. Phase 2a keeps Party Chat
+ * social-only and wires seated `table.sync` through the command gateway.
+ * Interpret Action remains honestly unavailable until Timing Authority.
  */
 
+import type { TableStateProjection } from '../../shared/command-contract.js';
 import type { ChronicleFeedProjection, PartyChatFeedProjection } from '../../shared/communication-contract.js';
 import {
   ACTION_COMPOSER_STRUCTURE,
@@ -23,7 +24,9 @@ import {
   fetchCampaignDetail,
   fetchChronicle,
   fetchPartyChat,
+  fetchTableState,
   postPartyChat,
+  submitTableCommand,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -39,6 +42,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let chatMode: PartyChatMode = 'table_talk';
   let chronicle: ChronicleFeedProjection | null = null;
   let partyChat: PartyChatFeedProjection | null = null;
+  let tableState: TableStateProjection | null = null;
+  let seated = false;
   let draft = '';
   let busy = false;
   let error: string | null = null;
@@ -126,13 +131,43 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>`;
   }
 
+  function actionComposerBody(): string {
+    const version = tableState?.stateVersion ?? 0;
+    const sequence = tableState?.lastEventSequence ?? 0;
+    const syncDisabled = busy || candidate === null || !seated || tableState === null;
+    return `
+      <p data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
+      <p class="record-meta" data-testid="table-state-meta">
+        Table state version ${version} · last event sequence ${sequence}
+      </p>
+      ${
+        seated
+          ? ''
+          : `<p class="record-meta" data-testid="table-sync-seat-hint">
+              Seat a character you own on the campaign page before committing table syncs.
+            </p>`
+      }
+      <div class="action-composer-controls">
+        <button type="button" data-testid="commit-table-sync"
+          aria-disabled="${syncDisabled}">
+          ${busy ? 'Committing…' : escapeHtml(ACTION_COMPOSER_STRUCTURE.tableSyncLabel)}
+        </button>
+        <button type="button" aria-disabled="true" data-testid="action-composer-disabled">
+          ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)} (unavailable until Timing Authority)
+        </button>
+      </div>
+      <p class="record-meta" data-testid="interpret-action-notice">
+        ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
+      </p>`;
+  }
+
   function renderTable(): void {
     container.innerHTML = `
       <div class="page page-wide">
         <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
         <p class="tagline">
-          Communication Dock and Action Composer structure for this campaign. No AI narration or
-          tactical commands in Phase 1.
+          Communication Dock and Action Composer for this campaign. Party Chat stays social;
+          table sync goes through the command gateway.
         </p>
         ${
           error === null
@@ -157,10 +192,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
         <section class="panel action-composer" aria-labelledby="action-composer-heading" data-testid="action-composer">
           <h2 id="action-composer-heading">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
-          <p data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
-          <button type="button" aria-disabled="true" data-testid="action-composer-disabled">
-            Interpret Action (unavailable in Phase 1)
-          </button>
+          ${actionComposerBody()}
         </section>
 
         <p>
@@ -219,6 +251,45 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
         })();
       });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated || tableState === null) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.sync',
+              expectedStateVersion: tableState.stateVersion,
+            });
+            tableState = accepted.table;
+            shell.announce(
+              accepted.duplicate
+                ? 'Prior table sync recovered (same request).'
+                : `Table sync committed · version ${accepted.table.stateVersion}.`,
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'Table sync could not be committed.';
+            if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+              try {
+                tableState = await fetchTableState(campaignId);
+              } catch {
+                // Keep the sync error; refresh is best-effort.
+              }
+            }
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
   }
 
   function render(): void {
@@ -259,13 +330,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     try {
       const detail = await fetchCampaignDetail(campaignId);
       campaignName = detail.campaign.name;
+      seated = detail.ownSeat !== null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed] = await Promise.all([
+      const [chronicleFeed, chatFeed, tableFeed] = await Promise.all([
         fetchChronicle(campaignId),
         fetchPartyChat(campaignId),
+        fetchTableState(campaignId),
       ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
+      tableState = tableFeed;
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
     }

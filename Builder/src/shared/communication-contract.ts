@@ -1,10 +1,11 @@
 /**
- * Communication Dock and Action Composer structural contract for Phase 1.
+ * Communication Dock and Action Composer structural contract.
  *
- * Blueprint ownership: Sections 1.5.2.1–1.5.2.5 and Phase 1 build scope.
- * Chronicle, Party Chat, and Rules Desk are peer destinations. The Action
- * Composer is visually and behaviorally separate. Phase 1 exposes only real
- * functions — no fake AI replies, no mechanical command submission.
+ * Blueprint ownership: Sections 1.5.2.1–1.5.2.5 and Phase 2 Action Composer
+ * plumbing (chunk 2a). Chronicle, Party Chat, and Rules Desk are peer
+ * destinations. The Action Composer stays visually and behaviorally separate.
+ * Phase 2a enables seated `table.sync` commits; Interpret Action remains gated
+ * until Timing Authority arrives.
  */
 
 export const DOCK_TABS = ['chronicle', 'party_chat', 'rules_desk'] as const;
@@ -65,16 +66,23 @@ export interface PartyChatFeedProjection {
 }
 
 export interface ActionComposerProjection {
-  readonly available: false;
+  readonly available: true;
   readonly heading: string;
   readonly notice: string;
+  readonly tableSyncLabel: string;
+  readonly interpretActionLabel: string;
+  readonly interpretActionNotice: string;
 }
 
 export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
-  available: false,
+  available: true,
   heading: 'Declare Action',
   notice:
-    'Mechanical actions unlock with the tactical table in a later phase. This panel stays separate from Party Chat so a sentence typed as talk cannot become a command.',
+    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Seated members can commit a table sync through the command gateway; Interpret Action stays gated until Timing Authority arrives.',
+  tableSyncLabel: 'Commit table sync',
+  interpretActionLabel: 'Interpret Action',
+  interpretActionNotice:
+    'Natural-language Interpret Action unlocks with Timing Authority in a later Phase 2 slice. It cannot spend resources yet.',
 };
 
 export const RULES_DESK_NOTICE =

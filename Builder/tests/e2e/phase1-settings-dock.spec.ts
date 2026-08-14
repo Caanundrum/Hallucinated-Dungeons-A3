@@ -102,10 +102,13 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     await expect(page.getByTestId('action-composer')).toBeVisible();
     await expect(page.getByTestId('action-composer-notice')).toContainText('separate from Party Chat');
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version');
+    await expect(page.getByTestId('commit-table-sync')).toBeVisible();
     await expect(page.getByTestId('action-composer-disabled')).toHaveAttribute(
       'aria-disabled',
       'true',
     );
+    await expect(page.getByTestId('action-composer-disabled')).toContainText('Timing Authority');
 
     // Reload recovers settings and Party Chat.
     await page.goto(`/campaigns/${campaignId}/settings`);
