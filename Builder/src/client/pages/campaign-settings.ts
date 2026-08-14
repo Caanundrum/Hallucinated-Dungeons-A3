@@ -265,32 +265,6 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
       return;
     }
 
-    container.querySelectorAll<HTMLInputElement>('input[name="content-profile"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        if (draft === null) return;
-        draft = { ...draft, contentProfile: input.value as typeof draft.contentProfile };
-      });
-    });
-    container.querySelectorAll<HTMLInputElement>('input[name="group-decision"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        if (draft === null) return;
-        draft = {
-          ...draft,
-          groupDecisionPolicy: input.value as typeof draft.groupDecisionPolicy,
-        };
-        render();
-      });
-    });
-    container.querySelectorAll<HTMLInputElement>('input[name="enemy-health"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        if (draft === null) return;
-        draft = {
-          ...draft,
-          enemyHealthPresentation: input.value as typeof draft.enemyHealthPresentation,
-        };
-      });
-    });
-
     const syncText = (): void => {
       if (draft === null) return;
       const boundaries = container.querySelector<HTMLTextAreaElement>('[data-testid="safety-boundaries"]');
@@ -331,6 +305,35 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         },
       };
     };
+
+    container.querySelectorAll<HTMLInputElement>('input[name="content-profile"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        if (draft === null) return;
+        syncText();
+        draft = { ...draft, contentProfile: input.value as typeof draft.contentProfile };
+      });
+    });
+    container.querySelectorAll<HTMLInputElement>('input[name="group-decision"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        if (draft === null) return;
+        syncText();
+        draft = {
+          ...draft,
+          groupDecisionPolicy: input.value as typeof draft.groupDecisionPolicy,
+        };
+        render();
+      });
+    });
+    container.querySelectorAll<HTMLInputElement>('input[name="enemy-health"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        if (draft === null) return;
+        syncText();
+        draft = {
+          ...draft,
+          enemyHealthPresentation: input.value as typeof draft.enemyHealthPresentation,
+        };
+      });
+    });
 
     const save = async (completeSessionZero: boolean): Promise<void> => {
       if (candidate === null || draft === null || busy) return;
