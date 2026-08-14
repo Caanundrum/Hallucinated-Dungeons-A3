@@ -17,7 +17,8 @@
     "arena:start": "node tools/arena/start-arena.mjs",
     "test:unit": "npm run build:server && node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright test",
-    "certify:phase0": "node tools/certification/run-certification.mjs",
+    "certify:phase0": "node tools/certification/run-certification.mjs phase-0",
+    "certify:phase1": "node tools/certification/run-certification.mjs phase-1",
     "serve:frozen": "node tools/certification/serve-frozen.mjs",
     "scan:completeness": "node tools/certification/code-completeness-scan.mjs",
     "scan:architecture": "node tools/certification/architecture-conformance.mjs"

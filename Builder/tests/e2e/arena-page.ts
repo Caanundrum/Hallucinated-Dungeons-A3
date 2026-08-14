@@ -32,19 +32,35 @@ export async function openArena(page: Page): Promise<void> {
 
 /** Signs in with a server-minted development identity and returns its account id. */
 export async function enterArena(page: Page): Promise<string> {
-  // Prefer the product account surface (shell), falling back to diagnostics
-  // for Phase 0 journeys that still live on that page.
+  // Prefer the diagnostics control when it is already on screen. Using the shell
+  // Sign in path while parked on /diagnostics remounts the page and races the
+  // bootstrap fetch against later session teardown (P0-QA-009 second half).
+  const diagnosticsEnter = page.getByTestId('enter-arena');
+  if (await diagnosticsEnter.isVisible().catch(() => false)) {
+    await diagnosticsEnter.click();
+    await expect(page.getByTestId('account-id')).toBeVisible();
+    await expect(page.getByTestId('record-submit')).toBeVisible();
+    // account-id appears before handleEnter clears busy; wait out the in-flight
+    // projection fetch or keyboard/form submits silently no-op.
+    await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
+    return (await page.getByTestId('account-id').innerText()).trim();
+  }
+
   const shellEnter = page.getByTestId('shell-enter-account');
   if (await shellEnter.isVisible().catch(() => false)) {
     await shellEnter.click();
     await expect(page.getByTestId('shell-account-link')).toBeVisible();
     await page.getByTestId('nav-diagnostics').click();
     await expect(page.getByTestId('account-id')).toBeVisible();
+    await expect(page.getByTestId('record-submit')).toBeVisible();
+    await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
     return (await page.getByTestId('account-id').innerText()).trim();
   }
 
   await page.getByTestId('enter-arena').click();
   await expect(page.getByTestId('account-id')).toBeVisible();
+  await expect(page.getByTestId('record-submit')).toBeVisible();
+  await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
   return (await page.getByTestId('account-id').innerText()).trim();
 }
 

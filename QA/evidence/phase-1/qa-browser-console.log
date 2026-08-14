@@ -1,0 +1,15 @@
+
+Running 6 tests using 1 worker
+
+(node:260604) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:260604) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › scripts/phase1-player.qa.spec.ts:52:7 › Phase 1 independent QA — rendered page › QA-P1-01 novice: enter, create character and campaign, understand Director lock copy (1.5s)
+  ✓  2 [chromium] › scripts/phase1-player.qa.spec.ts:71:7 › Phase 1 independent QA — rendered page › QA-P1-02 impatient: settings and Session Zero without fake AI controls (1.5s)
+  ✓  3 [chromium] › scripts/phase1-player.qa.spec.ts:90:7 › Phase 1 independent QA — rendered page › QA-P1-03 dock: peer tabs and Action Composer stay separate (1.3s)
+  ✓  4 [chromium] › scripts/phase1-player.qa.spec.ts:112:7 › Phase 1 independent QA — rendered page › QA-P1-04 keyboard: primary shell navigation without a mouse (210ms)
+  ✓  5 [chromium] › scripts/phase1-player.qa.spec.ts:124:7 › Phase 1 independent QA — rendered page › QA-P1-05 adversarial: foreign campaign id looks missing (279ms)
+  ✓  6 [chromium] › scripts/phase1-player.qa.spec.ts:134:7 › Phase 1 independent QA — rendered page › QA-P1-06 reentry: reload recovers character and campaign list (1.2s)
+
+  6 passed (6.7s)

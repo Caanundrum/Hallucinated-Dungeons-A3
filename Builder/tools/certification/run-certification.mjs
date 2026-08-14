@@ -43,14 +43,26 @@ import {
   resolveWorkspace,
 } from '../workspace/working-directory.mjs';
 
-const PHASE = 'phase-0';
+const PHASE = process.env.HD_CERTIFY_PHASE ?? process.argv[2] ?? 'phase-0';
 
 /**
- * Number of browser scenarios the Phase 0 suites are expected to execute. A
- * run that reports success while executing fewer than this did not run the
- * suite it claims to have run (Section 1.12.8).
+ * Minimum browser scenarios each phase must execute. A run that reports
+ * success while executing fewer than this did not run the suite it claims
+ * (Section 1.12.8). Floors are raised as Phase 1 suites land; they are not
+ * ceilings.
  */
-const EXPECTED_BROWSER_SCENARIOS = 37;
+const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
+  'phase-0': 37,
+  'phase-1': 56,
+};
+
+const EXPECTED_BROWSER_SCENARIOS =
+  EXPECTED_BROWSER_SCENARIOS_BY_PHASE[PHASE] ?? EXPECTED_BROWSER_SCENARIOS_BY_PHASE['phase-0'];
+
+if (!Object.hasOwn(EXPECTED_BROWSER_SCENARIOS_BY_PHASE, PHASE)) {
+  console.error(`Unsupported certification phase: ${PHASE}`);
+  process.exit(1);
+}
 
 /** Runs a command and captures its result for the run record. */
 function runCommand(command, args, options) {
@@ -82,8 +94,9 @@ function runCommand(command, args, options) {
  *
  * @param {string} runtimeWorkingDir Working Directory of the materialized runtime.
  * @param {import('../blueprint/preflight.mjs').BlueprintPreflight} blueprint
+ * @param {{ checkpointRoot: string }} paths Workspace roots used to attach phase docs.
  */
-async function materializeCandidate(runtimeWorkingDir, blueprint) {
+async function materializeCandidate(runtimeWorkingDir, blueprint, paths) {
   await rm(runtimeWorkingDir, { recursive: true, force: true });
   const runtimeBuilderRoot = join(runtimeWorkingDir, 'Builder');
   await mkdir(runtimeBuilderRoot, { recursive: true });
@@ -98,6 +111,13 @@ async function materializeCandidate(runtimeWorkingDir, blueprint) {
   // The runtime carries the authoritative blueprint it was built from so its
   // own preflight resolves against the same bytes, verified by hash below.
   await copyFile(blueprint.path, join(runtimeWorkingDir, blueprint.fileName));
+
+  // Phase docs live under Checkpoints Root (outside the candidate hash). Copy
+  // them beside Builder so frozen unit tests can resolve the published model.
+  const { cp } = await import('node:fs/promises');
+  await cp(join(paths.checkpointRoot, PHASE), join(runtimeWorkingDir, 'Checkpoints', PHASE), {
+    recursive: true,
+  });
 
   return { fileCount: files.length, runtimeBuilderRoot };
 }
@@ -120,7 +140,7 @@ async function main() {
     }
   };
 
-  console.log('Phase 0 Builder Verification — Frozen Local Certification Mode\n');
+  console.log(`Phase ${PHASE === 'phase-1' ? '1' : '0'} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.
   const toolchain = verifyToolchain();
@@ -205,7 +225,7 @@ async function main() {
   const commandRuns = [];
 
   // 4. Materialize and build the candidate from its lockfile.
-  const materialized = await materializeCandidate(runtimeWorkingDir, blueprint);
+  const materialized = await materializeCandidate(runtimeWorkingDir, blueprint, paths);
   const runtimeCandidateDir = materialized.runtimeBuilderRoot;
   record(
     'candidate_materialized',
@@ -367,10 +387,10 @@ async function main() {
 
   console.log(`\nCertification Run Record: ${recordPath}`);
   if (status !== 'PASSED') {
-    console.error(`\nPhase 0 Builder Verification FAILED: ${failures.join(', ')}`);
+    console.error(`\n${PHASE} Builder Verification FAILED: ${failures.join(', ')}`);
     process.exit(1);
   }
-  console.log('\nPhase 0 Builder Verification PASSED against the frozen candidate.');
+  console.log(`\n${PHASE} Builder Verification PASSED against the frozen candidate.`);
   console.log(`Candidate ${candidateBefore.candidateId} is READY_FOR_QA.`);
 }
 

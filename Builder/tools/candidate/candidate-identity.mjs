@@ -13,8 +13,8 @@
 
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { relative } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
 import { promisify } from 'node:util';
 
 import { BUILDER_ROOT } from '../workspace/working-directory.mjs';
@@ -105,13 +105,45 @@ export async function computeCandidateIdentity() {
  * Lists tracked Builder Root files relative to Builder Root. Used when
  * materializing a frozen runtime so only candidate source is copied.
  *
+ * Frozen materialized candidates are not a git work tree, so when `git
+ * ls-files` returns nothing we walk the on-disk source tree instead.
+ *
  * @returns {Promise<string[]>}
  */
 export async function listTrackedFiles() {
   const listing = await git(['ls-files', '--', '.']);
-  return listing
+  const fromGit = listing
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '')
     .map((line) => relative('.', line));
+  if (fromGit.length > 0) {
+    return fromGit;
+  }
+  return walkFiles(BUILDER_ROOT, BUILDER_ROOT);
+}
+
+/**
+ * @param {string} root
+ * @param {string} current
+ * @returns {Promise<string[]>}
+ */
+async function walkFiles(root, current) {
+  const entries = await readdir(current, { withFileTypes: true });
+  /** @type {string[]} */
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'test-results') {
+      continue;
+    }
+    const absolute = join(current, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkFiles(root, absolute)));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(relative(root, absolute));
+    }
+  }
+  return files.sort();
 }

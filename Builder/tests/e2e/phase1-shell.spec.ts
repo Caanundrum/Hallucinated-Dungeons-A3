@@ -186,13 +186,22 @@ test.describe('Phase 1 shell, navigation, opening sequence, and legal routes', (
     await page.goto('/');
     await dismissIntroIfPresent(page);
 
-    await page.goto('/this-route-was-never-linked');
-
-    await expect(page.getByTestId('not-found-heading')).toContainText(
-      'No page exists at /this-route-was-never-linked',
-    );
-    await expect(page.getByTestId('not-found-home-link')).toBeVisible();
-    await page.getByTestId('not-found-home-link').click();
+    const response = await page.goto('/this-route-was-never-linked');
+    // Frozen Local Certification Mode answers unknown paths with a real HTTP
+    // 404 document. Rapid Vite may SPA-fallback and render the client not-found.
+    const serverHeading = page.getByRole('heading', {
+      name: /No page exists at \/this-route-was-never-linked/,
+    });
+    const spaHeading = page.getByTestId('not-found-heading');
+    await expect(serverHeading.or(spaHeading)).toBeVisible();
+    if ((await serverHeading.count()) > 0) {
+      expect(response?.status()).toBe(404);
+      await page.getByRole('link', { name: /Return to Hallucinated Dungeons/i }).click();
+    } else {
+      await expect(spaHeading).toContainText('No page exists at /this-route-was-never-linked');
+      await expect(page.getByTestId('not-found-home-link')).toBeVisible();
+      await page.getByTestId('not-found-home-link').click();
+    }
     await expect(page.getByTestId('home-heading')).toBeVisible();
   });
 
@@ -237,9 +246,11 @@ test.describe('Phase 1 shell, navigation, opening sequence, and legal routes', (
 
     await page.getByTestId('nav-diagnostics').click();
     await expect(page.getByTestId('diagnostics-heading')).toBeVisible();
-    expect(
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
-    ).toBe('diagnostics-heading');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+      )
+      .toBe('diagnostics-heading');
   });
 
   test('the build info in the footer names the running candidate and blueprint version', async ({

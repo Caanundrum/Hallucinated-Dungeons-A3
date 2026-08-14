@@ -142,9 +142,11 @@ test.describe('QA regression coverage', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('notice-message')).toContainText('Session ended');
 
-    expect(
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
-    ).toBe('notice-message');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+      )
+      .toBe('notice-message');
 
     await enterArena(page);
     await endSessionBehindThePage(page);
@@ -155,9 +157,11 @@ test.describe('QA regression coverage', () => {
       'NOT_AUTHENTICATED',
     );
 
-    expect(
-      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
-    ).toBe('error-message');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid),
+      )
+      .toBe('error-message');
   });
 
   test('P0-QA-006: a partial list says how many records exist', async ({ page }) => {

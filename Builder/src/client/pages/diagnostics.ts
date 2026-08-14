@@ -221,9 +221,24 @@ export function mountDiagnosticsPage(host: PageHost): void {
       </div>`;
   }
 
+  /**
+   * When a busy action removes the focused control (leave, auth death), keep the
+   * original test id across intermediate re-renders so focus can move to the
+   * explanation once it exists (P0-QA-009). Clearing the shared account session
+   * notifies subscribers before applyFailure has set the error; without this
+   * anchor, an early fallback focuses Enter Arena and the later render keeps it.
+   */
+  let removedControlFocus: string | null = null;
+
   function captureFocus(): { testId: string; selectionStart: number | null } | null {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement)) {
+      return null;
+    }
+    // Never treat shell chrome (nav links, account chip) as page focus to
+    // restore — falling through would steal keyboard focus from the nav when
+    // an async session hydrate re-renders this page.
+    if (!container.contains(active)) {
       return null;
     }
     const testId = active.dataset.testid;
@@ -235,7 +250,47 @@ export function mountDiagnosticsPage(host: PageHost): void {
     return { testId, selectionStart };
   }
 
+  function focusExplanationOrFallback(): boolean {
+    const fallbackSelectors = [
+      '[data-testid="error-message"]',
+      '[data-testid="notice-message"]',
+      '[data-testid="enter-arena"]',
+      '[data-testid="record-submit"]',
+    ];
+    for (const selector of fallbackSelectors) {
+      const fallback = container.querySelector<HTMLElement>(selector);
+      if (fallback !== null) {
+        fallback.focus();
+        return true;
+      }
+    }
+    return false;
+  }
+
   function restoreFocus(captured: { testId: string; selectionStart: number | null } | null): void {
+    const anchor = removedControlFocus;
+    if (anchor !== null) {
+      const anchorStillPresent = container.querySelector(`[data-testid="${anchor}"]`) !== null;
+      if (!anchorStillPresent) {
+        const focusedExplanation =
+          container.querySelector('[data-testid="error-message"]') !== null ||
+          container.querySelector('[data-testid="notice-message"]') !== null;
+        focusExplanationOrFallback();
+        // Keep the anchor while busy and the explanation is not on screen yet
+        // so a later render (after applyFailure) can still move focus there.
+        if (focusedExplanation || !state.busy) {
+          removedControlFocus = null;
+        }
+        return;
+      }
+      // Control still in the tree (e.g. the initial busy=true re-render). Keep
+      // the anchor until the action finishes so a later auth-clear removal is
+      // still attributed to this action.
+      if (!state.busy) {
+        removedControlFocus = null;
+      }
+    }
+
     if (captured === null) {
       return;
     }
@@ -249,18 +304,13 @@ export function mountDiagnosticsPage(host: PageHost): void {
       return;
     }
 
-    const fallbackSelectors = [
-      '[data-testid="error-message"]',
-      '[data-testid="notice-message"]',
-      '[data-testid="enter-arena"]',
-      '[data-testid="record-submit"]',
-    ];
-    for (const selector of fallbackSelectors) {
-      const fallback = container.querySelector<HTMLElement>(selector);
-      if (fallback !== null) {
-        fallback.focus();
-        return;
-      }
+    focusExplanationOrFallback();
+  }
+
+  function rememberFocusedControlBeforeRemoval(): void {
+    const captured = captureFocus();
+    if (captured !== null) {
+      removedControlFocus = captured.testId;
     }
   }
 
@@ -270,6 +320,10 @@ export function mountDiagnosticsPage(host: PageHost): void {
     }
     syncIdentityFromAccount();
     const captured = captureFocus();
+    const preserveHeadingFocus =
+      captured?.testId === 'diagnostics-heading' ||
+      (document.activeElement instanceof HTMLElement &&
+        document.activeElement.dataset.testid === 'diagnostics-heading');
 
     container.innerHTML = `
       <div class="page">
@@ -305,6 +359,13 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
     bindEvents();
     restoreFocus(captured);
+    if (preserveHeadingFocus) {
+      const heading = container.querySelector<HTMLElement>('[data-testid="diagnostics-heading"]');
+      if (heading !== null) {
+        heading.setAttribute('tabindex', '-1');
+        heading.focus();
+      }
+    }
     shell.announce(state.error?.message ?? state.notice ?? '');
   }
 
@@ -365,6 +426,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (candidate === null || state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -387,6 +449,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (candidate === null || state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -394,12 +457,15 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
     try {
       await leaveLocalArena(candidate.candidateId);
+      // Set the success notice before clearing the shared account session.
+      // Otherwise the account subscriber re-renders while signed-out UI has no
+      // notice yet and focus falls through to Enter Arena (P0-QA-009).
+      state.notice = 'Session ended. The stored records remain owned by that account.';
       state.identity = null;
-      setAccountFromServer(null);
       state.projection = null;
       state.pendingRequestId = null;
       state.pendingNote = '';
-      state.notice = 'Session ended. The stored records remain owned by that account.';
+      setAccountFromServer(null);
     } catch (failure) {
       applyFailure(failure);
     } finally {
@@ -412,6 +478,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -433,6 +500,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
       return;
     }
 
+    rememberFocusedControlBeforeRemoval();
     state.pendingNote = note;
     if (!isRetry || state.pendingRequestId === null) {
       state.pendingRequestId = crypto.randomUUID();
@@ -477,8 +545,11 @@ export function mountDiagnosticsPage(host: PageHost): void {
   void (async () => {
     try {
       state.identity = await fetchSession();
-      setAccountFromServer(state.identity);
+      // Load the projection before publishing the shared account session so a
+      // reload cannot show a signed-in account with an empty record list for a
+      // tick (Phase 0 self-play leave/return proof).
       state.projection = await fetchProjection();
+      setAccountFromServer(state.identity);
       render();
     } catch (failure) {
       if (!(failure instanceof ApiFailure) || failure.code !== ERROR_CODES.NOT_AUTHENTICATED) {

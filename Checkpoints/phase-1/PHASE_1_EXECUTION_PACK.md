@@ -8,7 +8,7 @@ blueprintSourceHash: 09d91f49c336
 priorPhase: phase-0
 priorPhaseState: PHASE_CERTIFIED
 priorCertifiedCandidate: cand-32058f47eda8
-lifecycleState: IMPLEMENTING
+lifecycleState: AWAITING_HUMAN_REVIEW
 humanGate: required
 authoredAt: 2026-08-12T18:30:00Z
 ---
@@ -183,4 +183,4 @@ Internal workstream checkpoints, not gates. QA handoff happens once, at the phas
 6. Identity & Final Review, Create Character, Character Vault, ownership. **(done — chunk 1c)**
 7. Campaign creation with Veyra/Garrick and personality lock, invitations, membership, seats. **(done — chunk 1e)**
 8. Settings model and the controls with real behavior; Dock and Action Composer structure. **(done — chunk 1f)**
-9. Reentry journey, coverage model, freeze, Builder Verification, QA, human gate.
+9. Reentry journey, coverage model, freeze, Builder Verification, QA, human gate. **(done — chunk 1g; awaiting Product Owner gate)**

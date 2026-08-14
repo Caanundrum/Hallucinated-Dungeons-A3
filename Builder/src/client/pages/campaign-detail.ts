@@ -138,7 +138,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               <dd data-testid="director-personality-label">${escapeHtml(campaign.director.personalityLabel)}</dd>
             </div>
             <div>
-              <dt>Avatar key</dt>
+              <dt>Look key</dt>
               <dd><code data-testid="director-avatar-key">${escapeHtml(campaign.director.avatarKey)}</code></dd>
             </div>
             <div>
@@ -146,6 +146,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               <dd data-testid="director-locked-at">${escapeHtml(formatTimestamp(campaign.director.lockedAt))}</dd>
             </div>
           </dl>
+          <p class="record-meta">
+            The look key is stored so later Director art can attach without changing this campaign
+            record. It is not a control and does not load art in this build.
+          </p>
         </section>
 
         <section class="panel" aria-labelledby="members-heading">
@@ -434,8 +438,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
     } catch (failure) {
       detail = null;
       unavailable = true;
-      error =
-        failure instanceof ApiFailure ? failure.message : 'This campaign could not be loaded.';
+      // Ownership misses and unknown ids both look "unavailable". Do not surface
+      // the generic HTTP "No such route." string on top of the honest copy.
+      if (failure instanceof ApiFailure && failure.code === 'NOT_FOUND') {
+        error = null;
+      } else {
+        error =
+          failure instanceof ApiFailure ? failure.message : 'This campaign could not be loaded.';
+      }
     }
     render();
   }
