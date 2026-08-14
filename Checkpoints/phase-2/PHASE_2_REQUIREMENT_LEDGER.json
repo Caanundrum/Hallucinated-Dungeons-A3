@@ -32,7 +32,7 @@
       "behavior": "Canonical command acceptance with expected state version and idempotency id; immutable event log; server-authored table projection with state version; stale version rejects without mutation; duplicate requestId returns the prior commit; only seated campaign members may submit table commands.",
       "implementation": "Builder/src/shared/command-contract.ts; Builder/src/server/table/; COLLECTIONS.campaignCommands/campaignEvents/campaignTableProjections; HTTP routes under /api/campaigns/:id/table-state and /commands",
       "verification": "tests/unit/table-commands.test.mjs; tests/e2e/phase2-table-commands.spec.ts",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P2-MAP-SCHEMAS",

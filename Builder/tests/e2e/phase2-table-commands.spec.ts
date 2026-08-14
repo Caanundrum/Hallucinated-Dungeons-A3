@@ -93,6 +93,7 @@ test.describe('Phase 2a table command gateway', () => {
     await page.reload();
     await dismissIntroIfPresent(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
+    await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-message').first()).toContainText(
       'I describe walking without submitting a command.',
     );
