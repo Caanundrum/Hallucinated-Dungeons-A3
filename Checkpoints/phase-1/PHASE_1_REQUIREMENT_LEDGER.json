@@ -3,13 +3,14 @@
   "phase": "phase-1",
   "blueprintVersion": "ALPHA_3_V1",
   "owner": "Builder",
-  "lifecycleState": "IMPLEMENTING",
+  "lifecycleState": "AWAITING_HUMAN_REVIEW",
   "priorPhase": { "phase": "phase-0", "state": "PHASE_CERTIFIED", "candidateId": "cand-32058f47eda8" },
   "humanGate": {
     "required": true,
     "scope": "Primary visual direction, opening identity, character and campaign flow, and settings presentation.",
     "timing": "After Builder and QA have already used and corrected the page.",
-    "state": "NOT_REACHED"
+    "state": "AWAITING_HUMAN_REVIEW",
+    "checkpoint": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md"
   },
   "note": "Scope control for Phase 1 only. Section 25 is the phase-scope authority. A status becomes PASSED only when the named verification actually executed against the frozen Phase 1 candidate and produced machine-readable evidence.",
   "requirements": [
@@ -137,57 +138,57 @@
       "id": "P1-STABLE-IDENTIFIERS",
       "source": "25 Phase 1 build scope; 1.12.4",
       "behavior": "Only the minimum stable identifiers Phase 1 genuinely needs for later maps, seats, command and event references, rules versions, settings, and campaign continuity. No speculative Phase 2 or Phase 3 schema, and no field without a producer, consumer, authorization, and failure behavior.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Checkpoints/phase-1/PHASE_1_STABLE_IDENTIFIERS.md; PHASE_1_IDENTITY_AND_OWNERSHIP_CONTRACT.md §7; existing accountId/characterId/campaignId/membershipId/seatId/deviceSessionId/rulesVersion/requestId/projectionVersion/directorAvatarKey/settings ids",
+      "verification": "tests/unit/stable-identifiers.test.mjs; architecture conformance ownership rules; reentry + smoke campaign continuity",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-REENTRY-JOURNEY",
       "source": "25 Phase 1 player journey",
       "behavior": "From a fresh browser: enter, create a character, create a campaign with a locked Director identity and personality, invite and join a second local development identity into membership and a seat, confirm ordinary users cannot alter the locked configuration, configure settings, leave, return, and recover the same character and campaign state.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/tests/e2e/phase1-reentry.spec.ts (pack journey); supporting campaigns/settings/characters e2e",
+      "verification": "tests/e2e/phase1-reentry.spec.ts; smoke-spine campaign continuity segment",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-SMOKE-SPINE-EXTENSION",
       "source": "25.3; 26.6",
       "behavior": "The permanent smoke spine gains its Phase 1 segment: character and campaign continuity, alongside the existing startup, development identity, and canonical write/read segments.",
-      "implementation": "extends Builder/tests/e2e/smoke-spine.spec.ts",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/tests/e2e/smoke-spine.spec.ts (character + campaign continuity segments)",
+      "verification": "npm run test:e2e — Permanent smoke spine describe; frozen certify:phase1 browser suite",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-COVERAGE-MODEL",
       "source": "C.AUTONOMY.10; 1.12.9",
       "behavior": "A published, executed Phase 1 coverage model with enumerated finite dimensions, constraints that remove only impossible combinations, exhaustive numeric boundaries, reproducible pairwise selection, explicit high-risk interactions, a complete legal journey for every supported class, independently recalculated derived values, and restart, resume, ownership, stale-state, and duplicate-submission cases.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Checkpoints/phase-1/PHASE_1_COVERAGE_MODEL.md",
+      "verification": "tests/unit/phase1-coverage-model.test.mjs; executed via unit + e2e suites bound in the model",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-BUILDER-PAGE-PROOF",
       "source": "1.11.12; 25.0 standard phase loop",
       "behavior": "Builder operates the rendered page as a player against the frozen runtime and hunts for player-visible, authority, accessibility, and common-sense loopholes before QA handoff.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Frozen Local Certification Mode (npm run certify:phase1) + Builder self-play evidence under Evidence/phase-1/",
+      "verification": "Evidence/phase-1/<cand>-*/certification-run-record.json; Checkpoints/phase-1/PHASE_1_BUILDER_VERIFICATION.md",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-QA-VALIDATION",
       "source": "1.11.12 step 7; C.AUTONOMY.10",
       "behavior": "Independent QA uses the exact Builder-verified frozen candidate from QA Root as novice, expert, impatient, keyboard-only, high-zoom, non-Chromium, tablet, and adversarial players to the extent device evidence is available, and closes its own findings.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "QA/scripts/phase1-player.qa.spec.ts; QA/playwright.phase1.config.ts; QA/findings/PHASE_1_QA_FINDINGS.md",
+      "verification": "QA evidence under QA/evidence/phase-1/; findings file outcome",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P1-HUMAN-GATE",
       "source": "25 Phase 1 human gate; 1.11.20; 1.10.8",
       "behavior": "After Builder and QA have used and corrected the page, the Product Owner reviews the primary visual direction, opening identity, character and campaign flow, and settings presentation. Approval binds to the exact candidate hash and is never inferred from silence.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md",
+      "verification": "Awaiting Product Owner authenticated approval of the exact candidate hash",
+      "status": "AWAITING_HUMAN_REVIEW"
     }
   ],
   "systemContinuityCheck": {

@@ -81,4 +81,52 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('back-to-vault').click();
     await expect(page.getByTestId('character-link')).toContainText('Smoke Spine Healer');
   });
+
+  test('campaign continuity: create, configure settings, reload, and recover the same campaign', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) {
+      await tutorialNo.click();
+    }
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
+    await page.getByTestId('identity-name').fill('Smoke Spine Warden');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+    await expect(page.getByTestId('character-sheet-heading')).toHaveText('Smoke Spine Warden');
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('campaign-name').fill('Smoke Spine Continuity');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    await page.getByTestId('identity-veyra').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await page.getByTestId('create-campaign-submit').click();
+    await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Continuity');
+    await expect(page.getByTestId('director-avatar-key')).toHaveText('veyra__seasoned_host');
+
+    await page.getByTestId('open-campaign-settings').click();
+    await page.getByTestId('content-profile-tense').click();
+    await page.getByTestId('complete-session-zero').click();
+    await expect(page.getByTestId('settings-notice')).toContainText('Session Zero recorded');
+
+    const campaignUrl = page.url().replace(/\/settings$/, '');
+    await page.reload();
+    await page.goto(campaignUrl);
+    await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Continuity');
+    await expect(page.getByTestId('director-avatar-key')).toHaveText('veyra__seasoned_host');
+    await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
+    await expect(page.getByTestId('session-zero-summary')).toContainText('Tense');
+
+    await page.getByTestId('nav-characters').click();
+    await expect(page.getByTestId('character-link')).toContainText('Smoke Spine Warden');
+  });
 });
