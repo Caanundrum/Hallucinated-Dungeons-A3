@@ -175,7 +175,7 @@
       "source": "1.11.12; 25.0 standard phase loop",
       "behavior": "Builder operates the rendered page as a player against the frozen runtime and hunts for player-visible, authority, accessibility, and common-sense loopholes before QA handoff.",
       "implementation": "Frozen Local Certification Mode (npm run certify:phase1) + Builder self-play evidence under Evidence/phase-1/",
-      "verification": "Evidence/phase-1/cand-c9f4d8eaf883-2026-08-14T18-48-25-385Z/certification-run-record.json; Checkpoints/phase-1/PHASE_1_BUILDER_VERIFICATION.md (57/57 browser scenarios)",
+      "verification": "Evidence/phase-1/cand-b5e4a128cef1-2026-08-14T19-38-07-292Z/certification-run-record.json; Checkpoints/phase-1/PHASE_1_BUILDER_VERIFICATION.md (57/57; candidate cand-b5e4a128cef1)",
       "status": "PASSED"
     },
     {
@@ -183,7 +183,7 @@
       "source": "1.11.12 step 7; C.AUTONOMY.10",
       "behavior": "Independent QA uses the exact Builder-verified frozen candidate from QA Root as novice, expert, impatient, keyboard-only, high-zoom, non-Chromium, tablet, and adversarial players to the extent device evidence is available, and closes its own findings.",
       "implementation": "QA/scripts/phase1-player.qa.spec.ts; QA/playwright.phase1.config.ts; QA/findings/PHASE_1_QA_FINDINGS.md",
-      "verification": "QA/evidence/phase-1/; QA/findings/PHASE_1_QA_FINDINGS.md (6/6 PASS, PLAYER_VALIDATED)",
+      "verification": "QA/evidence/phase-1/; QA/findings/PHASE_1_QA_FINDINGS.md (6/6 PASS, PLAYER_VALIDATED; candidate cand-b5e4a128cef1)",
       "status": "PASSED"
     },
     {

@@ -2,9 +2,9 @@
 phase: phase-1
 recordType: human_approval_checkpoint
 lifecycleState: AWAITING_HUMAN_REVIEW
-candidateId: cand-c9f4d8eaf883
-sourceTreeHash: c9f4d8eaf883767c8a3b579f8cb84efe37d45e757167e42b0c2b3b7eee513356
-commit: 65dc5eecb69528aba665f0b7e8c3957b0b6844d5
+candidateId: cand-b5e4a128cef1
+sourceTreeHash: b5e4a128cef1e32201306741e0bd81ce3752b64716f011bd06ddfe336c488da8
+commit: 513d4079408b53f0c7583e83401cf11c856b573f
 blueprintVersion: ALPHA_3_V1
 builderVerification: Checkpoints/phase-1/PHASE_1_BUILDER_VERIFICATION.md
 qaFindings: QA/findings/PHASE_1_QA_FINDINGS.md
@@ -30,9 +30,9 @@ Approval, if given, binds **only** to this exact candidate:
 
 | Field | Value |
 | --- | --- |
-| candidateId | `cand-c9f4d8eaf883` |
-| sourceTreeHash | `c9f4d8eaf883767c8a3b579f8cb84efe37d45e757167e42b0c2b3b7eee513356` |
-| commit | `65dc5eecb69528aba665f0b7e8c3957b0b6844d5` |
+| candidateId | `cand-b5e4a128cef1` |
+| sourceTreeHash | `b5e4a128cef1e32201306741e0bd81ce3752b64716f011bd06ddfe336c488da8` |
+| commit | `513d4079408b53f0c7583e83401cf11c856b573f` |
 | frozen origin (local) | `http://127.0.0.1:5274` |
 
 Any later source or configuration change voids approval. Approval is never inferred from silence.
@@ -43,6 +43,13 @@ Any later source or configuration change voids approval. Approval is never infer
 | --- | --- | --- |
 | Builder Verification | PASSED / READY_FOR_QA | `PHASE_1_BUILDER_VERIFICATION.md`, certification run record |
 | Independent QA | PLAYER_VALIDATED | `QA/findings/PHASE_1_QA_FINDINGS.md` |
+
+## Known residual notes for visual review (not blockers)
+
+- Home first viewport still carries product status copy + diagnostics demotion under the brand (dense for a hero composition; intentional Alpha "what's here" honesty).
+- Diagnostics remains in the primary nav as Phase 0 scaffolding demoted in copy, not removed.
+- Licensed typography assets remain deferred (`P1-TYPOGRAPHY-ASSETS`).
+- Real Safari / real-tablet certification blocked until Phase 6/7.
 
 ## Product Owner decision (fill in)
 

@@ -1,19 +1,19 @@
 ---
 phase: phase-1
-candidateId: cand-c9f4d8eaf883
-sourceTreeHash: c9f4d8eaf883767c8a3b579f8cb84efe37d45e757167e42b0c2b3b7eee513356
-commit: 65dc5eecb69528aba665f0b7e8c3957b0b6844d5
+candidateId: cand-b5e4a128cef1
+sourceTreeHash: b5e4a128cef1e32201306741e0bd81ce3752b64716f011bd06ddfe336c488da8
+commit: 513d4079408b53f0c7583e83401cf11c856b573f
 blueprintVersion: ALPHA_3_V1
 lifecycleAfterVerification: READY_FOR_QA
-verifiedAt: 2026-08-14T18:49:33.263Z
+verifiedAt: 2026-08-14T19:39:20Z
 status: PASSED
-certificationRunRecord: Evidence/phase-1/cand-c9f4d8eaf883-2026-08-14T18-48-25-385Z/certification-run-record.json
-localStackManifest: Runtime/certification/cand-c9f4d8eaf883/local-stack-manifest.json
+certificationRunRecord: Evidence/phase-1/cand-b5e4a128cef1-2026-08-14T19-38-07-292Z/certification-run-record.json
+localStackManifest: Runtime/certification/cand-b5e4a128cef1/local-stack-manifest.json
 ---
 
 # Phase 1 — Builder Verification
 
-Frozen Local Certification Mode passed against candidate `cand-c9f4d8eaf883`.
+Frozen Local Certification Mode passed against candidate `cand-b5e4a128cef1`.
 
 ## What ran
 
@@ -34,22 +34,23 @@ Frozen Local Certification Mode passed against candidate `cand-c9f4d8eaf883`.
 
 Command: `cd Builder && npm run certify:phase1`
 
-## Scope proved on the frozen page
+## Post-matrix skeptical pass (before human gate)
 
-- Shell, opening identity, legal routes, keyboard navigation
-- Account projection over the Development Test Identity
-- Character creation / vault / ownership
-- Campaign create, Director lock, invite, membership, seats
-- Settings + Session Zero; Communication Dock structure + Action Composer separation
-- Phase 1 reentry journey and smoke-spine campaign continuity
-- Phase 0 foundation write/read regressions (including P0-QA-009 focus on explanation)
+A second Builder pass hunted playability/UI/authority issues against the prior candidate and fixed:
+
+- Session Zero selects showing raw enum ids (`fade_to_black`, etc.) → human labels
+- Foreign/missing campaign stacking generic `No such route.` on honest unavailable copy
+- Director "Avatar key" wording → "Look key" with honesty note
+- Diagnostics Enter busy-race that could drop keyboard record submits
+
+Replacement candidate `cand-b5e4a128cef1` was re-frozen and re-verified after those corrections.
 
 ## Handoff
 
-Candidate `cand-c9f4d8eaf883` is `READY_FOR_QA`. Serve with:
+Candidate `cand-b5e4a128cef1` is `READY_FOR_QA`. Serve with:
 
 ```bash
-cd Builder && npm run serve:frozen -- cand-c9f4d8eaf883
+cd Builder && npm run serve:frozen -- cand-b5e4a128cef1
 ```
 
 Independent QA must use this exact candidate hash. Any later Builder source change voids this verification.
