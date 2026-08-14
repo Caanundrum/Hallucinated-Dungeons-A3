@@ -283,7 +283,12 @@ export function mountDiagnosticsPage(host: PageHost): void {
         }
         return;
       }
-      removedControlFocus = null;
+      // Control still in the tree (e.g. the initial busy=true re-render). Keep
+      // the anchor until the action finishes so a later auth-clear removal is
+      // still attributed to this action.
+      if (!state.busy) {
+        removedControlFocus = null;
+      }
     }
 
     if (captured === null) {
