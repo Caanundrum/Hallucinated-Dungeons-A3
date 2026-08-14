@@ -48,15 +48,24 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   host.setAttribute('data-testid', 'table-stage-host');
 
   const application = new Application();
+  // Local Arena / CI desktops often lack a usable GPU. Prefer Canvas2D first so
+  // the stage still paints the server projection; WebGL remains available when
+  // hardware acceleration works. Still Vanilla PixiJS (Section 1.10.9).
   await application.init({
     background: '#0c0a08',
     antialias: true,
     autoDensity: true,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     resizeTo: host,
+    preference: ['canvas', 'webgl'],
+    failIfMajorPerformanceCaveat: false,
   });
+  const rendererName = String(
+    (application.renderer as { name?: string }).name ?? application.renderer.type ?? 'unknown',
+  );
   application.canvas.setAttribute('data-testid', 'table-stage-canvas');
   application.canvas.setAttribute('aria-label', 'Tactical map stage');
+  application.canvas.setAttribute('data-renderer', rendererName.toLowerCase());
   host.appendChild(application.canvas);
 
   const root = new Container();
