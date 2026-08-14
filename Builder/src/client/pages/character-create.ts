@@ -149,6 +149,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let openGeneration = 0;
   const mountToken = beginPageMount(container);
 
+  function draftHasProgress(): boolean {
+    if (current === null) {
+      return false;
+    }
+    const choices = current.draft.choices;
+    return (
+      choices.classId !== null ||
+      choices.backgroundId !== null ||
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0
+    );
+  }
+
   function tutorialDismissed(): boolean {
     return tutorialDismissedThisSession;
   }
@@ -1046,10 +1059,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           if (candidate === null || current === null || busy) {
             return;
           }
-          const hasProgress =
-            current.draft.choices.classId !== null ||
-            current.draft.completedSteps.length > 0 ||
-            Object.keys(current.draft.choices.baseAbilityScores).length > 0;
+          const hasProgress = draftHasProgress();
           if (
             hasProgress &&
             !window.confirm(
@@ -1317,7 +1327,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           if (candidate === null || current === null || busy) {
             return;
           }
-          if (!window.confirm('Discard this draft? Your unfinished choices will be removed.')) {
+          if (
+            !window.confirm('Discard this draft? Your unfinished choices will be removed.')
+          ) {
             return;
           }
           busy = true;
