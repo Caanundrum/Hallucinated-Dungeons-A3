@@ -78,6 +78,7 @@ import {
   fetchTableState,
   TableCommandError,
 } from '../table/commands.js';
+import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
 import {
   readCampaignSettings,
   updateCampaignSettings,
@@ -1123,6 +1124,17 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const campaignMapMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/map$/.exec(path);
+      if (campaignMapMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = campaignMapMatch[1]!;
+        sendJson(response, 200, await fetchCampaignMap({ firestore, accountId, campaignId }));
+        return;
+      }
+
       const tableCommandsMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/commands$/.exec(path);
       if (tableCommandsMatch !== null) {
         if (method !== 'POST') {
@@ -1159,7 +1171,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
       sendError(response, ERROR_CODES.NOT_FOUND);
     } catch (error) {
-      if (error instanceof TableCommandError) {
+      if (error instanceof TableCommandError || error instanceof MapProjectionError) {
         const code = error.code as ErrorCode;
         if (code in ERROR_STATUS) {
           sendJson(response, ERROR_STATUS[code], {

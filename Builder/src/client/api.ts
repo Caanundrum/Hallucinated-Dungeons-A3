@@ -41,6 +41,7 @@ import type {
   TableCommandAcceptResponse,
   TableStateProjection,
 } from '../shared/command-contract.js';
+import type { MapBundleProjection } from '../shared/map-contract.js';
 import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
@@ -352,6 +353,10 @@ export async function postPartyChat(options: {
 
 export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {
   return (await request(`/api/campaigns/${campaignId}/table-state`)) as TableStateProjection;
+}
+
+export async function fetchCampaignMap(campaignId: string): Promise<MapBundleProjection> {
+  return (await request(`/api/campaigns/${campaignId}/map`)) as MapBundleProjection;
 }
 
 export async function submitTableCommand(options: {

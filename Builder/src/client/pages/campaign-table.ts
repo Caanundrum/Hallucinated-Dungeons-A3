@@ -1,9 +1,9 @@
 /**
- * Campaign table shell: Communication Dock + Action Composer.
+ * Campaign table shell: map stage, Communication Dock, and Action Composer.
  *
- * Blueprint ownership: Sections 1.5.2.1–1.5.2.5. Phase 2a keeps Party Chat
- * social-only and wires seated `table.sync` through the command gateway.
- * Interpret Action remains honestly unavailable until Timing Authority.
+ * Blueprint ownership: Sections 1.5.2.1–1.5.2.5 and Phase 2 map/Pixi stage.
+ * Party Chat stays social-only. Table sync uses the command gateway.
+ * The Pixi stage renders only server map projections (Section 1.10.9).
  */
 
 import type { TableStateProjection } from '../../shared/command-contract.js';
@@ -18,10 +18,12 @@ import {
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
+import type { MapBundleProjection } from '../../shared/map-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   fetchCampaignDetail,
+  fetchCampaignMap,
   fetchChronicle,
   fetchPartyChat,
   fetchTableState,
@@ -31,6 +33,7 @@ import {
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import type { PageHost } from './home.js';
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -43,12 +46,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let chronicle: ChronicleFeedProjection | null = null;
   let partyChat: PartyChatFeedProjection | null = null;
   let tableState: TableStateProjection | null = null;
+  let mapBundle: MapBundleProjection | null = null;
   let seated = false;
   let draft = '';
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let stageHandle: TableStageHandle | null = null;
+  let stageMounting = false;
   const mountToken = beginPageMount(container);
 
   function dockBody(): string {
@@ -161,67 +167,77 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
   }
 
-  function renderTable(): void {
+  function ensurePageShell(): void {
+    if (container.querySelector('[data-testid="table-page-shell"]')) {
+      return;
+    }
     container.innerHTML = `
-      <div class="page page-wide">
-        <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
-        <p class="tagline">
-          Communication Dock and Action Composer for this campaign. Party Chat stays social;
-          table sync goes through the command gateway.
-        </p>
-        ${
-          error === null
-            ? ''
-            : `<div class="message error" role="alert" data-testid="table-error">${escapeHtml(error)}</div>`
-        }
-
-        <section class="panel communication-dock" aria-label="Communication Dock" data-testid="communication-dock">
-          <div class="dock-tabs" role="tablist" aria-label="Dock destinations">
-            ${DOCK_TABS.map(
-              (tab) => `
-              <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
-                aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
-                ${escapeHtml(DOCK_TAB_LABELS[tab])}
-              </button>`,
-            ).join('')}
-          </div>
-          <div class="dock-viewport" role="tabpanel">
-            ${dockBody()}
-          </div>
+      <div class="page page-wide" data-testid="table-page-shell">
+        <div data-testid="table-heading-slot"></div>
+        <section class="table-stage-frame" aria-label="Tactical map" data-testid="table-stage-slot">
+          <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
         </section>
-
-        <section class="panel action-composer" aria-labelledby="action-composer-heading" data-testid="action-composer">
-          <h2 id="action-composer-heading">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
-          ${actionComposerBody()}
-        </section>
-
-        <p>
-          <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Back to campaign</a>
-          ·
-          <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings">Campaign settings</a>
-        </p>
+        <div data-testid="table-panels-slot"></div>
       </div>`;
+  }
 
-    container.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
+  async function ensureStage(): Promise<void> {
+    if (!isPageMountCurrent(container, mountToken) || stageMounting) {
+      return;
+    }
+    const slot = container.querySelector<HTMLElement>('[data-testid="table-stage-slot"]');
+    if (slot === null) {
+      return;
+    }
+    if (stageHandle !== null && slot.querySelector('[data-testid="table-stage-canvas"]')) {
+      if (mapBundle !== null) {
+        stageHandle.renderMap(mapBundle);
+      }
+      return;
+    }
+    stageMounting = true;
+    try {
+      stageHandle?.destroy();
+      stageHandle = await mountTableStage(slot);
+      if (!isPageMountCurrent(container, mountToken)) {
+        stageHandle.destroy();
+        stageHandle = null;
+        return;
+      }
+      if (mapBundle !== null) {
+        stageHandle.renderMap(mapBundle);
+      }
+    } catch (failure) {
+      slot.innerHTML = `<p class="message error" data-testid="table-stage-error">
+        The tactical map stage could not start.
+        ${failure instanceof Error ? escapeHtml(failure.message) : ''}
+      </p>`;
+    } finally {
+      stageMounting = false;
+    }
+  }
+
+  function bindPanelEvents(panels: HTMLElement): void {
+    panels.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         activeTab = button.dataset.dockTab as DockTab;
         render();
       });
     });
 
-    container.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
+    panels.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
       input.addEventListener('change', () => {
         chatMode = input.value as PartyChatMode;
         render();
       });
     });
 
-    const input = container.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
+    const input = panels.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
     });
 
-    container
+    panels
       .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -252,7 +268,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    container
+    panels
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -292,9 +308,68 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
   }
 
+  function renderTable(): void {
+    ensurePageShell();
+    const heading = container.querySelector<HTMLElement>('[data-testid="table-heading-slot"]');
+    const panels = container.querySelector<HTMLElement>('[data-testid="table-panels-slot"]');
+    if (heading === null || panels === null) {
+      return;
+    }
+
+    const mapMeta =
+      mapBundle === null
+        ? 'Map projection pending.'
+        : `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square · art: procedural local placeholder`;
+
+    heading.innerHTML = `
+      <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+      <p class="tagline">
+        Tactical map stage, Communication Dock, and Action Composer. Party Chat stays social;
+        table sync goes through the command gateway.
+      </p>
+      <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+      ${
+        error === null
+          ? ''
+          : `<div class="message error" role="alert" data-testid="table-error">${escapeHtml(error)}</div>`
+      }`;
+
+    panels.innerHTML = `
+      <section class="panel communication-dock" aria-label="Communication Dock" data-testid="communication-dock">
+        <div class="dock-tabs" role="tablist" aria-label="Dock destinations">
+          ${DOCK_TABS.map(
+            (tab) => `
+            <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
+              aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
+              ${escapeHtml(DOCK_TAB_LABELS[tab])}
+            </button>`,
+          ).join('')}
+        </div>
+        <div class="dock-viewport" role="tabpanel">
+          ${dockBody()}
+        </div>
+      </section>
+
+      <section class="panel action-composer" aria-labelledby="action-composer-heading" data-testid="action-composer">
+        <h2 id="action-composer-heading">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
+        ${actionComposerBody()}
+      </section>
+
+      <p>
+        <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Back to campaign</a>
+        ·
+        <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings">Campaign settings</a>
+      </p>`;
+
+    bindPanelEvents(panels);
+    void ensureStage();
+  }
+
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) return;
     if (getAccount() === null) {
+      stageHandle?.destroy();
+      stageHandle = null;
       container.innerHTML = renderSignedOutGate({
         title: 'Campaign table',
         body: 'Sign in to open the Communication Dock for a campaign you belong to.',
@@ -332,14 +407,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed] = await Promise.all([
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed] = await Promise.all([
         fetchChronicle(campaignId),
         fetchPartyChat(campaignId),
         fetchTableState(campaignId),
+        fetchCampaignMap(campaignId),
       ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
+      mapBundle = mapFeed;
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
     }

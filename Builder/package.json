@@ -24,7 +24,8 @@
     "scan:architecture": "node tools/certification/architecture-conformance.mjs"
   },
   "dependencies": {
-    "firebase-admin": "^13.0.2"
+    "firebase-admin": "^13.0.2",
+    "pixi.js": "^8.19.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

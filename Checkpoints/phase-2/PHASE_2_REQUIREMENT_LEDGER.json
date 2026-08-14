@@ -38,17 +38,17 @@
       "id": "P2-MAP-SCHEMAS",
       "source": "25 Phase 2 build scope",
       "behavior": "Five-foot square map coordinate, edge, footprint, elevation, and collision schemas with a producer, consumer, authorization, and failure behavior for each identifier.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/map-contract.ts; Builder/src/server/table/map-projection.ts; GET /api/campaigns/:id/map",
+      "verification": "tests/unit/map-contract.test.mjs; tests/e2e/phase2-map-stage.spec.ts",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P2-PIXI-SCENE",
       "source": "25 Phase 2; 1.10.9",
       "behavior": "Vanilla PixiJS map stage and semantic scene graph bound to server projections; no @pixi/react.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/client/table/table-stage.ts; campaign-table stage host; pixi.js dependency",
+      "verification": "tests/e2e/phase2-map-stage.spec.ts",
+      "status": "IMPLEMENTED_UNVERIFIED"
     },
     {
       "id": "P2-MOVEMENT-VISIBILITY",
