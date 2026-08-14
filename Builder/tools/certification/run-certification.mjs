@@ -94,8 +94,9 @@ function runCommand(command, args, options) {
  *
  * @param {string} runtimeWorkingDir Working Directory of the materialized runtime.
  * @param {import('../blueprint/preflight.mjs').BlueprintPreflight} blueprint
+ * @param {{ checkpointRoot: string }} paths Workspace roots used to attach phase docs.
  */
-async function materializeCandidate(runtimeWorkingDir, blueprint) {
+async function materializeCandidate(runtimeWorkingDir, blueprint, paths) {
   await rm(runtimeWorkingDir, { recursive: true, force: true });
   const runtimeBuilderRoot = join(runtimeWorkingDir, 'Builder');
   await mkdir(runtimeBuilderRoot, { recursive: true });
@@ -110,6 +111,13 @@ async function materializeCandidate(runtimeWorkingDir, blueprint) {
   // The runtime carries the authoritative blueprint it was built from so its
   // own preflight resolves against the same bytes, verified by hash below.
   await copyFile(blueprint.path, join(runtimeWorkingDir, blueprint.fileName));
+
+  // Phase docs live under Checkpoints Root (outside the candidate hash). Copy
+  // them beside Builder so frozen unit tests can resolve the published model.
+  const { cp } = await import('node:fs/promises');
+  await cp(join(paths.checkpointRoot, PHASE), join(runtimeWorkingDir, 'Checkpoints', PHASE), {
+    recursive: true,
+  });
 
   return { fileCount: files.length, runtimeBuilderRoot };
 }
@@ -217,7 +225,7 @@ async function main() {
   const commandRuns = [];
 
   // 4. Materialize and build the candidate from its lockfile.
-  const materialized = await materializeCandidate(runtimeWorkingDir, blueprint);
+  const materialized = await materializeCandidate(runtimeWorkingDir, blueprint, paths);
   const runtimeCandidateDir = materialized.runtimeBuilderRoot;
   record(
     'candidate_materialized',

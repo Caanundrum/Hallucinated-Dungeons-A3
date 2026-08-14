@@ -12,7 +12,10 @@ const serverPort = Number(process.env.HD_SERVER_PORT ?? 5174);
 
 export default defineConfig({
   root: 'src/client',
-  base: './',
+  // Absolute base so hard navigation to /campaigns/:id, /invite/:code, etc.
+  // still loads /assets/* from the application origin (Frozen Mode serves the
+  // built index.html for every SPA route).
+  base: '/',
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
