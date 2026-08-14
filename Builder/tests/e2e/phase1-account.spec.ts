@@ -57,6 +57,8 @@ test.describe('Phase 1 account projection', () => {
     await page.getByTestId('nav-characters').click();
     await page.getByTestId('start-character').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
+    await page.getByTestId('tutorial-ask-no').click();
+    await page.getByTestId('open-quick-start').click();
     await page.getByTestId('option-stalwart-defender').click();
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
     await page.getByTestId('identity-name').fill('Account Surface Scout');

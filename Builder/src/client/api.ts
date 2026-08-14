@@ -23,6 +23,15 @@ import type {
   DraftOptions,
   DraftProjection,
 } from '../shared/character-contract.js';
+import type {
+  CampaignDetailProjection,
+  CampaignListProjection,
+  CampaignProjection,
+  DirectorCatalog,
+  InvitationCreatedProjection,
+  InvitationPreview,
+  SeatProjection,
+} from '../shared/campaign-contract.js';
 
 /** A draft always travels with the options legal for its current state. */
 export interface DraftResponse {
@@ -43,6 +52,13 @@ export class ApiFailure extends Error {
 
 const NETWORK_FAILURE_MESSAGE =
   'The Local Arena server did not respond. Confirm it is running, then retry.';
+
+let authFailureHandler: (() => void) | null = null;
+
+/** Registers the shared session clear used when the server reports auth death. */
+export function onAuthFailure(handler: () => void): void {
+  authFailureHandler = handler;
+}
 
 async function request<T>(
   path: string,
@@ -84,6 +100,12 @@ async function request<T>(
   if (!response.ok) {
     const body = payload as Partial<ApiErrorBody>;
     const code = (body.error ?? ERROR_CODES.UPSTREAM_UNAVAILABLE) as ErrorCode;
+    if (
+      (code === ERROR_CODES.NOT_AUTHENTICATED || code === ERROR_CODES.SESSION_EXPIRED) &&
+      authFailureHandler !== null
+    ) {
+      authFailureHandler();
+    }
     throw new ApiFailure(code, body.message ?? NETWORK_FAILURE_MESSAGE);
   }
 
@@ -195,6 +217,87 @@ export async function fetchCharacter(characterId: string): Promise<CharacterProj
   return (await request<CharacterProjection>(
     `/api/characters/${characterId}`,
   )) as CharacterProjection;
+}
+
+export async function fetchDirectorCatalog(): Promise<DirectorCatalog> {
+  return (await request<DirectorCatalog>('/api/directors/catalog')) as DirectorCatalog;
+}
+
+export async function fetchCampaigns(): Promise<CampaignListProjection> {
+  return (await request<CampaignListProjection>('/api/campaigns')) as CampaignListProjection;
+}
+
+export async function createCampaign(options: {
+  readonly candidateId: string;
+  readonly name: string;
+  readonly summary: string;
+  readonly directorIdentity: string;
+  readonly directorPersonality: string;
+}): Promise<CampaignProjection> {
+  return (await request<CampaignProjection>('/api/campaigns', {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      name: options.name,
+      summary: options.summary,
+      directorIdentity: options.directorIdentity,
+      directorPersonality: options.directorPersonality,
+    }),
+  })) as CampaignProjection;
+}
+
+export async function fetchCampaignDetail(campaignId: string): Promise<CampaignDetailProjection> {
+  return (await request<CampaignDetailProjection>(
+    `/api/campaigns/${campaignId}`,
+  )) as CampaignDetailProjection;
+}
+
+export async function createCampaignInvitation(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<InvitationCreatedProjection> {
+  return (await request<InvitationCreatedProjection>(
+    `/api/campaigns/${options.campaignId}/invitations`,
+    { method: 'POST', candidateId: options.candidateId },
+  )) as InvitationCreatedProjection;
+}
+
+export async function revokeCampaignInvitation(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  await request<null>(`/api/campaigns/${options.campaignId}/invitations/revoke`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+  });
+}
+
+export async function fetchInvitationPreview(inviteCode: string): Promise<InvitationPreview> {
+  return (await request<InvitationPreview>(
+    `/api/invitations/${inviteCode}`,
+  )) as InvitationPreview;
+}
+
+export async function acceptCampaignInvitation(options: {
+  readonly candidateId: string;
+  readonly inviteCode: string;
+}): Promise<CampaignProjection> {
+  return (await request<CampaignProjection>(`/api/invitations/${options.inviteCode}/accept`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+  })) as CampaignProjection;
+}
+
+export async function createCampaignSeat(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly characterId: string;
+}): Promise<SeatProjection> {
+  return (await request<SeatProjection>(`/api/campaigns/${options.campaignId}/seats`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ characterId: options.characterId }),
+  })) as SeatProjection;
 }
 
 export async function recordFoundationCheck(options: {

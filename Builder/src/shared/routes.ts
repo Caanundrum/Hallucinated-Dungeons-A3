@@ -13,7 +13,15 @@
  * a hard navigation or reload.
  */
 
-export const SPA_ROUTES = ['/', '/account', '/diagnostics', '/characters', '/characters/new'] as const;
+export const SPA_ROUTES = [
+  '/',
+  '/account',
+  '/diagnostics',
+  '/characters',
+  '/characters/new',
+  '/campaigns',
+  '/campaigns/new',
+] as const;
 export type SpaRoute = (typeof SPA_ROUTES)[number];
 
 /**
@@ -21,7 +29,11 @@ export type SpaRoute = (typeof SPA_ROUTES)[number];
  * the built bundle on a hard navigation, the same as a fixed route, while
  * anything else still receives the honest 404 document.
  */
-const SPA_ROUTE_PATTERNS: readonly RegExp[] = [/^\/characters\/[A-Za-z0-9-]{1,64}$/];
+const SPA_ROUTE_PATTERNS: readonly RegExp[] = [
+  /^\/characters\/[A-Za-z0-9-]{1,64}$/,
+  /^\/campaigns\/[A-Za-z0-9-]{1,64}$/,
+  /^\/invite\/[A-Za-z0-9]{8,32}$/,
+];
 
 export const LEGAL_ROUTES = [
   '/legal/terms',
@@ -45,6 +57,21 @@ export function characterIdFromPath(path: string): string | null {
     return null;
   }
   return match[1] ?? null;
+}
+
+/** The campaign id in a `/campaigns/:id` route, or null for any other path. */
+export function campaignIdFromPath(path: string): string | null {
+  const match = /^\/campaigns\/([A-Za-z0-9-]{1,64})$/.exec(path);
+  if (match === null || match[1] === 'new') {
+    return null;
+  }
+  return match[1] ?? null;
+}
+
+/** The invite code in an `/invite/:code` route, or null for any other path. */
+export function inviteCodeFromPath(path: string): string | null {
+  const match = /^\/invite\/([A-Za-z0-9]{8,32})$/.exec(path);
+  return match?.[1] ?? null;
 }
 
 export function isLegalRoute(path: string): path is LegalRoute {

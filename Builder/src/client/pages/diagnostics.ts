@@ -28,8 +28,9 @@ import {
   leaveLocalArena,
   recordFoundationCheck,
 } from '../api.js';
-import { setAccountFromServer } from '../account-session.js';
+import { setAccountFromServer, getAccount, subscribeAccount } from '../account-session.js';
 import { escapeHtml } from '../dom-utils.js';
+import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
 
 interface DiagnosticsState {
@@ -51,6 +52,7 @@ function formatTimestamp(iso: string): string {
 export function mountDiagnosticsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Local Arena diagnostics');
+  const mountToken = beginPageMount(container);
 
   const state: DiagnosticsState = {
     identity: null,
@@ -62,6 +64,18 @@ export function mountDiagnosticsPage(host: PageHost): void {
     notice: null,
     staleCandidate: false,
   };
+
+  function syncIdentityFromAccount(): void {
+    const account = getAccount();
+    if (account === null) {
+      if (state.identity !== null) {
+        state.identity = null;
+        state.projection = null;
+      }
+      return;
+    }
+    state.identity = account;
+  }
 
   function identityPanel(): string {
     if (state.identity === null) {
@@ -251,6 +265,10 @@ export function mountDiagnosticsPage(host: PageHost): void {
   }
 
   function render(): void {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    syncIdentityFromAccount();
     const captured = captureFocus();
 
     container.innerHTML = `
@@ -264,7 +282,8 @@ export function mountDiagnosticsPage(host: PageHost): void {
         <div class="candidate-strip" data-testid="candidate-strip">
           ${
             candidate === null
-              ? 'Contacting the Local Arena server…'
+              ? `Contacting the Local Arena server…
+                 <button type="button" class="secondary" data-testid="diagnostics-retry-candidate">Retry connection</button>`
               : `<span>Candidate <b data-testid="candidate-id">${escapeHtml(candidate.candidateId)}</b></span>
                  <span>Environment <b data-testid="environment-class">${escapeHtml(candidate.environmentClass)}</b></span>
                  <span>Mode <b data-testid="runtime-mode">${escapeHtml(candidate.runtimeMode)}</b></span>
@@ -277,6 +296,12 @@ export function mountDiagnosticsPage(host: PageHost): void {
         ${messageMarkup()}
         ${recordPanel()}
       </div>`;
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="diagnostics-retry-candidate"]')
+      ?.addEventListener('click', () => {
+        window.location.reload();
+      });
 
     bindEvents();
     restoreFocus(captured);
@@ -441,6 +466,14 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
   render();
 
+  subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    syncIdentityFromAccount();
+    render();
+  });
+
   void (async () => {
     try {
       state.identity = await fetchSession();
@@ -450,6 +483,9 @@ export function mountDiagnosticsPage(host: PageHost): void {
     } catch (failure) {
       if (!(failure instanceof ApiFailure) || failure.code !== ERROR_CODES.NOT_AUTHENTICATED) {
         applyFailure(failure);
+        render();
+      } else {
+        syncIdentityFromAccount();
         render();
       }
     }

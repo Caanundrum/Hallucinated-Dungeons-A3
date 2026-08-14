@@ -349,7 +349,8 @@ label {
   margin-bottom: var(--space-1);
 }
 
-input[type="text"] {
+input[type="text"],
+textarea {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
@@ -360,6 +361,7 @@ input[type="text"] {
 }
 
 input[type="text"]:focus-visible,
+textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--focus-cyan);
@@ -407,7 +409,54 @@ button.secondary:hover {
 
 button[aria-disabled="true"] {
   opacity: 0.55;
-  cursor: progress;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.lock-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border: var(--border-weight) solid var(--structural-border);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-control);
+  vertical-align: middle;
+}
+
+.lock-mark {
+  margin-right: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.locked-panel {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--abyss-bg) 88%, #1a2433);
+}
+
+.locked-details {
+  opacity: 0.92;
+}
+
+.panel-gated {
+  opacity: 0.85;
+}
+
+.preview-panel {
+  border-color: color-mix(in srgb, var(--focus-cyan) 35%, var(--structural-border));
+}
+
+.preview-panel-pending {
+  opacity: 0.9;
+}
+
+.preview-subheading {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 1rem;
+  color: var(--text-primary);
 }
 
 .message {
@@ -781,6 +830,34 @@ button[aria-disabled="true"] {
   color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 400;
+}
+
+.option-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  border: var(--border-weight) solid var(--structural-border);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-control);
+  vertical-align: middle;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+
+.field > span {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.seat-actions {
+  align-items: end;
 }
 
 .ability-assign {

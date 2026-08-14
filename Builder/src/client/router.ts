@@ -1,17 +1,35 @@
 /**
  * A minimal client-side router.
  *
- * Vanilla, dependency-free, and deliberately small: it maps a pathname to a
+ * Vanilla, dependency-free, and deliberately small: it maps a location to a
  * page render, intercepts same-origin `<a data-link>` clicks so navigation
  * between the application's own pages does not reload the document, and
  * falls back to an ordinary browser navigation for everything else
  * (including the target="_blank" legal links, which are never intercepted).
+ *
+ * Soft navigation preserves pathname, query string, and hash so links such as
+ * `/characters/new?returnCampaign=…` keep their query after a data-link click.
  */
 
 export type RouteChangeHandler = (path: string) => void;
 
 let activeHandler: RouteChangeHandler | null = null;
 let listenersBound = false;
+
+/** Pathname only — strips query and hash for route matching. */
+export function pathnameOf(pathOrUrl: string): string {
+  const noHash = pathOrUrl.split('#')[0] ?? pathOrUrl;
+  const noQuery = noHash.split('?')[0] ?? noHash;
+  return noQuery.length === 0 ? '/' : noQuery;
+}
+
+function locationKey(url: URL): string {
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function currentLocationKey(): string {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
 
 function shouldIntercept(event: MouseEvent, anchor: HTMLAnchorElement): boolean {
   if (
@@ -38,7 +56,7 @@ function bindListenersOnce(): void {
   listenersBound = true;
 
   window.addEventListener('popstate', () => {
-    activeHandler?.(window.location.pathname);
+    activeHandler?.(currentLocationKey());
   });
 
   document.addEventListener('click', (event) => {
@@ -54,7 +72,7 @@ function bindListenersOnce(): void {
       return;
     }
     event.preventDefault();
-    navigate(new URL(anchor.href, window.location.href).pathname);
+    navigate(locationKey(new URL(anchor.href, window.location.href)));
   });
 }
 
@@ -62,10 +80,10 @@ function bindListenersOnce(): void {
 export function startRouter(handler: RouteChangeHandler): void {
   activeHandler = handler;
   bindListenersOnce();
-  handler(window.location.pathname);
+  handler(currentLocationKey());
 }
 
-/** Navigates to `path` using the History API and invokes the active route handler. */
+/** Navigates to `path` (pathname + optional search/hash) and invokes the active route handler. */
 export function navigate(path: string, options: { readonly replace?: boolean } = {}): void {
   if (options.replace === true) {
     window.history.replaceState({}, '', path);

@@ -7,17 +7,26 @@
  */
 
 import type { CandidateIdentity } from '../shared/contract.js';
-import { characterIdFromPath, isSpaRoute } from '../shared/routes.js';
-import { hydrateAccount } from './account-session.js';
-import { fetchCandidate } from './api.js';
+import {
+  campaignIdFromPath,
+  characterIdFromPath,
+  inviteCodeFromPath,
+  isSpaRoute,
+} from '../shared/routes.js';
+import { hydrateAccount, clearAccountOnAuthFailure } from './account-session.js';
+import { fetchCandidate, onAuthFailure } from './api.js';
 import { mountAccountPage } from './pages/account.js';
+import { mountCampaignCreatePage } from './pages/campaign-create.js';
+import { mountCampaignDetailPage } from './pages/campaign-detail.js';
+import { mountCampaignsPage } from './pages/campaigns.js';
 import { mountCharacterCreatePage } from './pages/character-create.js';
 import { mountCharacterSheetPage } from './pages/character-sheet.js';
 import { mountCharactersPage } from './pages/characters.js';
 import { mountDiagnosticsPage } from './pages/diagnostics.js';
 import { mountHomePage, type PageHost } from './pages/home.js';
+import { mountInvitePage } from './pages/invite.js';
 import { mountNotFoundPage } from './pages/not-found.js';
-import { startRouter } from './router.js';
+import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -26,6 +35,10 @@ if (root === null) {
 }
 
 async function start(): Promise<void> {
+  onAuthFailure(() => {
+    clearAccountOnAuthFailure();
+  });
+
   let candidate: CandidateIdentity | null = null;
   try {
     candidate = await fetchCandidate();
@@ -43,11 +56,14 @@ async function start(): Promise<void> {
   // sequence a keyboard user expects when a page first opens.
   let isFirstRender = true;
 
-  startRouter((path) => {
+  startRouter((locationKey) => {
+    const path = pathnameOf(locationKey);
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };
 
     const characterId = characterIdFromPath(path);
+    const campaignId = campaignIdFromPath(path);
+    const inviteCode = inviteCodeFromPath(path);
 
     if (path === '/') {
       mountHomePage(host);
@@ -61,6 +77,14 @@ async function start(): Promise<void> {
       mountCharacterCreatePage(host);
     } else if (characterId !== null) {
       mountCharacterSheetPage(host, characterId);
+    } else if (path === '/campaigns') {
+      mountCampaignsPage(host);
+    } else if (path === '/campaigns/new') {
+      mountCampaignCreatePage(host);
+    } else if (campaignId !== null) {
+      mountCampaignDetailPage(host, campaignId);
+    } else if (inviteCode !== null) {
+      mountInvitePage(host, inviteCode);
     } else if (isSpaRoute(path)) {
       // Every declared SPA route must have a mount call above; reaching this
       // branch means one was added to the shared route table without a page.

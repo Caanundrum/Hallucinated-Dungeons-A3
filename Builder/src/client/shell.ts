@@ -46,7 +46,18 @@ const LEGAL_LABELS: Record<string, string> = {
   '/legal/content-and-safety': 'Content and Safety Notice',
 };
 
-function accountChipMarkup(account: AccountProjection | null, busy: boolean): string {
+function accountChipMarkup(
+  account: AccountProjection | null,
+  busy: boolean,
+  candidateAvailable: boolean,
+): string {
+  if (!candidateAvailable) {
+    return `
+      <div class="account-chip" data-testid="shell-account-chip">
+        <span class="account-chip-label" data-testid="shell-account-status">Server unreachable</span>
+        <button type="button" data-testid="shell-retry-candidate">Retry</button>
+      </div>`;
+  }
   if (account === null) {
     return `
       <div class="account-chip" data-testid="shell-account-chip">
@@ -85,8 +96,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
               <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
+              <li><a href="/campaigns" data-link data-testid="nav-campaigns">Campaigns</a></li>
               <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
-              <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Local Arena diagnostics</a></li>
+              <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Diagnostics</a></li>
             </ul>
           </nav>
           <div class="shell-account" data-testid="shell-account-slot"></div>
@@ -129,6 +141,12 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
   }
 
   function bindAccountChip(): void {
+    accountSlot
+      .querySelector<HTMLButtonElement>('[data-testid="shell-retry-candidate"]')
+      ?.addEventListener('click', () => {
+        window.location.reload();
+      });
+
     accountSlot
       .querySelector<HTMLButtonElement>('[data-testid="shell-enter-account"]')
       ?.addEventListener('click', () => {
@@ -179,7 +197,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
   }
 
   function renderAccountChip(): void {
-    accountSlot.innerHTML = accountChipMarkup(getAccount(), accountBusy);
+    accountSlot.innerHTML = accountChipMarkup(getAccount(), accountBusy, candidate !== null);
     bindAccountChip();
   }
 
@@ -199,6 +217,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
         const matches =
           linkPath === path ||
           (linkPath === '/characters' && path.startsWith('/characters/')) ||
+          (linkPath === '/campaigns' && path.startsWith('/campaigns/')) ||
           (linkPath === '/account' && path === '/account');
         if (matches) {
           link.setAttribute('aria-current', 'page');

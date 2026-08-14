@@ -145,7 +145,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let quickStartOpen = false;
   let tutorialOpen = false;
   let tutorialStep = 0;
+  let pendingChoices: CharacterChoices | null = null;
+  let openGeneration = 0;
   const mountToken = beginPageMount(container);
+
+  function draftHasProgress(): boolean {
+    if (current === null) {
+      return false;
+    }
+    const choices = current.draft.choices;
+    return (
+      choices.classId !== null ||
+      choices.backgroundId !== null ||
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0
+    );
+  }
 
   function tutorialDismissed(): boolean {
     return tutorialDismissedThisSession;
@@ -165,23 +180,36 @@ export function mountCharacterCreatePage(host: PageHost): void {
       render();
       return;
     }
+    const generation = ++openGeneration;
     try {
-      current = await openDraft(candidate.candidateId);
+      const opened = await openDraft(candidate.candidateId);
+      if (generation !== openGeneration || !isPageMountCurrent(container, mountToken)) {
+        return;
+      }
+      current = opened;
       draftOpened = true;
       activeStep =
         WIZARD_STEPS.find((step) => !current?.draft.completedSteps.includes(step)) ?? 'identity';
     } catch (failure) {
+      if (generation !== openGeneration || !isPageMountCurrent(container, mountToken)) {
+        return;
+      }
       error = failure instanceof ApiFailure ? failure.message : 'Your draft could not be opened.';
     }
     render();
   }
 
   async function commitChoices(next: CharacterChoices): Promise<void> {
-    if (candidate === null || current === null || busy) {
+    if (candidate === null || current === null) {
+      return;
+    }
+    if (busy) {
+      pendingChoices = next;
       return;
     }
     busy = true;
     error = null;
+    pendingChoices = null;
     render();
     try {
       current = await saveDraft({
@@ -193,6 +221,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
       busy = false;
+      if (pendingChoices !== null && candidate !== null && current !== null) {
+        const queued = pendingChoices;
+        pendingChoices = null;
+        await commitChoices(queued);
+        return;
+      }
       render();
     }
   }
@@ -286,9 +320,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map(
             (entry) => `
-          <label class="option${options.selected === entry.id ? ' selected' : ''}">
+          <label class="option${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}">
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
-              ${options.selected === entry.id ? 'checked' : ''} data-testid="option-${escapeHtml(entry.id)}" />
+              ${options.selected === entry.id ? 'checked' : ''} ${busy ? 'disabled' : ''}
+              data-testid="option-${escapeHtml(entry.id)}" />
             <span class="option-label">${escapeHtml(entry.label)}</span>
             ${entry.summary === undefined ? '' : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`}
           </label>`,
@@ -312,7 +347,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map((entry) => {
             const isSelected = options.selected.includes(entry.id);
-            const disabled = atCap && !isSelected;
+            const disabled = busy || (atCap && !isSelected);
             return `
           <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
@@ -342,9 +377,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <button type="button" class="secondary" data-testid="open-quick-start">
           In a hurry? Use a ready-made character
         </button>
-        <button type="button" class="secondary" data-testid="open-tutorial">
-          New to tabletop RPGs? Short tour
-        </button>
+        ${
+          tutorialDismissed()
+            ? `<button type="button" class="secondary" data-testid="open-tutorial">
+                 New to tabletop RPGs? Short tour
+               </button>`
+            : ''
+        }
       </div>
       <h3>Choose a Class</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
@@ -911,75 +950,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </div>`;
   }
 
-  function render(): void {
-    if (!isPageMountCurrent(container, mountToken)) {
-      return;
-    }
-
-    if (getAccount() === null) {
-      container.innerHTML = renderSignedOutGate({
-        title: 'Create a character',
-        body: 'Sign in with a Local Arena development account before starting character creation. Your draft will be owned by that account.',
-        candidate,
-        busy: gateBusy,
-        error: gateError,
-      });
-      bindSignedOutGate({
-        container,
-        shell,
-        candidate,
-        onSignedIn: () => {
-          void openOwnedDraft();
-        },
-        setBusy: (next) => {
-          gateBusy = next;
-        },
-        setError: (message) => {
-          gateError = message;
-        },
-        render,
-      });
-      return;
-    }
-
-    const state = current;
-
-    container.innerHTML = `
-      <div class="page page-wide">
-        <h1 data-testid="create-heading">Create a character</h1>
-        <p class="tagline">
-          Follow the steps in order — or hop the train above if you need to revisit a choice.
-          The server checks every decision against the SRD, so Continue waits until this step is legal.
-          On a wide screen, the sheet builds on the side so you can compare as you choose.
-        </p>
-        ${
-          error === null
-            ? ''
-            : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>`
-        }
-        ${tutorialAskBanner()}
-        ${state === null ? '<p class="empty-state">Opening your draft…</p>' : ''}
-        ${state === null ? '' : stepTrain()}
-        ${
-          state === null
-            ? ''
-            : `
-        <div class="wizard-layout">
-          <section class="panel wizard-step-panel" aria-labelledby="step-heading">
-            <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
-            ${renderStepBody()}
-            ${wizardNav()}
-          </section>
-          ${liveSheetPreview()}
-        </div>`
-        }
-        ${quickStartModal()}
-        ${tutorialModal()}
-      </div>`;
-
-    bindEvents();
-  }
-
   function bindEvents(): void {
     const state = current;
     if (state === null) {
@@ -1087,6 +1057,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
       input.addEventListener('change', () => {
         void (async () => {
           if (candidate === null || current === null || busy) {
+            return;
+          }
+          const hasProgress = draftHasProgress();
+          if (
+            hasProgress &&
+            !window.confirm(
+              'Apply this ready-made character? It replaces your current draft choices. You can still edit afterward.',
+            )
+          ) {
+            input.checked = false;
             return;
           }
           busy = true;
@@ -1318,6 +1298,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
               draftId: current.draft.draftId,
             });
             shell.announce(`${character.identity.name} created.`);
+            const returnCampaign = new URLSearchParams(window.location.search).get('returnCampaign');
+            if (
+              returnCampaign !== null &&
+              /^[A-Za-z0-9-]{1,64}$/.test(returnCampaign) &&
+              returnCampaign !== 'new'
+            ) {
+              navigate(
+                `/campaigns/${returnCampaign}?seatCharacter=${encodeURIComponent(character.characterId)}`,
+              );
+              return;
+            }
             navigate(`/characters/${character.characterId}`);
             return;
           } catch (failure) {
@@ -1334,6 +1325,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ?.addEventListener('click', () => {
         void (async () => {
           if (candidate === null || current === null || busy) {
+            return;
+          }
+          if (
+            !window.confirm('Discard this draft? Your unfinished choices will be removed.')
+          ) {
             return;
           }
           busy = true;
@@ -1353,6 +1349,153 @@ export function mountCharacterCreatePage(host: PageHost): void {
       });
   }
 
+  function captureFocus(): {
+    readonly testId: string | null;
+    readonly name: string | null;
+    readonly value: string | null;
+    readonly selectionStart: number | null;
+    readonly selectionEnd: number | null;
+  } {
+    const prior = document.activeElement;
+    return {
+      testId: prior instanceof HTMLElement ? prior.getAttribute('data-testid') : null,
+      name:
+        prior instanceof HTMLInputElement ||
+        prior instanceof HTMLSelectElement ||
+        prior instanceof HTMLTextAreaElement
+          ? prior.name
+          : null,
+      value:
+        prior instanceof HTMLInputElement ||
+        prior instanceof HTMLSelectElement ||
+        prior instanceof HTMLTextAreaElement
+          ? prior.value
+          : null,
+      selectionStart:
+        prior instanceof HTMLInputElement || prior instanceof HTMLTextAreaElement
+          ? prior.selectionStart
+          : null,
+      selectionEnd:
+        prior instanceof HTMLInputElement || prior instanceof HTMLTextAreaElement
+          ? prior.selectionEnd
+          : null,
+    };
+  }
+
+  function restoreFocus(captured: ReturnType<typeof captureFocus>): void {
+    if (captured.testId !== null) {
+      const restored = container.querySelector<HTMLElement>(
+        `[data-testid="${CSS.escape(captured.testId)}"]`,
+      );
+      if (restored instanceof HTMLElement) {
+        restored.focus();
+        if (
+          (restored instanceof HTMLInputElement || restored instanceof HTMLTextAreaElement) &&
+          captured.selectionStart !== null &&
+          captured.selectionEnd !== null
+        ) {
+          restored.setSelectionRange(captured.selectionStart, captured.selectionEnd);
+        }
+        return;
+      }
+    }
+    if (captured.name !== null && captured.value !== null) {
+      const named = [
+        ...container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+          `[name="${CSS.escape(captured.name)}"]`,
+        ),
+      ];
+      const match = named.find((element) => element.value === captured.value) ?? named[0] ?? null;
+      match?.focus();
+    }
+  }
+
+  function render(): void {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+
+    if (getAccount() === null) {
+      container.innerHTML = renderSignedOutGate({
+        title: 'Create a character',
+        body: 'Sign in with a Local Arena development account before starting character creation. Your draft will be owned by that account.',
+        candidate,
+        busy: gateBusy,
+        error: gateError,
+      });
+      bindSignedOutGate({
+        container,
+        shell,
+        candidate,
+        onSignedIn: () => {
+          void openOwnedDraft();
+        },
+        setBusy: (next) => {
+          gateBusy = next;
+        },
+        setError: (message) => {
+          gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+
+    const state = current;
+    const focus = captureFocus();
+
+    container.innerHTML = `
+      <div class="page page-wide">
+        <h1 data-testid="create-heading">Create a character</h1>
+        <p class="tagline">
+          Follow the steps in order — or hop the train above if you need to revisit a choice.
+          The server checks every decision against the SRD, so Continue waits until this step is legal.
+          On a wide screen, the sheet builds on the side so you can compare as you choose.
+        </p>
+        ${
+          error === null
+            ? ''
+            : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>
+               ${
+                 state === null
+                   ? `<div class="actions">
+                        <button type="button" data-testid="retry-open-draft">Retry</button>
+                        <a href="/characters" data-link>Back to the Character Vault</a>
+                      </div>`
+                   : ''
+               }`
+        }
+        ${tutorialAskBanner()}
+        ${state === null && error === null ? '<p class="empty-state">Opening your draft…</p>' : ''}
+        ${state === null ? '' : stepTrain()}
+        ${
+          state === null
+            ? ''
+            : `
+        <div class="wizard-layout">
+          <section class="panel wizard-step-panel" aria-labelledby="step-heading">
+            <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
+            ${renderStepBody()}
+            ${wizardNav()}
+          </section>
+          ${liveSheetPreview()}
+        </div>`
+        }
+        ${quickStartModal()}
+        ${tutorialModal()}
+      </div>`;
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="retry-open-draft"]')
+      ?.addEventListener('click', () => {
+        error = null;
+        void openOwnedDraft();
+      });
+
+    bindEvents();
+    restoreFocus(focus);
+  }
+
   render();
 
   subscribeAccount(() => {
@@ -1362,6 +1505,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (getAccount() === null) {
       current = null;
       draftOpened = false;
+      pendingChoices = null;
+      openGeneration += 1;
       render();
       return;
     }
