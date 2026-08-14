@@ -40,11 +40,7 @@ interface StoredSeat {
   readonly campaignId: string;
   readonly ownerAccountId: string;
   readonly characterId: string;
-}
-
-interface StoredCharacter {
-  readonly characterId: string;
-  readonly name?: string;
+  readonly characterName: string;
 }
 
 async function assertCampaignMember(options: {
@@ -135,14 +131,12 @@ export async function fetchCampaignMap(options: {
   let index = 0;
   for (const doc of seatSnap.docs) {
     const seat = doc.data() as StoredSeat;
-    const characterSnap = await firestore.collection(COLLECTIONS.characters).doc(seat.characterId).get();
-    const character = characterSnap.exists ? (characterSnap.data() as StoredCharacter) : null;
     const anchor = anchors[index % anchors.length]!;
     index += 1;
     tokens.push({
       tokenId: `token:${seat.seatId}`,
       seatId: seat.seatId,
-      label: character?.name ?? 'Seated character',
+      label: seat.characterName || 'Seated character',
       footprint: {
         size: 'medium',
         anchor,

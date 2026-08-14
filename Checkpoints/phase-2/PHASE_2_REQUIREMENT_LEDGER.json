@@ -40,7 +40,7 @@
       "behavior": "Five-foot square map coordinate, edge, footprint, elevation, and collision schemas with a producer, consumer, authorization, and failure behavior for each identifier.",
       "implementation": "Builder/src/shared/map-contract.ts; Builder/src/server/table/map-projection.ts; GET /api/campaigns/:id/map",
       "verification": "tests/unit/map-contract.test.mjs; tests/e2e/phase2-map-stage.spec.ts",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P2-PIXI-SCENE",
@@ -48,7 +48,7 @@
       "behavior": "Vanilla PixiJS map stage and semantic scene graph bound to server projections; no @pixi/react.",
       "implementation": "Builder/src/client/table/table-stage.ts; campaign-table stage host; pixi.js dependency",
       "verification": "tests/e2e/phase2-map-stage.spec.ts",
-      "status": "IMPLEMENTED_UNVERIFIED"
+      "status": "PASSED"
     },
     {
       "id": "P2-MOVEMENT-VISIBILITY",

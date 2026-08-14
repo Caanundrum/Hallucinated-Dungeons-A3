@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import { enterAccountFromShell, readCandidate } from './arena-page.js';
 
 /**
  * Phase 2 chunk 2b: map schemas projected by the server and rendered by a
@@ -74,9 +74,12 @@ test.describe('Phase 2b map schemas and Pixi stage', () => {
     await expect(page.getByTestId('table-stage-canvas')).toBeVisible();
     await expect(page.getByTestId('table-stage-error')).toHaveCount(0);
 
+    const origin = new URL(page.url()).origin;
+    const candidate = await readCandidate(page);
     const mapResponse = await page.request.get(`/api/campaigns/${campaignId}/map`, {
       headers: {
-        origin: new URL(page.url()).origin,
+        origin,
+        'x-hd-candidate': candidate.candidateId,
       },
     });
     expect(mapResponse.status()).toBe(200);
