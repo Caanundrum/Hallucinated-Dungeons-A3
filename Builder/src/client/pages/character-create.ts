@@ -364,9 +364,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <button type="button" class="secondary" data-testid="open-quick-start">
           In a hurry? Use a ready-made character
         </button>
-        <button type="button" class="secondary" data-testid="open-tutorial">
-          New to tabletop RPGs? Short tour
-        </button>
+        ${
+          tutorialDismissed()
+            ? `<button type="button" class="secondary" data-testid="open-tutorial">
+                 New to tabletop RPGs? Short tour
+               </button>`
+            : ''
+        }
       </div>
       <h3>Choose a Class</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
@@ -920,8 +924,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function tutorialAskBanner(): string {
-    // Class step already offers the tour button — avoid asking twice on first paint.
-    if (tutorialDismissed() || tutorialOpen || current === null || activeStep === 'class') {
+    if (tutorialDismissed() || tutorialOpen || current === null) {
       return '';
     }
     return `
