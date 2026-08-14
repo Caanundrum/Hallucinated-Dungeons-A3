@@ -2,7 +2,7 @@
  * Campaign creation with explicit Veyra/Garrick and personality selection.
  *
  * Blueprint ownership: Section 1.5.21 / 7.5. Identity is chosen first;
- * personality only after that; Friendly Adventurer may be recommended but
+ * personality only after that; Seasoned Host may be recommended but
  * never silently selected. A preview (identity, personality, sample scene,
  * play rhythm) must appear before create. Both Director choices lock after
  * creation.
@@ -184,7 +184,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
                    Choose Veyra or Garrick above before selecting a personality.
                  </p>`
               : `<p>
-                   Now choose one approved personality. Friendly Adventurer may be recommended;
+                   Now choose one approved personality. Seasoned Host may be recommended;
                    nothing is selected until you choose.
                  </p>`
           }

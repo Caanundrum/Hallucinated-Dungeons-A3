@@ -50,13 +50,13 @@ async function createCampaignWithDirector(
   await expect(page.getByTestId('director-config-notice')).toContainText('later AI-enabled table');
   await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByTestId('personality-gated')).toBeVisible();
-  await expect(page.getByTestId('personality-friendly_adventurer').locator('input')).toBeDisabled();
+  await expect(page.getByTestId('personality-seasoned_host').locator('input')).toBeDisabled();
 
   await page.getByTestId('campaign-name').fill(options.name);
   await page.getByTestId('campaign-name').dispatchEvent('change');
   await page.getByTestId(options.identityTestId).click();
   await expect(page.getByTestId('personality-gated')).toHaveCount(0);
-  await expect(page.getByTestId('personality-friendly_adventurer').locator('input')).toBeEnabled();
+  await expect(page.getByTestId('personality-seasoned_host').locator('input')).toBeEnabled();
   await page.getByTestId(options.personalityTestId).click();
   await expect(page.getByTestId('campaign-preview')).toBeVisible();
   await expect(page.getByTestId('preview-sample-scene')).not.toBeEmpty();
@@ -170,11 +170,12 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await ownerContext.close();
   });
 
-  test('Friendly Adventurer is recommended but never silently selected', async ({ page }) => {
+  test('Seasoned Host is recommended but never silently selected', async ({ page }) => {
     await signIn(page);
     await page.getByTestId('nav-campaigns').click();
     await page.getByTestId('start-campaign').click();
     await expect(page.getByTestId('personality-recommended')).toBeVisible();
+    await expect(page.getByTestId('personality-seasoned_host')).toContainText('Seasoned Host');
     await expect(page.getByTestId('personality-gated')).toBeVisible();
     await expect(page.locator('input[name="director-personality"]:checked')).toHaveCount(0);
     await expect(page.locator('input[name="director-identity"]:checked')).toHaveCount(0);
@@ -184,6 +185,8 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(page.getByTestId('personality-gated')).toHaveCount(0);
     await expect(page.locator('input[name="director-personality"]:checked')).toHaveCount(0);
     await expect(page.getByTestId('campaign-preview-pending')).toBeVisible();
+    await expect(page.getByTestId('identity-veyra')).toContainText('Woman');
+    await expect(page.getByTestId('identity-garrick')).toContainText('Man');
   });
 
   test('foreign account cannot read another account campaign', async ({ browser }) => {
@@ -193,7 +196,7 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     const campaignId = await createCampaignWithDirector(ownerPage, {
       name: 'Private Table',
       identityTestId: 'identity-garrick',
-      personalityTestId: 'personality-friendly_adventurer',
+      personalityTestId: 'personality-seasoned_host',
     });
 
     const strangerContext = await browser.newContext();

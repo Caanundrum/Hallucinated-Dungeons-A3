@@ -22,10 +22,11 @@ export const DIRECTOR_IDENTITY_LABELS: Record<DirectorIdentity, string> = {
 };
 
 /**
- * Approved campaign-wide Director personalities. Friendly Adventurer may be
+ * Approved campaign-wide Director personalities. Seasoned Host may be
  * recommended in the UI; it must never be silently selected.
  */
 export const DIRECTOR_PERSONALITIES = [
+  'seasoned_host',
   'friendly_adventurer',
   'encouraging_guide',
   'sassy_companion',
@@ -35,6 +36,7 @@ export const DIRECTOR_PERSONALITIES = [
 export type DirectorPersonality = (typeof DIRECTOR_PERSONALITIES)[number];
 
 export const DIRECTOR_PERSONALITY_LABELS: Record<DirectorPersonality, string> = {
+  seasoned_host: 'Seasoned Host',
   friendly_adventurer: 'Friendly Adventurer',
   encouraging_guide: 'Encouraging Guide',
   sassy_companion: 'Sassy Companion',
@@ -44,6 +46,8 @@ export const DIRECTOR_PERSONALITY_LABELS: Record<DirectorPersonality, string> = 
 
 /** Plain-language summaries shown during campaign creation. */
 export const DIRECTOR_PERSONALITY_SUMMARIES: Record<DirectorPersonality, string> = {
+  seasoned_host:
+    'Easy with classic table rhythms, lightly knowing humor, and the cadence experienced tables already recognize.',
   friendly_adventurer: 'Warm, clear, collaborative, lightly playful.',
   encouraging_guide: 'Supportive, patient, and steady when the table is unsure.',
   sassy_companion: 'Sharp wit and playful pushback without cruelty.',
@@ -52,12 +56,14 @@ export const DIRECTOR_PERSONALITY_SUMMARIES: Record<DirectorPersonality, string>
 };
 
 export const DIRECTOR_IDENTITY_SUMMARIES: Record<DirectorIdentity, string> = {
-  veyra: 'Female Game Director identity. One player-facing name: Veyra.',
-  garrick: 'Male Game Director identity. One player-facing name: Garrick.',
+  veyra:
+    'Woman; mid-thirties; warm olive complexion; dark hair half-up; amber eyes; lean build; traveler\'s coat, high collar, silver ear cuff. One player-facing name: Veyra.',
+  garrick:
+    'Man; early forties; fair weathered skin; short salt-and-pepper hair and trimmed beard; grey-blue eyes; solid build; waistcoat, rolled sleeves, leather bracer. One player-facing name: Garrick.',
 };
 
-/** Friendly Adventurer may be visually recommended; never auto-committed. */
-export const RECOMMENDED_DIRECTOR_PERSONALITY: DirectorPersonality = 'friendly_adventurer';
+/** Seasoned Host may be visually recommended; never auto-committed. */
+export const RECOMMENDED_DIRECTOR_PERSONALITY: DirectorPersonality = 'seasoned_host';
 
 /**
  * Phase 1 campaign-creation preview copy (Section 7.5). Static, approved text —
@@ -67,6 +73,12 @@ export const DIRECTOR_CREATION_PREVIEW: Record<
   DirectorPersonality,
   { readonly sampleScene: string; readonly playRhythm: string }
 > = {
+  seasoned_host: {
+    sampleScene:
+      'The door sticks for a beat everyone has felt before. The Director names the room cleanly, lets a familiar tension hang, then asks what the table does — without over-explaining the joke.',
+    playRhythm:
+      'Classic beats and lightly knowing asides. Fluent in patterns experienced tables recognize; never steals the players’ spotlight.',
+  },
   friendly_adventurer: {
     sampleScene:
       'A lantern-lit doorway opens onto a quiet hall. The Director greets the table warmly, names what everyone can see, and invites the first careful look around.',

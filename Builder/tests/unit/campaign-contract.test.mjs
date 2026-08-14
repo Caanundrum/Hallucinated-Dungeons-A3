@@ -13,16 +13,20 @@ import {
 } from '../../dist/shared/campaign-contract.js';
 import { buildDirectorCatalog } from '../../dist/server/campaigns/director-catalog.js';
 
-test('director catalog exposes both identities and five personalities', () => {
+test('director catalog exposes both identities and six personalities', () => {
   const catalog = buildDirectorCatalog();
   assert.equal(catalog.identities.length, DIRECTOR_IDENTITIES.length);
   assert.equal(catalog.personalities.length, DIRECTOR_PERSONALITIES.length);
+  assert.equal(catalog.personalities.length, 6);
   assert.ok(catalog.configurationNotice.includes('later AI-enabled table'));
   assert.ok(!/\bcoming\s+soon\b/i.test(catalog.configurationNotice));
 
   const recommended = catalog.personalities.filter((entry) => entry.recommended);
   assert.equal(recommended.length, 1);
   assert.equal(recommended[0].id, RECOMMENDED_DIRECTOR_PERSONALITY);
+  assert.equal(recommended[0].id, 'seasoned_host');
+  assert.ok(catalog.identities.find((entry) => entry.id === 'veyra')?.summary.includes('Woman'));
+  assert.ok(catalog.identities.find((entry) => entry.id === 'garrick')?.summary.includes('Man'));
 });
 
 test('every personality has creation preview copy for sample scene and rhythm', () => {

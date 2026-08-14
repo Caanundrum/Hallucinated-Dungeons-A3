@@ -105,7 +105,7 @@
       "id": "P1-DIRECTOR-CONFIG-LOCK",
       "source": "1.5.21; 25 Phase 1 build scope",
       "behavior": "Campaign creation requires choosing Veyra or Garrick and then one approved personality. Both persist with the campaign, are not editable by ordinary users after creation, and carry a deterministic derived avatar key. Phase 1 exposes no Address-the-Director response control or other simulated AI behavior, and labels this flow truthfully as configuration for the later AI-enabled table.",
-      "implementation": "Builder/src/shared/campaign-contract.ts, Builder/src/server/campaigns/director-catalog.ts, createCampaign + updateCampaign Director lock, campaign-create UI with recommended-but-not-default Friendly Adventurer",
+      "implementation": "Builder/src/shared/campaign-contract.ts, Builder/src/server/campaigns/director-catalog.ts, createCampaign + updateCampaign Director lock, campaign-create UI with recommended-but-not-default Seasoned Host",
       "verification": "tests/e2e/phase1-campaigns.spec.ts (explicit choice, PATCH lock 409 DIRECTOR_CONFIG_LOCKED, avatar key persistence); tests/unit/campaign-contract.test.mjs",
       "status": "IMPLEMENTED_UNVERIFIED"
     },
