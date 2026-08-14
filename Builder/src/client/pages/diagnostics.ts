@@ -394,12 +394,15 @@ export function mountDiagnosticsPage(host: PageHost): void {
 
     try {
       await leaveLocalArena(candidate.candidateId);
+      // Set the success notice before clearing the shared account session.
+      // Otherwise the account subscriber re-renders while signed-out UI has no
+      // notice yet and focus falls through to Enter Arena (P0-QA-009).
+      state.notice = 'Session ended. The stored records remain owned by that account.';
       state.identity = null;
-      setAccountFromServer(null);
       state.projection = null;
       state.pendingRequestId = null;
       state.pendingNote = '';
-      state.notice = 'Session ended. The stored records remain owned by that account.';
+      setAccountFromServer(null);
     } catch (failure) {
       applyFailure(failure);
     } finally {
