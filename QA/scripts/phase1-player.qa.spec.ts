@@ -23,7 +23,9 @@ async function signIn(page: Page): Promise<void> {
   await page.goto(ARENA);
   await dismissIntro(page);
   if (CANDIDATE) {
-    await expect(page.getByTestId('candidate-id').or(page.locator('footer'))).toBeVisible();
+    await expect(page.getByTestId('candidate-id').first()).toHaveText(CANDIDATE);
+  } else {
+    await expect(page.getByTestId('shell-enter-account').or(page.getByTestId('shell-account-link'))).toBeVisible();
   }
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
