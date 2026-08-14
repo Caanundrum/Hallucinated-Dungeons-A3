@@ -62,9 +62,9 @@
       "id": "P2-TIMING-ACTION-COMPOSER",
       "source": "25 Phase 2; 1.5.2.5",
       "behavior": "Timing Authority and Action Composer plumbing prove only authorized actors can mutate state; Party Chat still cannot become a command.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/timing-authority-contract.ts; Builder/src/server/table/timing-authority.ts; COLLECTIONS.timingAuthorities; command gateway requireTimingAuthority; Action Composer claim/end + Intent Intercept; HTTP /timing-authority",
+      "verification": "tests/unit/timing-authority.test.mjs; tests/e2e/phase2-timing-authority.spec.ts; tests/e2e/phase2-table-commands.spec.ts",
+      "status": "PASSED"
     },
     {
       "id": "P2-TWO-CLIENT-SYNC",

@@ -38,6 +38,9 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
+import { requireTimingAuthority, TimingAuthorityError } from './timing-authority.js';
+
+export { TimingAuthorityError };
 
 export class TableCommandError extends Error {
   readonly code: string;
@@ -265,6 +268,7 @@ export async function acceptTableCommand(options: {
   readonly commandType: TableCommandType;
   readonly expectedStateVersion: number;
   readonly deviceSessionId: string;
+  readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
 }): Promise<TableCommandAcceptResponse> {
@@ -276,6 +280,7 @@ export async function acceptTableCommand(options: {
     commandType,
     expectedStateVersion,
     deviceSessionId,
+    timingAuthorityId,
     path,
     edgeId,
   } = options;
@@ -307,13 +312,56 @@ export async function acceptTableCommand(options: {
 
   await assertCampaignMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
+
+  const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
+  const idempotencyKey = `${campaignId}:${accountId}:${requestId}`;
+
+  // Duplicate recovery must not require a still-valid Timing Authority.
+  const priorDuplicate = await firestore
+    .collection(COLLECTIONS.campaignCommands)
+    .where('idempotencyKey', '==', idempotencyKey)
+    .limit(1)
+    .get();
+  if (!priorDuplicate.empty) {
+    const existingCommand = priorDuplicate.docs[0]!.data() as StoredCommand;
+    const eventSnap = await firestore
+      .collection(COLLECTIONS.campaignEvents)
+      .doc(existingCommand.eventId)
+      .get();
+    if (!eventSnap.exists) {
+      throw new TableCommandError(
+        ERROR_CODES.UPSTREAM_UNAVAILABLE,
+        'A prior command commit could not be recovered.',
+      );
+    }
+    const projectionSnap = await projectionRef.get();
+    const stored = projectionSnap.exists
+      ? ({ ...emptyProjection(campaignId), ...(projectionSnap.data() as StoredProjection) } as StoredProjection)
+      : emptyProjection(campaignId);
+    const recentEvents = await loadRecentEvents(firestore, campaignId);
+    const eventProjection = toEventProjection(eventSnap.data() as StoredEvent);
+    return {
+      duplicate: true,
+      commandId: existingCommand.commandId,
+      requestId: existingCommand.requestId,
+      event: eventProjection,
+      table: toTableProjection(campaignId, stored, recentEvents),
+    };
+  }
+
+  await requireTimingAuthority({
+    firestore,
+    accountId,
+    campaignId,
+    seatId: seat.seatId,
+    timingAuthorityId,
+    commandType,
+    consume: false,
+  });
   const [seatsForAuthMap, runtimeForAuthMap] = await Promise.all([
     loadCampaignSeats(firestore, campaignId),
     loadMapRuntime(firestore, campaignId),
   ]);
-
-  const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
-  const idempotencyKey = `${campaignId}:${accountId}:${requestId}`;
 
   // Pre-validate movement / door outside the transaction using current runtime.
   let movePath: readonly { readonly column: number; readonly row: number }[] | undefined;

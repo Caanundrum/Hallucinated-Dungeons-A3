@@ -29,6 +29,8 @@ export interface TableCommandRequest {
   readonly requestId: string;
   readonly commandType: TableCommandType;
   readonly expectedStateVersion: number;
+  /** Server-issued Active Turn Timing Authority id (Phase 2d). */
+  readonly timingAuthorityId?: string;
   /** Ordered destination squares after the current anchor (table.move). */
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   /** Door edge id (table.open_door). */

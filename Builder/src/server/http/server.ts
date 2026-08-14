@@ -81,6 +81,12 @@ import {
 } from '../table/commands.js';
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
 import {
+  claimActiveTurnAuthority,
+  endActiveTurnAuthority,
+  fetchActiveTimingAuthority,
+  TimingAuthorityError,
+} from '../table/timing-authority.js';
+import {
   readCampaignSettings,
   updateCampaignSettings,
 } from '../settings/campaign-settings.js';
@@ -148,6 +154,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.STALE_STATE_VERSION]: 409,
   [ERROR_CODES.NOT_SEATED]: 409,
   [ERROR_CODES.ILLEGAL_PATH]: 409,
+  [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
+  [ERROR_CODES.TIMING_AUTHORITY_INVALID]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
 };
 
@@ -189,6 +197,10 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Seat a character you own in this campaign before submitting table commands.',
   [ERROR_CODES.ILLEGAL_PATH]:
     'That movement path is not legal on this map. Choose another route.',
+  [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]:
+    'Claim Active Turn before committing table actions.',
+  [ERROR_CODES.TIMING_AUTHORITY_INVALID]:
+    'Your Timing Authority expired or belongs to another seat.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };
@@ -1128,6 +1140,53 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const timingAuthorityMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/timing-authority$/.exec(
+        path,
+      );
+      if (timingAuthorityMatch !== null) {
+        const campaignId = timingAuthorityMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, {
+            authority: await fetchActiveTimingAuthority({ firestore, accountId, campaignId }),
+          });
+          return;
+        }
+        if (method === 'POST') {
+          const claimed = await claimActiveTurnAuthority({ firestore, accountId, campaignId });
+          sendJson(response, 201, claimed);
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const endTimingAuthorityMatch =
+        /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/timing-authority\/end$/.exec(path);
+      if (endTimingAuthorityMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = endTimingAuthorityMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as { timingAuthorityId?: unknown };
+        if (typeof payload.timingAuthorityId !== 'string' || payload.timingAuthorityId.length === 0) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const ended = await endActiveTurnAuthority({
+          firestore,
+          accountId,
+          campaignId,
+          timingAuthorityId: payload.timingAuthorityId,
+        });
+        sendJson(response, 200, { authority: ended });
+        return;
+      }
+
       const campaignMapMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/map$/.exec(path);
       if (campaignMapMatch !== null) {
         if (method !== 'GET') {
@@ -1180,6 +1239,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           requestId?: unknown;
           commandType?: unknown;
           expectedStateVersion?: unknown;
+          timingAuthorityId?: unknown;
           path?: unknown;
           edgeId?: unknown;
         };
@@ -1195,6 +1255,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           commandType: payload.commandType as never,
           expectedStateVersion: payload.expectedStateVersion as number,
           deviceSessionId: session.deviceSessionId,
+          ...(typeof payload.timingAuthorityId === 'string'
+            ? { timingAuthorityId: payload.timingAuthorityId }
+            : {}),
           ...(Array.isArray(payload.path)
             ? { path: payload.path as { column: number; row: number }[] }
             : {}),
@@ -1206,7 +1269,11 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
       sendError(response, ERROR_CODES.NOT_FOUND);
     } catch (error) {
-      if (error instanceof TableCommandError || error instanceof MapProjectionError) {
+      if (
+        error instanceof TableCommandError ||
+        error instanceof MapProjectionError ||
+        error instanceof TimingAuthorityError
+      ) {
         const code = error.code as ErrorCode;
         if (code in ERROR_STATUS) {
           sendJson(response, ERROR_STATUS[code], {

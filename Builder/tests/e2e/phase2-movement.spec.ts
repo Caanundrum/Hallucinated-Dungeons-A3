@@ -63,11 +63,23 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
     await page.getByTestId('open-campaign-table').click();
 
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
+    await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);
+
+    const authority = await page.request.get(`/api/campaigns/${campaignId}/timing-authority`, {
+      headers: { origin, 'x-hd-candidate': candidate.candidateId },
+    });
+    expect(authority.status()).toBe(200);
+    const authorityBody = (await authority.json()) as {
+      authority: { timingAuthorityId: string } | null;
+    };
+    expect(authorityBody.authority?.timingAuthorityId).toBeTruthy();
+    const timingAuthorityId = authorityBody.authority!.timingAuthorityId;
 
     const mapBefore = await page.request.get(`/api/campaigns/${campaignId}/map`, {
       headers: { origin, 'x-hd-candidate': candidate.candidateId },
@@ -110,6 +122,7 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
         requestId: randomUUID(),
         commandType: 'table.move',
         expectedStateVersion: 1,
+        timingAuthorityId,
         path: [legalTarget],
       },
     });
@@ -131,6 +144,7 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
         requestId: randomUUID(),
         commandType: 'table.move',
         expectedStateVersion: 2,
+        timingAuthorityId,
         path: [{ column: 0, row: 1 }],
       },
     });

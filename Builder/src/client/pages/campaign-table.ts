@@ -19,14 +19,21 @@ import {
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
+import type {
+  ActionDraftSuggestion,
+  TimingAuthorityProjection,
+} from '../../shared/timing-authority-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
+  claimTimingAuthority,
+  endTimingAuthority,
   fetchCampaignDetail,
   fetchCampaignMap,
   fetchChronicle,
   fetchPartyChat,
   fetchTableState,
+  fetchTimingAuthority,
   postPartyChat,
   previewTableMove,
   submitTableCommand,
@@ -48,6 +55,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let partyChat: PartyChatFeedProjection | null = null;
   let tableState: TableStateProjection | null = null;
   let mapBundle: MapBundleProjection | null = null;
+  let timingAuthority: TimingAuthorityProjection | null = null;
+  let intentDraft: ActionDraftSuggestion | null = null;
   let seated = false;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
@@ -59,6 +68,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let stageHandle: TableStageHandle | null = null;
   let stageMounting = false;
   const mountToken = beginPageMount(container);
+
+  function holdsOwnAuthority(): boolean {
+    return (
+      timingAuthority !== null &&
+      timingAuthority.state === 'issued' &&
+      timingAuthority.timingAuthorityId !== 'held-by-other' &&
+      timingAuthority.permittedCommandTypes.length > 0
+    );
+  }
+
+  function authorityMeta(): string {
+    if (timingAuthority === null) {
+      return 'No Active Turn Authority on this campaign.';
+    }
+    if (timingAuthority.timingAuthorityId === 'held-by-other') {
+      return 'Another seat holds Active Turn Authority.';
+    }
+    return `You hold Active Turn · expires ${timingAuthority.expiresAt}`;
+  }
 
   function dockBody(): string {
     if (activeTab === 'chronicle') {
@@ -143,20 +171,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function actionComposerBody(): string {
     const version = tableState?.stateVersion ?? 0;
     const sequence = tableState?.lastEventSequence ?? 0;
-    const syncDisabled = busy || candidate === null || !seated || tableState === null;
+    const ownAuthority = holdsOwnAuthority();
+    const syncDisabled = busy || candidate === null || !seated || tableState === null || !ownAuthority;
+    const interpretDisabled = busy || candidate === null || !seated || !ownAuthority;
     return `
       <p data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
       <p class="record-meta" data-testid="table-state-meta">
         Table state version ${version} · last event sequence ${sequence}
       </p>
+      <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
       ${
         seated
           ? ''
           : `<p class="record-meta" data-testid="table-sync-seat-hint">
-              Seat a character you own on the campaign page before committing table syncs.
+              Seat a character you own on the campaign page before claiming Active Turn.
             </p>`
       }
       <div class="action-composer-controls">
+        <button type="button" data-testid="claim-active-turn"
+          aria-disabled="${busy || candidate === null || !seated}">
+          ${busy ? 'Working…' : 'Claim Active Turn'}
+        </button>
+        <button type="button" data-testid="end-active-turn"
+          aria-disabled="${busy || candidate === null || !ownAuthority}">
+          End Active Turn
+        </button>
         <button type="button" data-testid="commit-table-sync"
           aria-disabled="${syncDisabled}">
           ${busy ? 'Committing…' : escapeHtml(ACTION_COMPOSER_STRUCTURE.tableSyncLabel)}
@@ -169,8 +208,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-disabled="${syncDisabled}">
           Open adjacent door
         </button>
-        <button type="button" aria-disabled="true" data-testid="action-composer-disabled">
-          ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)} (unavailable until Timing Authority)
+        <button type="button" data-testid="interpret-action"
+          aria-disabled="${interpretDisabled}">
+          ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)}
         </button>
       </div>
       <p class="record-meta" data-testid="move-target-meta">
@@ -180,9 +220,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             : `Move target: column ${moveTarget.column}, row ${moveTarget.row}${movePreviewNote ? ` · ${escapeHtml(movePreviewNote)}` : ''}`
         }
       </p>
-      <p class="record-meta" data-testid="interpret-action-notice">
-        ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
-      </p>`;
+      ${
+        intentDraft === null
+          ? `<p class="record-meta" data-testid="interpret-action-notice">
+              ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
+            </p>`
+          : `<div class="intent-intercept" data-testid="intent-intercept">
+              <p data-testid="intent-intercept-summary">${escapeHtml(intentDraft.summary)}</p>
+              <p class="record-meta">State: ${escapeHtml(intentDraft.interceptState)} · draft ${escapeHtml(intentDraft.draftId)}</p>
+              <div class="action-composer-controls">
+                <button type="button" data-testid="confirm-intent-intercept"
+                  aria-disabled="${busy || !ownAuthority}">Confirm Intent Intercept</button>
+                <button type="button" data-testid="cancel-intent-intercept"
+                  aria-disabled="${busy}">Cancel draft</button>
+              </div>
+            </div>`
+      }`;
   }
 
   function ensurePageShell(): void {
@@ -319,10 +372,76 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     panels
+      .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            const claimed = await claimTimingAuthority({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            timingAuthority = claimed.authority;
+            intentDraft = null;
+            shell.announce('Active Turn Authority claimed.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Active Turn could not be claimed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="end-active-turn"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !holdsOwnAuthority() || timingAuthority === null) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await endTimingAuthority({
+              candidateId: candidate.candidateId,
+              campaignId,
+              timingAuthorityId: timingAuthority.timingAuthorityId,
+            });
+            timingAuthority = null;
+            intentDraft = null;
+            shell.announce('Active Turn ended.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'Active Turn could not be ended.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !seated || tableState === null) return;
+          if (
+            candidate === null ||
+            busy ||
+            !seated ||
+            tableState === null ||
+            !holdsOwnAuthority() ||
+            timingAuthority === null
+          ) {
+            return;
+          }
           busy = true;
           error = null;
           render();
@@ -333,6 +452,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.sync',
               expectedStateVersion: tableState.stateVersion,
+              timingAuthorityId: timingAuthority.timingAuthorityId,
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
@@ -362,7 +482,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-move"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !seated || tableState === null || moveTarget === null) {
+          if (
+            candidate === null ||
+            busy ||
+            !seated ||
+            tableState === null ||
+            moveTarget === null ||
+            !holdsOwnAuthority() ||
+            timingAuthority === null
+          ) {
             return;
           }
           busy = true;
@@ -375,6 +503,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.move',
               expectedStateVersion: tableState.stateVersion,
+              timingAuthorityId: timingAuthority.timingAuthorityId,
               path: [moveTarget],
             });
             tableState = accepted.table;
@@ -394,7 +523,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !seated || tableState === null || mapBundle === null) {
+          if (
+            candidate === null ||
+            busy ||
+            !seated ||
+            tableState === null ||
+            mapBundle === null ||
+            !holdsOwnAuthority() ||
+            timingAuthority === null
+          ) {
             return;
           }
           const door = mapBundle.edges.find(
@@ -415,6 +552,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.open_door',
               expectedStateVersion: tableState.stateVersion,
+              timingAuthorityId: timingAuthority.timingAuthorityId,
               edgeId: door.edgeId,
             });
             tableState = accepted.table;
@@ -423,6 +561,91 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           } catch (failure) {
             error =
               failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="interpret-action"]')
+      ?.addEventListener('click', () => {
+        if (!holdsOwnAuthority() || timingAuthority === null) {
+          return;
+        }
+        if (moveTarget !== null) {
+          intentDraft = {
+            draftId: crypto.randomUUID(),
+            source: 'action_composer_interpret',
+            campaignId,
+            proposedCommandType: 'table.move',
+            summary: `Intent Intercept draft: move to column ${moveTarget.column}, row ${moveTarget.row}.`,
+            path: [moveTarget],
+            interceptState: 'awaiting_confirmation',
+            createdAt: new Date().toISOString(),
+          };
+        } else {
+          intentDraft = {
+            draftId: crypto.randomUUID(),
+            source: 'action_composer_interpret',
+            campaignId,
+            proposedCommandType: 'table.sync',
+            summary: 'Intent Intercept draft: commit a table sync (no move target selected).',
+            interceptState: 'awaiting_confirmation',
+            createdAt: new Date().toISOString(),
+          };
+        }
+        render();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="cancel-intent-intercept"]')
+      ?.addEventListener('click', () => {
+        intentDraft = null;
+        render();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="confirm-intent-intercept"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (
+            candidate === null ||
+            busy ||
+            intentDraft === null ||
+            tableState === null ||
+            !holdsOwnAuthority() ||
+            timingAuthority === null
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: intentDraft.proposedCommandType,
+              expectedStateVersion: tableState.stateVersion,
+              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(intentDraft.path !== undefined ? { path: intentDraft.path } : {}),
+              ...(intentDraft.edgeId !== undefined ? { edgeId: intentDraft.edgeId } : {}),
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            intentDraft = { ...intentDraft, interceptState: 'confirmed' };
+            shell.announce(
+              `Intent Intercept confirmed · ${intentDraft.proposedCommandType} · version ${accepted.table.stateVersion}.`,
+            );
+            intentDraft = null;
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Intent Intercept could not be confirmed.';
           } finally {
             busy = false;
             render();
@@ -530,16 +753,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed, mapFeed] = await Promise.all([
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed] = await Promise.all([
         fetchChronicle(campaignId),
         fetchPartyChat(campaignId),
         fetchTableState(campaignId),
         fetchCampaignMap(campaignId),
+        fetchTimingAuthority(campaignId),
       ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
       mapBundle = mapFeed;
+      timingAuthority = timingFeed.authority;
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
     }

@@ -32,6 +32,7 @@ export const COLLECTIONS = {
   campaignCommands: 'campaignCommands',
   campaignEvents: 'campaignEvents',
   campaignTableProjections: 'campaignTableProjections',
+  timingAuthorities: 'timingAuthorities',
 } as const;
 
 export interface CanonicalStore {

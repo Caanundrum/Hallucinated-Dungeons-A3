@@ -44,6 +44,10 @@ import type {
 import type { MapBundleProjection } from '../shared/map-contract.js';
 import type { MovementPreviewProjection } from '../shared/movement-contract.js';
 import type {
+  TimingAuthorityClaimResponse,
+  TimingAuthorityProjection,
+} from '../shared/timing-authority-contract.js';
+import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
 } from '../shared/settings-contract.js';
@@ -366,6 +370,7 @@ export async function submitTableCommand(options: {
   readonly requestId: string;
   readonly commandType: string;
   readonly expectedStateVersion: number;
+  readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
 }): Promise<TableCommandAcceptResponse> {
@@ -376,10 +381,44 @@ export async function submitTableCommand(options: {
       requestId: options.requestId,
       commandType: options.commandType,
       expectedStateVersion: options.expectedStateVersion,
+      ...(options.timingAuthorityId !== undefined
+        ? { timingAuthorityId: options.timingAuthorityId }
+        : {}),
       ...(options.path !== undefined ? { path: options.path } : {}),
       ...(options.edgeId !== undefined ? { edgeId: options.edgeId } : {}),
     }),
   })) as TableCommandAcceptResponse;
+}
+
+export async function fetchTimingAuthority(
+  campaignId: string,
+): Promise<{ authority: TimingAuthorityProjection | null }> {
+  return (await request(`/api/campaigns/${campaignId}/timing-authority`)) as {
+    authority: TimingAuthorityProjection | null;
+  };
+}
+
+export async function claimTimingAuthority(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<TimingAuthorityClaimResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/timing-authority`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({}),
+  })) as TimingAuthorityClaimResponse;
+}
+
+export async function endTimingAuthority(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly timingAuthorityId: string;
+}): Promise<{ authority: TimingAuthorityProjection }> {
+  return (await request(`/api/campaigns/${options.campaignId}/timing-authority/end`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ timingAuthorityId: options.timingAuthorityId }),
+  })) as { authority: TimingAuthorityProjection };
 }
 
 export async function previewTableMove(options: {

@@ -4,8 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { enterAccountFromShell, readCandidate } from './arena-page.js';
 
 /**
- * Phase 2 chunk 2a: command / event / projection / idempotency core.
- * Seated members commit `table.sync`; stale versions reject; duplicates recover.
+ * Phase 2 chunk 2a + 2d: command gateway gated by Timing Authority.
  */
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
@@ -57,8 +56,29 @@ async function seatOwnCharacter(page: Page): Promise<void> {
   await expect(page.getByTestId('own-seat')).toBeVisible();
 }
 
+async function claimActiveTurnViaApi(
+  page: Page,
+  campaignId: string,
+  candidateId: string,
+): Promise<string> {
+  const origin = new URL(page.url()).origin;
+  const claimed = await page.request.post(`/api/campaigns/${campaignId}/timing-authority`, {
+    headers: {
+      origin,
+      'content-type': 'application/json',
+      'x-hd-candidate': candidateId,
+    },
+    data: {},
+  });
+  expect(claimed.status()).toBe(201);
+  const body = (await claimed.json()) as {
+    authority: { timingAuthorityId: string };
+  };
+  return body.authority.timingAuthorityId;
+}
+
 test.describe('Phase 2a table command gateway', () => {
-  test('seated member commits sync; Party Chat stays separate; Interpret Action stays gated', async ({
+  test('seated member claims turn, commits sync; Party Chat stays separate; Interpret Action uses intercept', async ({
     page,
   }) => {
     await signIn(page);
@@ -70,11 +90,8 @@ test.describe('Phase 2a table command gateway', () => {
     await expect(page.getByTestId('communication-dock')).toBeVisible();
     await expect(page.getByTestId('action-composer')).toBeVisible();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
-    await expect(page.getByTestId('action-composer-disabled')).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    await expect(page.getByTestId('action-composer-disabled')).toContainText('Timing Authority');
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('No Active Turn');
+    await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'true');
 
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('party-chat-input').fill('I describe walking without submitting a command.');
@@ -84,10 +101,17 @@ test.describe('Phase 2a table command gateway', () => {
     );
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
+    await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'false');
+
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
-    await page.getByTestId('commit-table-sync').click();
+    await page.getByTestId('interpret-action').click();
+    await expect(page.getByTestId('intent-intercept')).toBeVisible();
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText('table sync');
+    await page.getByTestId('confirm-intent-intercept').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
 
     await page.reload();
@@ -98,11 +122,10 @@ test.describe('Phase 2a table command gateway', () => {
       'I describe walking without submitting a command.',
     );
 
-    // Keep campaignId used for clarity in failure messages.
     expect(campaignId.length).toBeGreaterThan(0);
   });
 
-  test('API rejects stale versions, recovers duplicates, and requires a seat', async ({
+  test('API rejects missing Timing Authority, recovers duplicates, and requires a seat', async ({
     browser,
   }) => {
     const context = await browser.newContext();
@@ -131,6 +154,28 @@ test.describe('Phase 2a table command gateway', () => {
 
     await seatOwnCharacter(page);
 
+    const missingAuthority = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
+      headers: {
+        origin,
+        'content-type': 'application/json',
+        'x-hd-candidate': candidate.candidateId,
+      },
+      data: {
+        requestId: randomUUID(),
+        commandType: 'table.sync',
+        expectedStateVersion: 0,
+      },
+    });
+    expect(missingAuthority.status()).toBe(403);
+    const missingBody = (await missingAuthority.json()) as { error: string };
+    expect(missingBody.error).toBe('TIMING_AUTHORITY_REQUIRED');
+
+    const timingAuthorityId = await claimActiveTurnViaApi(
+      page,
+      campaignId,
+      candidate.candidateId,
+    );
+
     const requestId = randomUUID();
     const first = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
       headers: {
@@ -142,6 +187,7 @@ test.describe('Phase 2a table command gateway', () => {
         requestId,
         commandType: 'table.sync',
         expectedStateVersion: 0,
+        timingAuthorityId,
       },
     });
     expect(first.status()).toBe(201);
@@ -187,6 +233,7 @@ test.describe('Phase 2a table command gateway', () => {
         requestId: randomUUID(),
         commandType: 'table.sync',
         expectedStateVersion: 0,
+        timingAuthorityId,
       },
     });
     expect(stale.status()).toBe(409);

@@ -78,11 +78,11 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
   heading: 'Declare Action',
   notice:
-    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Seated members can commit a table sync through the command gateway; Interpret Action stays gated until Timing Authority arrives.',
+    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Claim Active Turn Authority before committing table syncs, moves, or door opens. Interpret Action opens a structured Intent Intercept draft only while you hold that authority — it never invents AI rulings.',
   tableSyncLabel: 'Commit table sync',
   interpretActionLabel: 'Interpret Action',
   interpretActionNotice:
-    'Natural-language Interpret Action unlocks with Timing Authority in a later Phase 2 slice. It cannot spend resources yet.',
+    'Interpret Action proposes a structured Intent Intercept draft from your current move target (or a table sync). Confirming the intercept submits a real command with your Timing Authority. Party Chat still cannot become a command.',
 };
 
 export const RULES_DESK_NOTICE =
