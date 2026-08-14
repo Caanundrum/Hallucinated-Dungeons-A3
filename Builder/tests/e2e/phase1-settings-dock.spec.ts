@@ -109,7 +109,8 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     // Reload recovers settings and Party Chat.
     await page.goto(`/campaigns/${campaignId}/settings`);
-    await expect(page.getByTestId('content-profile-tense').locator('input')).toBeChecked();
+    await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
+    await expect(page.getByTestId('content-profile-tense')).toBeChecked();
     await expect(page.getByTestId('safety-boundaries')).toHaveValue(
       'No spiders. Lines and veils apply.',
     );
