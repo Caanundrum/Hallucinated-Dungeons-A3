@@ -233,6 +233,7 @@ test.describe('Phase 0 player journey', () => {
     await page.getByTestId('enter-arena').focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('account-id')).toBeVisible();
+    await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
 
     await page.getByTestId('note-input').focus();
     await page.keyboard.type('recorded using only the keyboard');

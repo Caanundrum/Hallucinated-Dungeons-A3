@@ -40,6 +40,9 @@ export async function enterArena(page: Page): Promise<string> {
     await diagnosticsEnter.click();
     await expect(page.getByTestId('account-id')).toBeVisible();
     await expect(page.getByTestId('record-submit')).toBeVisible();
+    // account-id appears before handleEnter clears busy; wait out the in-flight
+    // projection fetch or keyboard/form submits silently no-op.
+    await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
     return (await page.getByTestId('account-id').innerText()).trim();
   }
 
@@ -50,12 +53,14 @@ export async function enterArena(page: Page): Promise<string> {
     await page.getByTestId('nav-diagnostics').click();
     await expect(page.getByTestId('account-id')).toBeVisible();
     await expect(page.getByTestId('record-submit')).toBeVisible();
+    await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
     return (await page.getByTestId('account-id').innerText()).trim();
   }
 
   await page.getByTestId('enter-arena').click();
   await expect(page.getByTestId('account-id')).toBeVisible();
   await expect(page.getByTestId('record-submit')).toBeVisible();
+  await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
   return (await page.getByTestId('account-id').innerText()).trim();
 }
 
