@@ -3,7 +3,7 @@
   "phase": "phase-1",
   "blueprintVersion": "ALPHA_3_V1",
   "owner": "Builder",
-  "lifecycleState": "AWAITING_HUMAN_REVIEW",
+  "lifecycleState": "PHASE_CERTIFIED",
   "priorPhase": {
     "phase": "phase-0",
     "state": "PHASE_CERTIFIED",
@@ -13,10 +13,13 @@
     "required": true,
     "scope": "Primary visual direction, opening identity, character and campaign flow, and settings presentation.",
     "timing": "After Builder and QA have already used and corrected the page.",
-    "state": "AWAITING_HUMAN_REVIEW",
-    "checkpoint": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md"
+    "state": "APPROVED",
+    "checkpoint": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md",
+    "approvedBy": "Nick",
+    "approvedAt": "2026-08-14T20:22:00Z",
+    "approvedCandidateId": "cand-b5e4a128cef1"
   },
-  "note": "Scope control for Phase 1 only. Section 25 is the phase-scope authority. Builder Verification and independent QA passed against cand-c9f4d8eaf883; lifecycle is AWAITING_HUMAN_REVIEW until Product Owner approval of that exact candidate. A status becomes PASSED only when the named verification actually executed against the frozen Phase 1 candidate and produced machine-readable evidence.",
+  "note": "Scope control for Phase 1 only. Section 25 is the phase-scope authority. Phase 1 is PHASE_CERTIFIED against cand-b5e4a128cef1 after Builder Verification, independent QA (PLAYER_VALIDATED), and Product Owner approval by Nick on 2026-08-14.",
   "requirements": [
     {
       "id": "P1-PACK",
@@ -191,8 +194,8 @@
       "source": "25 Phase 1 human gate; 1.11.20; 1.10.8",
       "behavior": "After Builder and QA have used and corrected the page, the Product Owner reviews the primary visual direction, opening identity, character and campaign flow, and settings presentation. Approval binds to the exact candidate hash and is never inferred from silence.",
       "implementation": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md",
-      "verification": "Awaiting Product Owner authenticated approval of the exact candidate hash",
-      "status": "AWAITING_HUMAN_REVIEW"
+      "verification": "Checkpoints/phase-1/PHASE_1_HUMAN_APPROVAL_CHECKPOINT.md \u2014 Approved by Nick 2026-08-14 for cand-b5e4a128cef1; Checkpoints/phase-1/PHASE_1_CERTIFICATE.md",
+      "status": "PASSED"
     }
   ],
   "systemContinuityCheck": {
