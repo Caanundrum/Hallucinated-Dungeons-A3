@@ -221,9 +221,24 @@ export function mountDiagnosticsPage(host: PageHost): void {
       </div>`;
   }
 
+  /**
+   * When a busy action removes the focused control (leave, auth death), keep the
+   * original test id across intermediate re-renders so focus can move to the
+   * explanation once it exists (P0-QA-009). Clearing the shared account session
+   * notifies subscribers before applyFailure has set the error; without this
+   * anchor, an early fallback focuses Enter Arena and the later render keeps it.
+   */
+  let removedControlFocus: string | null = null;
+
   function captureFocus(): { testId: string; selectionStart: number | null } | null {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement)) {
+      return null;
+    }
+    // Never treat shell chrome (nav links, account chip) as page focus to
+    // restore — falling through would steal keyboard focus from the nav when
+    // an async session hydrate re-renders this page.
+    if (!container.contains(active)) {
       return null;
     }
     const testId = active.dataset.testid;
@@ -235,7 +250,42 @@ export function mountDiagnosticsPage(host: PageHost): void {
     return { testId, selectionStart };
   }
 
+  function focusExplanationOrFallback(): boolean {
+    const fallbackSelectors = [
+      '[data-testid="error-message"]',
+      '[data-testid="notice-message"]',
+      '[data-testid="enter-arena"]',
+      '[data-testid="record-submit"]',
+    ];
+    for (const selector of fallbackSelectors) {
+      const fallback = container.querySelector<HTMLElement>(selector);
+      if (fallback !== null) {
+        fallback.focus();
+        return true;
+      }
+    }
+    return false;
+  }
+
   function restoreFocus(captured: { testId: string; selectionStart: number | null } | null): void {
+    const anchor = removedControlFocus;
+    if (anchor !== null) {
+      const anchorStillPresent = container.querySelector(`[data-testid="${anchor}"]`) !== null;
+      if (!anchorStillPresent) {
+        const focusedExplanation =
+          container.querySelector('[data-testid="error-message"]') !== null ||
+          container.querySelector('[data-testid="notice-message"]') !== null;
+        focusExplanationOrFallback();
+        // Keep the anchor while busy and the explanation is not on screen yet
+        // so a later render (after applyFailure) can still move focus there.
+        if (focusedExplanation || !state.busy) {
+          removedControlFocus = null;
+        }
+        return;
+      }
+      removedControlFocus = null;
+    }
+
     if (captured === null) {
       return;
     }
@@ -249,18 +299,13 @@ export function mountDiagnosticsPage(host: PageHost): void {
       return;
     }
 
-    const fallbackSelectors = [
-      '[data-testid="error-message"]',
-      '[data-testid="notice-message"]',
-      '[data-testid="enter-arena"]',
-      '[data-testid="record-submit"]',
-    ];
-    for (const selector of fallbackSelectors) {
-      const fallback = container.querySelector<HTMLElement>(selector);
-      if (fallback !== null) {
-        fallback.focus();
-        return;
-      }
+    focusExplanationOrFallback();
+  }
+
+  function rememberFocusedControlBeforeRemoval(): void {
+    const captured = captureFocus();
+    if (captured !== null) {
+      removedControlFocus = captured.testId;
     }
   }
 
@@ -376,6 +421,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (candidate === null || state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -398,6 +444,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (candidate === null || state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -426,6 +473,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
     if (state.busy) {
       return;
     }
+    rememberFocusedControlBeforeRemoval();
     state.busy = true;
     state.error = null;
     state.notice = null;
@@ -447,6 +495,7 @@ export function mountDiagnosticsPage(host: PageHost): void {
       return;
     }
 
+    rememberFocusedControlBeforeRemoval();
     state.pendingNote = note;
     if (!isRetry || state.pendingRequestId === null) {
       state.pendingRequestId = crypto.randomUUID();

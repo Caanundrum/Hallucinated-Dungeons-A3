@@ -74,6 +74,37 @@ function bindListenersOnce(): void {
     event.preventDefault();
     navigate(locationKey(new URL(anchor.href, window.location.href)));
   });
+
+  // Keyboard activation (Enter) of same-origin data-link anchors must
+  // soft-navigate too. preventDefault here also suppresses the follow-on
+  // synthesized click so navigation runs once.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLAnchorElement) || !target.hasAttribute('data-link')) {
+      return;
+    }
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    if (target.target !== '' && target.target !== '_self') {
+      return;
+    }
+    const url = new URL(target.href, window.location.href);
+    if (url.origin !== window.location.origin) {
+      return;
+    }
+    event.preventDefault();
+    navigate(locationKey(url));
+  });
 }
 
 /** Registers the handler invoked on every route change and renders the current path once. */
