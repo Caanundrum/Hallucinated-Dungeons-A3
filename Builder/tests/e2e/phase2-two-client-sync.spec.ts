@@ -114,16 +114,25 @@ test.describe('Phase 2e two-client sync and recovery', () => {
     };
     const timingAuthorityId = authorityBody.authority.timingAuthorityId;
 
+    const detail = await ownerPage.request.get(`/api/campaigns/${campaignId}`, {
+      headers: { origin, 'x-hd-candidate': ownerCandidate.candidateId },
+    });
+    const detailBody = (await detail.json()) as {
+      ownSeat: { seatId: string } | null;
+    };
+    expect(detailBody.ownSeat?.seatId).toBeTruthy();
+
     const mapBefore = await ownerPage.request.get(`/api/campaigns/${campaignId}/map`, {
       headers: { origin, 'x-hd-candidate': ownerCandidate.candidateId },
     });
     const mapBody = (await mapBefore.json()) as {
       tokens: { seatId: string; footprint: { anchor: { column: number; row: number } } }[];
     };
-    const ownerToken = mapBody.tokens[0]!;
+    const ownerToken = mapBody.tokens.find((token) => token.seatId === detailBody.ownSeat!.seatId);
+    expect(ownerToken).toBeTruthy();
     const legalTarget = {
-      column: ownerToken.footprint.anchor.column + 1,
-      row: ownerToken.footprint.anchor.row,
+      column: ownerToken!.footprint.anchor.column + 1,
+      row: ownerToken!.footprint.anchor.row,
     };
 
     const move = await ownerPage.request.post(`/api/campaigns/${campaignId}/commands`, {
