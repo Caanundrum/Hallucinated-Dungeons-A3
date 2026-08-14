@@ -41,7 +41,7 @@ test('party chat modes stay Table Talk and Speak as Character only', () => {
 test('action composer enables table sync while keeping Interpret Action gated', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
   assert.match(ACTION_COMPOSER_STRUCTURE.notice, /separate from Party Chat/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Timing Authority/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Active Turn Authority|Timing Authority/i);
   assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Commit table sync');
   assert.match(RULES_DESK_NOTICE, /cannot grant rulings/i);
 });
