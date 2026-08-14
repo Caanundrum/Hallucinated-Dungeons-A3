@@ -12,6 +12,8 @@
  * identity + personality; it is not a third independent choice.
  */
 
+import type { CampaignSettingsProjection } from './settings-contract.js';
+
 /** Approved Game Director identities. Exactly one player-facing name each. */
 export const DIRECTOR_IDENTITIES = ['veyra', 'garrick'] as const;
 export type DirectorIdentity = (typeof DIRECTOR_IDENTITIES)[number];
@@ -256,4 +258,5 @@ export interface CampaignDetailProjection {
     readonly name: string;
     readonly summary: string;
   }[];
+  readonly settings: CampaignSettingsProjection;
 }

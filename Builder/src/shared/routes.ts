@@ -24,6 +24,8 @@ export const SPA_ROUTES = [
 ] as const;
 export type SpaRoute = (typeof SPA_ROUTES)[number];
 
+export type CampaignSubroute = 'detail' | 'settings' | 'table';
+
 /**
  * Parameterized single-page routes. A path matching one of these is served
  * the built bundle on a hard navigation, the same as a fixed route, while
@@ -32,6 +34,8 @@ export type SpaRoute = (typeof SPA_ROUTES)[number];
 const SPA_ROUTE_PATTERNS: readonly RegExp[] = [
   /^\/characters\/[A-Za-z0-9-]{1,64}$/,
   /^\/campaigns\/[A-Za-z0-9-]{1,64}$/,
+  /^\/campaigns\/[A-Za-z0-9-]{1,64}\/settings$/,
+  /^\/campaigns\/[A-Za-z0-9-]{1,64}\/table$/,
   /^\/invite\/[A-Za-z0-9]{8,32}$/,
 ];
 
@@ -59,13 +63,26 @@ export function characterIdFromPath(path: string): string | null {
   return match[1] ?? null;
 }
 
-/** The campaign id in a `/campaigns/:id` route, or null for any other path. */
-export function campaignIdFromPath(path: string): string | null {
-  const match = /^\/campaigns\/([A-Za-z0-9-]{1,64})$/.exec(path);
+/**
+ * Campaign id and subroute for `/campaigns/:id`, `/settings`, or `/table`.
+ * Returns null for list/create routes and non-campaign paths.
+ */
+export function campaignRouteFromPath(
+  path: string,
+): { readonly campaignId: string; readonly subroute: CampaignSubroute } | null {
+  const match = /^\/campaigns\/([A-Za-z0-9-]{1,64})(?:\/(settings|table))?$/.exec(path);
   if (match === null || match[1] === 'new') {
     return null;
   }
-  return match[1] ?? null;
+  const suffix = match[2];
+  const subroute: CampaignSubroute =
+    suffix === 'settings' ? 'settings' : suffix === 'table' ? 'table' : 'detail';
+  return { campaignId: match[1]!, subroute };
+}
+
+/** The campaign id for any `/campaigns/:id…` member route, or null otherwise. */
+export function campaignIdFromPath(path: string): string | null {
+  return campaignRouteFromPath(path)?.campaignId ?? null;
 }
 
 /** The invite code in an `/invite/:code` route, or null for any other path. */

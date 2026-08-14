@@ -32,6 +32,15 @@ import type {
   InvitationPreview,
   SeatProjection,
 } from '../shared/campaign-contract.js';
+import type {
+  ChronicleFeedProjection,
+  PartyChatFeedProjection,
+  PartyChatMessageProjection,
+} from '../shared/communication-contract.js';
+import type {
+  CampaignSettingsProjection,
+  PlayerPresentationSettingsProjection,
+} from '../shared/settings-contract.js';
 
 /** A draft always travels with the options legal for its current state. */
 export interface DraftResponse {
@@ -298,6 +307,58 @@ export async function createCampaignSeat(options: {
     candidateId: options.candidateId,
     body: JSON.stringify({ characterId: options.characterId }),
   })) as SeatProjection;
+}
+
+export async function fetchCampaignSettings(campaignId: string): Promise<CampaignSettingsProjection> {
+  return (await request(`/api/campaigns/${campaignId}/settings`)) as CampaignSettingsProjection;
+}
+
+export async function saveCampaignSettings(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly payload: Record<string, unknown>;
+}): Promise<CampaignSettingsProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/settings`, {
+    method: 'PUT',
+    candidateId: options.candidateId,
+    body: JSON.stringify(options.payload),
+  })) as CampaignSettingsProjection;
+}
+
+export async function fetchChronicle(campaignId: string): Promise<ChronicleFeedProjection> {
+  return (await request(`/api/campaigns/${campaignId}/chronicle`)) as ChronicleFeedProjection;
+}
+
+export async function fetchPartyChat(campaignId: string): Promise<PartyChatFeedProjection> {
+  return (await request(`/api/campaigns/${campaignId}/party-chat`)) as PartyChatFeedProjection;
+}
+
+export async function postPartyChat(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly mode: string;
+  readonly body: string;
+}): Promise<PartyChatMessageProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/party-chat`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ mode: options.mode, body: options.body }),
+  })) as PartyChatMessageProjection;
+}
+
+export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsProjection> {
+  return (await request('/api/account/settings')) as PlayerPresentationSettingsProjection;
+}
+
+export async function savePlayerSettings(options: {
+  readonly candidateId: string;
+  readonly reducedMotion: boolean;
+}): Promise<PlayerPresentationSettingsProjection> {
+  return (await request('/api/account/settings', {
+    method: 'PUT',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ reducedMotion: options.reducedMotion }),
+  })) as PlayerPresentationSettingsProjection;
 }
 
 export async function recordFoundationCheck(options: {

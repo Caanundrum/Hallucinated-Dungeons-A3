@@ -40,8 +40,32 @@ import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
 } from './director-catalog.js';
+import {
+  AlreadySeatedError,
+  CampaignNotFoundError,
+  CampaignValidationError,
+  DirectorConfigLockedError,
+  InvitationRateLimitedError,
+  InvitationUnavailableError,
+} from './errors.js';
+import { appendChronicleEntry } from '../communication/chronicle.js';
+import {
+  ensureCampaignSettings,
+  projectCampaignSettings,
+  seedCampaignSettings,
+} from '../settings/campaign-settings.js';
 
-const CONTENT_PROFILE_SUMMARY = 'Alpha development campaign. Invitation-only Local Arena table.';
+export {
+  AlreadyMemberError,
+  AlreadySeatedError,
+  CampaignNotFoundError,
+  CampaignValidationError,
+  DirectorConfigLockedError,
+  InvitationRateLimitedError,
+  InvitationUnavailableError,
+  NotAMemberError,
+} from './errors.js';
+
 const SESSION_STATE_OPEN = 'Open for membership';
 const INVITE_CODE_LENGTH = 12;
 /** Seat lifetime for Phase 1 continuity proofs (aligned with development session TTL). */
@@ -91,62 +115,6 @@ interface StoredSeat {
   readonly renewedAt: Timestamp | Date;
   readonly expiresAt: Timestamp | Date;
   readonly lastAcknowledgedEventSequence: number;
-}
-
-export class CampaignNotFoundError extends Error {
-  constructor() {
-    super('No such campaign for this account');
-    this.name = 'CampaignNotFoundError';
-  }
-}
-
-export class DirectorConfigLockedError extends Error {
-  constructor() {
-    super('Director identity and personality are locked after campaign creation');
-    this.name = 'DirectorConfigLockedError';
-  }
-}
-
-export class InvitationUnavailableError extends Error {
-  constructor() {
-    super('This invitation is not available');
-    this.name = 'InvitationUnavailableError';
-  }
-}
-
-export class InvitationRateLimitedError extends Error {
-  constructor() {
-    super('Too many invitation links were created recently');
-    this.name = 'InvitationRateLimitedError';
-  }
-}
-
-export class AlreadyMemberError extends Error {
-  constructor() {
-    super('This account is already a member of the campaign');
-    this.name = 'AlreadyMemberError';
-  }
-}
-
-export class NotAMemberError extends Error {
-  constructor() {
-    super('This account is not a member of the campaign');
-    this.name = 'NotAMemberError';
-  }
-}
-
-export class AlreadySeatedError extends Error {
-  constructor() {
-    super('This account already has a seat in the campaign');
-    this.name = 'AlreadySeatedError';
-  }
-}
-
-export class CampaignValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CampaignValidationError';
-  }
 }
 
 function toIso(value: Timestamp | Date): string {
@@ -429,6 +397,14 @@ export async function createCampaign(options: {
   );
   await batch.commit();
 
+  await seedCampaignSettings(firestore, campaignId, now);
+  await appendChronicleEntry({
+    firestore,
+    campaignId,
+    kind: 'campaign_created',
+    body: `${displayLabel} created this campaign with a locked Game Director configuration.`,
+  });
+
   return projectCampaign(campaign, membership, 1, 0);
 }
 
@@ -498,6 +474,7 @@ export async function readCampaignDetail(options: {
       name: character.name,
       summary: `Level ${character.level} ${character.speciesLabel} ${character.classLabel}`,
     })),
+    settings: projectCampaignSettings(await ensureCampaignSettings(firestore, campaignId)),
   };
 }
 
@@ -642,12 +619,13 @@ export async function previewInvitation(options: {
   }
 
   const campaign = await loadCampaign(firestore, invitation.campaignId);
+  const settings = await ensureCampaignSettings(firestore, campaign.campaignId);
   return {
     inviteCode: invitation.inviteCode,
     campaignId: campaign.campaignId,
     campaignName: campaign.name,
     hostDisplayLabel: campaign.ownerDisplayLabel,
-    contentProfileSummary: CONTENT_PROFILE_SUMMARY,
+    contentProfileSummary: projectCampaignSettings(settings).contentProfileSummary,
     sessionStateLabel: SESSION_STATE_OPEN,
     requiresSignIn: true,
     directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[campaign.directorIdentity],
@@ -705,6 +683,13 @@ export async function acceptInvitation(options: {
     .collection(COLLECTIONS.campaignMemberships)
     .doc(membership.membershipId)
     .set(membership);
+
+  await appendChronicleEntry({
+    firestore,
+    campaignId: invitation.campaignId,
+    kind: 'member_joined',
+    body: `${displayLabel} joined the campaign.`,
+  });
 
   const [memberCount, seatCount] = await Promise.all([
     countMembers(firestore, invitation.campaignId),
@@ -764,5 +749,11 @@ export async function createSeat(options: {
     lastAcknowledgedEventSequence: 0,
   };
   await firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).set(seat);
+  await appendChronicleEntry({
+    firestore,
+    campaignId,
+    kind: 'seat_created',
+    body: `${character.identity.name} was seated at the table.`,
+  });
   return projectSeat(seat);
 }

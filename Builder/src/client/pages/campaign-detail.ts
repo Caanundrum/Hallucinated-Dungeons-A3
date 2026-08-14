@@ -88,6 +88,20 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
         </p>
         <p class="message notice" data-testid="campaign-next-step">${escapeHtml(nextStep)}</p>
+        <div class="actions">
+          <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="open-campaign-settings">Campaign settings</a>
+          <a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>
+        </div>
+        <p class="record-meta" data-testid="session-zero-summary">
+          Session Zero:
+          ${
+            detail.settings.sessionZero.completed
+              ? 'recorded'
+              : 'not recorded yet'
+          }
+          · Content profile: ${escapeHtml(detail.settings.contentProfileLabel)}
+          · Group decisions: ${escapeHtml(detail.settings.groupDecisionPolicyLabel)}
+        </p>
         ${
           ownSeat === null &&
           selectedCharacterId !== null &&

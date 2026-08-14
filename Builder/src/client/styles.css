@@ -1132,3 +1132,76 @@ a.record-note:focus-visible {
     transition: none !important;
   }
 }
+
+/* Account preference mirrors OS reduced-motion for the same shell rules. */
+html.hd-reduced-motion * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* --- Communication Dock + Action Composer (manifest v1) --- */
+
+.communication-dock {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.dock-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border-bottom: var(--border-weight) solid var(--structural-border);
+  padding-bottom: var(--space-3);
+}
+
+.dock-tab {
+  background: transparent;
+  border: var(--border-weight) solid transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-4);
+  min-height: 44px;
+}
+
+.dock-tab:hover {
+  color: var(--text-primary);
+  border-color: var(--structural-border);
+}
+
+.dock-tab.active,
+.dock-tab[aria-selected='true'] {
+  color: var(--text-primary);
+  background: var(--raised-surface);
+  border-color: var(--moonlit-blue);
+}
+
+.dock-viewport {
+  min-height: 12rem;
+}
+
+.dock-pane {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.dock-composer {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: var(--border-weight) solid var(--structural-border);
+}
+
+.chronicle-list {
+  list-style: decimal;
+  padding-left: var(--space-5);
+}
+
+.action-composer {
+  border-color: color-mix(in srgb, var(--amber-action) 35%, var(--structural-border));
+  background: color-mix(in srgb, var(--amber-action) 6%, var(--obsidian-surface));
+}
+
+.action-composer h2 {
+  color: var(--amber-highlight);
+}

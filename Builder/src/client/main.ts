@@ -8,7 +8,7 @@
 
 import type { CandidateIdentity } from '../shared/contract.js';
 import {
-  campaignIdFromPath,
+  campaignRouteFromPath,
   characterIdFromPath,
   inviteCodeFromPath,
   isSpaRoute,
@@ -18,6 +18,8 @@ import { fetchCandidate, onAuthFailure } from './api.js';
 import { mountAccountPage } from './pages/account.js';
 import { mountCampaignCreatePage } from './pages/campaign-create.js';
 import { mountCampaignDetailPage } from './pages/campaign-detail.js';
+import { mountCampaignSettingsPage } from './pages/campaign-settings.js';
+import { mountCampaignTablePage } from './pages/campaign-table.js';
 import { mountCampaignsPage } from './pages/campaigns.js';
 import { mountCharacterCreatePage } from './pages/character-create.js';
 import { mountCharacterSheetPage } from './pages/character-sheet.js';
@@ -62,7 +64,7 @@ async function start(): Promise<void> {
     const host: PageHost = { container: shell.mainElement, shell, candidate };
 
     const characterId = characterIdFromPath(path);
-    const campaignId = campaignIdFromPath(path);
+    const campaignRoute = campaignRouteFromPath(path);
     const inviteCode = inviteCodeFromPath(path);
 
     if (path === '/') {
@@ -81,8 +83,12 @@ async function start(): Promise<void> {
       mountCampaignsPage(host);
     } else if (path === '/campaigns/new') {
       mountCampaignCreatePage(host);
-    } else if (campaignId !== null) {
-      mountCampaignDetailPage(host, campaignId);
+    } else if (campaignRoute !== null && campaignRoute.subroute === 'settings') {
+      mountCampaignSettingsPage(host, campaignRoute.campaignId);
+    } else if (campaignRoute !== null && campaignRoute.subroute === 'table') {
+      mountCampaignTablePage(host, campaignRoute.campaignId);
+    } else if (campaignRoute !== null && campaignRoute.subroute === 'detail') {
+      mountCampaignDetailPage(host, campaignRoute.campaignId);
     } else if (inviteCode !== null) {
       mountInvitePage(host, inviteCode);
     } else if (isSpaRoute(path)) {
