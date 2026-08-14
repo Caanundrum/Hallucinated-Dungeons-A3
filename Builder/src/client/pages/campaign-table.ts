@@ -28,6 +28,7 @@ import {
   fetchPartyChat,
   fetchTableState,
   postPartyChat,
+  previewTableMove,
   submitTableCommand,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -48,6 +49,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let tableState: TableStateProjection | null = null;
   let mapBundle: MapBundleProjection | null = null;
   let seated = false;
+  let moveTarget: { column: number; row: number } | null = null;
+  let movePreviewNote: string | null = null;
   let draft = '';
   let busy = false;
   let error: string | null = null;
@@ -158,10 +161,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-disabled="${syncDisabled}">
           ${busy ? 'Committing…' : escapeHtml(ACTION_COMPOSER_STRUCTURE.tableSyncLabel)}
         </button>
+        <button type="button" data-testid="commit-table-move"
+          aria-disabled="${syncDisabled || moveTarget === null}">
+          ${busy ? 'Moving…' : 'Commit move'}
+        </button>
+        <button type="button" data-testid="open-adjacent-door"
+          aria-disabled="${syncDisabled}">
+          Open adjacent door
+        </button>
         <button type="button" aria-disabled="true" data-testid="action-composer-disabled">
           ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)} (unavailable until Timing Authority)
         </button>
       </div>
+      <p class="record-meta" data-testid="move-target-meta">
+        ${
+          moveTarget === null
+            ? 'Click a known map square to set a one-step move destination.'
+            : `Move target: column ${moveTarget.column}, row ${moveTarget.row}${movePreviewNote ? ` · ${escapeHtml(movePreviewNote)}` : ''}`
+        }
+      </p>
       <p class="record-meta" data-testid="interpret-action-notice">
         ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
       </p>`;
@@ -192,6 +210,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (stageHandle !== null && slot.querySelector('[data-testid="table-stage-canvas"]')) {
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
+        stageHandle.setSquareClickHandler((square) => {
+          void onSquareSelected(square);
+        });
       }
       return;
     }
@@ -206,6 +227,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
+        stageHandle.setSquareClickHandler((square) => {
+          void onSquareSelected(square);
+        });
       }
     } catch (failure) {
       slot.innerHTML = `<p class="message error" data-testid="table-stage-error">
@@ -215,6 +239,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } finally {
       stageMounting = false;
     }
+  }
+
+  async function onSquareSelected(square: { column: number; row: number }): Promise<void> {
+    if (candidate === null || !seated) {
+      movePreviewNote = 'Seat a character before choosing a move target.';
+      moveTarget = square;
+      render();
+      return;
+    }
+    moveTarget = square;
+    movePreviewNote = 'Checking path…';
+    render();
+    try {
+      const preview = await previewTableMove({
+        candidateId: candidate.candidateId,
+        campaignId,
+        path: [square],
+      });
+      movePreviewNote = preview.legal
+        ? `Legal · ${preview.totalCostFeet} ft · ${preview.remainingBudgetFeet} ft remain`
+        : preview.rejectionMessage ?? 'Illegal path';
+    } catch (failure) {
+      movePreviewNote =
+        failure instanceof ApiFailure ? failure.message : 'Move preview failed.';
+    }
+    render();
   }
 
   function bindPanelEvents(panels: HTMLElement): void {
@@ -285,6 +335,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               expectedStateVersion: tableState.stateVersion,
             });
             tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
             shell.announce(
               accepted.duplicate
                 ? 'Prior table sync recovered (same request).'
@@ -300,6 +351,78 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 // Keep the sync error; refresh is best-effort.
               }
             }
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="commit-table-move"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated || tableState === null || moveTarget === null) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.move',
+              expectedStateVersion: tableState.stateVersion,
+              path: [moveTarget],
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            movePreviewNote = `Moved to column ${moveTarget.column}, row ${moveTarget.row}.`;
+            shell.announce(`Move committed · version ${accepted.table.stateVersion}.`);
+          } catch (failure) {
+            error = failure instanceof ApiFailure ? failure.message : 'Move could not be committed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated || tableState === null || mapBundle === null) {
+            return;
+          }
+          const door = mapBundle.edges.find(
+            (edge) => edge.kind === 'door' && edge.doorState !== 'open',
+          );
+          if (door === undefined) {
+            error = 'No closed door is visible on your map projection.';
+            render();
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.open_door',
+              expectedStateVersion: tableState.stateVersion,
+              edgeId: door.edgeId,
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            shell.announce(`Door opened · version ${accepted.table.stateVersion}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
           } finally {
             busy = false;
             render();

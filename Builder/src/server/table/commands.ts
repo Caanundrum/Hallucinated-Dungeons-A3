@@ -1,5 +1,5 @@
 /**
- * Campaign table command gateway — Phase 2a authority core.
+ * Campaign table command gateway — Phase 2 authority core.
  *
  * Accepts seated-member commands with expected state version + requestId,
  * appends an immutable event, and publishes a new table projection inside one
@@ -16,10 +16,28 @@ import {
   type TableCommandAcceptResponse,
   type TableCommandType,
   type TableEventProjection,
+  type TableEventType,
   type TableStateProjection,
 } from '../../shared/command-contract.js';
+import {
+  DEFAULT_MOVEMENT_BUDGET_FEET,
+  DEFAULT_VISION_RADIUS_SQUARES,
+  type MovementPreviewProjection,
+} from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import {
+  buildAuthoritativeMapBundle,
+  loadCampaignSeats,
+} from './map-projection.js';
+import {
+  emptyMapRuntime,
+  loadMapRuntime,
+  mergeExplored,
+  upsertTokenPosition,
+  type StoredMapRuntime,
+} from './map-runtime.js';
+import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
 
 export class TableCommandError extends Error {
   readonly code: string;
@@ -44,7 +62,7 @@ interface StoredEvent {
   readonly eventId: string;
   readonly campaignId: string;
   readonly eventSequence: number;
-  readonly eventType: 'table.state_synced';
+  readonly eventType: TableEventType;
   readonly commandId: string;
   readonly requestId: string;
   readonly actorAccountId: string;
@@ -52,6 +70,8 @@ interface StoredEvent {
   readonly priorStateVersion: number;
   readonly resultStateVersion: number;
   readonly committedAt: Timestamp | Date;
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
 }
 
 interface StoredCommand {
@@ -65,10 +85,11 @@ interface StoredCommand {
   readonly expectedStateVersion: number;
   readonly eventId: string;
   readonly acceptedAt: Timestamp | Date;
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
 }
 
-interface StoredProjection {
-  readonly campaignId: string;
+interface StoredProjection extends StoredMapRuntime {
   readonly stateVersion: number;
   readonly lastEventSequence: number;
   readonly lastEventId: string | null;
@@ -104,8 +125,6 @@ async function loadRecentEvents(
   firestore: Firestore,
   campaignId: string,
 ): Promise<TableEventProjection[]> {
-  // Equality-only query + in-memory sort (same pattern as Chronicle) so the
-  // Local Arena does not depend on a composite index for this feed.
   const snapshot = await firestore
     .collection(COLLECTIONS.campaignEvents)
     .where('campaignId', '==', campaignId)
@@ -129,6 +148,16 @@ function toTableProjection(
     lastEventId: stored?.lastEventId ?? null,
     updatedAt: toIso(stored?.updatedAt ?? null),
     recentEvents,
+  };
+}
+
+function emptyProjection(campaignId: string): StoredProjection {
+  return {
+    ...emptyMapRuntime(campaignId),
+    stateVersion: 0,
+    lastEventSequence: 0,
+    lastEventId: null,
+    updatedAt: null,
   };
 }
 
@@ -174,7 +203,6 @@ async function loadOwnSeat(options: {
   return seatSnap.docs[0]!.data() as StoredSeat;
 }
 
-/** Returns the current table projection for a campaign the account belongs to. */
 export async function fetchTableState(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
@@ -190,11 +218,44 @@ export async function fetchTableState(options: {
   return toTableProjection(campaignId, stored, recentEvents);
 }
 
+export async function previewTableMove(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+  readonly path: readonly { readonly column: number; readonly row: number }[];
+  readonly movementBudgetFeet?: number;
+}): Promise<MovementPreviewProjection> {
+  const { firestore, accountId, campaignId, path } = options;
+  await assertCampaignMember({ firestore, accountId, campaignId });
+  const seat = await loadOwnSeat({ firestore, accountId, campaignId });
+  const [seats, runtime] = await Promise.all([
+    loadCampaignSeats(firestore, campaignId),
+    loadMapRuntime(firestore, campaignId),
+  ]);
+  const map = buildAuthoritativeMapBundle({ campaignId, seats, runtime });
+  const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+  if (token === undefined) {
+    throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
+  }
+  return validateWalkPath({
+    map,
+    start: token.footprint.anchor,
+    path,
+    footprintTemplate: {
+      size: token.footprint.size,
+      width: token.footprint.width,
+      height: token.footprint.height,
+      tinySlot: token.footprint.tinySlot,
+      elevationFeet: token.footprint.elevationFeet,
+    },
+    movementBudgetFeet: options.movementBudgetFeet ?? DEFAULT_MOVEMENT_BUDGET_FEET,
+    movementMode: 'walk',
+    actorSeatId: seat.seatId,
+  });
+}
+
 /**
- * Accepts a `table.sync` command from a seated member.
- *
- * Idempotency key: `(campaignId, actorAccountId, requestId)`.
- * State precondition: `expectedStateVersion` must equal the current projection.
+ * Accepts table.sync / table.move / table.open_door from a seated member.
  */
 export async function acceptTableCommand(options: {
   readonly firestore: Firestore;
@@ -204,6 +265,8 @@ export async function acceptTableCommand(options: {
   readonly commandType: TableCommandType;
   readonly expectedStateVersion: number;
   readonly deviceSessionId: string;
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
 }): Promise<TableCommandAcceptResponse> {
   const {
     firestore,
@@ -213,9 +276,15 @@ export async function acceptTableCommand(options: {
     commandType,
     expectedStateVersion,
     deviceSessionId,
+    path,
+    edgeId,
   } = options;
 
-  if (commandType !== 'table.sync') {
+  if (
+    commandType !== 'table.sync' &&
+    commandType !== 'table.move' &&
+    commandType !== 'table.open_door'
+  ) {
     throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That table command type is not supported.');
   }
   if (
@@ -238,9 +307,113 @@ export async function acceptTableCommand(options: {
 
   await assertCampaignMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
+  const [seatsForAuthMap, runtimeForAuthMap] = await Promise.all([
+    loadCampaignSeats(firestore, campaignId),
+    loadMapRuntime(firestore, campaignId),
+  ]);
 
   const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
   const idempotencyKey = `${campaignId}:${accountId}:${requestId}`;
+
+  // Pre-validate movement / door outside the transaction using current runtime.
+  let movePath: readonly { readonly column: number; readonly row: number }[] | undefined;
+  let openEdgeId: string | undefined;
+  let eventType: TableEventType = 'table.state_synced';
+  let syncVisionSquares: { column: number; row: number }[] = [];
+
+  if (commandType === 'table.move') {
+    if (!Array.isArray(path) || path.length === 0) {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'table.move requires a path.');
+    }
+    const map = buildAuthoritativeMapBundle({
+      campaignId,
+      seats: seatsForAuthMap,
+      runtime: runtimeForAuthMap,
+    });
+    const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+    if (token === undefined) {
+      throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
+    }
+    const preview = validateWalkPath({
+      map,
+      start: token.footprint.anchor,
+      path,
+      footprintTemplate: {
+        size: token.footprint.size,
+        width: token.footprint.width,
+        height: token.footprint.height,
+        tinySlot: token.footprint.tinySlot,
+        elevationFeet: token.footprint.elevationFeet,
+      },
+      movementBudgetFeet: DEFAULT_MOVEMENT_BUDGET_FEET,
+      movementMode: 'walk',
+      actorSeatId: seat.seatId,
+    });
+    if (!preview.legal) {
+      throw new TableCommandError(
+        ERROR_CODES.ILLEGAL_PATH,
+        preview.rejectionMessage ?? 'That path is not legal.',
+      );
+    }
+    movePath = path;
+    eventType = 'table.token_moved';
+  }
+
+  if (commandType === 'table.open_door') {
+    if (typeof edgeId !== 'string' || edgeId.length === 0) {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'table.open_door requires edgeId.');
+    }
+    const map = buildAuthoritativeMapBundle({
+      campaignId,
+      seats: seatsForAuthMap,
+      runtime: runtimeForAuthMap,
+    });
+    const edge = map.edges.find((entry) => entry.edgeId === edgeId);
+    if (edge === undefined || edge.kind !== 'door') {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door edge does not exist.');
+    }
+    if (edge.doorState === 'open') {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is already open.');
+    }
+    const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+    if (token === undefined) {
+      throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
+    }
+    const doorNeighbor = { column: edge.column + 1, row: edge.row };
+    const nearDoor =
+      Math.max(
+        Math.abs(token.footprint.anchor.column - edge.column),
+        Math.abs(token.footprint.anchor.row - edge.row),
+      ) <= 1 ||
+      Math.max(
+        Math.abs(token.footprint.anchor.column - doorNeighbor.column),
+        Math.abs(token.footprint.anchor.row - doorNeighbor.row),
+      ) <= 1;
+    if (!nearDoor) {
+      throw new TableCommandError(
+        ERROR_CODES.ILLEGAL_PATH,
+        'Move adjacent to the door before opening it.',
+      );
+    }
+    openEdgeId = edgeId;
+    eventType = 'table.door_opened';
+  }
+
+  if (commandType === 'table.sync') {
+    const map = buildAuthoritativeMapBundle({
+      campaignId,
+      seats: seatsForAuthMap,
+      runtime: runtimeForAuthMap,
+    });
+    const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+    if (token !== undefined) {
+      syncVisionSquares = visibleSquaresFrom(
+        token.footprint.anchor,
+        DEFAULT_VISION_RADIUS_SQUARES,
+        map.coordinateSpace,
+      );
+    }
+  }
 
   const committed = await firestore.runTransaction(async (transaction) => {
     const duplicateQuery = firestore
@@ -250,14 +423,8 @@ export async function acceptTableCommand(options: {
     const duplicateSnapshot = await transaction.get(duplicateQuery);
     const projectionSnapshot = await transaction.get(projectionRef);
     const current: StoredProjection = projectionSnapshot.exists
-      ? (projectionSnapshot.data() as StoredProjection)
-      : {
-          campaignId,
-          stateVersion: 0,
-          lastEventSequence: 0,
-          lastEventId: null,
-          updatedAt: null,
-        };
+      ? ({ ...emptyProjection(campaignId), ...(projectionSnapshot.data() as StoredProjection) } as StoredProjection)
+      : emptyProjection(campaignId);
 
     if (!duplicateSnapshot.empty) {
       const existingCommand = duplicateSnapshot.docs[0]!.data() as StoredCommand;
@@ -291,6 +458,35 @@ export async function acceptTableCommand(options: {
     const nextVersion = current.stateVersion + 1;
     const nextSequence = current.lastEventSequence + 1;
 
+    let tokenPositions = current.tokenPositions ?? [];
+    let doorStates = { ...(current.doorStates ?? {}) };
+    let exploredByAccount = { ...(current.exploredByAccount ?? {}) };
+
+    if (commandType === 'table.move' && movePath !== undefined && movePath.length > 0) {
+      const destination = movePath[movePath.length - 1]!;
+      tokenPositions = upsertTokenPosition(tokenPositions, seat.seatId, destination);
+      const vision = visibleSquaresFrom(destination, DEFAULT_VISION_RADIUS_SQUARES, {
+        columns: 12,
+        rows: 8,
+      });
+      exploredByAccount[accountId] = mergeExplored(exploredByAccount[accountId], [
+        ...movePath,
+        destination,
+        ...vision,
+      ]);
+    }
+
+    if (commandType === 'table.open_door' && openEdgeId !== undefined) {
+      doorStates[openEdgeId] = 'open';
+    }
+
+    if (commandType === 'table.sync' && syncVisionSquares.length > 0) {
+      exploredByAccount[accountId] = mergeExplored(
+        exploredByAccount[accountId],
+        syncVisionSquares,
+      );
+    }
+
     const command: StoredCommand = {
       commandId,
       campaignId,
@@ -302,13 +498,15 @@ export async function acceptTableCommand(options: {
       expectedStateVersion,
       eventId,
       acceptedAt: committedAt,
+      ...(movePath !== undefined ? { path: movePath } : {}),
+      ...(openEdgeId !== undefined ? { edgeId: openEdgeId } : {}),
     };
 
     const event: StoredEvent = {
       eventId,
       campaignId,
       eventSequence: nextSequence,
-      eventType: 'table.state_synced',
+      eventType,
       commandId,
       requestId,
       actorAccountId: accountId,
@@ -316,6 +514,8 @@ export async function acceptTableCommand(options: {
       priorStateVersion: current.stateVersion,
       resultStateVersion: nextVersion,
       committedAt,
+      ...(movePath !== undefined ? { path: movePath } : {}),
+      ...(openEdgeId !== undefined ? { edgeId: openEdgeId } : {}),
     };
 
     const nextProjection: StoredProjection = {
@@ -324,6 +524,9 @@ export async function acceptTableCommand(options: {
       lastEventSequence: nextSequence,
       lastEventId: eventId,
       updatedAt: committedAt,
+      tokenPositions,
+      doorStates,
+      exploredByAccount,
     };
 
     transaction.set(firestore.collection(COLLECTIONS.campaignCommands).doc(commandId), command);

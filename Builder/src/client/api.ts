@@ -42,6 +42,7 @@ import type {
   TableStateProjection,
 } from '../shared/command-contract.js';
 import type { MapBundleProjection } from '../shared/map-contract.js';
+import type { MovementPreviewProjection } from '../shared/movement-contract.js';
 import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
@@ -365,6 +366,8 @@ export async function submitTableCommand(options: {
   readonly requestId: string;
   readonly commandType: string;
   readonly expectedStateVersion: number;
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
 }): Promise<TableCommandAcceptResponse> {
   return (await request(`/api/campaigns/${options.campaignId}/commands`, {
     method: 'POST',
@@ -373,8 +376,22 @@ export async function submitTableCommand(options: {
       requestId: options.requestId,
       commandType: options.commandType,
       expectedStateVersion: options.expectedStateVersion,
+      ...(options.path !== undefined ? { path: options.path } : {}),
+      ...(options.edgeId !== undefined ? { edgeId: options.edgeId } : {}),
     }),
   })) as TableCommandAcceptResponse;
+}
+
+export async function previewTableMove(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly path: readonly { readonly column: number; readonly row: number }[];
+}): Promise<MovementPreviewProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/move-preview`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ path: options.path }),
+  })) as MovementPreviewProjection;
 }
 
 export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsProjection> {

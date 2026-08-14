@@ -120,6 +120,8 @@ export interface MapCellRecord {
   readonly row: number;
   readonly terrain: TerrainKind;
   readonly elevationFeet: number;
+  /** False when the viewer has neither explored nor currently seen this square. */
+  readonly known: boolean;
 }
 
 export interface MapTokenProjection {
@@ -150,6 +152,9 @@ export interface MapBundleProjection {
   readonly tokens: readonly MapTokenProjection[];
   /** Honest placeholder art provenance for Phase 2b (procedural floor, not production pack). */
   readonly artProvenance: 'procedural_local_placeholder';
+  readonly viewerSeatId: string | null;
+  readonly exploredSquareIds: readonly string[];
+  readonly visibleSquareIds: readonly string[];
 }
 
 export function isCreatureSize(value: unknown): value is CreatureSize {

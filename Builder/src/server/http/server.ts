@@ -76,6 +76,7 @@ import { listPartyChat, postPartyChatMessage } from '../communication/party-chat
 import {
   acceptTableCommand,
   fetchTableState,
+  previewTableMove,
   TableCommandError,
 } from '../table/commands.js';
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
@@ -146,6 +147,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.SESSION_EXPIRED]: 401,
   [ERROR_CODES.STALE_STATE_VERSION]: 409,
   [ERROR_CODES.NOT_SEATED]: 409,
+  [ERROR_CODES.ILLEGAL_PATH]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
 };
 
@@ -185,6 +187,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'This table moved on since you last loaded it. Reload the table state, then retry.',
   [ERROR_CODES.NOT_SEATED]:
     'Seat a character you own in this campaign before submitting table commands.',
+  [ERROR_CODES.ILLEGAL_PATH]:
+    'That movement path is not legal on this map. Choose another route.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };
@@ -1135,6 +1139,32 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const movePreviewMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/move-preview$/.exec(path);
+      if (movePreviewMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = movePreviewMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as { path?: unknown };
+        const previewPath = Array.isArray(payload.path) ? payload.path : [];
+        sendJson(
+          response,
+          200,
+          await previewTableMove({
+            firestore,
+            accountId,
+            campaignId,
+            path: previewPath as { column: number; row: number }[],
+          }),
+        );
+        return;
+      }
+
       const tableCommandsMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/commands$/.exec(path);
       if (tableCommandsMatch !== null) {
         if (method !== 'POST') {
@@ -1150,6 +1180,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           requestId?: unknown;
           commandType?: unknown;
           expectedStateVersion?: unknown;
+          path?: unknown;
+          edgeId?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
@@ -1162,8 +1194,11 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           requestId: payload.requestId,
           commandType: payload.commandType as never,
           expectedStateVersion: payload.expectedStateVersion as number,
-          // Device binding comes from the authenticated session, same as seats.
           deviceSessionId: session.deviceSessionId,
+          ...(Array.isArray(payload.path)
+            ? { path: payload.path as { column: number; row: number }[] }
+            : {}),
+          ...(typeof payload.edgeId === 'string' ? { edgeId: payload.edgeId } : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;

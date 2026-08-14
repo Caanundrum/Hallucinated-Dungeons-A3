@@ -20,6 +20,9 @@ import { escapeHtml } from '../dom-utils.js';
 export interface TableStageHandle {
   readonly destroy: () => void;
   readonly renderMap: (map: MapBundleProjection) => void;
+  readonly setSquareClickHandler: (
+    handler: ((square: { column: number; row: number }) => void) | null,
+  ) => void;
 }
 
 function layerContainer(name: WebGlRenderLayer): Container {
@@ -30,7 +33,10 @@ function layerContainer(name: WebGlRenderLayer): Container {
   return container;
 }
 
-function terrainColor(terrain: string): number {
+function terrainColor(terrain: string, known = true): number {
+  if (!known) {
+    return 0x050403;
+  }
   switch (terrain) {
     case 'blocked':
       return 0x1a1410;
@@ -41,7 +47,10 @@ function terrainColor(terrain: string): number {
   }
 }
 
-function terrainCss(terrain: string): string {
+function terrainCss(terrain: string, known: boolean): string {
+  if (!known) {
+    return '#050403';
+  }
   switch (terrain) {
     case 'blocked':
       return '#1a1410';
@@ -59,7 +68,7 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
   const cells = map.cells
     .map(
       (cell) =>
-        `<rect data-square="${cell.column},${cell.row}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain)}" />`,
+        `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known)}" class="map-square${cell.known ? '' : ' map-square-fog'}" />`,
     )
     .join('');
   const gridLines: string[] = [];
@@ -123,7 +132,7 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
     wrap.className = 'table-stage-semantic';
     host.appendChild(wrap);
   }
-  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}">
+  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg">
     <rect width="${width}" height="${height}" fill="#0c0a08" />
     <g data-layer="terrain_art">${cells}</g>
     <g data-layer="grid_reference">${gridLines.join('')}</g>
@@ -176,6 +185,23 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   let currentMap: MapBundleProjection | null = null;
+  let squareClickHandler: ((square: { column: number; row: number }) => void) | null = null;
+
+  function bindSquareClicks(): void {
+    host.querySelectorAll<SVGRectElement>('rect[data-square]').forEach((rect) => {
+      rect.style.cursor = 'pointer';
+      rect.onclick = () => {
+        if (squareClickHandler === null) return;
+        const raw = rect.getAttribute('data-square');
+        if (raw === null) return;
+        const [columnText, rowText] = raw.split(',');
+        const column = Number(columnText);
+        const row = Number(rowText);
+        if (!Number.isInteger(column) || !Number.isInteger(row)) return;
+        squareClickHandler({ column, row });
+      };
+    });
+  }
 
   function paintPixi(map: MapBundleProjection): void {
     const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
@@ -194,7 +220,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     for (const cell of map.cells) {
       const x = cell.column * pixelsPerSquare;
       const y = cell.row * pixelsPerSquare;
-      terrain.rect(x, y, pixelsPerSquare, pixelsPerSquare).fill(terrainColor(cell.terrain));
+      terrain.rect(x, y, pixelsPerSquare, pixelsPerSquare).fill(terrainColor(cell.terrain, cell.known));
     }
     layers.terrain_art.addChild(terrain);
 
@@ -270,6 +296,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     currentMap = map;
     paintSemanticSvg(host, map);
     paintPixi(map);
+    bindSquareClicks();
   }
 
   const onResize = (): void => {
@@ -282,6 +309,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   return {
     renderMap(map: MapBundleProjection) {
       paint(map);
+    },
+    setSquareClickHandler(handler) {
+      squareClickHandler = handler;
+      bindSquareClicks();
     },
     destroy() {
       window.removeEventListener('resize', onResize);

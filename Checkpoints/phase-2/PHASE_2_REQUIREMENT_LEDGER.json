@@ -54,9 +54,9 @@
       "id": "P2-MOVEMENT-VISIBILITY",
       "source": "25 Phase 2 build scope",
       "behavior": "Legal movement commits, illegal path rejection, object interaction, and player-specific visibility derived from server truth.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/src/shared/movement-contract.ts; Builder/src/server/table/path-validator.ts; table.move / table.open_door; map fog projection",
+      "verification": "tests/unit/path-validator.test.mjs; tests/e2e/phase2-movement.spec.ts",
+      "status": "PASSED"
     },
     {
       "id": "P2-TIMING-ACTION-COMPOSER",

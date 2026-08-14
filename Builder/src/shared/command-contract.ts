@@ -9,11 +9,15 @@
  * type (`table.sync`) so later map/movement commands reuse the same gate.
  */
 
-/** Commands the Phase 2a gateway accepts. Later chunks extend this union. */
-export const TABLE_COMMAND_TYPES = ['table.sync'] as const;
+/** Commands the Phase 2 gateway accepts. */
+export const TABLE_COMMAND_TYPES = ['table.sync', 'table.move', 'table.open_door'] as const;
 export type TableCommandType = (typeof TABLE_COMMAND_TYPES)[number];
 
-export const TABLE_EVENT_TYPES = ['table.state_synced'] as const;
+export const TABLE_EVENT_TYPES = [
+  'table.state_synced',
+  'table.token_moved',
+  'table.door_opened',
+] as const;
 export type TableEventType = (typeof TABLE_EVENT_TYPES)[number];
 
 export function isTableCommandType(value: unknown): value is TableCommandType {
@@ -25,6 +29,10 @@ export interface TableCommandRequest {
   readonly requestId: string;
   readonly commandType: TableCommandType;
   readonly expectedStateVersion: number;
+  /** Ordered destination squares after the current anchor (table.move). */
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  /** Door edge id (table.open_door). */
+  readonly edgeId?: string;
 }
 
 /** One immutable event in the campaign table log. */

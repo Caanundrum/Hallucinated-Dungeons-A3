@@ -14,18 +14,19 @@ import {
 import { ERROR_CODES } from '../../dist/shared/contract.js';
 import { COLLECTIONS } from '../../dist/server/persistence/firestore.js';
 
-test('table command gateway exposes only table.sync in chunk 2a', () => {
-  assert.deepEqual([...TABLE_COMMAND_TYPES], ['table.sync']);
-  assert.deepEqual([...TABLE_EVENT_TYPES], ['table.state_synced']);
+test('table command gateway accepts sync, move, and open_door', () => {
+  assert.deepEqual([...TABLE_COMMAND_TYPES], ['table.sync', 'table.move', 'table.open_door']);
+  assert.ok(TABLE_EVENT_TYPES.includes('table.token_moved'));
   assert.equal(isTableCommandType('table.sync'), true);
-  assert.equal(isTableCommandType('table.move'), false);
+  assert.equal(isTableCommandType('table.move'), true);
   assert.equal(isTableCommandType('party_chat'), false);
   assert.equal(TABLE_EVENT_PAGE_SIZE, 20);
 });
 
-test('stale version and not-seated failures have dedicated machine codes', () => {
+test('stale version, not-seated, and illegal-path failures have dedicated machine codes', () => {
   assert.equal(ERROR_CODES.STALE_STATE_VERSION, 'STALE_STATE_VERSION');
   assert.equal(ERROR_CODES.NOT_SEATED, 'NOT_SEATED');
+  assert.equal(ERROR_CODES.ILLEGAL_PATH, 'ILLEGAL_PATH');
 });
 
 test('persistence collections reserve command, event, and projection stores', () => {
