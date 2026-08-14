@@ -116,6 +116,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
       submit.textContent = busy ? 'Creating…' : 'Create campaign';
     }
 
+    const previewName = container.querySelector<HTMLElement>('[data-testid="preview-campaign-name"]');
+    if (previewName !== null) {
+      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
+    }
+
     const missing: string[] = [];
     if (name.trim().length === 0) {
       missing.push('a campaign title');
@@ -143,11 +148,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
       actions?.insertAdjacentElement('afterend', requirements);
     }
     requirements.textContent = text;
-
-    const previewName = container.querySelector<HTMLElement>('[data-testid="preview-campaign-name"]');
-    if (previewName !== null) {
-      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
-    }
   }
 
   function renderForm(): void {

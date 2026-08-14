@@ -212,4 +212,29 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await strangerContext.close();
     await ownerContext.close();
   });
+
+  test('campaign title input enables Create without blur, and seat return soft-nav keeps the query', async ({
+    page,
+  }) => {
+    await signIn(page);
+    const campaignId = await createCampaignWithDirector(page, {
+      name: 'Return Seat Table',
+      identityTestId: 'identity-veyra',
+      personalityTestId: 'personality-seasoned_host',
+    });
+
+    await expect(page.getByTestId('seat-vault-link')).toBeVisible();
+    await page.getByTestId('seat-vault-link').click();
+    await expect(page).toHaveURL(new RegExp(`/characters/new\\?returnCampaign=${campaignId}`));
+    await expect(page.getByTestId('create-heading')).toBeVisible();
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('identity-veyra').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'true');
+    await page.getByTestId('campaign-name').fill('Typed Last Title');
+    await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'false');
+    await expect(page.getByTestId('preview-campaign-name')).toHaveText('Typed Last Title');
+  });
 });
