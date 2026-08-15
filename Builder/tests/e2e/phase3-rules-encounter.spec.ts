@@ -42,6 +42,23 @@ async function createCampaignAndSeat(page: Page): Promise<string> {
   return page.url().split('/').pop()!;
 }
 
+async function readStateVersion(page: Page): Promise<number> {
+  const text = await page.getByTestId('table-state-meta').innerText();
+  const match = /Table state version (\d+)/.exec(text);
+  expect(match).toBeTruthy();
+  return Number(match![1]);
+}
+
+async function advanceEncounterTurn(page: Page): Promise<void> {
+  const before = await readStateVersion(page);
+  const next = page.getByTestId('next-encounter-turn');
+  await expect(next).toHaveAttribute('aria-disabled', 'false');
+  await next.click();
+  await expect
+    .poll(async () => readStateVersion(page), { timeout: 15_000 })
+    .toBeGreaterThan(before);
+}
+
 async function advanceToOwnAction(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     // Stay alive through Practice Goblin attacks during the integrated journey.
@@ -53,16 +70,16 @@ async function advanceToOwnAction(page: Page): Promise<void> {
       Number(match[1]) <= 4 &&
       (await page.getByTestId('rules-use-potion').getAttribute('aria-disabled')) === 'false'
     ) {
-      const beforeHeal = await page.getByTestId('table-state-meta').innerText();
+      const beforeHeal = await readStateVersion(page);
       await page.getByTestId('rules-use-potion').click();
-      await expect(page.getByTestId('table-state-meta')).not.toHaveText(beforeHeal);
+      await expect
+        .poll(async () => readStateVersion(page), { timeout: 15_000 })
+        .toBeGreaterThan(beforeHeal);
     }
     if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
       return;
     }
-    const before = await page.getByTestId('table-state-meta').innerText();
-    await page.getByTestId('next-encounter-turn').click();
-    await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+    await advanceEncounterTurn(page);
   }
   await expect(page.getByTestId('rules-attack')).toHaveAttribute('aria-disabled', 'false');
 }
@@ -187,19 +204,23 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
     await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
 
     // Advance turns until Practice Goblin drops the mage to 0 HP (lethal attacks).
-    for (let attempt = 0; attempt < 50; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const hpText = await page.getByTestId('own-combatant-hp').innerText();
       if (/^HP 0\//.test(hpText)) {
         break;
       }
-      const before = await page.getByTestId('table-state-meta').innerText();
-      await page.getByTestId('next-encounter-turn').click();
-      await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+      // If Timing Authority was lost, reclaim before continuing.
+      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
+        await page.getByTestId('claim-active-turn').click();
+        await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+      }
+      await advanceEncounterTurn(page);
     }
     await expect(page.getByTestId('own-combatant-hp')).toContainText(/^HP 0\//);
     await expect(page.getByTestId('own-combatant-conditions')).toContainText(/Unconscious/i);
@@ -209,34 +230,46 @@ test.describe('Phase 3 deterministic rules encounter', () => {
       if ((await page.getByTestId('rules-death-save').getAttribute('aria-disabled')) === 'false') {
         break;
       }
-      const before = await page.getByTestId('table-state-meta').innerText();
-      await page.getByTestId('next-encounter-turn').click();
-      await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
+        await page.getByTestId('claim-active-turn').click();
+        await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+      }
+      await advanceEncounterTurn(page);
     }
     await expect(page.getByTestId('rules-death-save')).toHaveAttribute('aria-disabled', 'false');
+    const beforeSave = await readStateVersion(page);
     await page.getByTestId('rules-death-save').click();
+    await expect
+      .poll(async () => readStateVersion(page), { timeout: 15_000 })
+      .toBeGreaterThan(beforeSave);
     await expect(page.getByTestId('rules-last-result')).toContainText(/Death Save/i);
 
-    // Keep rolling Death Saves until stable or dead, then Long Rest if conscious with an action,
-    // otherwise prove the death-save UI path already executed (unit suite covers 1/20/three).
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    // Continue Death Saves until conscious/stable/dead; Long Rest when an action is available.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       const conditions = await page.getByTestId('own-combatant-conditions').innerText();
       if (!/Unconscious/i.test(conditions)) {
         break;
       }
       if ((await page.getByTestId('rules-death-save').getAttribute('aria-disabled')) === 'false') {
-        const before = await page.getByTestId('table-state-meta').innerText();
+        const before = await readStateVersion(page);
         await page.getByTestId('rules-death-save').click();
-        await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+        await expect
+          .poll(async () => readStateVersion(page), { timeout: 15_000 })
+          .toBeGreaterThan(before);
         continue;
       }
-      const before = await page.getByTestId('table-state-meta').innerText();
-      await page.getByTestId('next-encounter-turn').click();
-      await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
+        await page.getByTestId('claim-active-turn').click();
+      }
+      await advanceEncounterTurn(page);
     }
 
     if ((await page.getByTestId('rules-long-rest').getAttribute('aria-disabled')) === 'false') {
+      const beforeRest = await readStateVersion(page);
       await page.getByTestId('rules-long-rest').click();
+      await expect
+        .poll(async () => readStateVersion(page), { timeout: 15_000 })
+        .toBeGreaterThan(beforeRest);
       await expect(page.getByTestId('rules-last-result')).toContainText('Long Rest');
       await expect(page.getByTestId('own-combatant-hp')).not.toContainText(/^HP 0\//);
     }
