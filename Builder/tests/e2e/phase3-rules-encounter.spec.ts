@@ -68,22 +68,9 @@ async function ownActionReady(page: Page): Promise<boolean> {
 }
 
 async function advanceToOwnAction(page: Page): Promise<void> {
+  // Training foe auto-attacks are nonlethal (floor at 1 HP), so this helper does not
+  // consume the journey's Potion of Healing — that remains an explicit journey step.
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    // Stay topped up through Practice Goblin training hits during the journey.
-    const hpText = await page.getByTestId('own-combatant-hp').innerText().catch(() => '');
-    const match = /^HP (\d+)\//.exec(hpText);
-    if (
-      match !== null &&
-      Number(match[1]) > 0 &&
-      Number(match[1]) <= 4 &&
-      (await page.getByTestId('rules-use-potion').getAttribute('aria-disabled')) === 'false'
-    ) {
-      const beforeHeal = await readStateVersion(page);
-      await page.getByTestId('rules-use-potion').click();
-      await expect
-        .poll(async () => readStateVersion(page), { timeout: 15_000 })
-        .toBeGreaterThan(beforeHeal);
-    }
     if (await ownActionReady(page)) {
       return;
     }

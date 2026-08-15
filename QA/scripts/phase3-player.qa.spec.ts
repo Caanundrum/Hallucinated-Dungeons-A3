@@ -87,28 +87,23 @@ async function advanceEncounterTurn(page: Page): Promise<void> {
     .toBeGreaterThan(before);
 }
 
+async function ownActionReady(page: Page): Promise<boolean> {
+  const cast = await page.getByTestId('rules-cast-spell').getAttribute('aria-disabled');
+  const rest = await page.getByTestId('rules-short-rest').getAttribute('aria-disabled');
+  const attack = await page.getByTestId('rules-attack').getAttribute('aria-disabled');
+  return cast === 'false' || rest === 'false' || attack === 'false';
+}
+
 async function advanceToOwnAction(page: Page): Promise<void> {
+  // Nonlethal training auto-attacks keep the party at ≥1 HP; do not consume the
+  // journey potion here — QA-P3-02 exercises inventory.use_item explicitly.
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const hpText = await page.getByTestId('own-combatant-hp').innerText().catch(() => '');
-    const match = /^HP (\d+)\//.exec(hpText);
-    if (
-      match !== null &&
-      Number(match[1]) > 0 &&
-      Number(match[1]) <= 4 &&
-      (await page.getByTestId('rules-use-potion').getAttribute('aria-disabled')) === 'false'
-    ) {
-      const beforeHeal = await readStateVersion(page);
-      await page.getByTestId('rules-use-potion').click();
-      await expect
-        .poll(async () => readStateVersion(page), { timeout: 15_000 })
-        .toBeGreaterThan(beforeHeal);
-    }
-    if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
+    if (await ownActionReady(page)) {
       return;
     }
     await advanceEncounterTurn(page);
   }
-  await expect(page.getByTestId('rules-attack')).toHaveAttribute('aria-disabled', 'false');
+  await expect(page.getByTestId('rules-cast-spell')).toHaveAttribute('aria-disabled', 'false');
 }
 
 async function openTableWithEncounterControls(page: Page): Promise<void> {

@@ -356,7 +356,7 @@ function buildPlayerCombatant(
       remainingSlots: spellSlots,
     },
     concentrationSpellId: null,
-    inventory: [{ itemId: 'healing-potion', label: 'Potion of Healing', quantity: 1 }],
+    inventory: [{ itemId: 'healing-potion', label: 'Potion of Healing', quantity: 2 }],
     ready: null,
   };
 }
@@ -598,7 +598,7 @@ function mutateRules(options: {
       log: [],
       updatedAt: now.toISOString(),
     };
-    summary = `Encounter began with ${player.name}, Training Dummy, and Practice Goblin. A Potion of Healing was added to ${player.name}’s inventory.`;
+    summary = `Encounter began with ${player.name}, Training Dummy, and Practice Goblin. Two Potions of Healing were added to ${player.name}’s inventory.`;
     affectedCombatantIds = encounter.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'initiative.roll') {
     const current = requireEncounter(encounter);
