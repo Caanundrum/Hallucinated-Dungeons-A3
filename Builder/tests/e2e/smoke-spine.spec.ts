@@ -242,7 +242,9 @@ test.describe('Permanent smoke spine', () => {
       if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
         break;
       }
+      const before = await page.getByTestId('table-state-meta').innerText();
       await page.getByTestId('next-encounter-turn').click();
+      await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
     }
     await expect(page.getByTestId('rules-attack')).toHaveAttribute('aria-disabled', 'false');
     await page.getByTestId('rules-target').selectOption('practice-goblin');
