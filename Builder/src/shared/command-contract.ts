@@ -9,14 +9,50 @@
  * type (`table.sync`) so later map/movement commands reuse the same gate.
  */
 
-/** Commands the Phase 2 gateway accepts. */
-export const TABLE_COMMAND_TYPES = ['table.sync', 'table.move', 'table.open_door'] as const;
+import type {
+  AreaTarget,
+  CharacterProgressionProjection,
+  EncounterProjection,
+} from './rules-combat-contract.js';
+
+/** Commands accepted by the canonical table command gateway. */
+export const TABLE_COMMAND_TYPES = [
+  'table.sync',
+  'table.move',
+  'table.open_door',
+  'encounter.begin',
+  'initiative.roll',
+  'encounter.next_turn',
+  'combat.attack',
+  'combat.cast_spell',
+  'combat.death_save',
+  'combat.short_rest',
+  'combat.long_rest',
+  'combat.ready',
+  'combat.reaction',
+  'progression.award_xp',
+  'progression.level_up',
+  'inventory.use_item',
+] as const;
 export type TableCommandType = (typeof TABLE_COMMAND_TYPES)[number];
 
 export const TABLE_EVENT_TYPES = [
   'table.state_synced',
   'table.token_moved',
   'table.door_opened',
+  'encounter.started',
+  'initiative.rolled',
+  'encounter.turn_advanced',
+  'combat.attack_resolved',
+  'combat.spell_resolved',
+  'combat.death_save_resolved',
+  'combat.short_rest_completed',
+  'combat.long_rest_completed',
+  'combat.ready_declared',
+  'combat.reaction_resolved',
+  'progression.xp_awarded',
+  'progression.level_gained',
+  'inventory.item_used',
 ] as const;
 export type TableEventType = (typeof TABLE_EVENT_TYPES)[number];
 
@@ -35,6 +71,16 @@ export interface TableCommandRequest {
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   /** Door edge id (table.open_door). */
   readonly edgeId?: string;
+  /** Phase 3 mechanical payload. Outcomes remain server-authored. */
+  readonly targetCombatantId?: string;
+  readonly attackId?: string;
+  readonly spellId?: string;
+  readonly area?: AreaTarget;
+  readonly reactionKind?: 'opportunity_attack' | 'shield';
+  readonly decisionWindowId?: string;
+  readonly readyTrigger?: string;
+  readonly xpAmount?: number;
+  readonly itemId?: string;
 }
 
 /** One immutable event in the campaign table log. */
@@ -49,6 +95,8 @@ export interface TableEventProjection {
   readonly priorStateVersion: number;
   readonly resultStateVersion: number;
   readonly committedAt: string;
+  readonly summary?: string;
+  readonly rolls?: readonly number[];
 }
 
 /** Server-authored table projection the page may render. */
@@ -67,6 +115,8 @@ export interface TableCommandAcceptResponse {
   readonly requestId: string;
   readonly event: TableEventProjection;
   readonly table: TableStateProjection;
+  readonly encounter?: EncounterProjection;
+  readonly progression?: CharacterProgressionProjection;
 }
 
 export const TABLE_EVENT_PAGE_SIZE = 20;

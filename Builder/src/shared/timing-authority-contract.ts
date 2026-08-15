@@ -5,10 +5,10 @@
  * Authority / Action Composer plumbing. Clients never mint authorities.
  */
 
-export const TIMING_AUTHORITY_SCHEMA_VERSION = 'phase2-timing-v1' as const;
+export const TIMING_AUTHORITY_SCHEMA_VERSION = 'phase3-timing-v1' as const;
 
-/** Phase 2d ships Active Turn only; later phases add Reaction/Decision classes. */
-export const TIMING_OPPORTUNITY_CLASSES = ['active_turn'] as const;
+/** Server-issued opportunities; Reaction and Decision windows are single-use. */
+export const TIMING_OPPORTUNITY_CLASSES = ['active_turn', 'reaction', 'decision'] as const;
 export type TimingOpportunityClass = (typeof TIMING_OPPORTUNITY_CLASSES)[number];
 
 export const TIMING_AUTHORITY_STATES = [
@@ -20,12 +20,26 @@ export const TIMING_AUTHORITY_STATES = [
 ] as const;
 export type TimingAuthorityState = (typeof TIMING_AUTHORITY_STATES)[number];
 
-/** Command kinds an Active Turn Authority may permit in Phase 2d. */
+/** Commands that may be initiated during the holder's Active Turn. */
 export const ACTIVE_TURN_PERMITTED_COMMANDS = [
   'table.sync',
   'table.move',
   'table.open_door',
+  'encounter.begin',
+  'initiative.roll',
+  'encounter.next_turn',
+  'combat.attack',
+  'combat.cast_spell',
+  'combat.death_save',
+  'combat.short_rest',
+  'combat.long_rest',
+  'combat.ready',
+  'progression.award_xp',
+  'progression.level_up',
+  'inventory.use_item',
 ] as const;
+
+export const REACTION_PERMITTED_COMMANDS = ['combat.reaction'] as const;
 
 export const INTENT_INTERCEPT_STATES = [
   'draft',

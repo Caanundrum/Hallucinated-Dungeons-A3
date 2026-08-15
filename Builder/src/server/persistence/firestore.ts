@@ -32,6 +32,8 @@ export const COLLECTIONS = {
   campaignCommands: 'campaignCommands',
   campaignEvents: 'campaignEvents',
   campaignTableProjections: 'campaignTableProjections',
+  campaignEncounters: 'campaignEncounters',
+  characterProgressions: 'characterProgressions',
   timingAuthorities: 'timingAuthorities',
 } as const;
 
