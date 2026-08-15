@@ -54,6 +54,8 @@ const PHASE = process.env.HD_CERTIFY_PHASE ?? process.argv[2] ?? 'phase-0';
 const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-0': 37,
   'phase-1': 56,
+  // Phase 2 adds map/movement/timing/sync/a11y suites on top of the Phase 1 floor.
+  'phase-2': 65,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -140,7 +142,9 @@ async function main() {
     }
   };
 
-  console.log(`Phase ${PHASE === 'phase-1' ? '1' : '0'} Builder Verification — Frozen Local Certification Mode\n`);
+  const phaseLabel =
+    PHASE === 'phase-2' ? '2' : PHASE === 'phase-1' ? '1' : PHASE === 'phase-0' ? '0' : PHASE;
+  console.log(`Phase ${phaseLabel} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.
   const toolchain = verifyToolchain();
