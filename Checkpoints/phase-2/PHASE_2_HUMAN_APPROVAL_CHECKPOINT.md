@@ -1,16 +1,16 @@
 ---
 phase: phase-2
 recordType: human_approval_checkpoint
-lifecycleState: AWAITING_HUMAN_REVIEW
+lifecycleState: PHASE_CERTIFIED
 candidateId: cand-e1c5d41b583b
 sourceTreeHash: e1c5d41b583bc16fba0a83544b013280474e7c485fe1987d234a79e09d163a48
 commit: e6da5508a4015a1e4e7dac9b24c643ff3fcafaaa
 blueprintVersion: ALPHA_3_V1
 builderVerification: Checkpoints/phase-2/PHASE_2_BUILDER_VERIFICATION.md
 qaFindings: QA/findings/PHASE_2_QA_FINDINGS.md
-productOwnerApproval: NOT_STARTED
-approvedAt: null
-approver: null
+productOwnerApproval: APPROVED
+approvedAt: 2026-08-15T13:34:00Z
+approver: Nick
 ---
 
 # Phase 2 — Human Approval Checkpoint
@@ -46,11 +46,11 @@ Any later source or configuration change voids approval. Approval is never infer
 
 ## Product Owner decision
 
-- [ ] **Approved** — advance this exact candidate to `PHASE_CERTIFIED`
+- [x] **Approved** — advance this exact candidate to `PHASE_CERTIFIED`
 - [ ] **Rejected** — list required corrections; do not certify
 
-Approver name / authenticated identity:
+Approver name / authenticated identity: Nick
 
-Date (UTC):
+Date (UTC): 2026-08-15
 
-Notes:
+Notes: Wall and door presentation accepted for Phase 2. Recommended residuals: map legend (fog / wall / door / token); production desktop layout should be character rail left, map center, Communication Dock + Action Composer right (Section 8.2), with less-frequent items collapsible/menu — current vertical scroll stack is interim, not the long-term play posture.

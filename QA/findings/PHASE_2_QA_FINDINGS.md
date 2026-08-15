@@ -65,4 +65,4 @@ Harness note (not a product defect): early QA runs used Playwright `check()` aga
 
 ## Disposition
 
-**PLAYER_VALIDATED.** Lifecycle advances to Product Owner review (`AWAITING_HUMAN_REVIEW`); approval is not inferred from this validation.
+**PLAYER_VALIDATED.** Product Owner **Approved** `cand-e1c5d41b583b` on 2026-08-15 → `PHASE_CERTIFIED` (`Checkpoints/phase-2/PHASE_2_CERTIFICATE.md`).

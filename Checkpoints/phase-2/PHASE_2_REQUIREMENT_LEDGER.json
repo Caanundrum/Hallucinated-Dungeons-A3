@@ -3,7 +3,7 @@
   "phase": "phase-2",
   "blueprintVersion": "ALPHA_3_V1",
   "owner": "Builder",
-  "lifecycleState": "AWAITING_HUMAN_REVIEW",
+  "lifecycleState": "PHASE_CERTIFIED",
   "priorPhase": {
     "phase": "phase-1",
     "state": "PHASE_CERTIFIED",
@@ -13,8 +13,11 @@
     "required": true,
     "scope": "Main tabletop, tokens, fog, grid readability, interaction feel, and map direction.",
     "timing": "After Builder and QA have already used and corrected the page.",
-    "state": "AWAITING_HUMAN_REVIEW",
-    "checkpoint": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md"
+    "state": "APPROVED",
+    "checkpoint": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md",
+    "approver": "Nick",
+    "approvedAt": "2026-08-15T13:34:00Z",
+    "candidateId": "cand-e1c5d41b583b"
   },
   "note": "Scope control for Phase 2 only. Section 25 is the phase-scope authority. A status becomes PASSED only when the named verification actually executed against the frozen Phase 2 candidate.",
   "requirements": [
@@ -110,9 +113,9 @@
       "id": "P2-HUMAN-GATE",
       "source": "25 Phase 2 human gate",
       "behavior": "Product Owner reviews tabletop direction against the exact candidate hash.",
-      "implementation": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md",
-      "verification": "Awaiting Product Owner approval of cand-e1c5d41b583b",
-      "status": "NOT_STARTED"
+      "implementation": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md; Checkpoints/phase-2/PHASE_2_CERTIFICATE.md",
+      "verification": "Approved by Nick 2026-08-15 for cand-e1c5d41b583b; Checkpoints/phase-2/PHASE_2_CERTIFICATE.md",
+      "status": "PASSED"
     }
   ]
 }

@@ -1,12 +1,13 @@
 ---
 phase: phase-2
 recordType: builder_verification
-lifecycleState: READY_FOR_QA
+lifecycleState: PHASE_CERTIFIED
 candidateId: cand-e1c5d41b583b
 sourceTreeHash: e1c5d41b583bc16fba0a83544b013280474e7c485fe1987d234a79e09d163a48
 commit: e6da5508a4015a1e4e7dac9b24c643ff3fcafaaa
 blueprintVersion: ALPHA_3_V1
 evidence: Evidence/phase-2/cand-e1c5d41b583b-2026-08-15T03-17-38-582Z/
+certificate: Checkpoints/phase-2/PHASE_2_CERTIFICATE.md
 ---
 
 # Phase 2 — Builder Verification
@@ -21,12 +22,13 @@ Prove the Phase 2 tactical slice on one frozen local candidate: command/event co
 
 | Field | Value |
 | --- | --- |
-| Status | **PASSED** / READY_FOR_QA |
+| Status | **PASSED** / READY_FOR_QA → Product Owner **APPROVED** → **PHASE_CERTIFIED** |
 | Candidate | `cand-e1c5d41b583b` |
 | sourceTreeHash | `e1c5d41b583bc16fba0a83544b013280474e7c485fe1987d234a79e09d163a48` |
 | Commit | `e6da5508a4015a1e4e7dac9b24c643ff3fcafaaa` |
 | Evidence | `Evidence/phase-2/cand-e1c5d41b583b-2026-08-15T03-17-38-582Z/` |
 | Frozen origin | `http://127.0.0.1:5274` (`npm run serve:frozen`) |
+| Certificate | `Checkpoints/phase-2/PHASE_2_CERTIFICATE.md` |
 
 ## Suite results
 
