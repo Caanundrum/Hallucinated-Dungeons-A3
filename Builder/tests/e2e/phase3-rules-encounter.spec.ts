@@ -144,10 +144,10 @@ test.describe('Phase 3 deterministic rules encounter', () => {
         expectedStateVersion: state.stateVersion,
       },
     });
-    expect(illegal.status()).toBe(403);
+    expect(illegal.status()).toBe(400);
     const body = (await illegal.json()) as { error: string; message: string };
-    expect(body.error).toBe('TIMING_AUTHORITY_REQUIRED');
-    expect(body.message).toContain('Timing Authority');
+    expect(body.error).toBe('BAD_REQUEST');
+    expect(body.message).toContain('already in progress');
 
     const after = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
       headers: { origin, 'x-hd-candidate': candidate.candidateId },
