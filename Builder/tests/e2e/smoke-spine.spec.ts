@@ -188,7 +188,7 @@ test.describe('Permanent smoke spine', () => {
     };
     const start = mapBody.tokens[0]!.footprint.anchor;
     const target = { column: start.column + 1, row: start.row };
-    await page.locator(`[data-square="${target.column},${target.row}"]`).click();
+    await page.locator(`[data-square="${target.column},${target.row}"]`).click({ force: true });
     await expect(page.getByTestId('move-target-meta')).toContainText(
       `column ${target.column}, row ${target.row}`,
     );

@@ -1278,6 +1278,11 @@ html.hd-low-effects .map-square-fog,
   cursor: pointer;
 }
 
+.table-stage-semantic g[data-token],
+.table-stage-semantic g[data-token] * {
+  pointer-events: none;
+}
+
 .table-stage-canvas {
   position: absolute;
   inset: 0;
