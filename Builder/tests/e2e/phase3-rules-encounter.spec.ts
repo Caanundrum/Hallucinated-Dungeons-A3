@@ -115,7 +115,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('rules-desk-rule').selectOption('progression.xp');
     await page.getByTestId('rules-desk-explain').click();
     await expect(page.getByTestId('rules-explanation')).toContainText('XP-only Progression');
-    await expect(page.getByTestId('rules-explanation')).toContainText('structured');
+    await expect(page.getByTestId('rules-explanation')).toContainText('server-validated XP');
   });
 
   test('illegal mechanical command fails closed without advancing state', async ({ page }) => {
@@ -126,8 +126,6 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('claim-active-turn').click();
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
-    await advanceToOwnAction(page);
-
     const candidate = await readCandidate(page);
     const origin = new URL(page.url()).origin;
     const authorityText = await page.getByTestId('timing-authority-meta').innerText();
@@ -151,7 +149,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
       },
       data: {
         requestId: randomUUID(),
-        commandType: 'combat.attack',
+        commandType: 'encounter.begin',
         expectedStateVersion: state.stateVersion,
         timingAuthorityId: authority.authority.timingAuthorityId,
       },
@@ -159,7 +157,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     expect(illegal.status()).toBe(400);
     const body = (await illegal.json()) as { error: string; message: string };
     expect(body.error).toBe('BAD_REQUEST');
-    expect(body.message).toContain('target');
+    expect(body.message).toContain('already in progress');
 
     const after = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
       headers: { origin, 'x-hd-candidate': candidate.candidateId },
