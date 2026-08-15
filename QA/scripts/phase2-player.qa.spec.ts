@@ -223,9 +223,10 @@ test.describe('Phase 2 independent QA — rendered frozen tabletop', () => {
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
     await page.reload();
     await dismissIntro(page);
-    await expect(page.getByTestId('candidate-id').first()).toHaveText(CANDIDATE);
+    // Player proof is recovered table projection, not footer chrome.
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
     await page.screenshot({ path: `${EVIDENCE}/p2-06-reentry.png`, fullPage: true });
   });
 
@@ -242,7 +243,7 @@ test.describe('Phase 2 independent QA — rendered frozen tabletop', () => {
     await expect(page.getByTestId('vault-heading')).toBeVisible();
     await page.getByTestId('nav-campaigns').focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('campaigns-heading').or(page.getByRole('heading'))).toBeVisible();
+    await expect(page.getByTestId('campaigns-heading')).toBeVisible();
   });
 
   test('QA-P2-08 interpret: Intent Intercept confirms a real sync while chat stays separate', async ({
