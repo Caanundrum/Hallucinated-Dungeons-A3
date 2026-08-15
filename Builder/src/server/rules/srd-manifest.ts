@@ -1012,7 +1012,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     speciesChoiceIds: { 'fiendish-legacy': 'infernal' }, classChoiceIds: {},
     classEquipmentOptionId: 'wizard-a', backgroundEquipmentOptionId: 'sage-kit',
     cantripIds: ['fire-bolt', 'mage-hand', 'prestidigitation'],
-    spellIds: ['magic-missile', 'shield', 'detect-magic', 'sleep'],
+    spellIds: ['burning-hands', 'shield', 'magic-missile', 'sleep'],
   },
 ];
 

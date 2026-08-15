@@ -5,6 +5,26 @@ export type RandomSource = (minimumInclusive: number, maximumExclusive: number) 
 const cryptoRandom: RandomSource = (minimumInclusive, maximumExclusive) =>
   randomInt(minimumInclusive, maximumExclusive);
 
+/** Deterministic PRNG used to replay one server-generated command seed. */
+export function createSeededRandom(seed: number): RandomSource {
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+    throw new RangeError('A dice seed must be an unsigned 32-bit integer.');
+  }
+  let state = seed >>> 0;
+  return (minimumInclusive, maximumExclusive) => {
+    if (
+      !Number.isInteger(minimumInclusive) ||
+      !Number.isInteger(maximumExclusive) ||
+      maximumExclusive <= minimumInclusive
+    ) {
+      throw new RangeError('Random integer bounds are invalid.');
+    }
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    const span = maximumExclusive - minimumInclusive;
+    return minimumInclusive + (state % span);
+  };
+}
+
 export interface DiceTerm {
   readonly count: number;
   readonly sides: number;
