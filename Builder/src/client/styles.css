@@ -1243,6 +1243,70 @@ html.hd-low-effects .map-square-fog,
   border-top: 1px solid color-mix(in srgb, var(--structural-border) 70%, transparent);
 }
 
+.rules-encounter {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--moonlit-blue) 55%, var(--structural-border));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--moonlit-blue) 7%, var(--obsidian-surface));
+}
+
+.rules-encounter h3,
+.rules-explanation h3 {
+  margin: 0;
+}
+
+.rules-heading-row,
+.rules-targeting {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.rules-targeting .field {
+  flex: 1 1 15rem;
+}
+
+.combatant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.combatant-card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--structural-border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+}
+
+.combatant-card.active {
+  border-color: var(--amber-action);
+  box-shadow: inset 3px 0 0 var(--amber-action);
+  color: var(--text-primary);
+}
+
+.rules-controls {
+  margin-top: 0;
+}
+
+.rules-explanation {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-left: 3px solid var(--moonlit-blue);
+  background: var(--raised-surface);
+}
+
 .table-stage-frame {
   position: relative;
   width: 100%;

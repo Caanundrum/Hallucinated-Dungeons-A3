@@ -1,0 +1,108 @@
+{
+  "recordType": "phase_requirement_ledger",
+  "phase": "phase-3",
+  "blueprintVersion": "ALPHA_3_V1",
+  "lifecycleState": "IMPLEMENTING",
+  "humanGate": "none",
+  "requirements": [
+    {
+      "id": "P3-COMBAT-CORE",
+      "requirement": "Initiative, action economy, attacks, saves, damage, healing, Temporary Hit Points, conditions, Death Saving Throws, and rests",
+      "implementation": [
+        "Builder/src/server/rules/engine/adjudication.ts",
+        "Builder/src/server/rules/engine/conditions.ts",
+        "Builder/src/server/rules/engine/rules-commands.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase3-rules-engine.test.mjs",
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-TIMING",
+      "requirement": "Opportunity Attack, Ready, Reaction and Decision Windows use server-issued Timing Authority",
+      "implementation": [
+        "Builder/src/shared/timing-authority-contract.ts",
+        "Builder/src/server/table/timing-authority.ts",
+        "Builder/src/server/rules/engine/rules-commands.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/timing-authority.test.mjs",
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-SPELLS-AREAS",
+      "requirement": "Spell slots, targeting, square 3D areas, concentration, and the Phase 3 usable spell set",
+      "implementation": [
+        "Builder/src/server/rules/engine/spell-effects.ts",
+        "Builder/src/server/rules/engine/areas.ts",
+        "Builder/src/server/rules/engine/rules-commands.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase3-rules-engine.test.mjs",
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-PROGRESSION",
+      "requirement": "XP-only single-class levels 1-20 and level-sensitive derived recomputation",
+      "implementation": [
+        "Builder/src/server/rules/engine/xp-progression.ts",
+        "Builder/src/server/rules/engine/encounter-runtime.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase3-rules-engine.test.mjs",
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-GATEWAY",
+      "requirement": "All mechanical mutation uses the canonical table command, immutable event, projection, version, and idempotency gateway",
+      "implementation": [
+        "Builder/src/shared/command-contract.ts",
+        "Builder/src/server/table/commands.ts",
+        "Builder/src/server/rules/engine/rules-commands.ts",
+        "Builder/src/server/http/server.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/table-commands.test.mjs",
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-RULES-DESK",
+      "requirement": "Rules Desk is read-only and explains structured rules data",
+      "implementation": [
+        "Builder/src/server/rules/engine/rules-explanations.ts",
+        "Builder/src/client/pages/campaign-table.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-RENDERED-JOURNEY",
+      "requirement": "Campaign table renders encounter state and controls for the complete vertical rules journey",
+      "implementation": [
+        "Builder/src/client/pages/campaign-table.ts",
+        "Builder/src/client/styles.css"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase3-rules-encounter.spec.ts",
+        "Builder/tests/e2e/smoke-spine.spec.ts"
+      ]
+    },
+    {
+      "id": "P3-CERTIFICATION",
+      "requirement": "Phase 3 certification command and browser scenario floor",
+      "implementation": [
+        "Builder/package.json",
+        "Builder/tools/certification/run-certification.mjs"
+      ],
+      "verification": [
+        "npm run certify:phase3"
+      ]
+    }
+  ]
+}

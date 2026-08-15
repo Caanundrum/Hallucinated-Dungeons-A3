@@ -567,7 +567,7 @@ function mutateRules(options: {
           20,
           0,
           2,
-          '1d4',
+          '1',
         ),
         foe(
           'practice-goblin',
@@ -577,7 +577,7 @@ function mutateRules(options: {
           12,
           2,
           4,
-          '1d6+2',
+          '1d2+1',
         ),
       ],
       areaCells: [],
@@ -626,7 +626,7 @@ function mutateRules(options: {
     const turnIndex = (current.turnIndex + 1) % current.initiativeOrder.length;
     const round = turnIndex === 0 ? current.round + 1 : current.round;
     const activeCombatantId = current.initiativeOrder[turnIndex]!;
-    const combatants = current.combatants.map((combatant) => {
+    let combatants = current.combatants.map((combatant) => {
       const expired = expireConditions(combatant.conditions, round);
       if (combatant.combatantId !== activeCombatantId) {
         return { ...combatant, conditions: expired };
@@ -640,10 +640,34 @@ function mutateRules(options: {
         ready: null,
       };
     });
-    const active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
-    encounter = { ...current, turnIndex, round, activeCombatantId, combatants };
+    let active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
     summary = `Round ${round}: ${active.name} is active.`;
     affectedCombatantIds = [activeCombatantId];
+    if (active.side === 'foe' && active.currentHitPoints > 0) {
+      const partyTarget = combatants.find(
+        (combatant) =>
+          combatant.side === 'party' &&
+          combatant.currentHitPoints > 0 &&
+          !combatant.deathSaves.dead,
+      );
+      if (partyTarget !== undefined) {
+        const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
+        rolls.push(...attack.rolls);
+        active = spendAction(active);
+        combatants = combatants.map((combatant) =>
+          combatant.combatantId === active.combatantId
+            ? active
+            : combatant.combatantId === partyTarget.combatantId
+              ? attack.target
+              : combatant,
+        );
+        summary += attack.hit
+          ? ` ${active.name} automatically attacked ${partyTarget.name} for ${attack.damage} damage.`
+          : ` ${active.name} automatically attacked ${partyTarget.name} and missed.`;
+        affectedCombatantIds.push(partyTarget.combatantId);
+      }
+    }
+    encounter = { ...current, turnIndex, round, activeCombatantId, combatants };
   } else if (commandType === 'combat.attack') {
     const current = requireEncounter(encounter);
     const actor = requireActiveActor(current, seat.seatId);
