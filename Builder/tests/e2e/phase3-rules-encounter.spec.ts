@@ -33,14 +33,13 @@ async function createCampaignAndSeat(page: Page): Promise<string> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  const campaignId = page.url().split('/').pop()!;
   const seatSelect = page.getByTestId('seat-character-select');
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
   expect(characterId).toBeTruthy();
   await seatSelect.selectOption(characterId!);
   await page.getByTestId('create-seat').click();
   await expect(page.getByTestId('own-seat')).toBeVisible();
-  return campaignId;
+  return page.url().split('/').pop()!;
 }
 
 async function advanceToOwnAction(page: Page): Promise<void> {
