@@ -1,5 +1,4 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -682,29 +681,6 @@ function mutateRules(options: {
                 deathSaves: emptyDeathSaves(),
               }
             : attack.target;
-        // #region agent log
-        try {
-          appendFileSync(
-            '/opt/cursor/logs/debug.log',
-            `${JSON.stringify({
-              hypothesisId: 'A',
-              location: 'rules-commands.ts:next_turn',
-              message: 'training foe auto-attack',
-              data: {
-                foeId: active.combatantId,
-                hit: attack.hit,
-                damage: attack.damage,
-                targetHpBefore: partyTarget.currentHitPoints,
-                targetHpAfter: nonlethalTarget.currentHitPoints,
-                nonlethalClamped: attack.target.currentHitPoints === 0,
-              },
-              timestamp: Date.now(),
-            })}\n`,
-          );
-        } catch {
-          /* ignore debug log failures */
-        }
-        // #endregion
         combatants = combatants.map((combatant) =>
           combatant.combatantId === active.combatantId
             ? active
@@ -903,30 +879,6 @@ function mutateRules(options: {
           ? actionEconomy()
           : dyingActionEconomy(false),
     };
-    // #region agent log
-    try {
-      appendFileSync(
-        '/opt/cursor/logs/debug.log',
-        `${JSON.stringify({
-          hypothesisId: 'B',
-          location: 'rules-commands.ts:death_save',
-          message: 'death save resolved',
-          data: {
-            natural: result.natural,
-            outcome: result.outcome,
-            failures: afterSave.deathSaves.failures,
-            successes: afterSave.deathSaves.successes,
-            dead: afterSave.deathSaves.dead,
-            stable: afterSave.deathSaves.stable,
-            hp: afterSave.currentHitPoints,
-          },
-          timestamp: Date.now(),
-        })}\n`,
-      );
-    } catch {
-      /* ignore debug log failures */
-    }
-    // #endregion
     encounter = replaceCombatants(current, [afterSave]);
     summary = `${actor.name} rolled ${result.natural}: Death Save ${result.outcome.replace('_', ' ')}.`;
     affectedCombatantIds = [actor.combatantId];
