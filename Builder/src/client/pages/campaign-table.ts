@@ -328,13 +328,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   .map(
                     (combatant) => `
                     <li class="combatant-card${encounter?.activeCombatantId === combatant.combatantId ? ' active' : ''}"
-                      data-testid="combatant-${escapeHtml(combatant.combatantId)}">
+                      data-testid="combatant-${escapeHtml(combatant.combatantId)}"
+                      ${combatant.seatId !== null ? 'data-own-combatant="true"' : ''}>
                       <strong>${escapeHtml(combatant.name)}</strong>
-                      <span>HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${
                         combatant.temporaryHitPoints > 0 ? ` +${combatant.temporaryHitPoints} temp` : ''
                       } · AC ${combatant.armorClass}</span>
                       <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(combatant.side)}</span>
-                      <span>${combatant.conditions.length === 0 ? 'No conditions' : combatant.conditions.map((condition) => escapeHtml(condition.label)).join(', ')}</span>
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${combatant.conditions.length === 0 ? 'No conditions' : combatant.conditions.map((condition) => escapeHtml(condition.label)).join(', ')}</span>
                     </li>`,
                   )
                   .join('')}

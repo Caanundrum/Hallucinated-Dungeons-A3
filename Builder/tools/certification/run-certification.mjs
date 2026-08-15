@@ -57,7 +57,7 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   // Phase 2 adds map/movement/timing/sync/a11y suites on top of the Phase 1 floor.
   'phase-2': 65,
   // Phase 3 adds two complete-rules scenarios and the permanent rules smoke segment.
-  'phase-3': 68,
+  'phase-3': 69,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
