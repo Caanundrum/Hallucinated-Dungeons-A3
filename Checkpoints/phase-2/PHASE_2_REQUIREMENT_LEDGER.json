@@ -94,15 +94,15 @@
       "id": "P2-BUILDER-PAGE-PROOF",
       "source": "1.11.12; 25.0",
       "behavior": "Builder operates the frozen Phase 2 candidate as a player before QA handoff.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "npm run certify:phase2; Checkpoints/phase-2/PHASE_2_BUILDER_VERIFICATION.md",
+      "verification": "Evidence/phase-2/cand-e1c5d41b583b-2026-08-15T03-17-38-582Z/certification-run-record.json — 118 unit + 65 browser PASS",
+      "status": "PASSED"
     },
     {
       "id": "P2-QA-VALIDATION",
       "source": "1.11.12 step 7",
       "behavior": "Independent QA uses the exact Builder-verified frozen candidate.",
-      "implementation": "not started",
+      "implementation": "QA against cand-e1c5d41b583b (frozen origin http://127.0.0.1:5274)",
       "verification": "not started",
       "status": "NOT_STARTED"
     },
@@ -111,7 +111,7 @@
       "source": "25 Phase 2 human gate",
       "behavior": "Product Owner reviews tabletop direction against the exact candidate hash.",
       "implementation": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md",
-      "verification": "Awaiting Product Owner approval of the exact candidate hash",
+      "verification": "Awaiting Product Owner approval of cand-e1c5d41b583b",
       "status": "NOT_STARTED"
     }
   ]
