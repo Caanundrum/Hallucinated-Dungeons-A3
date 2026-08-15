@@ -42,7 +42,7 @@ Any later source or configuration change voids approval. Approval is never infer
 | Gate | State | Evidence |
 | --- | --- | --- |
 | Builder Verification | PASSED / READY_FOR_QA | `PHASE_2_BUILDER_VERIFICATION.md` |
-| Independent QA | PENDING | `QA/findings/PHASE_2_QA_FINDINGS.md` |
+| Independent QA | PLAYER_VALIDATED | `QA/findings/PHASE_2_QA_FINDINGS.md` (8/8; `cand-e1c5d41b583b`) |
 
 ## Product Owner decision
 

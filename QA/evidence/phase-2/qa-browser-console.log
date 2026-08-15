@@ -1,0 +1,34 @@
+
+Running 8 tests using 1 worker
+
+(node:306234) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:306234) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › scripts/phase2-player.qa.spec.ts:78:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-01 novice: seat, open table, see semantic map stage (1.7s)
+  ✓  2 [chromium] › scripts/phase2-player.qa.spec.ts:93:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-02 impatient: Party Chat stays social; claim turn then sync (1.8s)
+  ✓  3 [chromium] › scripts/phase2-player.qa.spec.ts:116:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-03 mover: legal one-step move commits; illegal path rejected by API (2.1s)
+  ✓  4 [chromium] › scripts/phase2-player.qa.spec.ts:172:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-04 accessibility: reduced motion and low effects on table, no voice UI (1.6s)
+  ✓  5 [chromium] › scripts/phase2-player.qa.spec.ts:197:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-05 adversarial: table command without Timing Authority is refused (1.2s)
+  ✓  6 [chromium] › scripts/phase2-player.qa.spec.ts:222:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-06 reentry: reload recovers table state after sync (2.0s)
+  ✓  7 [chromium] › scripts/phase2-player.qa.spec.ts:240:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-07 keyboard: reach Characters then Campaigns without relying on mouse nav (262ms)
+  ✓  8 [chromium] › scripts/phase2-player.qa.spec.ts:256:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-08 interpret: Intent Intercept confirms a real sync while chat stays separate (1.9s)
+
+  8 passed (13.2s)
+
+Running 8 tests using 1 worker
+
+(node:306406) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:306406) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › scripts/phase2-player.qa.spec.ts:78:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-01 novice: seat, open table, see semantic map stage (1.6s)
+  ✓  2 [chromium] › scripts/phase2-player.qa.spec.ts:93:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-02 impatient: Party Chat stays social; claim turn then sync (1.8s)
+  ✓  3 [chromium] › scripts/phase2-player.qa.spec.ts:116:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-03 mover: legal one-step move commits; illegal path rejected by API (2.1s)
+  ✓  4 [chromium] › scripts/phase2-player.qa.spec.ts:172:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-04 accessibility: reduced motion and low effects on table, no voice UI (1.6s)
+  ✓  5 [chromium] › scripts/phase2-player.qa.spec.ts:197:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-05 adversarial: table command without Timing Authority is refused (1.3s)
+  ✓  6 [chromium] › scripts/phase2-player.qa.spec.ts:222:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-06 reentry: reload recovers table state after sync (1.9s)
+  ✓  7 [chromium] › scripts/phase2-player.qa.spec.ts:240:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-07 keyboard: reach Characters then Campaigns without relying on mouse nav (262ms)
+  ✓  8 [chromium] › scripts/phase2-player.qa.spec.ts:256:7 › Phase 2 independent QA — rendered frozen tabletop › QA-P2-08 interpret: Intent Intercept confirms a real sync while chat stays separate (1.8s)
+
+  8 passed (13.0s)
