@@ -178,12 +178,19 @@ test.describe('Phase 2 independent QA — rendered frozen tabletop', () => {
     await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-presentation-meta')).toContainText('No voice-selection');
+    await expect(page.getByTestId('table-presentation-meta')).toContainText('reduced motion off');
     await expect(page.getByTestId('account-voice-select')).toHaveCount(0);
-    await page.getByTestId('table-reduced-motion').check();
+    // Prefer click over check(): re-render during save can make check() race the
+    // detached input while the live region already announces success.
+    await page.getByTestId('table-reduced-motion').click();
+    await expect(page.getByTestId('table-presentation-meta')).toContainText('reduced motion on');
+    await expect(page.locator('html')).toHaveAttribute('data-reduced-motion', 'true');
     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);
-    await page.getByTestId('table-low-effects').check();
-    await expect(page.locator('html')).toHaveClass(/hd-low-effects/);
     await expect(page.getByTestId('table-stage-slot')).toHaveClass(/table-stage-low-effects/);
+    await page.getByTestId('table-low-effects').click();
+    await expect(page.getByTestId('table-presentation-meta')).toContainText('low effects on');
+    await expect(page.locator('html')).toHaveAttribute('data-low-effects', 'true');
+    await expect(page.locator('html')).toHaveClass(/hd-low-effects/);
     await page.screenshot({ path: `${EVIDENCE}/p2-04-a11y.png`, fullPage: true });
   });
 
