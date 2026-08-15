@@ -125,6 +125,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('claim-active-turn').click();
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
     const candidate = await readCandidate(page);
     const stateText = await page.getByTestId('table-state-meta').innerText();
     const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
