@@ -71,10 +71,21 @@ test.describe('Phase 2b map schemas and Pixi stage', () => {
     await expect(page.getByTestId('map-bundle-meta')).toContainText('5 ft/square');
     await expect(page.getByTestId('map-bundle-meta')).toContainText('procedural local placeholder');
 
-    await expect(page.getByTestId('table-stage-canvas')).toBeVisible();
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
     await expect(page.getByTestId('table-stage-semantic').locator('[data-token]')).toHaveCount(1);
     await expect(page.getByTestId('table-stage-error')).toHaveCount(0);
+    // Pixi canvas is preferred when CSP allows shader compile; SVG mirror is
+    // authoritative when Frozen Certification blocks unsafe-eval.
+    const canvas = page.getByTestId('table-stage-canvas');
+    const canvasCount = await canvas.count();
+    if (canvasCount > 0) {
+      await expect(canvas).toBeVisible();
+    } else {
+      await expect(page.locator('[data-testid="table-stage-slot"]')).toHaveAttribute(
+        'data-pixi-fallback',
+        /.+/,
+      );
+    }
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);

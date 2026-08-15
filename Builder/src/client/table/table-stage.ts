@@ -4,7 +4,8 @@
  * Blueprint ownership: Sections 1.10.9 and 9.11.1 — Vanilla Pixi only (no
  * `@pixi/react`), layers from the Render Layer Registry, projections from the
  * server. The SVG mirror paints the same projection for environments where
- * WebGL/Canvas2D GPU paths stay blank; Pixi still owns the named scene graph.
+ * WebGL/Canvas2D GPU paths stay blank or CSP blocks Pixi's shader compiler;
+ * Pixi still owns the named scene graph when it can initialize.
  */
 
 import { Application, Container, Graphics, Text } from 'pixi.js';
@@ -70,7 +71,11 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
   const height = rows * pixelsPerSquare;
   const cells = map.cells
     .map((cell) => {
-      const fogClass = cell.known ? '' : lowEffects ? ' map-square-fog map-square-fog-flat' : ' map-square-fog';
+      const fogClass = cell.known
+        ? ''
+        : lowEffects
+          ? ' map-square-fog map-square-fog-flat'
+          : ' map-square-fog';
       return `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known)}" class="map-square${fogClass}" />`;
     })
     .join('');
@@ -145,50 +150,21 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
 }
 
 /**
- * Mounts a Pixi application into `host` and returns a handle that accepts
- * server map projections. Call destroy on page unmount.
+ * Mounts a Pixi application into `host` when the environment allows it, and
+ * always keeps the SVG projection mirror for CSP / software-desktop fallbacks.
  */
 export async function mountTableStage(host: HTMLElement): Promise<TableStageHandle> {
   host.replaceChildren();
-  // Keep the page's stage slot test id; mark the host with an additional attribute.
   host.setAttribute('data-table-stage-host', 'true');
   if (!host.getAttribute('data-testid')) {
     host.setAttribute('data-testid', 'table-stage-host');
   }
 
-  const application = new Application();
-  // Prefer Canvas2D first so software desktops still initialize a Pixi renderer.
-  await application.init({
-    backgroundAlpha: 0,
-    antialias: true,
-    autoDensity: true,
-    resolution: Math.min(window.devicePixelRatio || 1, 2),
-    resizeTo: host,
-    preference: ['canvas', 'webgl'],
-    failIfMajorPerformanceCaveat: false,
-  });
-  const rendererName = String(
-    (application.renderer as { name?: string }).name ?? application.renderer.type ?? 'unknown',
-  );
-  application.canvas.setAttribute('data-testid', 'table-stage-canvas');
-  application.canvas.setAttribute('aria-label', 'Tactical map Pixi stage');
-  application.canvas.setAttribute('data-renderer', rendererName.toLowerCase());
-  application.canvas.classList.add('table-stage-canvas');
-  host.appendChild(application.canvas);
-
-  const root = new Container();
-  root.sortableChildren = true;
-  application.stage.addChild(root);
-
-  const layers = {} as Record<WebGlRenderLayer, Container>;
-  for (const name of WEBGL_RENDER_LAYERS) {
-    const container = layerContainer(name);
-    layers[name] = container;
-    root.addChild(container);
-  }
-
   let currentMap: MapBundleProjection | null = null;
   let squareClickHandler: ((square: { column: number; row: number }) => void) | null = null;
+  let application: Application | null = null;
+  let root: Container | null = null;
+  let layers: Record<WebGlRenderLayer, Container> | null = null;
 
   function bindSquareClicks(): void {
     host.querySelectorAll<SVGRectElement>('rect[data-square]').forEach((rect) => {
@@ -207,6 +183,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function paintPixi(map: MapBundleProjection): void {
+    if (application === null || root === null || layers === null) {
+      return;
+    }
     const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
     const width = columns * pixelsPerSquare;
     const height = rows * pixelsPerSquare;
@@ -302,6 +281,49 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     bindSquareClicks();
   }
 
+  try {
+    const nextApplication = new Application();
+    await nextApplication.init({
+      backgroundAlpha: 0,
+      antialias: true,
+      autoDensity: true,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      resizeTo: host,
+      preference: ['canvas', 'webgl'],
+      failIfMajorPerformanceCaveat: false,
+    });
+    application = nextApplication;
+    const rendererName = String(
+      (application.renderer as { name?: string }).name ?? application.renderer.type ?? 'unknown',
+    );
+    application.canvas.setAttribute('data-testid', 'table-stage-canvas');
+    application.canvas.setAttribute('aria-label', 'Tactical map Pixi stage');
+    application.canvas.setAttribute('data-renderer', rendererName.toLowerCase());
+    application.canvas.classList.add('table-stage-canvas');
+    host.appendChild(application.canvas);
+
+    root = new Container();
+    root.sortableChildren = true;
+    application.stage.addChild(root);
+
+    layers = {} as Record<WebGlRenderLayer, Container>;
+    for (const name of WEBGL_RENDER_LAYERS) {
+      const container = layerContainer(name);
+      layers[name] = container;
+      root.addChild(container);
+    }
+  } catch (failure) {
+    // Frozen Local Certification serves a strict CSP without unsafe-eval. Pixi
+    // may refuse to start; the SVG semantic mirror remains the playable stage.
+    host.setAttribute(
+      'data-pixi-fallback',
+      failure instanceof Error ? failure.message.slice(0, 160) : 'pixi-unavailable',
+    );
+    application = null;
+    root = null;
+    layers = null;
+  }
+
   const onResize = (): void => {
     if (currentMap !== null) {
       paint(currentMap);
@@ -319,7 +341,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     },
     destroy() {
       window.removeEventListener('resize', onResize);
-      application.destroy(true);
+      if (application !== null) {
+        application.destroy(true);
+      }
       host.replaceChildren();
     },
   };

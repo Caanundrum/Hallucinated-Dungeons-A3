@@ -115,11 +115,20 @@ async function materializeCandidate(runtimeWorkingDir, blueprint, paths) {
   await copyFile(blueprint.path, join(runtimeWorkingDir, blueprint.fileName));
 
   // Phase docs live under Checkpoints Root (outside the candidate hash). Copy
-  // them beside Builder so frozen unit tests can resolve the published model.
-  const { cp } = await import('node:fs/promises');
-  await cp(join(paths.checkpointRoot, PHASE), join(runtimeWorkingDir, 'Checkpoints', PHASE), {
-    recursive: true,
-  });
+  // prior + current phase docs so frozen unit tests that read Checkpoints still
+  // resolve (Phase 1 coverage / stable-identifier inventories remain required).
+  const { cp, readdir } = await import('node:fs/promises');
+  const checkpointEntries = await readdir(paths.checkpointRoot, { withFileTypes: true });
+  for (const entry of checkpointEntries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    await cp(
+      join(paths.checkpointRoot, entry.name),
+      join(runtimeWorkingDir, 'Checkpoints', entry.name),
+      { recursive: true },
+    );
+  }
 
   return { fileCount: files.length, runtimeBuilderRoot };
 }
