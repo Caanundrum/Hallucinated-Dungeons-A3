@@ -390,6 +390,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             aria-disabled="${disable || !actionAvailable}">Use healing potion</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
             aria-disabled="${disable || !ownTurn || ownCombatant?.currentHitPoints !== 0}">Death Save</button>
+          <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
+            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
             aria-disabled="${disable || !actionAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"

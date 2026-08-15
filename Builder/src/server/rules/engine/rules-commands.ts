@@ -59,6 +59,7 @@ export const RULES_COMMAND_TYPES = [
   'combat.long_rest',
   'combat.ready',
   'combat.reaction',
+  'combat.training_drop',
   'progression.award_xp',
   'progression.level_up',
   'inventory.use_item',
@@ -76,6 +77,7 @@ const EVENT_FOR_COMMAND: Record<RulesCommandType, TableEventType> = {
   'combat.long_rest': 'combat.long_rest_completed',
   'combat.ready': 'combat.ready_declared',
   'combat.reaction': 'combat.reaction_resolved',
+  'combat.training_drop': 'combat.training_drop_resolved',
   'progression.award_xp': 'progression.xp_awarded',
   'progression.level_up': 'progression.level_gained',
   'inventory.use_item': 'inventory.item_used',
@@ -832,6 +834,28 @@ function mutateRules(options: {
     rolls.push(result.natural);
     encounter = replaceCombatants(current, [result.combatant]);
     summary = `${actor.name} rolled ${result.natural}: Death Save ${result.outcome.replace('_', ' ')}.`;
+    affectedCombatantIds = [actor.combatantId];
+  } else if (commandType === 'combat.training_drop') {
+    const current = requireEncounter(encounter);
+    const hasTrainingFoes = current.combatants.some(
+      (combatant) =>
+        combatant.combatantId === 'training-dummy' || combatant.combatantId === 'practice-goblin',
+    );
+    if (!hasTrainingFoes) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Training drop is only available in the local Training Dummy encounter.',
+      );
+    }
+    const actor = requireActiveActor(current, seat.seatId);
+    if (actor.currentHitPoints === 0) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'That combatant is already at 0 Hit Points.');
+    }
+    const dropped = spendAction(
+      applyDamage(actor, actor.currentHitPoints + actor.temporaryHitPoints),
+    );
+    encounter = replaceCombatants(current, [dropped]);
+    summary = `${actor.name} used the training control to drop to 0 Hit Points for Death Save practice.`;
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.short_rest') {
     const current = requireEncounter(encounter);

@@ -208,31 +208,22 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
+    await advanceToOwnAction(page);
 
-    // Advance turns until Practice Goblin drops the mage to 0 HP (lethal attacks).
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const hpText = await page.getByTestId('own-combatant-hp').innerText();
-      if (/^HP 0\//.test(hpText)) {
-        break;
-      }
-      // If Timing Authority was lost, reclaim before continuing.
-      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
-        await page.getByTestId('claim-active-turn').click();
-        await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
-      }
-      await advanceEncounterTurn(page);
-    }
+    await expect(page.getByTestId('rules-training-drop')).toHaveAttribute('aria-disabled', 'false');
+    const beforeDrop = await readStateVersion(page);
+    await page.getByTestId('rules-training-drop').click();
+    await expect
+      .poll(async () => readStateVersion(page), { timeout: 15_000 })
+      .toBeGreaterThan(beforeDrop);
     await expect(page.getByTestId('own-combatant-hp')).toContainText(/^HP 0\//);
     await expect(page.getByTestId('own-combatant-conditions')).toContainText(/Unconscious/i);
+    await expect(page.getByTestId('rules-last-result')).toContainText(/0 Hit Points/i);
 
     // Reach the dying combatant's turn and roll a Death Saving Throw.
-    for (let attempt = 0; attempt < 12; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       if ((await page.getByTestId('rules-death-save').getAttribute('aria-disabled')) === 'false') {
         break;
-      }
-      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
-        await page.getByTestId('claim-active-turn').click();
-        await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
       }
       await advanceEncounterTurn(page);
     }
@@ -244,7 +235,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
       .toBeGreaterThan(beforeSave);
     await expect(page.getByTestId('rules-last-result')).toContainText(/Death Save/i);
 
-    // Continue Death Saves until conscious/stable/dead; Long Rest when an action is available.
+    // Continue until conscious, then Long Rest to complete recovery.
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const conditions = await page.getByTestId('own-combatant-conditions').innerText();
       if (!/Unconscious/i.test(conditions)) {
@@ -257,9 +248,6 @@ test.describe('Phase 3 deterministic rules encounter', () => {
           .poll(async () => readStateVersion(page), { timeout: 15_000 })
           .toBeGreaterThan(before);
         continue;
-      }
-      if ((await page.getByTestId('next-encounter-turn').getAttribute('aria-disabled')) === 'true') {
-        await page.getByTestId('claim-active-turn').click();
       }
       await advanceEncounterTurn(page);
     }
