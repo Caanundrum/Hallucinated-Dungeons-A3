@@ -232,11 +232,13 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('open-campaign-table').click();
     await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
     await page.getByTestId('begin-encounter').click();
     await expect(page.getByTestId('combatant-practice-goblin')).toBeVisible();
     await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
 
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
         break;
       }
