@@ -105,7 +105,8 @@ test.describe('Phase 1 independent QA — rendered page', () => {
     await page.getByTestId('party-chat-input').fill('QA table talk only.');
     await page.getByTestId('party-chat-send').click();
     await expect(page.getByTestId('party-chat-message').first()).toContainText('QA table talk only.');
-    await expect(page.getByTestId('action-composer-disabled')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('No Active Turn');
     await page.screenshot({ path: `${EVIDENCE}/p1-03-dock.png`, fullPage: true });
   });
 

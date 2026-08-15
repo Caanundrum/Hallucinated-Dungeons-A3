@@ -1,0 +1,121 @@
+{
+  "ledgerVersion": "1",
+  "phase": "phase-2",
+  "blueprintVersion": "ALPHA_3_V1",
+  "owner": "Builder",
+  "lifecycleState": "PHASE_CERTIFIED",
+  "priorPhase": {
+    "phase": "phase-1",
+    "state": "PHASE_CERTIFIED",
+    "candidateId": "cand-b5e4a128cef1"
+  },
+  "humanGate": {
+    "required": true,
+    "scope": "Main tabletop, tokens, fog, grid readability, interaction feel, and map direction.",
+    "timing": "After Builder and QA have already used and corrected the page.",
+    "state": "APPROVED",
+    "checkpoint": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md",
+    "approver": "Nick",
+    "approvedAt": "2026-08-15T13:34:00Z",
+    "candidateId": "cand-e1c5d41b583b"
+  },
+  "note": "Scope control for Phase 2 only. Section 25 is the phase-scope authority. A status becomes PASSED only when the named verification actually executed against the frozen Phase 2 candidate.",
+  "requirements": [
+    {
+      "id": "P2-PACK",
+      "source": "1.14.5; 1.12.2",
+      "behavior": "One phase execution pack and one lean requirement ledger exist and stay synchronized with actual implementation and evidence.",
+      "implementation": "Checkpoints/phase-2/PHASE_2_EXECUTION_PACK.md, this ledger",
+      "verification": "Reviewed against Section 25 Phase 2 scope",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-COMMAND-EVENT-CORE",
+      "source": "25 Phase 2; 9.14.2; 11.3; 11.4; 19.7; 19.8",
+      "behavior": "Canonical command acceptance with expected state version and idempotency id; immutable event log; server-authored table projection with state version; stale version rejects without mutation; duplicate requestId returns the prior commit; only seated campaign members may submit table commands.",
+      "implementation": "Builder/src/shared/command-contract.ts; Builder/src/server/table/; COLLECTIONS.campaignCommands/campaignEvents/campaignTableProjections; HTTP routes under /api/campaigns/:id/table-state and /commands",
+      "verification": "tests/unit/table-commands.test.mjs; tests/e2e/phase2-table-commands.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-MAP-SCHEMAS",
+      "source": "25 Phase 2 build scope",
+      "behavior": "Five-foot square map coordinate, edge, footprint, elevation, and collision schemas with a producer, consumer, authorization, and failure behavior for each identifier.",
+      "implementation": "Builder/src/shared/map-contract.ts; Builder/src/server/table/map-projection.ts; GET /api/campaigns/:id/map",
+      "verification": "tests/unit/map-contract.test.mjs; tests/e2e/phase2-map-stage.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-PIXI-SCENE",
+      "source": "25 Phase 2; 1.10.9",
+      "behavior": "Vanilla PixiJS map stage and semantic scene graph bound to server projections; no @pixi/react.",
+      "implementation": "Builder/src/client/table/table-stage.ts; campaign-table stage host; pixi.js dependency",
+      "verification": "tests/e2e/phase2-map-stage.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-MOVEMENT-VISIBILITY",
+      "source": "25 Phase 2 build scope",
+      "behavior": "Legal movement commits, illegal path rejection, object interaction, and player-specific visibility derived from server truth.",
+      "implementation": "Builder/src/shared/movement-contract.ts; Builder/src/server/table/path-validator.ts; table.move / table.open_door; map fog projection",
+      "verification": "tests/unit/path-validator.test.mjs; tests/e2e/phase2-movement.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-TIMING-ACTION-COMPOSER",
+      "source": "25 Phase 2; 1.5.2.5",
+      "behavior": "Timing Authority and Action Composer plumbing prove only authorized actors can mutate state; Party Chat still cannot become a command.",
+      "implementation": "Builder/src/shared/timing-authority-contract.ts; Builder/src/server/table/timing-authority.ts; COLLECTIONS.timingAuthorities; command gateway requireTimingAuthority; Action Composer claim/end + Intent Intercept; HTTP /timing-authority",
+      "verification": "tests/unit/timing-authority.test.mjs; tests/e2e/phase2-timing-authority.spec.ts; tests/e2e/phase2-table-commands.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-TWO-CLIENT-SYNC",
+      "source": "25 Phase 2 player journey",
+      "behavior": "Two local clients share the same campaign table state, refresh/reconnect, and recover identical canonical positions and visibility.",
+      "implementation": "campaign-table projection poll + Refresh table projection; shared table-state/map/timing-authority fetches; two-browser e2e",
+      "verification": "tests/e2e/phase2-two-client-sync.spec.ts",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-TABLE-A11Y-SETTINGS",
+      "source": "25 Phase 2 settings/accessibility",
+      "behavior": "Reduced motion / low-effects and any local audio controls that already have real Phase 2 behavior apply on the tactical table without decorative voice-selection UI.",
+      "implementation": "PlayerPresentationSettingsProjection.lowEffects; presentation-preferences.ts; campaign-table a11y panel; table-stage low-effects fog; no voice UI",
+      "verification": "tests/e2e/phase2-table-a11y.spec.ts; phase1-settings-dock reduced-motion continuity",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-SMOKE-SPINE-EXTENSION",
+      "source": "25.3; 26.6",
+      "behavior": "Permanent smoke spine gains a Phase 2 tactical interaction segment once the map exists.",
+      "implementation": "Builder/tests/e2e/smoke-spine.spec.ts tactical interaction segment",
+      "verification": "npm run test:e2e — Permanent smoke spine tactical interaction",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-BUILDER-PAGE-PROOF",
+      "source": "1.11.12; 25.0",
+      "behavior": "Builder operates the frozen Phase 2 candidate as a player before QA handoff.",
+      "implementation": "npm run certify:phase2; Checkpoints/phase-2/PHASE_2_BUILDER_VERIFICATION.md",
+      "verification": "Evidence/phase-2/cand-e1c5d41b583b-2026-08-15T03-17-38-582Z/certification-run-record.json — 118 unit + 65 browser PASS",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-QA-VALIDATION",
+      "source": "1.11.12 step 7",
+      "behavior": "Independent QA uses the exact Builder-verified frozen candidate.",
+      "implementation": "QA/scripts/phase2-player.qa.spec.ts; QA/playwright.phase2.config.ts; QA/findings/PHASE_2_QA_FINDINGS.md",
+      "verification": "QA/evidence/phase-2/; QA/findings/PHASE_2_QA_FINDINGS.md (8/8 PASS, PLAYER_VALIDATED; candidate cand-e1c5d41b583b)",
+      "status": "PASSED"
+    },
+    {
+      "id": "P2-HUMAN-GATE",
+      "source": "25 Phase 2 human gate",
+      "behavior": "Product Owner reviews tabletop direction against the exact candidate hash.",
+      "implementation": "Checkpoints/phase-2/PHASE_2_HUMAN_APPROVAL_CHECKPOINT.md; Checkpoints/phase-2/PHASE_2_CERTIFICATE.md",
+      "verification": "Approved by Nick 2026-08-15 for cand-e1c5d41b583b; Checkpoints/phase-2/PHASE_2_CERTIFICATE.md",
+      "status": "PASSED"
+    }
+  ]
+}

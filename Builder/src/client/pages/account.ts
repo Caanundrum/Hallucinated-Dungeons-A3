@@ -11,6 +11,10 @@ import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../
 import { ApiFailure, fetchPlayerSettings, savePlayerSettings } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import {
+  applyPresentationPreferences,
+  clearPresentationPreferences,
+} from '../presentation-preferences.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -25,11 +29,8 @@ export function mountAccountPage(host: PageHost): void {
   let busy = false;
   let error: string | null = null;
   let reducedMotion = false;
+  let lowEffects = false;
   const mountToken = beginPageMount(container);
-
-  function applyReducedMotionClass(enabled: boolean): void {
-    document.documentElement.classList.toggle('hd-reduced-motion', enabled);
-  }
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
@@ -113,11 +114,15 @@ export function mountAccountPage(host: PageHost): void {
             <h2 id="presentation-heading">Presentation</h2>
             <p class="record-meta">
               Speech and AI presentation controls stay reserved until later phases. Reduced motion
-              is available now because the shell already honors it.
+              and low effects are available now because the shell and tactical table honor them.
             </p>
             <label class="option">
               <input type="checkbox" data-testid="account-reduced-motion" ${reducedMotion ? 'checked' : ''} />
               <span class="option-label">Prefer reduced motion</span>
+            </label>
+            <label class="option">
+              <input type="checkbox" data-testid="account-low-effects" ${lowEffects ? 'checked' : ''} />
+              <span class="option-label">Prefer low effects on the tactical table</span>
             </label>
           </section>
           <p class="record-meta">
@@ -172,11 +177,47 @@ export function mountAccountPage(host: PageHost): void {
             const settings = await savePlayerSettings({
               candidateId: candidate.candidateId,
               reducedMotion: event.target.checked,
+              lowEffects,
             });
             reducedMotion = settings.reducedMotion;
-            applyReducedMotionClass(reducedMotion);
+            lowEffects = settings.lowEffects;
+            applyPresentationPreferences({ reducedMotion, lowEffects });
             shell.announce(
               reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Presentation settings could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLInputElement>('[data-testid="account-low-effects"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion,
+              lowEffects: event.target.checked,
+            });
+            reducedMotion = settings.reducedMotion;
+            lowEffects = settings.lowEffects;
+            applyPresentationPreferences({ reducedMotion, lowEffects });
+            shell.announce(
+              lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.',
             );
           } catch (failure) {
             error =
@@ -202,6 +243,7 @@ export function mountAccountPage(host: PageHost): void {
           render();
           try {
             await signOutAccount(candidate);
+            clearPresentationPreferences();
             shell.announce('Signed out.');
           } catch (failure) {
             error =
@@ -224,7 +266,8 @@ export function mountAccountPage(host: PageHost): void {
         try {
           const settings = await fetchPlayerSettings();
           reducedMotion = settings.reducedMotion;
-          applyReducedMotionClass(reducedMotion);
+          lowEffects = settings.lowEffects;
+          applyPresentationPreferences({ reducedMotion, lowEffects });
           render();
         } catch {
           // Presentation settings are optional on first paint.
@@ -239,7 +282,8 @@ export function mountAccountPage(host: PageHost): void {
       try {
         const settings = await fetchPlayerSettings();
         reducedMotion = settings.reducedMotion;
-        applyReducedMotionClass(reducedMotion);
+        lowEffects = settings.lowEffects;
+        applyPresentationPreferences({ reducedMotion, lowEffects });
         render();
       } catch {
         // ignore

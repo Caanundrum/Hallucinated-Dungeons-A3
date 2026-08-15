@@ -74,6 +74,19 @@ import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
 import {
+  acceptTableCommand,
+  fetchTableState,
+  previewTableMove,
+  TableCommandError,
+} from '../table/commands.js';
+import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
+import {
+  claimActiveTurnAuthority,
+  endActiveTurnAuthority,
+  fetchActiveTimingAuthority,
+  TimingAuthorityError,
+} from '../table/timing-authority.js';
+import {
   readCampaignSettings,
   updateCampaignSettings,
 } from '../settings/campaign-settings.js';
@@ -138,6 +151,11 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.PAYLOAD_TOO_LARGE]: 413,
   [ERROR_CODES.REQUEST_ID_INVALID]: 400,
   [ERROR_CODES.SESSION_EXPIRED]: 401,
+  [ERROR_CODES.STALE_STATE_VERSION]: 409,
+  [ERROR_CODES.NOT_SEATED]: 409,
+  [ERROR_CODES.ILLEGAL_PATH]: 409,
+  [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
+  [ERROR_CODES.TIMING_AUTHORITY_INVALID]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
 };
 
@@ -173,6 +191,16 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'The submission was missing a valid request identifier, so it could not be made retry-safe.',
   [ERROR_CODES.SESSION_EXPIRED]:
     'This development session expired. Sign in again with a Local Arena development account.',
+  [ERROR_CODES.STALE_STATE_VERSION]:
+    'This table moved on since you last loaded it. Reload the table state, then retry.',
+  [ERROR_CODES.NOT_SEATED]:
+    'Seat a character you own in this campaign before submitting table commands.',
+  [ERROR_CODES.ILLEGAL_PATH]:
+    'That movement path is not legal on this map. Choose another route.',
+  [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]:
+    'Claim Active Turn before committing table actions.',
+  [ERROR_CODES.TIMING_AUTHORITY_INVALID]:
+    'Your Timing Authority expired or belongs to another seat.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
 };
@@ -583,10 +611,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         try {
+          const payload = body as { reducedMotion?: unknown; lowEffects?: unknown };
           const settings = await updatePlayerSettings({
             firestore,
             accountId: session.accountId,
-            reducedMotion: (body as { reducedMotion?: unknown }).reducedMotion,
+            reducedMotion: payload.reducedMotion,
+            ...(payload.lowEffects !== undefined ? { lowEffects: payload.lowEffects } : {}),
           });
           sendJson(response, 200, settings);
         } catch {
@@ -1101,8 +1131,165 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const tableStateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/table-state$/.exec(path);
+      if (tableStateMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = tableStateMatch[1]!;
+        sendJson(response, 200, await fetchTableState({ firestore, accountId, campaignId }));
+        return;
+      }
+
+      const timingAuthorityMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/timing-authority$/.exec(
+        path,
+      );
+      if (timingAuthorityMatch !== null) {
+        const campaignId = timingAuthorityMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, {
+            authority: await fetchActiveTimingAuthority({ firestore, accountId, campaignId }),
+          });
+          return;
+        }
+        if (method === 'POST') {
+          const claimed = await claimActiveTurnAuthority({ firestore, accountId, campaignId });
+          sendJson(response, 201, claimed);
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const endTimingAuthorityMatch =
+        /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/timing-authority\/end$/.exec(path);
+      if (endTimingAuthorityMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = endTimingAuthorityMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as { timingAuthorityId?: unknown };
+        if (typeof payload.timingAuthorityId !== 'string' || payload.timingAuthorityId.length === 0) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const ended = await endActiveTurnAuthority({
+          firestore,
+          accountId,
+          campaignId,
+          timingAuthorityId: payload.timingAuthorityId,
+        });
+        sendJson(response, 200, { authority: ended });
+        return;
+      }
+
+      const campaignMapMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/map$/.exec(path);
+      if (campaignMapMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = campaignMapMatch[1]!;
+        sendJson(response, 200, await fetchCampaignMap({ firestore, accountId, campaignId }));
+        return;
+      }
+
+      const movePreviewMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/move-preview$/.exec(path);
+      if (movePreviewMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = movePreviewMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as { path?: unknown };
+        const previewPath = Array.isArray(payload.path) ? payload.path : [];
+        sendJson(
+          response,
+          200,
+          await previewTableMove({
+            firestore,
+            accountId,
+            campaignId,
+            path: previewPath as { column: number; row: number }[],
+          }),
+        );
+        return;
+      }
+
+      const tableCommandsMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/commands$/.exec(path);
+      if (tableCommandsMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = tableCommandsMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          requestId?: unknown;
+          commandType?: unknown;
+          expectedStateVersion?: unknown;
+          timingAuthorityId?: unknown;
+          path?: unknown;
+          edgeId?: unknown;
+        };
+        if (!isValidRequestId(payload.requestId)) {
+          sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
+          return;
+        }
+        const result = await acceptTableCommand({
+          firestore,
+          accountId,
+          campaignId,
+          requestId: payload.requestId,
+          commandType: payload.commandType as never,
+          expectedStateVersion: payload.expectedStateVersion as number,
+          deviceSessionId: session.deviceSessionId,
+          ...(typeof payload.timingAuthorityId === 'string'
+            ? { timingAuthorityId: payload.timingAuthorityId }
+            : {}),
+          ...(Array.isArray(payload.path)
+            ? { path: payload.path as { column: number; row: number }[] }
+            : {}),
+          ...(typeof payload.edgeId === 'string' ? { edgeId: payload.edgeId } : {}),
+        });
+        sendJson(response, result.duplicate ? 200 : 201, result);
+        return;
+      }
+
       sendError(response, ERROR_CODES.NOT_FOUND);
     } catch (error) {
+      if (
+        error instanceof TableCommandError ||
+        error instanceof MapProjectionError ||
+        error instanceof TimingAuthorityError
+      ) {
+        const code = error.code as ErrorCode;
+        if (code in ERROR_STATUS) {
+          sendJson(response, ERROR_STATUS[code], {
+            error: code,
+            message: error.message,
+          } satisfies ApiErrorBody);
+          return;
+        }
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error.message,
+        } satisfies ApiErrorBody);
+        return;
+      }
       if (error instanceof CampaignNotFoundError || error instanceof CharacterNotFoundError) {
         sendError(response, ERROR_CODES.NOT_FOUND);
         return;

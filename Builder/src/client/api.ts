@@ -38,6 +38,16 @@ import type {
   PartyChatMessageProjection,
 } from '../shared/communication-contract.js';
 import type {
+  TableCommandAcceptResponse,
+  TableStateProjection,
+} from '../shared/command-contract.js';
+import type { MapBundleProjection } from '../shared/map-contract.js';
+import type { MovementPreviewProjection } from '../shared/movement-contract.js';
+import type {
+  TimingAuthorityClaimResponse,
+  TimingAuthorityProjection,
+} from '../shared/timing-authority-contract.js';
+import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
 } from '../shared/settings-contract.js';
@@ -346,6 +356,83 @@ export async function postPartyChat(options: {
   })) as PartyChatMessageProjection;
 }
 
+export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {
+  return (await request(`/api/campaigns/${campaignId}/table-state`)) as TableStateProjection;
+}
+
+export async function fetchCampaignMap(campaignId: string): Promise<MapBundleProjection> {
+  return (await request(`/api/campaigns/${campaignId}/map`)) as MapBundleProjection;
+}
+
+export async function submitTableCommand(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly requestId: string;
+  readonly commandType: string;
+  readonly expectedStateVersion: number;
+  readonly timingAuthorityId?: string;
+  readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
+}): Promise<TableCommandAcceptResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/commands`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      requestId: options.requestId,
+      commandType: options.commandType,
+      expectedStateVersion: options.expectedStateVersion,
+      ...(options.timingAuthorityId !== undefined
+        ? { timingAuthorityId: options.timingAuthorityId }
+        : {}),
+      ...(options.path !== undefined ? { path: options.path } : {}),
+      ...(options.edgeId !== undefined ? { edgeId: options.edgeId } : {}),
+    }),
+  })) as TableCommandAcceptResponse;
+}
+
+export async function fetchTimingAuthority(
+  campaignId: string,
+): Promise<{ authority: TimingAuthorityProjection | null }> {
+  return (await request(`/api/campaigns/${campaignId}/timing-authority`)) as {
+    authority: TimingAuthorityProjection | null;
+  };
+}
+
+export async function claimTimingAuthority(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<TimingAuthorityClaimResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/timing-authority`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({}),
+  })) as TimingAuthorityClaimResponse;
+}
+
+export async function endTimingAuthority(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly timingAuthorityId: string;
+}): Promise<{ authority: TimingAuthorityProjection }> {
+  return (await request(`/api/campaigns/${options.campaignId}/timing-authority/end`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ timingAuthorityId: options.timingAuthorityId }),
+  })) as { authority: TimingAuthorityProjection };
+}
+
+export async function previewTableMove(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly path: readonly { readonly column: number; readonly row: number }[];
+}): Promise<MovementPreviewProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/move-preview`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ path: options.path }),
+  })) as MovementPreviewProjection;
+}
+
 export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsProjection> {
   return (await request('/api/account/settings')) as PlayerPresentationSettingsProjection;
 }
@@ -353,11 +440,15 @@ export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsP
 export async function savePlayerSettings(options: {
   readonly candidateId: string;
   readonly reducedMotion: boolean;
+  readonly lowEffects?: boolean;
 }): Promise<PlayerPresentationSettingsProjection> {
   return (await request('/api/account/settings', {
     method: 'PUT',
     candidateId: options.candidateId,
-    body: JSON.stringify({ reducedMotion: options.reducedMotion }),
+    body: JSON.stringify({
+      reducedMotion: options.reducedMotion,
+      ...(options.lowEffects !== undefined ? { lowEffects: options.lowEffects } : {}),
+    }),
   })) as PlayerPresentationSettingsProjection;
 }
 

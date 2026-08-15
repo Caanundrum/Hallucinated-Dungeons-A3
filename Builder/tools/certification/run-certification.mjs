@@ -54,6 +54,8 @@ const PHASE = process.env.HD_CERTIFY_PHASE ?? process.argv[2] ?? 'phase-0';
 const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-0': 37,
   'phase-1': 56,
+  // Phase 2 adds map/movement/timing/sync/a11y suites on top of the Phase 1 floor.
+  'phase-2': 65,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -113,11 +115,20 @@ async function materializeCandidate(runtimeWorkingDir, blueprint, paths) {
   await copyFile(blueprint.path, join(runtimeWorkingDir, blueprint.fileName));
 
   // Phase docs live under Checkpoints Root (outside the candidate hash). Copy
-  // them beside Builder so frozen unit tests can resolve the published model.
-  const { cp } = await import('node:fs/promises');
-  await cp(join(paths.checkpointRoot, PHASE), join(runtimeWorkingDir, 'Checkpoints', PHASE), {
-    recursive: true,
-  });
+  // prior + current phase docs so frozen unit tests that read Checkpoints still
+  // resolve (Phase 1 coverage / stable-identifier inventories remain required).
+  const { cp, readdir } = await import('node:fs/promises');
+  const checkpointEntries = await readdir(paths.checkpointRoot, { withFileTypes: true });
+  for (const entry of checkpointEntries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    await cp(
+      join(paths.checkpointRoot, entry.name),
+      join(runtimeWorkingDir, 'Checkpoints', entry.name),
+      { recursive: true },
+    );
+  }
 
   return { fileCount: files.length, runtimeBuilderRoot };
 }
@@ -140,7 +151,9 @@ async function main() {
     }
   };
 
-  console.log(`Phase ${PHASE === 'phase-1' ? '1' : '0'} Builder Verification — Frozen Local Certification Mode\n`);
+  const phaseLabel =
+    PHASE === 'phase-2' ? '2' : PHASE === 'phase-1' ? '1' : PHASE === 'phase-0' ? '0' : PHASE;
+  console.log(`Phase ${phaseLabel} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.
   const toolchain = verifyToolchain();
