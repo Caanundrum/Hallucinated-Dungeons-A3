@@ -5,6 +5,7 @@
  * mutate mechanics. Membership is required; foreign campaigns look missing.
  */
 
+import { appendFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
@@ -133,5 +134,21 @@ export async function postPartyChatMessage(options: {
     .collection(COLLECTIONS.partyChatMessages)
     .doc(message.messageId)
     .set(message);
+  // #region agent log
+  try {
+    appendFileSync(
+      '/opt/cursor/logs/debug.log',
+      `${JSON.stringify({
+        hypothesisId: 'D',
+        location: 'party-chat.ts:post',
+        message: 'party chat persisted',
+        data: { messageId: message.messageId, bodyLength: body.length },
+        timestamp: Date.now(),
+      })}\n`,
+    );
+  } catch {
+    /* ignore debug log failures */
+  }
+  // #endregion
   return projectMessage(message);
 }

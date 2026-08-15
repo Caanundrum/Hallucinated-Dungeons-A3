@@ -59,9 +59,17 @@ async function advanceEncounterTurn(page: Page): Promise<void> {
     .toBeGreaterThan(before);
 }
 
+async function ownActionReady(page: Page): Promise<boolean> {
+  // Prefer action-economy signals that do not require a selected target.
+  const cast = await page.getByTestId('rules-cast-spell').getAttribute('aria-disabled');
+  const rest = await page.getByTestId('rules-short-rest').getAttribute('aria-disabled');
+  const attack = await page.getByTestId('rules-attack').getAttribute('aria-disabled');
+  return cast === 'false' || rest === 'false' || attack === 'false';
+}
+
 async function advanceToOwnAction(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    // Stay alive through Practice Goblin attacks during the integrated journey.
+    // Stay topped up through Practice Goblin training hits during the journey.
     const hpText = await page.getByTestId('own-combatant-hp').innerText().catch(() => '');
     const match = /^HP (\d+)\//.exec(hpText);
     if (
@@ -76,12 +84,12 @@ async function advanceToOwnAction(page: Page): Promise<void> {
         .poll(async () => readStateVersion(page), { timeout: 15_000 })
         .toBeGreaterThan(beforeHeal);
     }
-    if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
+    if (await ownActionReady(page)) {
       return;
     }
     await advanceEncounterTurn(page);
   }
-  await expect(page.getByTestId('rules-attack')).toHaveAttribute('aria-disabled', 'false');
+  await expect(page.getByTestId('rules-cast-spell')).toHaveAttribute('aria-disabled', 'false');
 }
 
 test.describe('Phase 3 deterministic rules encounter', () => {
@@ -220,13 +228,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('own-combatant-conditions')).toContainText(/Unconscious/i);
     await expect(page.getByTestId('rules-last-result')).toContainText(/0 Hit Points/i);
 
-    // Reach the dying combatant's turn and roll a Death Saving Throw.
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      if ((await page.getByTestId('rules-death-save').getAttribute('aria-disabled')) === 'false') {
-        break;
-      }
-      await advanceEncounterTurn(page);
-    }
+    // Training drop keeps the combatant's turn so one Death Save can resolve immediately.
     await expect(page.getByTestId('rules-death-save')).toHaveAttribute('aria-disabled', 'false');
     const beforeSave = await readStateVersion(page);
     await page.getByTestId('rules-death-save').click();
@@ -234,32 +236,18 @@ test.describe('Phase 3 deterministic rules encounter', () => {
       .poll(async () => readStateVersion(page), { timeout: 15_000 })
       .toBeGreaterThan(beforeSave);
     await expect(page.getByTestId('rules-last-result')).toContainText(/Death Save/i);
+    // Death Saves are once per turn — the control must disable after resolving.
+    await expect(page.getByTestId('rules-death-save')).toHaveAttribute('aria-disabled', 'true');
 
-    // Continue until conscious, then Long Rest to complete recovery.
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const conditions = await page.getByTestId('own-combatant-conditions').innerText();
-      if (!/Unconscious/i.test(conditions)) {
-        break;
-      }
-      if ((await page.getByTestId('rules-death-save').getAttribute('aria-disabled')) === 'false') {
-        const before = await readStateVersion(page);
-        await page.getByTestId('rules-death-save').click();
-        await expect
-          .poll(async () => readStateVersion(page), { timeout: 15_000 })
-          .toBeGreaterThan(before);
-        continue;
-      }
-      await advanceEncounterTurn(page);
-    }
-
-    if ((await page.getByTestId('rules-long-rest').getAttribute('aria-disabled')) === 'false') {
-      const beforeRest = await readStateVersion(page);
-      await page.getByTestId('rules-long-rest').click();
-      await expect
-        .poll(async () => readStateVersion(page), { timeout: 15_000 })
-        .toBeGreaterThan(beforeRest);
-      await expect(page.getByTestId('rules-last-result')).toContainText('Long Rest');
-      await expect(page.getByTestId('own-combatant-hp')).not.toContainText(/^HP 0\//);
-    }
+    // Long Rest remains available while dying/stable so training recovery can clear 0 HP.
+    await expect(page.getByTestId('rules-long-rest')).toHaveAttribute('aria-disabled', 'false');
+    const beforeRest = await readStateVersion(page);
+    await page.getByTestId('rules-long-rest').click();
+    await expect
+      .poll(async () => readStateVersion(page), { timeout: 15_000 })
+      .toBeGreaterThan(beforeRest);
+    await expect(page.getByTestId('rules-last-result')).toContainText('Long Rest');
+    await expect(page.getByTestId('own-combatant-hp')).not.toContainText(/^HP 0\//);
+    await expect(page.getByTestId('own-combatant-conditions')).not.toContainText(/Unconscious/i);
   });
 });

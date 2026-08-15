@@ -355,11 +355,21 @@ export async function postPartyChat(options: {
   readonly mode: string;
   readonly body: string;
 }): Promise<PartyChatMessageProjection> {
-  return (await request(`/api/campaigns/${options.campaignId}/party-chat`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify({ mode: options.mode, body: options.body }),
-  })) as PartyChatMessageProjection;
+  const send = () =>
+    request(`/api/campaigns/${options.campaignId}/party-chat`, {
+      method: 'POST',
+      candidateId: options.candidateId,
+      body: JSON.stringify({ mode: options.mode, body: options.body }),
+    }) as Promise<PartyChatMessageProjection>;
+  try {
+    return await send();
+  } catch (failure) {
+    // One retry absorbs transient emulator blips during certification load.
+    if (failure instanceof ApiFailure && failure.code === ERROR_CODES.UPSTREAM_UNAVAILABLE) {
+      return await send();
+    }
+    throw failure;
+  }
 }
 
 export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {

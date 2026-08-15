@@ -291,6 +291,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       encounter?.status === 'active' &&
       encounter.activeCombatantId === ownCombatant?.combatantId;
     const actionAvailable = ownTurn && ownCombatant?.actionEconomy.actionAvailable === true;
+    const deathSaveAvailable =
+      ownTurn &&
+      ownCombatant?.currentHitPoints === 0 &&
+      ownCombatant.deathSaves.dead !== true &&
+      ownCombatant.deathSaves.stable !== true &&
+      ownCombatant.actionEconomy.deathSaveAvailable === true;
+    const longRestAvailable =
+      ownTurn &&
+      ownCombatant?.deathSaves.dead !== true &&
+      (actionAvailable || ownCombatant?.currentHitPoints === 0);
     const openWindow = encounter?.decisionWindows.find(
       (window) =>
         window.state === 'open' &&
@@ -389,13 +399,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
             aria-disabled="${disable || !actionAvailable}">Use healing potion</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
-            aria-disabled="${disable || !ownTurn || ownCombatant?.currentHitPoints !== 0}">Death Save</button>
+            aria-disabled="${disable || !deathSaveAvailable}">Death Save</button>
           <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
             aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
             aria-disabled="${disable || !actionAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
-            aria-disabled="${disable || !actionAvailable}">Long Rest</button>
+            aria-disabled="${disable || !longRestAvailable}">Long Rest</button>
           <button type="button" data-rules-command="progression.award_xp" data-testid="rules-award-xp"
             aria-disabled="${disable}">Award 300 XP</button>
           <button type="button" data-rules-command="progression.level_up" data-testid="rules-level-up"

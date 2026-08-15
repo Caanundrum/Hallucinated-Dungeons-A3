@@ -45,6 +45,7 @@ function unconscious(combatant: CombatantProjection): CombatantProjection {
       bonusActionAvailable: false,
       reactionAvailable: false,
       movementRemainingFeet: 0,
+      deathSaveAvailable: false,
     },
     concentrationSpellId: null,
   };

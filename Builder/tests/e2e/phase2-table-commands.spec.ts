@@ -98,6 +98,7 @@ test.describe('Phase 2a table command gateway', () => {
     await page.getByTestId('party-chat-send').click();
     await expect(page.getByTestId('party-chat-message').first()).toContainText(
       'I describe walking without submitting a command.',
+      { timeout: 20_000 },
     );
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 

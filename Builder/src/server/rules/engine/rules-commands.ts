@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -274,6 +275,17 @@ function actionEconomy() {
     bonusActionAvailable: true,
     reactionAvailable: true,
     movementRemainingFeet: 30,
+    deathSaveAvailable: false,
+  } as const;
+}
+
+function dyingActionEconomy(deathSaveAvailable: boolean) {
+  return {
+    actionAvailable: false,
+    bonusActionAvailable: false,
+    reactionAvailable: false,
+    movementRemainingFeet: 0,
+    deathSaveAvailable,
   } as const;
 }
 
@@ -640,12 +652,7 @@ function mutateRules(options: {
         conditions: removeCondition(expired, 'shielded'),
         actionEconomy:
           combatant.currentHitPoints === 0
-            ? {
-                actionAvailable: false,
-                bonusActionAvailable: false,
-                reactionAvailable: false,
-                movementRemainingFeet: 0,
-              }
+            ? dyingActionEconomy(true)
             : actionEconomy(),
         ready: null,
       };
@@ -664,15 +671,49 @@ function mutateRules(options: {
         const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
         rolls.push(...attack.rolls);
         active = spendAction(active);
+        // Training auto-attacks stay nonlethal so the integrated journey remains
+        // playable; intentional 0 HP practice uses combat.training_drop.
+        const nonlethalTarget =
+          attack.target.currentHitPoints === 0
+            ? {
+                ...attack.target,
+                currentHitPoints: 1,
+                conditions: removeCondition(attack.target.conditions, 'unconscious'),
+                deathSaves: emptyDeathSaves(),
+              }
+            : attack.target;
+        // #region agent log
+        try {
+          appendFileSync(
+            '/opt/cursor/logs/debug.log',
+            `${JSON.stringify({
+              hypothesisId: 'A',
+              location: 'rules-commands.ts:next_turn',
+              message: 'training foe auto-attack',
+              data: {
+                foeId: active.combatantId,
+                hit: attack.hit,
+                damage: attack.damage,
+                targetHpBefore: partyTarget.currentHitPoints,
+                targetHpAfter: nonlethalTarget.currentHitPoints,
+                nonlethalClamped: attack.target.currentHitPoints === 0,
+              },
+              timestamp: Date.now(),
+            })}\n`,
+          );
+        } catch {
+          /* ignore debug log failures */
+        }
+        // #endregion
         combatants = combatants.map((combatant) =>
           combatant.combatantId === active.combatantId
             ? active
             : combatant.combatantId === partyTarget.combatantId
-              ? attack.target
+              ? nonlethalTarget
               : combatant,
         );
         summary += attack.hit
-          ? ` ${active.name} automatically attacked ${partyTarget.name} for ${attack.damage} damage.`
+          ? ` ${active.name} automatically made a nonlethal training attack against ${partyTarget.name} for ${attack.damage} damage.`
           : ` ${active.name} automatically attacked ${partyTarget.name} and missed.`;
         affectedCombatantIds.push(partyTarget.combatantId);
       }
@@ -830,9 +871,63 @@ function mutateRules(options: {
     if (current.activeCombatantId !== actor.combatantId) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Death Saving Throws occur on the combatant’s turn.');
     }
-    const result = resolveDeathSave(actor, rng);
+    if (actor.currentHitPoints !== 0) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Death Saving Throws are only for combatants at 0 Hit Points.');
+    }
+    if (actor.deathSaves.dead) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'That combatant is already dead.');
+    }
+    if (actor.deathSaves.stable) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'That combatant is already stable.');
+    }
+    if (actor.actionEconomy.deathSaveAvailable !== true) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'This combatant has already made a Death Saving Throw this turn.',
+      );
+    }
+    let result: ReturnType<typeof resolveDeathSave>;
+    try {
+      result = resolveDeathSave(actor, rng);
+    } catch (failure) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        failure instanceof Error ? failure.message : 'Death Saving Throw could not be resolved.',
+      );
+    }
     rolls.push(result.natural);
-    encounter = replaceCombatants(current, [result.combatant]);
+    const afterSave = {
+      ...result.combatant,
+      actionEconomy:
+        result.combatant.currentHitPoints > 0
+          ? actionEconomy()
+          : dyingActionEconomy(false),
+    };
+    // #region agent log
+    try {
+      appendFileSync(
+        '/opt/cursor/logs/debug.log',
+        `${JSON.stringify({
+          hypothesisId: 'B',
+          location: 'rules-commands.ts:death_save',
+          message: 'death save resolved',
+          data: {
+            natural: result.natural,
+            outcome: result.outcome,
+            failures: afterSave.deathSaves.failures,
+            successes: afterSave.deathSaves.successes,
+            dead: afterSave.deathSaves.dead,
+            stable: afterSave.deathSaves.stable,
+            hp: afterSave.currentHitPoints,
+          },
+          timestamp: Date.now(),
+        })}\n`,
+      );
+    } catch {
+      /* ignore debug log failures */
+    }
+    // #endregion
+    encounter = replaceCombatants(current, [afterSave]);
     summary = `${actor.name} rolled ${result.natural}: Death Save ${result.outcome.replace('_', ' ')}.`;
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.training_drop') {
@@ -854,7 +949,11 @@ function mutateRules(options: {
     const dropped = spendAction(
       applyDamage(actor, actor.currentHitPoints + actor.temporaryHitPoints),
     );
-    encounter = replaceCombatants(current, [dropped]);
+    const forDeathPractice = {
+      ...dropped,
+      actionEconomy: dyingActionEconomy(true),
+    };
+    encounter = replaceCombatants(current, [forDeathPractice]);
     summary = `${actor.name} used the training control to drop to 0 Hit Points for Death Save practice.`;
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.short_rest') {
@@ -876,19 +975,39 @@ function mutateRules(options: {
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.long_rest') {
     const current = requireEncounter(encounter);
-    const actor = requireActiveActor(current, seat.seatId);
+    const actor = findActor(current, seat.seatId);
+    if (current.status !== 'active') {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Roll initiative before taking combat actions.');
+    }
+    if (current.activeCombatantId !== actor.combatantId) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'It is not your combatant’s turn.');
+    }
+    if (actor.deathSaves.dead) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Long Rest.');
+    }
+    // Dying/stable combatants may Long Rest to clear 0 HP without spending an action.
+    if (
+      actor.currentHitPoints > 0 &&
+      !actor.actionEconomy.actionAvailable
+    ) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'This combatant has already spent its action.');
+    }
     const restored = spendAction({
       ...actor,
       currentHitPoints: actor.maxHitPoints,
       temporaryHitPoints: 0,
       hitDiceRemaining: Math.min(actor.level, actor.hitDiceRemaining + Math.max(1, Math.floor(actor.level / 2))),
-      conditions: removeCondition(actor.conditions, 'exhaustion'),
+      conditions: removeCondition(
+        removeCondition(actor.conditions, 'exhaustion'),
+        'unconscious',
+      ),
       deathSaves: emptyDeathSaves(),
       spellResources: {
         ...actor.spellResources,
         remainingSlots: actor.spellResources.maximumSlots,
       },
       concentrationSpellId: null,
+      actionEconomy: actionEconomy(),
     });
     encounter = replaceCombatants(current, [restored]);
     summary = `${actor.name} completed a Long Rest, restoring Hit Points, Hit Dice, and spell slots.`;

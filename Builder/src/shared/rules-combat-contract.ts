@@ -68,6 +68,8 @@ export interface ActionEconomyProjection {
   readonly bonusActionAvailable: boolean;
   readonly reactionAvailable: boolean;
   readonly movementRemainingFeet: number;
+  /** True only while a dying combatant may still roll a Death Save this turn. */
+  readonly deathSaveAvailable?: boolean;
 }
 
 export interface DeathSaveProjection {
