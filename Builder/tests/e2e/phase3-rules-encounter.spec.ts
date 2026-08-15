@@ -128,15 +128,6 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('roll-initiative').click();
     const candidate = await readCandidate(page);
     const origin = new URL(page.url()).origin;
-    const authorityText = await page.getByTestId('timing-authority-meta').innerText();
-    expect(authorityText).toContain('Active Turn');
-    const authorityResponse = await page.request.get(
-      `/api/campaigns/${campaignId}/timing-authority`,
-      { headers: { origin, 'x-hd-candidate': candidate.candidateId } },
-    );
-    const authority = (await authorityResponse.json()) as {
-      authority: { timingAuthorityId: string };
-    };
     const stateResponse = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
       headers: { origin, 'x-hd-candidate': candidate.candidateId },
     });
@@ -151,13 +142,12 @@ test.describe('Phase 3 deterministic rules encounter', () => {
         requestId: randomUUID(),
         commandType: 'encounter.begin',
         expectedStateVersion: state.stateVersion,
-        timingAuthorityId: authority.authority.timingAuthorityId,
       },
     });
-    expect(illegal.status()).toBe(400);
+    expect(illegal.status()).toBe(403);
     const body = (await illegal.json()) as { error: string; message: string };
-    expect(body.error).toBe('BAD_REQUEST');
-    expect(body.message).toContain('already in progress');
+    expect(body.error).toBe('TIMING_AUTHORITY_REQUIRED');
+    expect(body.message).toContain('Timing Authority');
 
     const after = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
       headers: { origin, 'x-hd-candidate': candidate.candidateId },
