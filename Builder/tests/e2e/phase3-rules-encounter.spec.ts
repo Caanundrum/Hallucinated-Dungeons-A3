@@ -127,26 +127,38 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     const candidate = await readCandidate(page);
-    const origin = new URL(page.url()).origin;
     const stateText = await page.getByTestId('table-state-meta').innerText();
     const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
     expect(stateVersion).toBeGreaterThan(0);
-    const illegal = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
-      headers: {
-        origin,
-        'content-type': 'application/json',
-        'x-hd-candidate': candidate.candidateId,
+    const illegal = await page.evaluate(
+      async ({ campaignId, candidateId, requestId, stateVersion }) => {
+        const response = await fetch(`/api/campaigns/${campaignId}/commands`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-hd-candidate': candidateId,
+          },
+          body: JSON.stringify({
+            requestId,
+            commandType: 'encounter.begin',
+            expectedStateVersion: stateVersion,
+          }),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as { error: string; message: string },
+        };
       },
-      data: {
+      {
+        campaignId,
+        candidateId: candidate.candidateId,
         requestId: randomUUID(),
-        commandType: 'encounter.begin',
-        expectedStateVersion: stateVersion,
+        stateVersion,
       },
-    });
-    expect(illegal.status()).toBe(403);
-    const body = (await illegal.json()) as { error: string; message: string };
-    expect(body.error).toBe('TIMING_AUTHORITY_REQUIRED');
-    expect(body.message).toContain('Timing Authority');
+    );
+    expect(illegal.status).toBe(403);
+    expect(illegal.body.error).toBe('TIMING_AUTHORITY_REQUIRED');
+    expect(illegal.body.message).toContain('Timing Authority');
 
     await page.getByTestId('refresh-table-projection').click();
     await expect(page.getByTestId('table-state-meta')).toContainText(
