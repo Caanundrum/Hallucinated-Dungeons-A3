@@ -636,7 +636,15 @@ function mutateRules(options: {
         ...combatant,
         armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
         conditions: removeCondition(expired, 'shielded'),
-        actionEconomy: actionEconomy(),
+        actionEconomy:
+          combatant.currentHitPoints === 0
+            ? {
+                actionAvailable: false,
+                bonusActionAvailable: false,
+                reactionAvailable: false,
+                movementRemainingFeet: 0,
+              }
+            : actionEconomy(),
         ready: null,
       };
     });
@@ -654,15 +662,24 @@ function mutateRules(options: {
         const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
         rolls.push(...attack.rolls);
         active = spendAction(active);
+        const nonlethalTarget =
+          attack.target.currentHitPoints === 0
+            ? {
+                ...attack.target,
+                currentHitPoints: 1,
+                conditions: removeCondition(attack.target.conditions, 'unconscious'),
+                deathSaves: emptyDeathSaves(),
+              }
+            : attack.target;
         combatants = combatants.map((combatant) =>
           combatant.combatantId === active.combatantId
             ? active
             : combatant.combatantId === partyTarget.combatantId
-              ? attack.target
+              ? nonlethalTarget
               : combatant,
         );
         summary += attack.hit
-          ? ` ${active.name} automatically attacked ${partyTarget.name} for ${attack.damage} damage.`
+          ? ` ${active.name} automatically made a nonlethal training attack against ${partyTarget.name} for ${attack.damage} damage.`
           : ` ${active.name} automatically attacked ${partyTarget.name} and missed.`;
         affectedCombatantIds.push(partyTarget.combatantId);
       }

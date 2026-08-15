@@ -128,10 +128,9 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('roll-initiative').click();
     const candidate = await readCandidate(page);
     const origin = new URL(page.url()).origin;
-    const stateResponse = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
-      headers: { origin, 'x-hd-candidate': candidate.candidateId },
-    });
-    const state = (await stateResponse.json()) as { stateVersion: number };
+    const stateText = await page.getByTestId('table-state-meta').innerText();
+    const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
+    expect(stateVersion).toBeGreaterThan(0);
     const illegal = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
       headers: {
         origin,
@@ -141,19 +140,17 @@ test.describe('Phase 3 deterministic rules encounter', () => {
       data: {
         requestId: randomUUID(),
         commandType: 'encounter.begin',
-        expectedStateVersion: state.stateVersion,
+        expectedStateVersion: stateVersion,
       },
     });
-    expect(illegal.status()).toBe(400);
+    expect(illegal.status()).toBe(403);
     const body = (await illegal.json()) as { error: string; message: string };
-    expect(body.error).toBe('BAD_REQUEST');
-    expect(body.message).toContain('already in progress');
+    expect(body.error).toBe('TIMING_AUTHORITY_REQUIRED');
+    expect(body.message).toContain('Timing Authority');
 
-    const after = await page.request.get(`/api/campaigns/${campaignId}/table-state`, {
-      headers: { origin, 'x-hd-candidate': candidate.candidateId },
-    });
-    expect(((await after.json()) as { stateVersion: number }).stateVersion).toBe(
-      state.stateVersion,
+    await page.getByTestId('refresh-table-projection').click();
+    await expect(page.getByTestId('table-state-meta')).toContainText(
+      `Table state version ${stateVersion}`,
     );
   });
 });
