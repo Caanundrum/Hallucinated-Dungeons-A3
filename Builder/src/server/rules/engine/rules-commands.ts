@@ -18,7 +18,6 @@ import {
 } from '../../../shared/timing-authority-contract.js';
 import type {
   AreaCell,
-  AreaTarget,
   CharacterProgressionProjection,
   CombatantProjection,
   DecisionWindowProjection,
@@ -655,7 +654,7 @@ function mutateRules(options: {
     const resolution = resolveAttack({
       attacker: actor,
       target,
-      attackId: fields.attackId,
+      ...(fields.attackId === undefined ? {} : { attackId: fields.attackId }),
       rng,
     });
     const concentration = resolveConcentration(target, resolution.target, resolution.damage, rng);
