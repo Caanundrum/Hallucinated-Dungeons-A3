@@ -4,6 +4,7 @@ import {
   enterArena,
   openArena,
   projectionVersion,
+  readCandidate,
   recordCheck,
   renderedNotes,
 } from './arena-page.js';
@@ -128,5 +129,74 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('character-link')).toContainText('Smoke Spine Warden');
+  });
+
+  test('tactical interaction: claim Active Turn, sync, and commit a legal move', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) {
+      await tutorialNo.click();
+    }
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
+    await page.getByTestId('identity-name').fill('Smoke Spine Tactician');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+    await expect(page.getByTestId('character-sheet-heading')).toHaveText('Smoke Spine Tactician');
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('campaign-name').fill('Smoke Spine Tactical');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    await page.getByTestId('identity-veyra').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await page.getByTestId('create-campaign-submit').click();
+    await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Tactical');
+    const campaignId = page.url().split('/').pop()!;
+
+    const seatSelect = page.getByTestId('seat-character-select');
+    const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
+    expect(characterId).toBeTruthy();
+    await seatSelect.selectOption(characterId!);
+    await page.getByTestId('create-seat').click();
+    await expect(page.getByTestId('own-seat')).toBeVisible();
+
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
+    await expect(page.getByTestId('table-a11y-panel')).toBeVisible();
+    await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await page.getByTestId('commit-table-sync').click();
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
+
+    const origin = new URL(page.url()).origin;
+    const candidate = await readCandidate(page);
+    const mapResponse = await page.request.get(`/api/campaigns/${campaignId}/map`, {
+      headers: { origin, 'x-hd-candidate': candidate.candidateId },
+    });
+    expect(mapResponse.status()).toBe(200);
+    const mapBody = (await mapResponse.json()) as {
+      tokens: { footprint: { anchor: { column: number; row: number } } }[];
+    };
+    const start = mapBody.tokens[0]!.footprint.anchor;
+    const target = { column: start.column + 1, row: start.row };
+    await page.locator(`[data-square="${target.column},${target.row}"]`).click();
+    await expect(page.getByTestId('move-target-meta')).toContainText(
+      `column ${target.column}, row ${target.row}`,
+    );
+    await page.getByTestId('commit-table-move').click();
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
+
+    await page.reload();
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
+    await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
   });
 });

@@ -440,11 +440,15 @@ export async function fetchPlayerSettings(): Promise<PlayerPresentationSettingsP
 export async function savePlayerSettings(options: {
   readonly candidateId: string;
   readonly reducedMotion: boolean;
+  readonly lowEffects?: boolean;
 }): Promise<PlayerPresentationSettingsProjection> {
   return (await request('/api/account/settings', {
     method: 'PUT',
     candidateId: options.candidateId,
-    body: JSON.stringify({ reducedMotion: options.reducedMotion }),
+    body: JSON.stringify({
+      reducedMotion: options.reducedMotion,
+      ...(options.lowEffects !== undefined ? { lowEffects: options.lowEffects } : {}),
+    }),
   })) as PlayerPresentationSettingsProjection;
 }
 

@@ -13,8 +13,9 @@ import {
   inviteCodeFromPath,
   isSpaRoute,
 } from '../shared/routes.js';
-import { hydrateAccount, clearAccountOnAuthFailure } from './account-session.js';
-import { fetchCandidate, onAuthFailure } from './api.js';
+import { hydrateAccount, clearAccountOnAuthFailure, getAccount } from './account-session.js';
+import { fetchCandidate, fetchPlayerSettings, onAuthFailure } from './api.js';
+import { applyPresentationPreferences, clearPresentationPreferences } from './presentation-preferences.js';
 import { mountAccountPage } from './pages/account.js';
 import { mountCampaignCreatePage } from './pages/campaign-create.js';
 import { mountCampaignDetailPage } from './pages/campaign-detail.js';
@@ -51,6 +52,19 @@ async function start(): Promise<void> {
 
   const shell = mountShell(root as HTMLDivElement, candidate);
   await hydrateAccount();
+  if (getAccount() !== null) {
+    try {
+      const settings = await fetchPlayerSettings();
+      applyPresentationPreferences({
+        reducedMotion: settings.reducedMotion,
+        lowEffects: settings.lowEffects,
+      });
+    } catch {
+      clearPresentationPreferences();
+    }
+  } else {
+    clearPresentationPreferences();
+  }
 
   // Focus is moved to the new page's heading only on a client-side route
   // change, not on the very first render. Stealing focus on the initial page

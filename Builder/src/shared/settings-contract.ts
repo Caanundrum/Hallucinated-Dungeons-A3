@@ -149,10 +149,12 @@ export const RESERVED_PLAYER_PRESENTATION_DEFAULTS: ReservedPlayerPresentationSe
   dicePresentation: 'standard',
 };
 
-/** Honest Phase 1 player preference that already affects the page. */
+/** Honest player preferences that already affect the page (Phase 1–2). */
 export interface PlayerPresentationSettingsProjection {
   readonly accountId: string;
   readonly reducedMotion: boolean;
+  /** Flattens tactical atmospheric effects on the table stage (Phase 2). */
+  readonly lowEffects: boolean;
   readonly reserved: ReservedPlayerPresentationSettings;
   readonly updatedAt: string;
 }

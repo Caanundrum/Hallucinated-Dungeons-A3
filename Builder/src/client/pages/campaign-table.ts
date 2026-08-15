@@ -32,15 +32,18 @@ import {
   fetchCampaignMap,
   fetchChronicle,
   fetchPartyChat,
+  fetchPlayerSettings,
   fetchTableState,
   fetchTimingAuthority,
   postPartyChat,
   previewTableMove,
+  savePlayerSettings,
   submitTableCommand,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import type { PageHost } from './home.js';
 
@@ -57,6 +60,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let mapBundle: MapBundleProjection | null = null;
   let timingAuthority: TimingAuthorityProjection | null = null;
   let intentDraft: ActionDraftSuggestion | null = null;
+  let reducedMotion = false;
+  let lowEffects = false;
   let seated = false;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
@@ -110,6 +115,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return 'Another seat holds Active Turn Authority.';
     }
     return `You hold Active Turn · expires ${timingAuthority.expiresAt}`;
+  }
+
+  function presentationMeta(): string {
+    const motion = reducedMotion ? 'reduced motion on' : 'reduced motion off';
+    const effects = lowEffects ? 'low effects on' : 'low effects off';
+    return `Table presentation: ${motion} · ${effects}. No voice-selection controls in Phase 2.`;
   }
 
   function dockBody(): string {
@@ -204,6 +215,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         Table state version ${version} · last event sequence ${sequence}
       </p>
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      <div class="table-a11y-panel" data-testid="table-a11y-panel">
+        <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
+        <label class="option compact">
+          <input type="checkbox" data-testid="table-reduced-motion" ${reducedMotion ? 'checked' : ''}
+            ${busy || candidate === null ? 'disabled' : ''} />
+          <span class="option-label">Reduced motion</span>
+        </label>
+        <label class="option compact">
+          <input type="checkbox" data-testid="table-low-effects" ${lowEffects ? 'checked' : ''}
+            ${busy || candidate === null ? 'disabled' : ''} />
+          <span class="option-label">Low effects</span>
+        </label>
+      </div>
       <div class="action-composer-controls">
         <button type="button" data-testid="refresh-table-projection"
           aria-disabled="${busy || candidate === null}">
@@ -275,11 +299,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     container.innerHTML = `
       <div class="page page-wide" data-testid="table-page-shell">
         <div data-testid="table-heading-slot"></div>
-        <section class="table-stage-frame" aria-label="Tactical map" data-testid="table-stage-slot">
+        <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
           <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
         </section>
         <div data-testid="table-panels-slot"></div>
       </div>`;
+  }
+
+  function syncStageFrameEffects(): void {
+    const slot = container.querySelector<HTMLElement>('[data-testid="table-stage-slot"]');
+    if (slot === null) {
+      return;
+    }
+    slot.classList.toggle('table-stage-low-effects', lowEffects || reducedMotion);
   }
 
   async function ensureStage(): Promise<void> {
@@ -386,6 +418,81 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Table projection could not be refreshed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLInputElement>('[data-testid="table-reduced-motion"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion: event.target.checked,
+              lowEffects,
+            });
+            reducedMotion = settings.reducedMotion;
+            lowEffects = settings.lowEffects;
+            applyPresentationPreferences({ reducedMotion, lowEffects });
+            shell.announce(
+              reducedMotion
+                ? 'Reduced motion applied on the tactical table.'
+                : 'Reduced motion cleared for this account.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Presentation preference could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLInputElement>('[data-testid="table-low-effects"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion,
+              lowEffects: event.target.checked,
+            });
+            reducedMotion = settings.reducedMotion;
+            lowEffects = settings.lowEffects;
+            applyPresentationPreferences({ reducedMotion, lowEffects });
+            if (mapBundle !== null) {
+              stageHandle?.renderMap(mapBundle);
+            }
+            shell.announce(
+              lowEffects
+                ? 'Low effects applied on the tactical table.'
+                : 'Low effects cleared for this account.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Presentation preference could not be saved.';
           } finally {
             busy = false;
             render();
@@ -762,6 +869,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
 
     bindPanelEvents(panels);
+    syncStageFrameEffects();
     void ensureStage();
   }
 
@@ -880,18 +988,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed] = await Promise.all([
-        fetchChronicle(campaignId),
-        fetchPartyChat(campaignId),
-        fetchTableState(campaignId),
-        fetchCampaignMap(campaignId),
-        fetchTimingAuthority(campaignId),
-      ]);
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation] =
+        await Promise.all([
+          fetchChronicle(campaignId),
+          fetchPartyChat(campaignId),
+          fetchTableState(campaignId),
+          fetchCampaignMap(campaignId),
+          fetchTimingAuthority(campaignId),
+          fetchPlayerSettings(),
+        ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
       mapBundle = mapFeed;
       timingAuthority = timingFeed.authority;
+      reducedMotion = presentation.reducedMotion;
+      lowEffects = presentation.lowEffects;
+      applyPresentationPreferences({ reducedMotion, lowEffects });
       startProjectionPoll();
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';

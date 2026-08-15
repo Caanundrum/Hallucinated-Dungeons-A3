@@ -1139,6 +1139,30 @@ html.hd-reduced-motion * {
   transition: none !important;
 }
 
+html.hd-low-effects .table-stage-frame,
+.table-stage-frame.table-stage-low-effects {
+  background: #0c0a08;
+}
+
+html.hd-low-effects .map-square-fog,
+.table-stage-low-effects .map-square-fog,
+.map-square-fog-flat {
+  opacity: 1;
+  filter: none;
+}
+
+.table-a11y-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+.table-a11y-panel .option.compact {
+  margin: 0;
+}
+
 /* --- Communication Dock + Action Composer (manifest v1) --- */
 
 .communication-dock {

@@ -78,17 +78,17 @@
       "id": "P2-TABLE-A11Y-SETTINGS",
       "source": "25 Phase 2 settings/accessibility",
       "behavior": "Reduced motion / low-effects and any local audio controls that already have real Phase 2 behavior apply on the tactical table without decorative voice-selection UI.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "PlayerPresentationSettingsProjection.lowEffects; presentation-preferences.ts; campaign-table a11y panel; table-stage low-effects fog; no voice UI",
+      "verification": "tests/e2e/phase2-table-a11y.spec.ts; phase1-settings-dock reduced-motion continuity",
+      "status": "PASSED"
     },
     {
       "id": "P2-SMOKE-SPINE-EXTENSION",
       "source": "25.3; 26.6",
       "behavior": "Permanent smoke spine gains a Phase 2 tactical interaction segment once the map exists.",
-      "implementation": "not started",
-      "verification": "not started",
-      "status": "NOT_STARTED"
+      "implementation": "Builder/tests/e2e/smoke-spine.spec.ts tactical interaction segment",
+      "verification": "npm run test:e2e — Permanent smoke spine tactical interaction",
+      "status": "PASSED"
     },
     {
       "id": "P2-BUILDER-PAGE-PROOF",

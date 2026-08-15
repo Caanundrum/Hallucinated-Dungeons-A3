@@ -62,14 +62,17 @@ function terrainCss(terrain: string, known: boolean): string {
 }
 
 function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
+  const lowEffects =
+    document.documentElement.classList.contains('hd-low-effects') ||
+    document.documentElement.classList.contains('hd-reduced-motion');
   const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
   const width = columns * pixelsPerSquare;
   const height = rows * pixelsPerSquare;
   const cells = map.cells
-    .map(
-      (cell) =>
-        `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known)}" class="map-square${cell.known ? '' : ' map-square-fog'}" />`,
-    )
+    .map((cell) => {
+      const fogClass = cell.known ? '' : lowEffects ? ' map-square-fog map-square-fog-flat' : ' map-square-fog';
+      return `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known)}" class="map-square${fogClass}" />`;
+    })
     .join('');
   const gridLines: string[] = [];
   for (let column = 0; column <= columns; column += 1) {

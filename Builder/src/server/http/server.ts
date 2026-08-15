@@ -611,10 +611,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         try {
+          const payload = body as { reducedMotion?: unknown; lowEffects?: unknown };
           const settings = await updatePlayerSettings({
             firestore,
             accountId: session.accountId,
-            reducedMotion: (body as { reducedMotion?: unknown }).reducedMotion,
+            reducedMotion: payload.reducedMotion,
+            ...(payload.lowEffects !== undefined ? { lowEffects: payload.lowEffects } : {}),
           });
           sendJson(response, 200, settings);
         } catch {
