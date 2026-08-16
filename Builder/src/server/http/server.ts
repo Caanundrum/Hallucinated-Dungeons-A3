@@ -95,6 +95,11 @@ import { getLegalDocument } from '../legal/legal-registry.js';
 import { renderLegalPage } from '../legal/render-legal-page.js';
 import { buildDraftOptions } from '../rules/character-rules.js';
 import { parseChoices } from '../characters/parse-choices.js';
+import {
+  fetchRulesState,
+  RulesCommandError,
+} from '../rules/engine/rules-commands.js';
+import { explainRule, RULE_EXPLANATION_IDS } from '../rules/engine/rules-explanations.js';
 
 /** Largest request body the server will buffer, in bytes. */
 const MAX_REQUEST_BODY_BYTES = 8 * 1024;
@@ -690,6 +695,29 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (path === '/api/rules/explain' && method === 'GET') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      const requestUrl = new URL(request.url ?? path, `http://${env.serverHost}:${env.serverPort}`);
+      const ruleId = requestUrl.searchParams.get('ruleId') ?? 'combat.attack';
+      const explanation = explainRule(ruleId);
+      if (explanation === null) {
+        sendJson(response, 404, {
+          error: ERROR_CODES.NOT_FOUND,
+          message: `No structured explanation exists for ${ruleId}. Available rules: ${RULE_EXPLANATION_IDS.join(', ')}.`,
+        } satisfies ApiErrorBody);
+        return;
+      }
+      sendJson(response, 200, explanation);
+      return;
+    }
+
     if (path === '/api/characters' || path.startsWith('/api/characters/')) {
       await handleCharacterRequest(request, response, method, path);
       return;
@@ -1142,6 +1170,24 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const rulesStateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/rules-state$/.exec(path);
+      if (rulesStateMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          await fetchRulesState({
+            firestore,
+            accountId,
+            campaignId: rulesStateMatch[1]!,
+          }),
+        );
+        return;
+      }
+
       const timingAuthorityMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/timing-authority$/.exec(
         path,
       );
@@ -1244,6 +1290,15 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           timingAuthorityId?: unknown;
           path?: unknown;
           edgeId?: unknown;
+          targetCombatantId?: unknown;
+          attackId?: unknown;
+          spellId?: unknown;
+          area?: unknown;
+          reactionKind?: unknown;
+          decisionWindowId?: unknown;
+          readyTrigger?: unknown;
+          xpAmount?: unknown;
+          itemId?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
@@ -1264,6 +1319,25 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             ? { path: payload.path as { column: number; row: number }[] }
             : {}),
           ...(typeof payload.edgeId === 'string' ? { edgeId: payload.edgeId } : {}),
+          ...(typeof payload.targetCombatantId === 'string'
+            ? { targetCombatantId: payload.targetCombatantId }
+            : {}),
+          ...(typeof payload.attackId === 'string' ? { attackId: payload.attackId } : {}),
+          ...(typeof payload.spellId === 'string' ? { spellId: payload.spellId } : {}),
+          ...(typeof payload.area === 'object' && payload.area !== null
+            ? { area: payload.area as never }
+            : {}),
+          ...(payload.reactionKind === 'opportunity_attack' || payload.reactionKind === 'shield'
+            ? { reactionKind: payload.reactionKind }
+            : {}),
+          ...(typeof payload.decisionWindowId === 'string'
+            ? { decisionWindowId: payload.decisionWindowId }
+            : {}),
+          ...(typeof payload.readyTrigger === 'string'
+            ? { readyTrigger: payload.readyTrigger }
+            : {}),
+          ...(typeof payload.xpAmount === 'number' ? { xpAmount: payload.xpAmount } : {}),
+          ...(typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;
@@ -1274,7 +1348,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       if (
         error instanceof TableCommandError ||
         error instanceof MapProjectionError ||
-        error instanceof TimingAuthorityError
+        error instanceof TimingAuthorityError ||
+        error instanceof RulesCommandError
       ) {
         const code = error.code as ErrorCode;
         if (code in ERROR_STATUS) {

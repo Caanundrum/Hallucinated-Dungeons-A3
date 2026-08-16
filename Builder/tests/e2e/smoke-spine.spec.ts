@@ -199,4 +199,56 @@ test.describe('Permanent smoke spine', () => {
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
   });
+
+  test('rules action: begin a training encounter, roll initiative, and resolve one attack', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await page.getByTestId('identity-name').fill('Smoke Spine Rules Fighter');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('campaign-name').fill('Smoke Spine Rules');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    await page.getByTestId('identity-veyra').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await page.getByTestId('create-campaign-submit').click();
+    const seatSelect = page.getByTestId('seat-character-select');
+    const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
+    expect(characterId).toBeTruthy();
+    await seatSelect.selectOption(characterId!);
+    await page.getByTestId('create-seat').click();
+
+    await page.getByTestId('open-campaign-table').click();
+    await page.getByTestId('claim-active-turn').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+    await page.getByTestId('begin-encounter').click();
+    await expect(page.getByTestId('combatant-practice-goblin')).toBeVisible();
+    await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if ((await page.getByTestId('rules-attack').getAttribute('aria-disabled')) === 'false') {
+        break;
+      }
+      const before = await page.getByTestId('table-state-meta').innerText();
+      await page.getByTestId('next-encounter-turn').click();
+      await expect(page.getByTestId('table-state-meta')).not.toHaveText(before);
+    }
+    await expect(page.getByTestId('rules-attack')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('rules-target').selectOption('practice-goblin');
+    await page.getByTestId('rules-attack').click();
+    await expect(page.getByTestId('rules-last-result')).toContainText(/hit|missed/);
+  });
 });

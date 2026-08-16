@@ -1,0 +1,50 @@
+{
+  "recordType": "certification_run_record",
+  "recordVersion": "1",
+  "phase": "phase-1",
+  "status": "FAILED",
+  "mode": "frozen_certification",
+  "startedAt": "2026-08-14T18:34:51.694Z",
+  "endedAt": "2026-08-14T18:34:51.812Z",
+  "candidate": {
+    "candidateId": "cand-7d6562e7626c",
+    "sourceTreeHash": "7d6562e7626c0fb6b2878e12f517131c15d16048b949341c513ff9c07d634015",
+    "commit": "88a6e38bf49bf76492bb5feeaab336f6469cf49d",
+    "dirtyTree": true,
+    "dirtyPaths": [
+      "Builder/src/client/pages/diagnostics.ts"
+    ],
+    "dependencyLockHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2",
+    "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1",
+    "fileCount": 100
+  },
+  "blueprintVersion": null,
+  "blueprintSourceHash": null,
+  "localStackManifestPath": null,
+  "localStackManifest": null,
+  "readiness": null,
+  "runtime": {
+    "node": "22.14.0",
+    "platform": "linux-x64"
+  },
+  "steps": [
+    {
+      "name": "pinned_toolchain_verified",
+      "ok": true,
+      "detail": "Node.js 22.14.0, npm 10.9.7, Java (emulators) 21, Firebase CLI 13.35.1, Firebase Admin SDK 13.10.0, TypeScript 5.9.3, Vite 6.4.3, Playwright 1.62.1"
+    },
+    {
+      "name": "builder_root_clean",
+      "ok": false,
+      "detail": "uncommitted: Builder/src/client/pages/diagnostics.ts"
+    }
+  ],
+  "failures": [
+    "builder_root_clean"
+  ],
+  "codeCompletenessScan": null,
+  "architectureConformance": null,
+  "greenfieldEvidence": null,
+  "commands": [],
+  "browserSuite": null
+}

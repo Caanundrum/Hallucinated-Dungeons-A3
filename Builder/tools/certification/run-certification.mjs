@@ -56,6 +56,8 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-1': 56,
   // Phase 2 adds map/movement/timing/sync/a11y suites on top of the Phase 1 floor.
   'phase-2': 65,
+  // Phase 3 adds two complete-rules scenarios and the permanent rules smoke segment.
+  'phase-3': 69,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -152,7 +154,7 @@ async function main() {
   };
 
   const phaseLabel =
-    PHASE === 'phase-2' ? '2' : PHASE === 'phase-1' ? '1' : PHASE === 'phase-0' ? '0' : PHASE;
+    PHASE === 'phase-3' ? '3' : PHASE === 'phase-2' ? '2' : PHASE === 'phase-1' ? '1' : PHASE === 'phase-0' ? '0' : PHASE;
   console.log(`Phase ${phaseLabel} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.

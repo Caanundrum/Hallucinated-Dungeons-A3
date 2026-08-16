@@ -51,6 +51,12 @@ import type {
   CampaignSettingsProjection,
   PlayerPresentationSettingsProjection,
 } from '../shared/settings-contract.js';
+import type {
+  AreaTarget,
+  CharacterProgressionProjection,
+  EncounterProjection,
+  RuleExplanationProjection,
+} from '../shared/rules-combat-contract.js';
 
 /** A draft always travels with the options legal for its current state. */
 export interface DraftResponse {
@@ -349,11 +355,21 @@ export async function postPartyChat(options: {
   readonly mode: string;
   readonly body: string;
 }): Promise<PartyChatMessageProjection> {
-  return (await request(`/api/campaigns/${options.campaignId}/party-chat`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify({ mode: options.mode, body: options.body }),
-  })) as PartyChatMessageProjection;
+  const send = () =>
+    request(`/api/campaigns/${options.campaignId}/party-chat`, {
+      method: 'POST',
+      candidateId: options.candidateId,
+      body: JSON.stringify({ mode: options.mode, body: options.body }),
+    }) as Promise<PartyChatMessageProjection>;
+  try {
+    return await send();
+  } catch (failure) {
+    // One retry absorbs transient emulator blips during certification load.
+    if (failure instanceof ApiFailure && failure.code === ERROR_CODES.UPSTREAM_UNAVAILABLE) {
+      return await send();
+    }
+    throw failure;
+  }
 }
 
 export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {
@@ -373,6 +389,15 @@ export async function submitTableCommand(options: {
   readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly targetCombatantId?: string;
+  readonly attackId?: string;
+  readonly spellId?: string;
+  readonly area?: AreaTarget;
+  readonly reactionKind?: 'opportunity_attack' | 'shield';
+  readonly decisionWindowId?: string;
+  readonly readyTrigger?: string;
+  readonly xpAmount?: number;
+  readonly itemId?: string;
 }): Promise<TableCommandAcceptResponse> {
   return (await request(`/api/campaigns/${options.campaignId}/commands`, {
     method: 'POST',
@@ -386,8 +411,39 @@ export async function submitTableCommand(options: {
         : {}),
       ...(options.path !== undefined ? { path: options.path } : {}),
       ...(options.edgeId !== undefined ? { edgeId: options.edgeId } : {}),
+      ...(options.targetCombatantId !== undefined
+        ? { targetCombatantId: options.targetCombatantId }
+        : {}),
+      ...(options.attackId !== undefined ? { attackId: options.attackId } : {}),
+      ...(options.spellId !== undefined ? { spellId: options.spellId } : {}),
+      ...(options.area !== undefined ? { area: options.area } : {}),
+      ...(options.reactionKind !== undefined
+        ? { reactionKind: options.reactionKind }
+        : {}),
+      ...(options.decisionWindowId !== undefined
+        ? { decisionWindowId: options.decisionWindowId }
+        : {}),
+      ...(options.readyTrigger !== undefined ? { readyTrigger: options.readyTrigger } : {}),
+      ...(options.xpAmount !== undefined ? { xpAmount: options.xpAmount } : {}),
+      ...(options.itemId !== undefined ? { itemId: options.itemId } : {}),
     }),
   })) as TableCommandAcceptResponse;
+}
+
+export async function fetchRulesState(campaignId: string): Promise<{
+  readonly encounter: EncounterProjection | null;
+  readonly progression: CharacterProgressionProjection;
+}> {
+  return (await request(`/api/campaigns/${campaignId}/rules-state`)) as {
+    encounter: EncounterProjection | null;
+    progression: CharacterProgressionProjection;
+  };
+}
+
+export async function fetchRuleExplanation(ruleId: string): Promise<RuleExplanationProjection> {
+  return (await request(
+    `/api/rules/explain?ruleId=${encodeURIComponent(ruleId)}`,
+  )) as RuleExplanationProjection;
 }
 
 export async function fetchTimingAuthority(

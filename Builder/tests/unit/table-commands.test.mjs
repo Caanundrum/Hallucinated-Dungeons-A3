@@ -14,8 +14,14 @@ import {
 import { ERROR_CODES } from '../../dist/shared/contract.js';
 import { COLLECTIONS } from '../../dist/server/persistence/firestore.js';
 
-test('table command gateway accepts sync, move, and open_door', () => {
-  assert.deepEqual([...TABLE_COMMAND_TYPES], ['table.sync', 'table.move', 'table.open_door']);
+test('table command gateway accepts tactical and Phase 3 rules commands', () => {
+  assert.ok(TABLE_COMMAND_TYPES.includes('table.sync'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('table.move'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('table.open_door'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('encounter.begin'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('combat.attack'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('combat.cast_spell'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('progression.level_up'));
   assert.ok(TABLE_EVENT_TYPES.includes('table.token_moved'));
   assert.equal(isTableCommandType('table.sync'), true);
   assert.equal(isTableCommandType('table.move'), true);
@@ -34,6 +40,8 @@ test('persistence collections reserve command, event, and projection stores', ()
   assert.equal(COLLECTIONS.campaignCommands, 'campaignCommands');
   assert.equal(COLLECTIONS.campaignEvents, 'campaignEvents');
   assert.equal(COLLECTIONS.campaignTableProjections, 'campaignTableProjections');
+  assert.equal(COLLECTIONS.campaignEncounters, 'campaignEncounters');
+  assert.equal(COLLECTIONS.characterProgressions, 'characterProgressions');
   assert.equal(COLLECTIONS.timingAuthorities, 'timingAuthorities');
 });
 

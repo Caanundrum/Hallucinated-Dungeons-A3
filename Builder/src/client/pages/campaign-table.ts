@@ -20,6 +20,12 @@ import {
 } from '../../shared/communication-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type {
+  CharacterProgressionProjection,
+  EncounterProjection,
+  RuleExplanationProjection,
+  RulesCommandFields,
+} from '../../shared/rules-combat-contract.js';
+import type {
   ActionDraftSuggestion,
   TimingAuthorityProjection,
 } from '../../shared/timing-authority-contract.js';
@@ -33,6 +39,8 @@ import {
   fetchChronicle,
   fetchPartyChat,
   fetchPlayerSettings,
+  fetchRuleExplanation,
+  fetchRulesState,
   fetchTableState,
   fetchTimingAuthority,
   postPartyChat,
@@ -59,6 +67,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let tableState: TableStateProjection | null = null;
   let mapBundle: MapBundleProjection | null = null;
   let timingAuthority: TimingAuthorityProjection | null = null;
+  let encounter: EncounterProjection | null = null;
+  let progression: CharacterProgressionProjection | null = null;
+  let selectedCombatantId: string | null = null;
+  let selectedSpellId = 'fire-bolt';
+  let selectedRuleId = 'combat.attack';
+  let ruleExplanation: RuleExplanationProjection | null = null;
   let intentDraft: ActionDraftSuggestion | null = null;
   let reducedMotion = false;
   let lowEffects = false;
@@ -114,7 +128,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
       return 'Another seat holds Active Turn Authority.';
     }
-    return `You hold Active Turn · expires ${timingAuthority.expiresAt}`;
+    const label =
+      timingAuthority.opportunityClass === 'active_turn'
+        ? 'Active Turn'
+        : timingAuthority.opportunityClass === 'reaction'
+          ? 'Reaction'
+          : 'Decision Window';
+    return `You hold ${label} · expires ${timingAuthority.expiresAt}`;
   }
 
   function presentationMeta(): string {
@@ -151,6 +171,41 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return `
         <div class="dock-pane" data-testid="rules-desk-pane">
           <p data-testid="rules-desk-notice">${escapeHtml(RULES_DESK_NOTICE)}</p>
+          <label class="field">
+            <span>Structured rule</span>
+            <select data-testid="rules-desk-rule">
+              ${[
+                ['combat.attack', 'Attack rolls'],
+                ['combat.action-economy', 'Action economy'],
+                ['combat.death-saves', 'Death Saving Throws'],
+                ['combat.reactions', 'Reactions and Ready'],
+                ['combat.rests', 'Short and Long Rests'],
+                ['spell.areas', 'Three-dimensional areas'],
+                ['spell.concentration', 'Concentration'],
+                ['progression.xp', 'XP-only progression'],
+                ['condition.prone', 'Prone condition'],
+                ['condition.unconscious', 'Unconscious condition'],
+              ]
+                .map(
+                  ([id, label]) =>
+                    `<option value="${id}" ${selectedRuleId === id ? 'selected' : ''}>${escapeHtml(label!)}</option>`,
+                )
+                .join('')}
+            </select>
+          </label>
+          <button type="button" data-testid="rules-desk-explain" aria-disabled="${busy}">
+            Explain rule
+          </button>
+          ${
+            ruleExplanation === null
+              ? '<p class="record-meta">Choose a rule for a read-only explanation from structured data.</p>'
+              : `<article class="rules-explanation" data-testid="rules-explanation">
+                  <h3>${escapeHtml(ruleExplanation.title)}</h3>
+                  <p>${escapeHtml(ruleExplanation.summary)}</p>
+                  <ol>${ruleExplanation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+                  <p class="record-meta">${escapeHtml(ruleExplanation.ruleId)} · ${escapeHtml(ruleExplanation.source)}</p>
+                </article>`
+          }
         </div>`;
     }
 
@@ -203,6 +258,165 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>`;
   }
 
+  function encounterBody(): string {
+    if (!seated) {
+      return '<p class="record-meta">Seat a character to start the training encounter.</p>';
+    }
+    const ownCombatant =
+      encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+    const availableSpells = [
+      ...(progression?.sheet.spellcasting?.cantrips ?? []),
+      ...(progression?.sheet.spellcasting?.spells ?? []),
+    ].filter((spell) =>
+      ['fire-bolt', 'sacred-flame', 'guiding-bolt', 'cure-wounds', 'burning-hands', 'bless', 'shield'].includes(
+        spell.id,
+      ),
+    );
+    if (
+      availableSpells.length > 0 &&
+      !availableSpells.some((spell) => spell.id === selectedSpellId)
+    ) {
+      selectedSpellId = availableSpells[0]!.id;
+    }
+    const targets = encounter?.combatants.filter((combatant) => !combatant.deathSaves.dead) ?? [];
+    if (
+      targets.length > 0 &&
+      !targets.some((combatant) => combatant.combatantId === selectedCombatantId)
+    ) {
+      selectedCombatantId =
+        targets.find((combatant) => combatant.side === 'foe')?.combatantId ??
+        targets[0]!.combatantId;
+    }
+    const ownTurn =
+      encounter?.status === 'active' &&
+      encounter.activeCombatantId === ownCombatant?.combatantId;
+    const actionAvailable = ownTurn && ownCombatant?.actionEconomy.actionAvailable === true;
+    const deathSaveAvailable =
+      ownTurn &&
+      ownCombatant?.currentHitPoints === 0 &&
+      ownCombatant.deathSaves.dead !== true &&
+      ownCombatant.deathSaves.stable !== true &&
+      ownCombatant.actionEconomy.deathSaveAvailable === true;
+    const longRestAvailable =
+      ownTurn &&
+      ownCombatant?.deathSaves.dead !== true &&
+      (actionAvailable || ownCombatant?.currentHitPoints === 0);
+    const openWindow = encounter?.decisionWindows.find(
+      (window) =>
+        window.state === 'open' &&
+        window.eligibleCombatantId === ownCombatant?.combatantId,
+    );
+    const authorityReady = holdsOwnAuthority();
+    const disable = busy || tableState === null || !authorityReady;
+    return `
+      <section class="rules-encounter" aria-labelledby="rules-encounter-heading" data-testid="rules-encounter">
+        <div class="rules-heading-row">
+          <div>
+            <h3 id="rules-encounter-heading">Training encounter</h3>
+            <p class="record-meta" data-testid="progression-meta">
+              Level ${progression?.level ?? 1} · ${progression?.experiencePoints ?? 0} XP
+              ${progression?.levelUpAvailable === true ? ' · Level Up available' : ''}
+            </p>
+          </div>
+          <p class="record-meta" data-testid="encounter-meta">
+            ${
+              encounter === null
+                ? 'Not begun'
+                : `${escapeHtml(encounter.status)} · round ${encounter.round} · active ${escapeHtml(
+                    encounter.combatants.find(
+                      (combatant) => combatant.combatantId === encounter?.activeCombatantId,
+                    )?.name ?? 'none',
+                  )}`
+            }
+          </p>
+        </div>
+        ${
+          encounter === null
+            ? '<p>Begin a local rules encounter against a Training Dummy and Practice Goblin.</p>'
+            : `<ul class="combatant-grid" data-testid="combatant-list">
+                ${encounter.combatants
+                  .map(
+                    (combatant) => `
+                    <li class="combatant-card${encounter?.activeCombatantId === combatant.combatantId ? ' active' : ''}"
+                      data-testid="combatant-${escapeHtml(combatant.combatantId)}"
+                      ${combatant.seatId !== null ? 'data-own-combatant="true"' : ''}>
+                      <strong>${escapeHtml(combatant.name)}</strong>
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${
+                        combatant.temporaryHitPoints > 0 ? ` +${combatant.temporaryHitPoints} temp` : ''
+                      } · AC ${combatant.armorClass}</span>
+                      <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(combatant.side)}</span>
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${combatant.conditions.length === 0 ? 'No conditions' : combatant.conditions.map((condition) => escapeHtml(condition.label)).join(', ')}</span>
+                    </li>`,
+                  )
+                  .join('')}
+              </ul>`
+        }
+        <div class="rules-targeting">
+          <label class="field compact">
+            <span>Selected combatant</span>
+            <select data-testid="rules-target">
+              ${targets
+                .map(
+                  (combatant) =>
+                    `<option value="${escapeHtml(combatant.combatantId)}" ${
+                      selectedCombatantId === combatant.combatantId ? 'selected' : ''
+                    }>${escapeHtml(combatant.name)}</option>`,
+                )
+                .join('')}
+            </select>
+          </label>
+          <label class="field compact">
+            <span>Spell</span>
+            <select data-testid="rules-spell">
+              ${
+                availableSpells.length === 0
+                  ? '<option value="">No implemented spell prepared</option>'
+                  : availableSpells
+                      .map(
+                        (spell) =>
+                          `<option value="${escapeHtml(spell.id)}" ${selectedSpellId === spell.id ? 'selected' : ''}>${escapeHtml(spell.name)}</option>`,
+                      )
+                      .join('')
+              }
+            </select>
+          </label>
+        </div>
+        <div class="action-composer-controls rules-controls">
+          <button type="button" data-rules-command="encounter.begin" data-testid="begin-encounter"
+            aria-disabled="${disable || encounter !== null}">Begin encounter</button>
+          <button type="button" data-rules-command="initiative.roll" data-testid="roll-initiative"
+            aria-disabled="${disable || encounter?.status !== 'setup'}">Roll initiative</button>
+          <button type="button" data-rules-command="encounter.next_turn" data-testid="next-encounter-turn"
+            aria-disabled="${disable || encounter?.status !== 'active'}">Next turn</button>
+          <button type="button" data-rules-command="combat.attack" data-testid="rules-attack"
+            aria-disabled="${disable || !actionAvailable || selectedCombatantId === null}">Attack selected</button>
+          <button type="button" data-rules-command="combat.cast_spell" data-testid="rules-cast-spell"
+            aria-disabled="${disable || !actionAvailable || availableSpells.length === 0}">Cast spell</button>
+          <button type="button" data-rules-command="combat.ready" data-testid="rules-ready"
+            aria-disabled="${disable || !actionAvailable}">Ready opportunity attack</button>
+          <button type="button" data-rules-command="combat.reaction" data-testid="rules-reaction"
+            aria-disabled="${disable || openWindow === undefined}">Spend Reaction</button>
+          <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
+            aria-disabled="${disable || !actionAvailable}">Use healing potion</button>
+          <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
+            aria-disabled="${disable || !deathSaveAvailable}">Death Save</button>
+          <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
+            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}">Training: drop to 0 HP</button>
+          <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
+            aria-disabled="${disable || !actionAvailable}">Short Rest</button>
+          <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
+            aria-disabled="${disable || !longRestAvailable}">Long Rest</button>
+          <button type="button" data-rules-command="progression.award_xp" data-testid="rules-award-xp"
+            aria-disabled="${disable}">Award 300 XP</button>
+          <button type="button" data-rules-command="progression.level_up" data-testid="rules-level-up"
+            aria-disabled="${disable || progression?.levelUpAvailable !== true}">Level Up</button>
+        </div>
+        <p class="record-meta" data-testid="rules-last-result">
+          ${escapeHtml(encounter?.log.at(-1)?.summary ?? 'Server dice and results will appear here.')}
+        </p>
+      </section>`;
+  }
+
   function actionComposerBody(): string {
     const version = tableState?.stateVersion ?? 0;
     const sequence = tableState?.lastEventSequence ?? 0;
@@ -228,6 +442,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <span class="option-label">Low effects</span>
         </label>
       </div>
+      ${encounterBody()}
       <div class="action-composer-controls">
         <button type="button" data-testid="refresh-table-projection"
           aria-disabled="${busy || candidate === null}">
@@ -382,6 +597,59 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     render();
   }
 
+  async function submitRulesAction(
+    commandType: string,
+    fields: RulesCommandFields = {},
+  ): Promise<void> {
+    if (
+      candidate === null ||
+      busy ||
+      tableState === null ||
+      timingAuthority === null ||
+      !holdsOwnAuthority()
+    ) {
+      return;
+    }
+    busy = true;
+    error = null;
+    render();
+    try {
+      const accepted = await submitTableCommand({
+        candidateId: candidate.candidateId,
+        campaignId,
+        requestId: crypto.randomUUID(),
+        commandType,
+        expectedStateVersion: tableState.stateVersion,
+        timingAuthorityId: timingAuthority.timingAuthorityId,
+        ...fields,
+      });
+      tableState = accepted.table;
+      if (accepted.encounter !== undefined) encounter = accepted.encounter;
+      if (accepted.progression !== undefined) progression = accepted.progression;
+      if (commandType === 'combat.ready' || commandType === 'combat.reaction') {
+        timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
+      }
+      shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
+    } catch (failure) {
+      error =
+        failure instanceof ApiFailure
+          ? failure.message
+          : 'The rules action could not be resolved.';
+      if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        const [tableFeed, rulesFeed] = await Promise.all([
+          fetchTableState(campaignId),
+          fetchRulesState(campaignId),
+        ]);
+        tableState = tableFeed;
+        encounter = rulesFeed.encounter;
+        progression = rulesFeed.progression;
+      }
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function bindPanelEvents(panels: HTMLElement): void {
     panels.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -394,6 +662,124 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       input.addEventListener('change', () => {
         chatMode = input.value as PartyChatMode;
         render();
+      });
+    });
+
+    panels
+      .querySelector<HTMLSelectElement>('[data-testid="rules-desk-rule"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          selectedRuleId = event.target.value;
+        }
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="rules-desk-explain"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (busy) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            ruleExplanation = await fetchRuleExplanation(selectedRuleId);
+            shell.announce(`${ruleExplanation.title} explanation loaded from structured rules.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The structured rule explanation could not be loaded.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLSelectElement>('[data-testid="rules-target"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          selectedCombatantId = event.target.value;
+        }
+      });
+
+    panels
+      .querySelector<HTMLSelectElement>('[data-testid="rules-spell"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          selectedSpellId = event.target.value;
+        }
+      });
+
+    panels.querySelectorAll<HTMLButtonElement>('[data-rules-command]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.getAttribute('aria-disabled') === 'true') return;
+        const commandType = button.dataset.rulesCommand;
+        if (commandType === undefined) return;
+        const ownCombatant =
+          encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+        const window = encounter?.decisionWindows.find(
+          (entry) =>
+            entry.state === 'open' &&
+            entry.eligibleCombatantId === ownCombatant?.combatantId,
+        );
+        const fields: RulesCommandFields =
+          commandType === 'combat.attack'
+            ? {
+                ...(selectedCombatantId === null
+                  ? {}
+                  : { targetCombatantId: selectedCombatantId }),
+              }
+            : commandType === 'combat.cast_spell'
+              ? {
+                  spellId: selectedSpellId,
+                  ...(selectedSpellId === 'burning-hands'
+                    ? {
+                        area: {
+                          shape: 'cone',
+                          origin: {
+                            column: moveTarget?.column ?? ownCombatant?.position.column ?? 1,
+                            row: moveTarget?.row ?? ownCombatant?.position.row ?? 1,
+                            elevationFeet: ownCombatant?.position.elevationFeet ?? 0,
+                          },
+                          sizeFeet: 15,
+                          heightFeet: 10,
+                          direction: 'east',
+                        } as const,
+                      }
+                    : selectedCombatantId === null
+                      ? {}
+                      : { targetCombatantId: selectedCombatantId }),
+                }
+              : commandType === 'combat.ready'
+                ? {
+                    reactionKind: 'opportunity_attack',
+                    ...(selectedCombatantId === null
+                      ? {}
+                      : { targetCombatantId: selectedCombatantId }),
+                    readyTrigger: 'When the selected foe moves out of reach',
+                  }
+                : commandType === 'combat.reaction'
+                  ? {
+                      ...(window === undefined
+                        ? {}
+                        : {
+                            reactionKind: window.reactionKind,
+                            decisionWindowId: window.decisionWindowId,
+                          }),
+                    }
+                  : commandType === 'progression.award_xp'
+                    ? { xpAmount: 300 }
+                    : commandType === 'inventory.use_item'
+                      ? {
+                          itemId: 'healing-potion',
+                          ...(ownCombatant === null
+                            ? {}
+                            : { targetCombatantId: ownCombatant.combatantId }),
+                        }
+                      : {};
+        void submitRulesAction(commandType, fields);
       });
     });
 
@@ -910,10 +1296,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
       return;
     }
-    const [tableFeed, mapFeed, timingFeed] = await Promise.all([
+    const [tableFeed, mapFeed, timingFeed, rulesFeed] = await Promise.all([
       fetchTableState(campaignId),
       fetchCampaignMap(campaignId),
       fetchTimingAuthority(campaignId),
+      seated ? fetchRulesState(campaignId) : Promise.resolve(null),
     ]);
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -925,6 +1312,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
+    if (rulesFeed !== null) {
+      encounter = rulesFeed.encounter;
+      progression = rulesFeed.progression;
+    }
     const changed =
       options?.forceRender === true ||
       tableFeed.stateVersion !== priorVersion ||
@@ -988,7 +1379,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation] =
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed] =
         await Promise.all([
           fetchChronicle(campaignId),
           fetchPartyChat(campaignId),
@@ -996,12 +1387,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           fetchCampaignMap(campaignId),
           fetchTimingAuthority(campaignId),
           fetchPlayerSettings(),
+          seated ? fetchRulesState(campaignId) : Promise.resolve(null),
         ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
       mapBundle = mapFeed;
       timingAuthority = timingFeed.authority;
+      encounter = rulesFeed?.encounter ?? null;
+      progression = rulesFeed?.progression ?? null;
       reducedMotion = presentation.reducedMotion;
       lowEffects = presentation.lowEffects;
       applyPresentationPreferences({ reducedMotion, lowEffects });

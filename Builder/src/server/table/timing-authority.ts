@@ -15,6 +15,7 @@ import {
   type TimingAuthorityClaimResponse,
   type TimingAuthorityProjection,
   type TimingAuthorityState,
+  type TimingOpportunityClass,
 } from '../../shared/timing-authority-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
@@ -42,7 +43,7 @@ interface StoredSeat {
 interface StoredTimingAuthority {
   readonly timingAuthorityId: string;
   readonly schemaVersion: typeof TIMING_AUTHORITY_SCHEMA_VERSION;
-  readonly opportunityClass: 'active_turn';
+  readonly opportunityClass: TimingOpportunityClass;
   readonly campaignId: string;
   readonly seatId: string;
   readonly characterId: string;
@@ -140,22 +141,33 @@ export async function fetchActiveTimingAuthority(options: {
     .limit(5)
     .get();
   const now = new Date();
+  const available: StoredTimingAuthority[] = [];
   for (const doc of snap.docs) {
     const stored = refreshExpired(doc.data() as StoredTimingAuthority, now);
     if (stored.state !== 'issued') {
       await doc.ref.update({ state: 'expired' });
       continue;
     }
-    // Viewer-safe: only the holder sees the live authority id as actionable.
-    if (stored.accountId !== options.accountId) {
-      return {
-        ...projectAuthority(stored),
-        // Other viewers learn that someone holds the turn, not the credential.
-        timingAuthorityId: 'held-by-other',
-        permittedCommandTypes: [],
-      };
-    }
-    return projectAuthority(stored);
+    available.push(stored);
+  }
+  const own = available
+    .filter((stored) => stored.accountId === options.accountId)
+    .sort((left, right) => {
+      const priority = (opportunityClass: TimingOpportunityClass) =>
+        opportunityClass === 'reaction' ? 0 : opportunityClass === 'decision' ? 1 : 2;
+      return priority(left.opportunityClass) - priority(right.opportunityClass);
+    })[0];
+  if (own !== undefined) {
+    return projectAuthority(own);
+  }
+  const heldByOther = available.find((stored) => stored.opportunityClass === 'active_turn');
+  if (heldByOther !== undefined) {
+    return {
+      ...projectAuthority(heldByOther),
+      // Other viewers learn that someone holds the turn, not the credential.
+      timingAuthorityId: 'held-by-other',
+      permittedCommandTypes: [],
+    };
   }
   return null;
 }
@@ -195,7 +207,7 @@ export async function claimActiveTurnAuthority(options: {
 
     for (const doc of existing.docs) {
       const prior = refreshExpired(doc.data() as StoredTimingAuthority, now);
-      if (prior.state === 'issued') {
+      if (prior.state === 'issued' && prior.opportunityClass === 'active_turn') {
         transaction.update(doc.ref, { state: 'superseded' });
         supersededAuthorityId = prior.timingAuthorityId;
       } else if (prior.state === 'expired' && (doc.data() as StoredTimingAuthority).state === 'issued') {

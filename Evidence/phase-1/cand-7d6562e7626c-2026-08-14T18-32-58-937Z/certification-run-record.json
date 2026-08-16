@@ -1,0 +1,689 @@
+{
+  "recordType": "certification_run_record",
+  "recordVersion": "1",
+  "phase": "phase-1",
+  "status": "FAILED",
+  "mode": "frozen_certification",
+  "startedAt": "2026-08-14T18:32:58.937Z",
+  "endedAt": "2026-08-14T18:33:05.777Z",
+  "candidate": {
+    "candidateId": "cand-7d6562e7626c",
+    "sourceTreeHash": "7d6562e7626c0fb6b2878e12f517131c15d16048b949341c513ff9c07d634015",
+    "commit": "88a6e38bf49bf76492bb5feeaab336f6469cf49d",
+    "dirtyTree": false,
+    "dirtyPaths": [],
+    "dependencyLockHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2",
+    "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1",
+    "fileCount": 100
+  },
+  "blueprintVersion": null,
+  "blueprintSourceHash": null,
+  "localStackManifestPath": null,
+  "localStackManifest": null,
+  "readiness": null,
+  "runtime": {
+    "node": "22.14.0",
+    "platform": "linux-x64"
+  },
+  "steps": [
+    {
+      "name": "pinned_toolchain_verified",
+      "ok": true,
+      "detail": "Node.js 22.14.0, npm 10.9.7, Java (emulators) 21, Firebase CLI 13.35.1, Firebase Admin SDK 13.10.0, TypeScript 5.9.3, Vite 6.4.3, Playwright 1.62.1"
+    },
+    {
+      "name": "builder_root_clean",
+      "ok": true,
+      "detail": "cand-7d6562e7626c (100 tracked files)"
+    },
+    {
+      "name": "code_completeness_scan",
+      "ok": true,
+      "detail": "97 files scanned, 0 classified finding(s)"
+    },
+    {
+      "name": "architecture_conformance",
+      "ok": true,
+      "detail": "89 files, 6 rules, 0 violations"
+    },
+    {
+      "name": "greenfield_source_tree_clean",
+      "ok": true,
+      "detail": "100 tracked files, 740 locked packages"
+    },
+    {
+      "name": "blueprint_preflight",
+      "ok": true,
+      "detail": "ALPHA_3_V1 144f178d3cbf (15538 lines)"
+    },
+    {
+      "name": "candidate_materialized",
+      "ok": true,
+      "detail": "100 tracked files -> /workspace/Runtime/candidates/cand-7d6562e7626c/Builder"
+    },
+    {
+      "name": "clean_dependency_install_from_lockfile",
+      "ok": true,
+      "detail": "npm ci exit=0"
+    },
+    {
+      "name": "candidate_build",
+      "ok": true,
+      "detail": "npm run build exit=0"
+    },
+    {
+      "name": "frozen_runtime_ready",
+      "ok": false,
+      "detail": "Local Arena cannot start: these ports are already in use: firestore (127.0.0.1:8180), auth (127.0.0.1:9199), emulator UI (127.0.0.1:4100), server (127.0.0.1:5274). Stop the process holding them, or start the arena with different ports."
+    }
+  ],
+  "failures": [
+    "frozen_runtime_ready"
+  ],
+  "codeCompletenessScan": {
+    "ok": true,
+    "scanVersion": "completeness-scan-v1",
+    "filesScanned": 97,
+    "findings": [],
+    "approvedFuturePhase": [
+      {
+        "text": "NOT_YET_IMPLEMENTED — Phase 2",
+        "file": "tools/arena/local-stack-manifest.mjs",
+        "justification": "Section 25 assigns realtime projection delivery to Phase 2. The manifest states the service is absent rather than reporting a socket that does not exist."
+      }
+    ],
+    "selfExclusion": {
+      "file": "tools/certification/code-completeness-scan.mjs",
+      "reason": "This file defines the detection patterns and would match itself.",
+      "coveredBy": "tools/certification/greenfield-evidence.mjs"
+    }
+  },
+  "architectureConformance": {
+    "ok": true,
+    "conformanceVersion": "architecture-conformance-v1",
+    "filesScanned": 89,
+    "ruleCount": 6,
+    "findings": [],
+    "selfExclusion": {
+      "file": "tools/certification/architecture-conformance.mjs",
+      "reason": "This file defines the detection patterns and would match itself.",
+      "coveredBy": "tools/certification/code-completeness-scan.mjs"
+    }
+  },
+  "greenfieldEvidence": {
+    "ok": true,
+    "violations": [],
+    "evidence": {
+      "evidenceType": "greenfield_completion_evidence",
+      "blueprintSection": "1.4.7",
+      "treeManifest": {
+        "fileCount": 100,
+        "files": [
+          {
+            "path": ".firebaserc",
+            "mode": "100644",
+            "objectId": "43fa0adde1b6941e61054dbf0066dab403eb23ce"
+          },
+          {
+            "path": "firebase.json",
+            "mode": "100644",
+            "objectId": "3abc59cd8b655ea4964b312f47bd85ed35e8b706"
+          },
+          {
+            "path": "firestore.rules",
+            "mode": "100644",
+            "objectId": "cb45ddbab13f387e186fbb34b8b6d10c91eaa93b"
+          },
+          {
+            "path": "package-lock.json",
+            "mode": "100644",
+            "objectId": "1821d1b074ec4c3cebae41ee9657d0a136e7ffe4"
+          },
+          {
+            "path": "package.json",
+            "mode": "100644",
+            "objectId": "aaad7b6c2f83b9a25a0109d66cf4c106d6c5abef"
+          },
+          {
+            "path": "playwright.config.ts",
+            "mode": "100644",
+            "objectId": "6c49eddf707fec13319b6b4a3ba5242daf124bf4"
+          },
+          {
+            "path": "src/client/account-session.ts",
+            "mode": "100644",
+            "objectId": "dd5459956f62004c2ae187bd09ad79e0afbf1ba9"
+          },
+          {
+            "path": "src/client/api.ts",
+            "mode": "100644",
+            "objectId": "afe0a40fac48bd4ac6c147c51a7e1786bf3f7e31"
+          },
+          {
+            "path": "src/client/auth-gate.ts",
+            "mode": "100644",
+            "objectId": "ce4555cff512dc338fe1983781ebbf6a305e144b"
+          },
+          {
+            "path": "src/client/character-sheet-view.ts",
+            "mode": "100644",
+            "objectId": "6fba852fd19f2e514843dad0d73263fd2b8cc949"
+          },
+          {
+            "path": "src/client/dom-utils.ts",
+            "mode": "100644",
+            "objectId": "f60d565d9124472576347c930a50e908b5442ee2"
+          },
+          {
+            "path": "src/client/index.html",
+            "mode": "100644",
+            "objectId": "5d3b1599f92845ff3ef1e64fe3871f5ca3180925"
+          },
+          {
+            "path": "src/client/main.ts",
+            "mode": "100644",
+            "objectId": "add15db5f33d4f3cad4297c5adbe8d31a38d692c"
+          },
+          {
+            "path": "src/client/page-mount.ts",
+            "mode": "100644",
+            "objectId": "9e013efd309f8cf21ee9894199ba414d73f4715f"
+          },
+          {
+            "path": "src/client/pages/account.ts",
+            "mode": "100644",
+            "objectId": "5abce7078d51cd40d8966209f7f7f94d928f5928"
+          },
+          {
+            "path": "src/client/pages/campaign-create.ts",
+            "mode": "100644",
+            "objectId": "a4807f823d11955dabd7627fcef1b41eefe81ad1"
+          },
+          {
+            "path": "src/client/pages/campaign-detail.ts",
+            "mode": "100644",
+            "objectId": "5ea6c0b33bad77c69109479011f685596baa7c0c"
+          },
+          {
+            "path": "src/client/pages/campaign-settings.ts",
+            "mode": "100644",
+            "objectId": "15fbdd7e8ee99b48ad29ebb38c84bab6926bb47f"
+          },
+          {
+            "path": "src/client/pages/campaign-table.ts",
+            "mode": "100644",
+            "objectId": "d1391063e89b157dc6495c155546014cdda75e34"
+          },
+          {
+            "path": "src/client/pages/campaigns.ts",
+            "mode": "100644",
+            "objectId": "efcd6bce1a39616da73cfcbec98771828755779a"
+          },
+          {
+            "path": "src/client/pages/character-create.ts",
+            "mode": "100644",
+            "objectId": "cac3f35dd99a18b57cb1c6f61f05ee8379b96cf2"
+          },
+          {
+            "path": "src/client/pages/character-sheet.ts",
+            "mode": "100644",
+            "objectId": "876f57ce0f22b7f4e08eb7d4d22f712f42f4fab4"
+          },
+          {
+            "path": "src/client/pages/characters.ts",
+            "mode": "100644",
+            "objectId": "0e9cd1b8fd50f5291e7f5a6efacdc0e766a4815f"
+          },
+          {
+            "path": "src/client/pages/diagnostics.ts",
+            "mode": "100644",
+            "objectId": "7e7b465ccf866e46cb6fed51e6f429b9f349a69f"
+          },
+          {
+            "path": "src/client/pages/home.ts",
+            "mode": "100644",
+            "objectId": "d59a71c1d925fe934c352d37f1aa90bde517512b"
+          },
+          {
+            "path": "src/client/pages/invite.ts",
+            "mode": "100644",
+            "objectId": "64632199867329028602db043d192e33864bfba5"
+          },
+          {
+            "path": "src/client/pages/not-found.ts",
+            "mode": "100644",
+            "objectId": "4e0142438afb1053e3a7cc8e0ca402bb41df0c47"
+          },
+          {
+            "path": "src/client/router.ts",
+            "mode": "100644",
+            "objectId": "7dbaf8c6a5af10b3ae887e0094d74364f59c547f"
+          },
+          {
+            "path": "src/client/shell.ts",
+            "mode": "100644",
+            "objectId": "5372e304487d468c32cb9a3fd337955d7b40eaed"
+          },
+          {
+            "path": "src/client/styles.css",
+            "mode": "100644",
+            "objectId": "ac79635baffc87ca2ec8daf3e49b35ac0a90db9f"
+          },
+          {
+            "path": "src/server/campaigns/campaigns.ts",
+            "mode": "100644",
+            "objectId": "32369ab680dd4994ca2c7fe67e0b2e40b5ddb83a"
+          },
+          {
+            "path": "src/server/campaigns/director-catalog.ts",
+            "mode": "100644",
+            "objectId": "a4c3817f600627d8da2b3607e0a0a67b3726a8e6"
+          },
+          {
+            "path": "src/server/campaigns/errors.ts",
+            "mode": "100644",
+            "objectId": "daac08eb8078e725aa6e77120ff61e83b21b42aa"
+          },
+          {
+            "path": "src/server/characters/characters.ts",
+            "mode": "100644",
+            "objectId": "30776244f7cd4fd5a99760317f3d67a9dcd677ee"
+          },
+          {
+            "path": "src/server/characters/parse-choices.ts",
+            "mode": "100644",
+            "objectId": "3e04613d73ef3996525ed476a608fe093f6c277e"
+          },
+          {
+            "path": "src/server/communication/chronicle.ts",
+            "mode": "100644",
+            "objectId": "c4e3e3564dda0ce3bf91a50d0c26cd446f3feff3"
+          },
+          {
+            "path": "src/server/communication/party-chat.ts",
+            "mode": "100644",
+            "objectId": "96d239fdcb29af182e8fd4e84bec3d2ba83373b1"
+          },
+          {
+            "path": "src/server/config/environment.ts",
+            "mode": "100644",
+            "objectId": "053e536ca36c08c56a3a90005b97ca4c1e055ca1"
+          },
+          {
+            "path": "src/server/foundation/foundation-checks.ts",
+            "mode": "100644",
+            "objectId": "938a3e51a8183617a908e565390e3f8b8212104d"
+          },
+          {
+            "path": "src/server/http/server.ts",
+            "mode": "100644",
+            "objectId": "a1b37698148624e7c864331267ce4e831445aba2"
+          },
+          {
+            "path": "src/server/identity/development-identity.ts",
+            "mode": "100644",
+            "objectId": "b74f51d4afbf8b2afde989f235843df45523032b"
+          },
+          {
+            "path": "src/server/index.ts",
+            "mode": "100644",
+            "objectId": "13d8ac5cba354d6eb06f9a2e51d340b640578c40"
+          },
+          {
+            "path": "src/server/legal/legal-registry.ts",
+            "mode": "100644",
+            "objectId": "71b3ce4144a268a1ca01492f525870ada3a4f586"
+          },
+          {
+            "path": "src/server/legal/render-legal-page.ts",
+            "mode": "100644",
+            "objectId": "f8e9a6fe9fe4b6b2e1199ae40886ce78b4482933"
+          },
+          {
+            "path": "src/server/persistence/firestore.ts",
+            "mode": "100644",
+            "objectId": "f7c3b0e49687fdfa7c315d41b9dea9b1254a5ff6"
+          },
+          {
+            "path": "src/server/rules/character-rules.ts",
+            "mode": "100644",
+            "objectId": "78395405b68506078fa59d48db23acb5ee587f4e"
+          },
+          {
+            "path": "src/server/rules/srd-manifest.ts",
+            "mode": "100644",
+            "objectId": "26bf83b8b059048133a61d748d4ca0a17e76b347"
+          },
+          {
+            "path": "src/server/settings/campaign-settings.ts",
+            "mode": "100644",
+            "objectId": "11174a9d2d87f372c8cb0bc39eb499cea58ef8e1"
+          },
+          {
+            "path": "src/server/settings/player-settings.ts",
+            "mode": "100644",
+            "objectId": "40e4a949edebc801157ffda7074f8485f9a82ed2"
+          },
+          {
+            "path": "src/shared/campaign-contract.ts",
+            "mode": "100644",
+            "objectId": "20a47d7608de5c48ee6bba4ab46947bdae3133ed"
+          },
+          {
+            "path": "src/shared/character-contract.ts",
+            "mode": "100644",
+            "objectId": "1796c63f88047566a857a550e7d099d87ec8eadc"
+          },
+          {
+            "path": "src/shared/communication-contract.ts",
+            "mode": "100644",
+            "objectId": "aace2d0772cacd5ac96fa368e09db3927d406008"
+          },
+          {
+            "path": "src/shared/contract.ts",
+            "mode": "100644",
+            "objectId": "3c8412c512cef0b0b1ce3a9612bf0ba9b9aa03cb"
+          },
+          {
+            "path": "src/shared/routes.ts",
+            "mode": "100644",
+            "objectId": "181c8132e9fbae18e7e225daafe89b342047614d"
+          },
+          {
+            "path": "src/shared/settings-contract.ts",
+            "mode": "100644",
+            "objectId": "1db1380f89a980007cc5ca7fe04ac81ec021b21f"
+          },
+          {
+            "path": "tests/e2e/arena-page.ts",
+            "mode": "100644",
+            "objectId": "ea43e284f5226bcbe50cdbfdd3087ce47ece87c8"
+          },
+          {
+            "path": "tests/e2e/phase0-self-play.spec.ts",
+            "mode": "100644",
+            "objectId": "58cec673cc1a2a00536e2d26c0ec0846553dadd2"
+          },
+          {
+            "path": "tests/e2e/phase1-account.spec.ts",
+            "mode": "100644",
+            "objectId": "af3f96d9f4bf06f9359d960abc3f530520328904"
+          },
+          {
+            "path": "tests/e2e/phase1-campaigns.spec.ts",
+            "mode": "100644",
+            "objectId": "5393a5ac7df1f176e3668db56b271b8615d321df"
+          },
+          {
+            "path": "tests/e2e/phase1-characters.spec.ts",
+            "mode": "100644",
+            "objectId": "b06696ab37afaeecd606b9f2a25b28e1b898b0c4"
+          },
+          {
+            "path": "tests/e2e/phase1-reentry.spec.ts",
+            "mode": "100644",
+            "objectId": "1136b1b5c2472203b9680a60b8106d70be931fa6"
+          },
+          {
+            "path": "tests/e2e/phase1-settings-dock.spec.ts",
+            "mode": "100644",
+            "objectId": "b78761e6b6440f4b2b01df7e1b7270cf06b4fc28"
+          },
+          {
+            "path": "tests/e2e/phase1-shell.spec.ts",
+            "mode": "100644",
+            "objectId": "2cb2400787010671a30e7d257f74a4589613696a"
+          },
+          {
+            "path": "tests/e2e/qa-regressions.spec.ts",
+            "mode": "100644",
+            "objectId": "d36cd633f34fa02fb9c544905e2cc08cc9635cd7"
+          },
+          {
+            "path": "tests/e2e/smoke-spine.spec.ts",
+            "mode": "100644",
+            "objectId": "63254e65517944802a78050bde1b856674cd1ae3"
+          },
+          {
+            "path": "tests/unit/architecture-conformance.test.mjs",
+            "mode": "100644",
+            "objectId": "82a154a6d1faf2f82011739b754dc448d6056b50"
+          },
+          {
+            "path": "tests/unit/blueprint-preflight.test.mjs",
+            "mode": "100644",
+            "objectId": "48a821a6b27777391a134df6ccb201723389a3f7"
+          },
+          {
+            "path": "tests/unit/campaign-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "373f661908ca295a74e7be2e29ac33b672725f68"
+          },
+          {
+            "path": "tests/unit/character-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "f9d73b1e28b4b396aa445dcdf1dd208d7b46169b"
+          },
+          {
+            "path": "tests/unit/character-rules.test.mjs",
+            "mode": "100644",
+            "objectId": "b963cecf29682b4fe8bcaf3af76d54083f476d15"
+          },
+          {
+            "path": "tests/unit/characters-service.test.mjs",
+            "mode": "100644",
+            "objectId": "96d698b8484be3922634512443ddab4c990e0cd8"
+          },
+          {
+            "path": "tests/unit/contract.test.mjs",
+            "mode": "100644",
+            "objectId": "adc575c7651038e28c8bb4034d88bf2378578f79"
+          },
+          {
+            "path": "tests/unit/environment-guards.test.mjs",
+            "mode": "100644",
+            "objectId": "72d5e15c637dd7b1e7de7de8ab2567697a06d23c"
+          },
+          {
+            "path": "tests/unit/legal-registry.test.mjs",
+            "mode": "100644",
+            "objectId": "a186d0224c053a01dd04c4d34c27e9b52e408c6f"
+          },
+          {
+            "path": "tests/unit/parse-choices.test.mjs",
+            "mode": "100644",
+            "objectId": "aa4e23635aab39326555da3bbfef076226c2c518"
+          },
+          {
+            "path": "tests/unit/phase1-coverage-model.test.mjs",
+            "mode": "100644",
+            "objectId": "220a1df04b758a812c17f623eecf2613949b2ef1"
+          },
+          {
+            "path": "tests/unit/settings-communication-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "dd61fb037beed1933de9d973f236b4d838e0d6b8"
+          },
+          {
+            "path": "tests/unit/srd-manifest.test.mjs",
+            "mode": "100644",
+            "objectId": "eef54010de496c686ccf8289debbd0907ad4e136"
+          },
+          {
+            "path": "tests/unit/stable-identifiers.test.mjs",
+            "mode": "100644",
+            "objectId": "2027292ec7bff6fcb989e6d3359873566e497f69"
+          },
+          {
+            "path": "tests/unit/workspace-roots.test.mjs",
+            "mode": "100644",
+            "objectId": "ad005e8646b3f722c932c5fefd223c908c471a81"
+          },
+          {
+            "path": "tools/arena/arena-instance.mjs",
+            "mode": "100644",
+            "objectId": "23b1e0a9e71a90ef4c42d981a8e20dd325612660"
+          },
+          {
+            "path": "tools/arena/emulators.mjs",
+            "mode": "100644",
+            "objectId": "8743f5bbc9694deebb9368601269b56b79958ee8"
+          },
+          {
+            "path": "tools/arena/local-stack-manifest.mjs",
+            "mode": "100644",
+            "objectId": "0f38503b785057976b5f2880a8ecd759ce37cab3"
+          },
+          {
+            "path": "tools/arena/project.mjs",
+            "mode": "100644",
+            "objectId": "4966da930b3be9625fa1a43b8b58f33d0be56824"
+          },
+          {
+            "path": "tools/arena/seed.mjs",
+            "mode": "100644",
+            "objectId": "bcaa913f6ac3a9fa0f6d334f47702a4e941b8735"
+          },
+          {
+            "path": "tools/arena/start-arena.mjs",
+            "mode": "100644",
+            "objectId": "8de2626c398bf4cf4066799c2acf1c1cbcba2f3d"
+          },
+          {
+            "path": "tools/blueprint/preflight.mjs",
+            "mode": "100644",
+            "objectId": "cd5c9e495327ca43bcce3c3e0a441c507d07473f"
+          },
+          {
+            "path": "tools/candidate/candidate-identity.mjs",
+            "mode": "100644",
+            "objectId": "fbdabe49fa94f98d8e7f729e813d305326309e39"
+          },
+          {
+            "path": "tools/certification/architecture-conformance.mjs",
+            "mode": "100644",
+            "objectId": "f6eeba186e558adaf1f24de5a024b0ec605b9233"
+          },
+          {
+            "path": "tools/certification/code-completeness-scan.mjs",
+            "mode": "100644",
+            "objectId": "7a02ea2adfed82dac327872b0be6cb66213ebd62"
+          },
+          {
+            "path": "tools/certification/greenfield-evidence.mjs",
+            "mode": "100644",
+            "objectId": "84220d4b3c76931dc5d90a0afc01502457ddd5a9"
+          },
+          {
+            "path": "tools/certification/run-certification.mjs",
+            "mode": "100644",
+            "objectId": "63553f9cf5acbaec78d52f24113456a5e20e0707"
+          },
+          {
+            "path": "tools/certification/serve-frozen.mjs",
+            "mode": "100644",
+            "objectId": "03231ecfd9067d61c0cd91478484abbca6db18a3"
+          },
+          {
+            "path": "tools/verify-toolchain.mjs",
+            "mode": "100644",
+            "objectId": "76eda926bfd026f8027b2887b69406f287f4a14c"
+          },
+          {
+            "path": "tools/workspace/init-working-directory.mjs",
+            "mode": "100644",
+            "objectId": "511826beecfb7b44e920fdff77b9273459095aeb"
+          },
+          {
+            "path": "tools/workspace/working-directory.mjs",
+            "mode": "100644",
+            "objectId": "4b7b8aa1da59ffd26a34ec2e0e35f8d42fc1ad04"
+          },
+          {
+            "path": "tsconfig.base.json",
+            "mode": "100644",
+            "objectId": "9823d34584df0ef959e0df78bffc779e14f47a49"
+          },
+          {
+            "path": "tsconfig.client.json",
+            "mode": "100644",
+            "objectId": "4afb3898f4e282ff2e31dd6d694cbf35eedde275"
+          },
+          {
+            "path": "tsconfig.server.json",
+            "mode": "100644",
+            "objectId": "d50c9e9833f3b3f40c9eef47675d8ca16617f17b"
+          },
+          {
+            "path": "vite.config.ts",
+            "mode": "100644",
+            "objectId": "aa9f5228392ea7b7c20b00cab91ef76c4e9d2c80"
+          }
+        ]
+      },
+      "frameworkGeneratedFiles": {
+        "generator": "none",
+        "note": "No scaffolding generator was run. Every tracked file in Builder Root was authored directly against the V1 blueprint, so the approved-generated-file list is empty by construction rather than by omission.",
+        "files": []
+      },
+      "dependencies": {
+        "format": "lockfile-derived-package-list-v1",
+        "packageCount": 740,
+        "directDependencyCount": 1,
+        "directDevDependencyCount": 5,
+        "sbomHash": "aaed888dbf9f089cb1851d020e89c013ded9c8491c19ab765b88d3366d943e7f",
+        "lockfileHash": "f1be8b63847c56378030f5f5d60c1bb388addccb23d4f2e343289075ba58dba2"
+      },
+      "prohibitedPatternScan": {
+        "topologyRules": [
+          "hex_grid",
+          "isometric_topology",
+          "topology_switch",
+          "compatibility_layer"
+        ],
+        "secretAndImportRules": [
+          "private_key_block",
+          "service_account_json",
+          "google_api_key",
+          "password_credential_flow",
+          "password_literal",
+          "database_export"
+        ],
+        "trackedPathRules": [
+          "QA/",
+          "Evidence/",
+          "Runtime/",
+          "Checkpoints/",
+          "Pending-Archive/"
+        ],
+        "violationCount": 0,
+        "selfExclusion": {
+          "file": "tools/certification/greenfield-evidence.mjs",
+          "reason": "This file defines the detection patterns and would match itself.",
+          "coveredBy": "tools/certification/code-completeness-scan.mjs"
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "command": "npm ci --no-audit --no-fund",
+      "cwd": "/workspace/Runtime/candidates/cand-7d6562e7626c/Builder",
+      "startedAt": "2026-08-14T18:32:59.149Z",
+      "endedAt": "2026-08-14T18:33:03.690Z",
+      "exitCode": 0,
+      "stdoutTail": "\nadded 689 packages in 4s\n",
+      "stderrTail": "npm warn deprecated tar@6.2.1: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\nnpm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.\nnpm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\n"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "/workspace/Runtime/candidates/cand-7d6562e7626c/Builder",
+      "startedAt": "2026-08-14T18:33:03.691Z",
+      "endedAt": "2026-08-14T18:33:05.659Z",
+      "exitCode": 0,
+      "stdoutTail": "\n> hallucinated-dungeons-alpha3@0.0.0 build\n> npm run build:server && npm run build:client\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:server\n> tsc --project tsconfig.server.json\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:client\n> vite build --config vite.config.ts\n\nvite v6.4.3 building for production...\ntransforming...\n✓ 31 modules transformed.\nrendering chunks...\ncomputing gzip size...\n../../dist/client/index.html                   0.59 kB │ gzip:  0.35 kB\n../../dist/client/assets/index-DQrd45dT.css   19.40 kB │ gzip:  4.23 kB\n../../dist/client/assets/index-3RQC1qv9.js   129.64 kB │ gzip: 31.46 kB │ map: 369.00 kB\n✓ built in 258ms\n",
+      "stderrTail": ""
+    }
+  ],
+  "browserSuite": null
+}

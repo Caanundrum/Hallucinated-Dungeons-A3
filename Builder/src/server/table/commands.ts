@@ -25,7 +25,12 @@ import {
   type MovementPreviewProjection,
 } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
+import type { RulesCommandFields } from '../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import {
+  RULES_COMMAND_TYPES,
+  acceptRulesCommand,
+} from '../rules/engine/rules-commands.js';
 import {
   buildAuthoritativeMapBundle,
   loadCampaignSeats,
@@ -75,6 +80,8 @@ interface StoredEvent {
   readonly committedAt: Timestamp | Date;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly summary?: string;
+  readonly rolls?: readonly number[];
 }
 
 interface StoredCommand {
@@ -121,6 +128,8 @@ function toEventProjection(stored: StoredEvent): TableEventProjection {
     priorStateVersion: stored.priorStateVersion,
     resultStateVersion: stored.resultStateVersion,
     committedAt: toIso(stored.committedAt) ?? new Date(0).toISOString(),
+    ...(stored.summary === undefined ? {} : { summary: stored.summary }),
+    ...(stored.rolls === undefined ? {} : { rolls: stored.rolls }),
   };
 }
 
@@ -271,7 +280,7 @@ export async function acceptTableCommand(options: {
   readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
-}): Promise<TableCommandAcceptResponse> {
+} & RulesCommandFields): Promise<TableCommandAcceptResponse> {
   const {
     firestore,
     accountId,
@@ -283,7 +292,38 @@ export async function acceptTableCommand(options: {
     timingAuthorityId,
     path,
     edgeId,
+    targetCombatantId,
+    attackId,
+    spellId,
+    area,
+    reactionKind,
+    decisionWindowId,
+    readyTrigger,
+    xpAmount,
+    itemId,
   } = options;
+
+  if ((RULES_COMMAND_TYPES as readonly string[]).includes(commandType)) {
+    return acceptRulesCommand({
+      firestore,
+      accountId,
+      campaignId,
+      requestId,
+      commandType,
+      expectedStateVersion,
+      deviceSessionId,
+      ...(timingAuthorityId === undefined ? {} : { timingAuthorityId }),
+      ...(targetCombatantId === undefined ? {} : { targetCombatantId }),
+      ...(attackId === undefined ? {} : { attackId }),
+      ...(spellId === undefined ? {} : { spellId }),
+      ...(area === undefined ? {} : { area }),
+      ...(reactionKind === undefined ? {} : { reactionKind }),
+      ...(decisionWindowId === undefined ? {} : { decisionWindowId }),
+      ...(readyTrigger === undefined ? {} : { readyTrigger }),
+      ...(xpAmount === undefined ? {} : { xpAmount }),
+      ...(itemId === undefined ? {} : { itemId }),
+    });
+  }
 
   if (
     commandType !== 'table.sync' &&
