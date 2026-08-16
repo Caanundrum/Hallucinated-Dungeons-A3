@@ -282,6 +282,38 @@ export async function endActiveTurnAuthority(options: {
 }
 
 /**
+ * Active-Initiative disconnect lock (Phase 4): when a seated authority holder
+ * enters reconnect grace / offline, revoke their issued Active Turn so the
+ * table cannot accept stale mechanical commands from a disconnected device.
+ */
+export async function lockActiveTurnOnDisconnect(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+}): Promise<TimingAuthorityProjection | null> {
+  const { firestore, campaignId, accountId } = options;
+  const snap = await firestore
+    .collection(COLLECTIONS.timingAuthorities)
+    .where('campaignId', '==', campaignId)
+    .where('accountId', '==', accountId)
+    .where('state', '==', 'issued')
+    .get();
+  if (snap.empty) {
+    return null;
+  }
+  let locked: TimingAuthorityProjection | null = null;
+  for (const doc of snap.docs) {
+    const stored = refreshExpired(doc.data() as StoredTimingAuthority, new Date());
+    if (stored.state !== 'issued' || stored.opportunityClass !== 'active_turn') {
+      continue;
+    }
+    await doc.ref.update({ state: 'revoked' });
+    locked = projectAuthority({ ...stored, state: 'revoked' });
+  }
+  return locked;
+}
+
+/**
  * Validates and optionally consumes a Timing Authority inside a command path.
  * Returns the verified stored authority when valid.
  */

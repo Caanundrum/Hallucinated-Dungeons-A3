@@ -23,12 +23,14 @@ import {
 } from '../../dist/shared/settings-contract.js';
 import { campaignRouteFromPath } from '../../dist/shared/routes.js';
 
-test('dock tabs are peer destinations with Chronicle, Party Chat, and Rules Desk', () => {
-  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk']);
+test('dock tabs are peer destinations including Director Address', () => {
+  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
   assert.equal(DOCK_TAB_LABELS.chronicle, 'Chronicle');
   assert.equal(DOCK_TAB_LABELS.party_chat, 'Party Chat');
   assert.equal(DOCK_TAB_LABELS.rules_desk, 'Rules Desk');
+  assert.equal(DOCK_TAB_LABELS.director_address, 'Director Address');
   assert.equal(isDockTab('party_chat'), true);
+  assert.equal(isDockTab('director_address'), true);
   assert.equal(isDockTab('action_composer'), false);
 });
 
@@ -46,7 +48,7 @@ test('action composer enables table sync while keeping Interpret Action gated', 
   assert.match(RULES_DESK_NOTICE, /cannot grant rulings/i);
 });
 
-test('settings defaults reserve speech and AI presentation without fake controls', () => {
+test('settings defaults keep speech off until the player enables them', () => {
   const defaults = defaultCampaignSettingsFields();
   assert.equal(defaults.contentProfile, 'adventure');
   assert.equal(defaults.groupDecisionPolicy, 'majority_vote');

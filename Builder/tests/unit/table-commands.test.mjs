@@ -51,5 +51,5 @@ test('action composer stays separate from Party Chat and references Timing Autho
   assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Timing Authority|Active Turn/i);
   assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Commit table sync');
   assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /Intent Intercept|cannot become a command/i);
-  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk']);
+  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
 });

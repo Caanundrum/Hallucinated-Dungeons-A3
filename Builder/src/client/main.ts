@@ -17,6 +17,7 @@ import { hydrateAccount, clearAccountOnAuthFailure, getAccount } from './account
 import { fetchCandidate, fetchPlayerSettings, onAuthFailure } from './api.js';
 import { applyPresentationPreferences, clearPresentationPreferences } from './presentation-preferences.js';
 import { mountAccountPage } from './pages/account.js';
+import { mountAdminPage } from './pages/admin.js';
 import { mountCampaignCreatePage } from './pages/campaign-create.js';
 import { mountCampaignDetailPage } from './pages/campaign-detail.js';
 import { mountCampaignSettingsPage } from './pages/campaign-settings.js';
@@ -85,6 +86,8 @@ async function start(): Promise<void> {
       mountHomePage(host);
     } else if (path === '/account') {
       mountAccountPage(host);
+    } else if (path === '/admin') {
+      mountAdminPage(host);
     } else if (path === '/diagnostics') {
       mountDiagnosticsPage(host);
     } else if (path === '/characters') {

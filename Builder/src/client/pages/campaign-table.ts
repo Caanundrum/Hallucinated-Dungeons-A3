@@ -10,6 +10,7 @@ import type { TableStateProjection } from '../../shared/command-contract.js';
 import type { ChronicleFeedProjection, PartyChatFeedProjection } from '../../shared/communication-contract.js';
 import {
   ACTION_COMPOSER_STRUCTURE,
+  DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
   DOCK_TABS,
   PARTY_CHAT_MODE_LABELS,
@@ -18,6 +19,8 @@ import {
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
+import type { CampaignPresenceProjection } from '../../shared/presence-contract.js';
+import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type {
   CharacterProgressionProjection,
@@ -43,8 +46,12 @@ import {
   fetchRulesState,
   fetchTableState,
   fetchTimingAuthority,
+  heartbeatCampaignPresence,
+  interpretNaturalLanguage,
+  postDirectorAddress,
   postPartyChat,
   previewTableMove,
+  requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
 } from '../api.js';
@@ -76,10 +83,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let intentDraft: ActionDraftSuggestion | null = null;
   let reducedMotion = false;
   let lowEffects = false;
+  let textToSpeechEnabled = false;
+  let speechToTextEnabled = false;
   let seated = false;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
   let draft = '';
+  let directorDraft = '';
+  let directorReply: string | null = null;
+  let nlIntentText = '';
+  let presence: CampaignPresenceProjection | null = null;
+  let lastNarration: string | null = null;
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
@@ -87,7 +101,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let stageHandle: TableStageHandle | null = null;
   let stageMounting = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let presenceTimer: ReturnType<typeof setInterval> | null = null;
   let pollInFlight = false;
+  const presenceTabId = crypto.randomUUID();
   const mountToken = beginPageMount(container);
 
   /** Local poll interval for two-client table projection sync (Phase 2e). */
@@ -140,7 +156,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function presentationMeta(): string {
     const motion = reducedMotion ? 'reduced motion on' : 'reduced motion off';
     const effects = lowEffects ? 'low effects on' : 'low effects off';
-    return `Table presentation: ${motion} · ${effects}. No voice-selection controls in Phase 2.`;
+    const tts = textToSpeechEnabled ? 'TTS on' : 'TTS off';
+    const stt = speechToTextEnabled ? 'STT on' : 'STT off';
+    return `Table presentation: ${motion} · ${effects} · ${tts} · ${stt}.`;
+  }
+
+  function presenceBody(): string {
+    if (presence === null) {
+      return '<p class="record-meta" data-testid="presence-empty">Presence not yet heartbeated.</p>';
+    }
+    const rows = presence.devices
+      .map(
+        (device) => `
+        <li data-testid="presence-device">
+          <strong>${escapeHtml(device.displayLabel)}</strong>
+          · ${escapeHtml(device.status)}
+          <span class="record-meta">${escapeHtml(device.deviceSessionId.slice(0, 8))}… · tab ${escapeHtml(device.tabId.slice(0, 8))}…</span>
+        </li>`,
+      )
+      .join('');
+    return `
+      <div data-testid="presence-panel">
+        <p class="record-meta" data-testid="presence-meta">
+          Presence v${presence.stateVersion} · online ${presence.onlineAccountIds.length} · grace ${presence.graceAccountIds.length}
+        </p>
+        <ul class="record-list" data-testid="presence-list">${rows || '<li>No devices yet.</li>'}</ul>
+      </div>`;
   }
 
   function dockBody(): string {
@@ -163,6 +204,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     )
                     .join('')}
                 </ol>`
+          }
+          ${
+            lastNarration === null
+              ? ''
+              : `<article class="rules-explanation" data-testid="director-narration">
+                  <h3>Director narration</h3>
+                  <p>${escapeHtml(lastNarration)}</p>
+                </article>`
           }
         </div>`;
     }
@@ -206,6 +255,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   <p class="record-meta">${escapeHtml(ruleExplanation.ruleId)} · ${escapeHtml(ruleExplanation.source)}</p>
                 </article>`
           }
+        </div>`;
+    }
+
+    if (activeTab === 'director_address') {
+      return `
+        <div class="dock-pane" data-testid="director-address-pane">
+          <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
+          ${
+            directorReply === null
+              ? ''
+              : `<article class="rules-explanation" data-testid="director-address-reply">
+                  <h3>Director reply</h3>
+                  <p>${escapeHtml(directorReply)}</p>
+                </article>`
+          }
+          <form class="dock-composer" data-testid="director-address-composer">
+            <label class="field">
+              <span>Private question to the Director</span>
+              <textarea data-testid="director-address-input" rows="3">${escapeHtml(directorDraft)}</textarea>
+            </label>
+            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null}">
+              ${busy ? 'Sending…' : 'Address the Director'}
+            </button>
+          </form>
         </div>`;
     }
 
@@ -254,6 +327,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null}">
             ${busy ? 'Sending…' : 'Send to Party Chat'}
           </button>
+          ${
+            speechToTextEnabled
+              ? `<button type="button" data-testid="party-chat-dictate" aria-disabled="${busy}">
+                   Dictate into draft
+                 </button>`
+              : ''
+          }
         </form>
       </div>`;
   }
@@ -481,7 +561,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-disabled="${interpretDisabled}">
           ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)}
         </button>
+        <button type="button" data-testid="request-narration"
+          aria-disabled="${busy || candidate === null || !seated}">
+          Request Director narration
+        </button>
       </div>
+      <label class="field">
+        <span>Natural-language intent (Intent Intercept via Director gateway)</span>
+        <textarea data-testid="nl-intent-input" rows="2">${escapeHtml(nlIntentText)}</textarea>
+      </label>
+      <button type="button" data-testid="interpret-nl-intent"
+        aria-disabled="${interpretDisabled}">
+        Interpret natural language
+      </button>
       <p class="record-meta" data-testid="move-target-meta">
         ${
           moveTarget === null
@@ -783,10 +875,228 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
+    panels
+      .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
+      ?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void (async () => {
+          if (candidate === null || busy || draft.trim().length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await postPartyChat({
+              candidateId: candidate.candidateId,
+              campaignId,
+              mode: chatMode,
+              body: draft.trim(),
+            });
+            draft = '';
+            partyChat = await fetchPartyChat(campaignId);
+            shell.announce('Party Chat message sent. It did not become a command.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Party Chat message could not be sent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="party-chat-dictate"]')
+      ?.addEventListener('click', () => {
+        const SpeechRecognitionCtor =
+          (
+            window as unknown as {
+              SpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+              webkitSpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+            }
+          ).SpeechRecognition ??
+          (
+            window as unknown as {
+              webkitSpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+            }
+          ).webkitSpeechRecognition;
+        if (!speechToTextEnabled || SpeechRecognitionCtor === undefined) {
+          shell.announce(
+            'Speech-to-text is enabled in settings but this browser has no recognition API. Drafts stay editable and unsent.',
+          );
+          return;
+        }
+        const recognition = new SpeechRecognitionCtor();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.onresult = (event) => {
+          const transcript = event.results[0]?.[0]?.transcript?.trim() ?? '';
+          if (transcript.length > 0) {
+            draft = draft.length === 0 ? transcript : `${draft} ${transcript}`;
+            render();
+            shell.announce('Dictation placed into an editable unsent Party Chat draft.');
+          }
+        };
+        recognition.onerror = () => {
+          shell.announce('Dictation did not capture audio. Nothing was sent.');
+        };
+        recognition.start();
+      });
+
     const input = panels.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
     });
+
+    const directorInput = panels.querySelector<HTMLTextAreaElement>(
+      '[data-testid="director-address-input"]',
+    );
+    directorInput?.addEventListener('input', () => {
+      directorDraft = directorInput.value;
+    });
+
+    panels
+      .querySelector<HTMLFormElement>('[data-testid="director-address-composer"]')
+      ?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void (async () => {
+          if (candidate === null || busy || directorDraft.trim().length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const answered = await postDirectorAddress({
+              candidateId: candidate.candidateId,
+              campaignId,
+              body: directorDraft.trim(),
+            });
+            directorReply = answered.body;
+            directorDraft = '';
+            if (textToSpeechEnabled && 'speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(answered.body);
+              window.speechSynthesis.speak(utterance);
+            }
+            shell.announce('Director Address reply received. No table state changed.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Director Address could not be sent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    const nlInput = panels.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
+    nlInput?.addEventListener('input', () => {
+      nlIntentText = nlInput.value;
+    });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="interpret-nl-intent"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (
+            candidate === null ||
+            busy ||
+            !holdsOwnAuthority() ||
+            nlIntentText.trim().length === 0
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const interpreted = await interpretNaturalLanguage({
+              candidateId: candidate.candidateId,
+              campaignId,
+              text: nlIntentText.trim(),
+              moveTarget,
+            });
+            intentDraft = {
+              draftId: interpreted.draftId,
+              source: 'action_composer_interpret',
+              campaignId,
+              proposedCommandType: interpreted.proposedCommandType,
+              summary: interpreted.summary,
+              ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
+              interceptState: interpreted.interceptState,
+              createdAt: interpreted.createdAt,
+            };
+            shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Natural-language intent could not be interpreted.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="request-narration"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            const narration = await requestDirectorNarration({
+              candidateId: candidate.candidateId,
+              campaignId,
+              mechanicsSummary:
+                tableState === null
+                  ? 'The table is quiet.'
+                  : `Table state version ${tableState.stateVersion} is visible to seated players.`,
+            });
+            lastNarration = narration.body;
+            activeTab = 'chronicle';
+            if (textToSpeechEnabled && 'speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(narration.body);
+              window.speechSynthesis.speak(utterance);
+            }
+            shell.announce('Director narration delivered mechanics-first.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Director narration is unavailable.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
 
     panels
       .querySelector<HTMLButtonElement>('[data-testid="refresh-table-projection"]')
@@ -879,37 +1189,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Presentation preference could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-
-    panels
-      .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
-      ?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        void (async () => {
-          if (candidate === null || busy) return;
-          const body = input?.value.trim() ?? '';
-          if (body.length === 0) return;
-          busy = true;
-          error = null;
-          render();
-          try {
-            await postPartyChat({
-              candidateId: candidate.candidateId,
-              campaignId,
-              mode: chatMode,
-              body,
-            });
-            draft = '';
-            partyChat = await fetchPartyChat(campaignId);
-            shell.announce('Message sent to Party Chat.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure ? failure.message : 'Party Chat message failed.';
           } finally {
             busy = false;
             render();
@@ -1228,6 +1507,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }`;
 
     panels.innerHTML = `
+      <section class="panel" aria-labelledby="presence-heading" data-testid="presence-section">
+        <h2 id="presence-heading">Table presence</h2>
+        ${presenceBody()}
+      </section>
+
       <section class="panel communication-dock" aria-label="Communication Dock" data-testid="communication-dock">
         <div class="dock-tabs" role="tablist" aria-label="Dock destinations">
           ${DOCK_TABS.map(
@@ -1296,11 +1580,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
       return;
     }
-    const [tableFeed, mapFeed, timingFeed, rulesFeed] = await Promise.all([
+    const [tableFeed, mapFeed, timingFeed, rulesFeed, chatFeed, chronicleFeed] = await Promise.all([
       fetchTableState(campaignId),
       fetchCampaignMap(campaignId),
       fetchTimingAuthority(campaignId),
       seated ? fetchRulesState(campaignId) : Promise.resolve(null),
+      fetchPartyChat(campaignId),
+      fetchChronicle(campaignId),
     ]);
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -1309,9 +1595,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const priorMap = mapSyncFingerprint(mapBundle);
     const priorAuthorityId = timingAuthority?.timingAuthorityId ?? null;
     const priorAuthorityState = timingAuthority?.state ?? null;
+    const priorChatCount = partyChat?.messages.length ?? 0;
+    const priorChronicleCount = chronicle?.entries.length ?? 0;
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
+    partyChat = chatFeed;
+    chronicle = chronicleFeed;
     if (rulesFeed !== null) {
       encounter = rulesFeed.encounter;
       progression = rulesFeed.progression;
@@ -1321,7 +1611,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableFeed.stateVersion !== priorVersion ||
       mapSyncFingerprint(mapFeed) !== priorMap ||
       (timingFeed.authority?.timingAuthorityId ?? null) !== priorAuthorityId ||
-      (timingFeed.authority?.state ?? null) !== priorAuthorityState;
+      (timingFeed.authority?.state ?? null) !== priorAuthorityState ||
+      chatFeed.messages.length !== priorChatCount ||
+      chronicleFeed.entries.length !== priorChronicleCount;
     if (changed) {
       render();
     } else if (mapBundle !== null && stageHandle !== null) {
@@ -1334,6 +1626,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       clearInterval(pollTimer);
       pollTimer = null;
     }
+    if (presenceTimer !== null) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+  }
+
+  async function sendPresenceHeartbeat(): Promise<void> {
+    if (candidate === null || getAccount() === null) {
+      return;
+    }
+    const result = await heartbeatCampaignPresence({
+      candidateId: candidate.candidateId,
+      campaignId,
+      tabId: presenceTabId,
+      spectator: !seated,
+    });
+    presence = result.presence;
   }
 
   function startProjectionPoll(): void {
@@ -1355,6 +1664,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           pollInFlight = false;
         });
     }, TABLE_PROJECTION_POLL_MS);
+
+    presenceTimer = setInterval(() => {
+      if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
+        return;
+      }
+      void sendPresenceHeartbeat()
+        .then(() => {
+          render();
+        })
+        .catch(() => {
+          // Soft-fail presence; next heartbeat retries.
+        });
+    }, PRESENCE_HEARTBEAT_INTERVAL_MS);
   }
 
   function onVisibilityRefresh(): void {
@@ -1398,8 +1720,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       progression = rulesFeed?.progression ?? null;
       reducedMotion = presentation.reducedMotion;
       lowEffects = presentation.lowEffects;
+      textToSpeechEnabled = presentation.reserved.textToSpeechEnabled;
+      speechToTextEnabled = presentation.reserved.speechToTextEnabled;
       applyPresentationPreferences({ reducedMotion, lowEffects });
       startProjectionPoll();
+      try {
+        await sendPresenceHeartbeat();
+      } catch {
+        // Presence soft-fails on first load.
+      }
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
       stopProjectionPoll();

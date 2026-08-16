@@ -30,7 +30,7 @@ test.describe('Phase 1 account projection', () => {
     await expect(page.getByTestId('account-display-label')).not.toBeEmpty();
     await expect(page.getByTestId('account-page-id')).toContainText('dev-');
     await expect(page.getByTestId('account-identity-mode')).toHaveText(
-      'Development Test Identity',
+      'development_test_identity',
     );
   });
 

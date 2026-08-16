@@ -1,0 +1,126 @@
+{
+  "recordType": "phase_requirement_ledger",
+  "phase": "phase-4",
+  "blueprintVersion": "ALPHA_3_V1",
+  "lifecycleState": "IMPLEMENTING",
+  "humanGate": "none",
+  "publicationGate": "Product Owner authorization required for Invite-Only Alpha or Public Milestone of the exact candidate",
+  "priorCertifiedCandidate": "cand-cc92bfc17c10",
+  "requirements": [
+    {
+      "id": "P4-PRESENCE",
+      "requirement": "Realtime presence, reconnect grace, multi-tab/device, join/leave, active-Initiative disconnect lock, spectator/absence",
+      "implementation": [
+        "Builder/src/shared/presence-contract.ts",
+        "Builder/src/server/presence/presence-runtime.ts",
+        "Builder/src/server/table/timing-authority.ts#lockActiveTurnOnDisconnect",
+        "Builder/src/client/pages/campaign-table.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase4-presence-admin.test.mjs",
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts",
+        "Builder/tests/e2e/smoke-spine.spec.ts"
+      ]
+    },
+    {
+      "id": "P4-COMM-ROUTING",
+      "requirement": "Chronicle, Party Chat, Rules Desk, Action Composer, Director Address, audience routing, moderation hooks, notifications",
+      "implementation": [
+        "Builder/src/shared/communication-contract.ts",
+        "Builder/src/server/ai/director-gateway.ts",
+        "Builder/src/client/pages/campaign-table.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts",
+        "Builder/tests/e2e/smoke-spine.spec.ts"
+      ]
+    },
+    {
+      "id": "P4-GOOGLE-IDENTITY",
+      "requirement": "Hosted Google Sign-In; local development identity until cutover; machine-only QA fixture sessions in Local Arena",
+      "implementation": [
+        "Builder/src/server/identity/development-identity.ts",
+        "Builder/src/shared/identity-contract.ts",
+        "Builder/src/shared/contract.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts"
+      ]
+    },
+    {
+      "id": "P4-ADMIN",
+      "requirement": "Admin panel and APIs; bootstrap admin nick.donner@gmail.com; admin-as-normal-player; ordinary-user denial",
+      "implementation": [
+        "Builder/src/server/admin/admin-auth.ts",
+        "Builder/src/server/admin/admin-service.ts",
+        "Builder/src/client/pages/admin.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts",
+        "Builder/tests/unit/phase4-presence-admin.test.mjs"
+      ]
+    },
+    {
+      "id": "P4-AI-DIRECTOR",
+      "requirement": "Role-isolated AI, Intent Intercept, bounded rulings, mechanics-first narration, kill switch, Veyra/Garrick personality injection",
+      "implementation": [
+        "Builder/src/shared/ai-director-contract.ts",
+        "Builder/src/server/ai/director-gateway.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts",
+        "Builder/tests/unit/phase4-presence-admin.test.mjs"
+      ]
+    },
+    {
+      "id": "P4-SPEECH",
+      "requirement": "Player-optional TTS/STT; TTS uses Director voice family; STT creates editable unsent drafts only",
+      "implementation": [
+        "Builder/src/shared/settings-contract.ts",
+        "Builder/src/server/settings/player-settings.ts",
+        "Builder/src/client/pages/account.ts",
+        "Builder/src/client/pages/campaign-table.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts"
+      ]
+    },
+    {
+      "id": "P4-PROVIDER-REGISTRY",
+      "requirement": "Provider Compliance Registry for selected AI/speech services; conditional age/region eligibility",
+      "implementation": [
+        "Builder/src/server/ai/director-gateway.ts#PROVIDER_COMPLIANCE_REGISTRY"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase4-presence-admin.test.mjs"
+      ]
+    },
+    {
+      "id": "P4-FOUR-PLAYER",
+      "requirement": "Four-plus simultaneous local player contexts through integrated exploration/social/combat journey",
+      "implementation": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts"
+      ],
+      "verification": [
+        "Builder/tests/e2e/phase4-realtime-ai.spec.ts"
+      ]
+    },
+    {
+      "id": "P4-MILESTONE-READY",
+      "requirement": "Invite-Only Alpha / Public Milestone capability ready; publication remains PO-authorized and optional",
+      "implementation": [
+        "Checkpoints/phase-4/PHASE_4_EXECUTION_PACK.md"
+      ],
+      "verification": []
+    },
+    {
+      "id": "P4-CERTIFICATION",
+      "requirement": "Phase 4 certification command, smoke spine multiplayer/AI segments, Independent QA",
+      "implementation": [
+        "Builder/package.json#certify:phase4",
+        "Builder/tools/certification/run-certification.mjs"
+      ],
+      "verification": ["npm run certify:phase4"]
+    }
+  ]
+}

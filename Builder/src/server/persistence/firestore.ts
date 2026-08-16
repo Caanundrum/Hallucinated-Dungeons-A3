@@ -35,6 +35,9 @@ export const COLLECTIONS = {
   campaignEncounters: 'campaignEncounters',
   characterProgressions: 'characterProgressions',
   timingAuthorities: 'timingAuthorities',
+  campaignPresence: 'campaignPresence',
+  campaignPresenceMeta: 'campaignPresenceMeta',
+  adminAuditEvents: 'adminAuditEvents',
 } as const;
 
 export interface CanonicalStore {

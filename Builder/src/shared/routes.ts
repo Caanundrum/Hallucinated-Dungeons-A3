@@ -16,6 +16,7 @@
 export const SPA_ROUTES = [
   '/',
   '/account',
+  '/admin',
   '/diagnostics',
   '/characters',
   '/characters/new',

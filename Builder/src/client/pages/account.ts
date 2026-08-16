@@ -30,6 +30,8 @@ export function mountAccountPage(host: PageHost): void {
   let error: string | null = null;
   let reducedMotion = false;
   let lowEffects = false;
+  let textToSpeechEnabled = false;
+  let speechToTextEnabled = false;
   const mountToken = beginPageMount(container);
 
   function render(): void {
@@ -94,7 +96,15 @@ export function mountAccountPage(host: PageHost): void {
               </div>
               <div>
                 <dt>Identity mode</dt>
-                <dd data-testid="account-identity-mode">Development Test Identity</dd>
+                <dd data-testid="account-identity-mode">${escapeHtml(account.identityMode)}</dd>
+              </div>
+              <div>
+                <dt>Email</dt>
+                <dd data-testid="account-email">${escapeHtml(account.email ?? 'none')}</dd>
+              </div>
+              <div>
+                <dt>Bootstrap admin</dt>
+                <dd data-testid="account-is-bootstrap-admin">${account.isBootstrapAdmin ? 'yes' : 'no'}</dd>
               </div>
               <div>
                 <dt>Session expires</dt>
@@ -108,13 +118,14 @@ export function mountAccountPage(host: PageHost): void {
               </button>
               <a href="/characters" data-link data-testid="account-characters-link">Open Character Vault</a>
               <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Campaigns</a>
+              <a href="/admin" data-link data-testid="account-admin-link">Admin panel</a>
             </div>
           </section>
           <section class="panel" aria-labelledby="presentation-heading">
             <h2 id="presentation-heading">Presentation</h2>
             <p class="record-meta">
-              Speech and AI presentation controls stay reserved until later phases. Reduced motion
-              and low effects are available now because the shell and tactical table honor them.
+              Speech is player-optional. Text-to-speech only reads already-visible text.
+              Speech-to-text only fills editable unsent drafts — never auto-submits.
             </p>
             <label class="option">
               <input type="checkbox" data-testid="account-reduced-motion" ${reducedMotion ? 'checked' : ''} />
@@ -123,6 +134,14 @@ export function mountAccountPage(host: PageHost): void {
             <label class="option">
               <input type="checkbox" data-testid="account-low-effects" ${lowEffects ? 'checked' : ''} />
               <span class="option-label">Prefer low effects on the tactical table</span>
+            </label>
+            <label class="option">
+              <input type="checkbox" data-testid="account-tts" ${textToSpeechEnabled ? 'checked' : ''} />
+              <span class="option-label">Enable text-to-speech for visible Director text</span>
+            </label>
+            <label class="option">
+              <input type="checkbox" data-testid="account-stt" ${speechToTextEnabled ? 'checked' : ''} />
+              <span class="option-label">Enable speech-to-text draft dictation</span>
             </label>
           </section>
           <p class="record-meta">
@@ -178,9 +197,12 @@ export function mountAccountPage(host: PageHost): void {
               candidateId: candidate.candidateId,
               reducedMotion: event.target.checked,
               lowEffects,
+              speech: { textToSpeechEnabled, speechToTextEnabled },
             });
             reducedMotion = settings.reducedMotion;
             lowEffects = settings.lowEffects;
+            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+            speechToTextEnabled = settings.reserved.speechToTextEnabled;
             applyPresentationPreferences({ reducedMotion, lowEffects });
             shell.announce(
               reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.',
@@ -212,9 +234,12 @@ export function mountAccountPage(host: PageHost): void {
               candidateId: candidate.candidateId,
               reducedMotion,
               lowEffects: event.target.checked,
+              speech: { textToSpeechEnabled, speechToTextEnabled },
             });
             reducedMotion = settings.reducedMotion;
             lowEffects = settings.lowEffects;
+            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+            speechToTextEnabled = settings.reserved.speechToTextEnabled;
             applyPresentationPreferences({ reducedMotion, lowEffects });
             shell.announce(
               lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.',
@@ -224,6 +249,82 @@ export function mountAccountPage(host: PageHost): void {
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Presentation settings could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLInputElement>('[data-testid="account-tts"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion,
+              lowEffects,
+              speech: {
+                textToSpeechEnabled: event.target.checked,
+                speechToTextEnabled,
+              },
+            });
+            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+            speechToTextEnabled = settings.reserved.speechToTextEnabled;
+            shell.announce(
+              textToSpeechEnabled ? 'Text-to-speech enabled.' : 'Text-to-speech disabled.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Speech settings could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLInputElement>('[data-testid="account-stt"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion,
+              lowEffects,
+              speech: {
+                textToSpeechEnabled,
+                speechToTextEnabled: event.target.checked,
+              },
+            });
+            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+            speechToTextEnabled = settings.reserved.speechToTextEnabled;
+            shell.announce(
+              speechToTextEnabled
+                ? 'Speech-to-text draft dictation enabled.'
+                : 'Speech-to-text disabled.',
+            );
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Speech settings could not be saved.';
           } finally {
             busy = false;
             render();
@@ -267,6 +368,8 @@ export function mountAccountPage(host: PageHost): void {
           const settings = await fetchPlayerSettings();
           reducedMotion = settings.reducedMotion;
           lowEffects = settings.lowEffects;
+          textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+          speechToTextEnabled = settings.reserved.speechToTextEnabled;
           applyPresentationPreferences({ reducedMotion, lowEffects });
           render();
         } catch {
@@ -283,6 +386,8 @@ export function mountAccountPage(host: PageHost): void {
         const settings = await fetchPlayerSettings();
         reducedMotion = settings.reducedMotion;
         lowEffects = settings.lowEffects;
+        textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+        speechToTextEnabled = settings.reserved.speechToTextEnabled;
         applyPresentationPreferences({ reducedMotion, lowEffects });
         render();
       } catch {

@@ -251,4 +251,47 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('rules-attack').click();
     await expect(page.getByTestId('rules-last-result')).toContainText(/hit|missed/);
   });
+
+  test('multiplayer and AI: presence, Director Address, and Party Chat stay isolated from commands', async ({
+    page,
+  }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await page.getByTestId('identity-name').fill('Smoke Spine Presence');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('campaign-name').fill('Smoke Spine Phase4');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    await page.getByTestId('identity-garrick').click();
+    await page.getByTestId('personality-dry_storyteller').click();
+    await page.getByTestId('create-campaign-submit').click();
+    const seatSelect = page.getByTestId('seat-character-select');
+    const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
+    expect(characterId).toBeTruthy();
+    await seatSelect.selectOption(characterId!);
+    await page.getByTestId('create-seat').click();
+
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('presence-panel')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('dock-tab-director_address').click();
+    await page.getByTestId('director-address-input').fill('Is the door trapped?');
+    await page.getByTestId('director-address-send').click();
+    await expect(page.getByTestId('director-address-reply')).toContainText(/Garrick|without changing state/i);
+    await page.getByTestId('dock-tab-party_chat').click();
+    await page.getByTestId('party-chat-input').fill('I open the door');
+    await page.getByTestId('party-chat-send').click();
+    await expect(page.getByTestId('party-chat-message')).toContainText('I open the door');
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
+  });
 });
