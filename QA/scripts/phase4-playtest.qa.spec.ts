@@ -117,7 +117,10 @@ test.describe('Phase 4 playtest — comprehension & a11y', () => {
     await expect(page.getByRole('heading', { name: /table presence/i })).toBeVisible({
       timeout: 15_000,
     });
+    await expect(page.getByTestId('presence-meta')).toContainText(/Who is here/i);
     await expect(page.getByText(/online/i).first()).toBeVisible();
+    // Grouped presence must not dump raw session/tab id chips as the primary row.
+    await expect(page.getByTestId('presence-list')).not.toContainText(/tab [a-f0-9]{8}/i);
     await page.screenshot({ path: `${EVIDENCE}/pt4-comp-presence.png`, fullPage: true });
 
     const rulesTab = page.getByRole('tab', { name: /rules desk/i });
@@ -136,9 +139,16 @@ test.describe('Phase 4 playtest — comprehension & a11y', () => {
 
     const claim = page.getByRole('button', { name: /claim active turn/i });
     await expect(claim).toBeVisible();
-    await claim.scrollIntoViewIfNeeded();
+    // Claim must sit in the authority strip above training encounter controls.
+    const claimBox = await claim.boundingBox();
+    const beginBox = await page.getByTestId('begin-encounter').boundingBox();
+    expect(claimBox).toBeTruthy();
+    expect(beginBox).toBeTruthy();
+    expect(claimBox!.y).toBeLessThan(beginBox!.y);
+    await expect(page.getByTestId('composer-gate-hint')).toContainText(/Claim Active Turn first/i);
     await claim.click();
     await expect(page.getByTestId('timing-authority-meta')).toContainText(/Active Turn/i);
+    await expect(page.getByTestId('composer-gate-hint')).toContainText(/You hold Active Turn/i);
     await page.screenshot({ path: `${EVIDENCE}/pt4-comp-active-turn.png`, fullPage: true });
 
     await expect(page.getByRole('tablist', { name: /dock destinations/i })).toBeVisible();
@@ -211,6 +221,27 @@ test.describe('Phase 4 playtest — comprehension & a11y', () => {
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-dictate')).toBeVisible();
     await page.screenshot({ path: `${EVIDENCE}/pt4-a11y-speech-prefs.png`, fullPage: true });
+  });
+
+  test('PT4-UX-01: Director Address typing survives presence heartbeat without scroll thrash', async ({
+    page,
+  }) => {
+    await enterAccount(page);
+    await createMageByLabels(page, 'P4 Scroll Thrash');
+    await createCampaignSeatOpenTable(page, 'P4 Scroll Thrash Table');
+    await page.getByRole('tab', { name: /director address/i }).click();
+    const input = page.getByTestId('director-address-input');
+    await input.click();
+    await input.fill('Keep this draft while presence heartbeats.');
+    await expect(input).toBeFocused();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    // Presence heartbeat interval is 5s; wait past two ticks.
+    await page.waitForTimeout(11_000);
+    await expect(input).toHaveValue('Keep this draft while presence heartbeats.');
+    await expect(input).toBeFocused();
+    const scrollAfter = await page.evaluate(() => window.scrollY);
+    expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThan(80);
+    await page.screenshot({ path: `${EVIDENCE}/pt4-ux-director-no-thrash.png`, fullPage: true });
   });
 });
 
