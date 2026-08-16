@@ -7,6 +7,13 @@
  * (later) campaigns.
  */
 
+import {
+  NARRATION_DENSITIES,
+  NARRATION_DENSITY_LABELS,
+  NARRATION_DENSITY_SUMMARIES,
+  isNarrationDensity,
+  type NarrationDensity,
+} from '../../shared/settings-contract.js';
 import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchPlayerSettings, savePlayerSettings } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -32,6 +39,7 @@ export function mountAccountPage(host: PageHost): void {
   let lowEffects = false;
   let textToSpeechEnabled = false;
   let speechToTextEnabled = false;
+  let narrationDensity: NarrationDensity = 'balanced';
   const mountToken = beginPageMount(container);
 
   function render(): void {
@@ -143,6 +151,20 @@ export function mountAccountPage(host: PageHost): void {
               <input type="checkbox" data-testid="account-stt" ${speechToTextEnabled ? 'checked' : ''} />
               <span class="option-label">Enable speech-to-text draft dictation</span>
             </label>
+            <label class="field">
+              <span>Narration density</span>
+              <select data-testid="account-narration-density">
+                ${NARRATION_DENSITIES.map(
+                  (density) => `
+                  <option value="${escapeHtml(density)}" ${narrationDensity === density ? 'selected' : ''}>
+                    ${escapeHtml(NARRATION_DENSITY_LABELS[density])}
+                  </option>`,
+                ).join('')}
+              </select>
+            </label>
+            <p class="record-meta" data-testid="narration-density-summary">
+              ${escapeHtml(NARRATION_DENSITY_SUMMARIES[narrationDensity])}
+            </p>
           </section>
           <p class="record-meta">
             Signing out ends this browser session. It does not delete characters or other
@@ -333,6 +355,42 @@ export function mountAccountPage(host: PageHost): void {
       });
 
     container
+      .querySelector<HTMLSelectElement>('[data-testid="account-narration-density"]')
+      ?.addEventListener('change', (event) => {
+        void (async () => {
+          if (candidate === null || busy || !(event.target instanceof HTMLSelectElement)) {
+            return;
+          }
+          const nextDensity = event.target.value;
+          if (!isNarrationDensity(nextDensity)) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const settings = await savePlayerSettings({
+              candidateId: candidate.candidateId,
+              reducedMotion,
+              lowEffects,
+              speech: { textToSpeechEnabled, speechToTextEnabled },
+              narrationDensity: nextDensity,
+            });
+            narrationDensity = settings.reserved.narrationDensity;
+            shell.announce(`Narration density set to ${NARRATION_DENSITY_LABELS[narrationDensity]}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Narration density could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="account-leave"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -370,6 +428,7 @@ export function mountAccountPage(host: PageHost): void {
           lowEffects = settings.lowEffects;
           textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
           speechToTextEnabled = settings.reserved.speechToTextEnabled;
+          narrationDensity = settings.reserved.narrationDensity;
           applyPresentationPreferences({ reducedMotion, lowEffects });
           render();
         } catch {
@@ -388,6 +447,7 @@ export function mountAccountPage(host: PageHost): void {
         lowEffects = settings.lowEffects;
         textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
         speechToTextEnabled = settings.reserved.speechToTextEnabled;
+        narrationDensity = settings.reserved.narrationDensity;
         applyPresentationPreferences({ reducedMotion, lowEffects });
         render();
       } catch {
