@@ -1,0 +1,641 @@
+{
+  "config": {
+    "argv": [
+      "/exec-daemon/node",
+      "/workspace/Builder/node_modules/.bin/playwright",
+      "test",
+      "-c",
+      "playwright.phase3-playtest.config.ts",
+      "--project=desktop-chrome",
+      "--project=tablet-viewport",
+      "--project=phone-viewport"
+    ],
+    "configFile": "/workspace/QA/playwright.phase3-playtest.config.ts",
+    "rootDir": "/workspace/QA/scripts",
+    "failOnFlakyTests": false,
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/QA/evidence/phase-3/playtest/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop-chrome",
+        "name": "desktop-chrome",
+        "testDir": "/workspace/QA/scripts",
+        "testIgnore": [],
+        "testMatch": [
+          "phase3-playtest.qa.spec.ts"
+        ],
+        "timeout": 180000
+      },
+      {
+        "outputDir": "/workspace/QA/evidence/phase-3/playtest/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "tablet-viewport",
+        "name": "tablet-viewport",
+        "testDir": "/workspace/QA/scripts",
+        "testIgnore": [],
+        "testMatch": [
+          "phase3-playtest.qa.spec.ts"
+        ],
+        "timeout": 180000
+      },
+      {
+        "outputDir": "/workspace/QA/evidence/phase-3/playtest/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-viewport",
+        "name": "phone-viewport",
+        "testDir": "/workspace/QA/scripts",
+        "testIgnore": [],
+        "testMatch": [
+          "phase3-playtest.qa.spec.ts"
+        ],
+        "timeout": 180000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/workspace/QA/evidence/phase-3/playtest/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "phase3-playtest.qa.spec.ts",
+      "file": "phase3-playtest.qa.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 3 playtest — comprehension & a11y (desktop)",
+          "file": "phase3-playtest.qa.spec.ts",
+          "line": 67,
+          "column": 6,
+          "specs": [
+            {
+              "title": "PT-COMP-01: novice can locate Rules Desk and Active Turn authority by visible copy",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-chrome",
+                  "projectName": "desktop-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2024,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:40.420Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-90154a719999d1ad66dd",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-01: keyboard-only path Characters → Campaigns → table Claim Active Turn",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-chrome",
+                  "projectName": "desktop-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 355,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:42.527Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-96602ad30919a54d01d4",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 95,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-02: reduced motion + low effects toggles are operable and announced",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-chrome",
+                  "projectName": "desktop-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1761,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:42.891Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-64babb717bb237eda19d",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "PT-EDGE-01: thrash — spam Next turn, cast without slot thrash, chat during combat",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-chrome",
+                  "projectName": "desktop-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4211,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:44.657Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-a90295ade8f29fc0eebd",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "PT-DEATH-01: manual death path — training drop → death save → long rest",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-chrome",
+                  "projectName": "desktop-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3661,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:48.875Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-1aaa8e6cc733fff6764e",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 150,
+              "column": 7
+            },
+            {
+              "title": "PT-COMP-01: novice can locate Rules Desk and Active Turn authority by visible copy",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet-viewport",
+                  "projectName": "tablet-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1655,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:52.935Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-a45ac936ef932301660c",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-01: keyboard-only path Characters → Campaigns → table Claim Active Turn",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet-viewport",
+                  "projectName": "tablet-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 336,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:54.681Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-d9d91f4ae1cee76c70e7",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 95,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-02: reduced motion + low effects toggles are operable and announced",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet-viewport",
+                  "projectName": "tablet-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1520,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:55.023Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-5c292aef79c5a52c6f05",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "PT-EDGE-01: thrash — spam Next turn, cast without slot thrash, chat during combat",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet-viewport",
+                  "projectName": "tablet-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3833,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:46:56.548Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-8dc658abc6fe4e111adb",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "PT-DEATH-01: manual death path — training drop → death save → long rest",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet-viewport",
+                  "projectName": "tablet-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2942,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:00.387Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-2d48a1de936b966b813f",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 150,
+              "column": 7
+            },
+            {
+              "title": "PT-COMP-01: novice can locate Rules Desk and Active Turn authority by visible copy",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-viewport",
+                  "projectName": "phone-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4040,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:03.729Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-bd3c7473a262795aaf70",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-01: keyboard-only path Characters → Campaigns → table Claim Active Turn",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-viewport",
+                  "projectName": "phone-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 342,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:07.849Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-1cc0a18a1c0b9c5e460a",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 95,
+              "column": 7
+            },
+            {
+              "title": "PT-A11Y-02: reduced motion + low effects toggles are operable and announced",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-viewport",
+                  "projectName": "phone-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1878,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:08.197Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-fac46950ffe1636bce3f",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "PT-EDGE-01: thrash — spam Next turn, cast without slot thrash, chat during combat",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-viewport",
+                  "projectName": "phone-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7295,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:10.081Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-3d03f787016bcf1593a8",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "PT-DEATH-01: manual death path — training drop → death save → long rest",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 180000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-viewport",
+                  "projectName": "phone-viewport",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2494,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T15:47:17.382Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "43b532a1cf68cc77b6ca-3a78a6422b7b8b736e73",
+              "file": "phase3-playtest.qa.spec.ts",
+              "line": 150,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-16T15:46:40.003Z",
+    "duration": 39930.662,
+    "expected": 15,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
