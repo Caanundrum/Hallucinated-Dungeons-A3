@@ -1,0 +1,125 @@
+{
+  "recordType": "phase_requirement_ledger",
+  "phase": "phase-5",
+  "blueprintVersion": "ALPHA_3_V1",
+  "lifecycleState": "IMPLEMENTING",
+  "humanGate": "product_owner_complete_experience",
+  "priorCertifiedCandidate": "cand-1de6ebed38c8",
+  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Statuses become PASSED only when named verification executes against the frozen Phase 5 candidate.",
+  "requirements": [
+    {
+      "id": "P5-MEMORY",
+      "requirement": "Structured campaign memory: chapters, summaries, NPC motives/knowledge, quests, factions, social state, open threads, recaps, campaign-time continuity",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/src/shared/campaign-memory-contract.ts",
+        "Builder/src/server/campaigns/campaign-memory.ts",
+        "Builder/src/server/persistence/firestore.ts#COLLECTIONS.campaignMemory",
+        "Builder/src/server/persistence/firestore.ts#COLLECTIONS.campaignSessions",
+        "Builder/src/client/pages/campaign-detail.ts#renderMemoryPanel"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts",
+        "Builder/tests/e2e/smoke-spine.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-STARTER",
+      "requirement": "Original curated starter campaign (~3–5 sessions) as product content and versioned validation fixture",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/src/shared/content/emberferry-crossing.ts",
+        "Builder/src/server/campaigns/campaign-memory.ts#resolveStarterPackForTemplate",
+        "Builder/src/server/campaigns/campaigns.ts#createCampaign",
+        "Builder/src/shared/campaign-contract.ts#ADVENTURE_TEMPLATES",
+        "Builder/src/client/pages/campaign-create.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts",
+        "Builder/tests/e2e/phase2-map-stage.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-PRESENTATION",
+      "requirement": "Production maps/portraits/tokens/effects hooks, Presentation Cue Plans, non-musical sound, Director speech fallback, 12 personality Director avatars",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/src/shared/presentation-cue-contract.ts",
+        "Builder/src/server/presentation/presentation-cues.ts",
+        "Builder/src/server/table/map-projection.ts",
+        "Builder/src/client/table/table-stage.ts",
+        "Builder/src/client/pages/campaign-table.ts",
+        "Builder/src/client/director-avatars.ts",
+        "Builder/src/client/assets/directors/"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-ASSETS",
+      "requirement": "Asset provenance, performance budgets, reduced-effects/static fallbacks, cross-screen visual coherence",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Checkpoints/phase-5/ASSET_PROVENANCE.md",
+        "Builder/src/shared/presentation-cue-contract.ts#MAX_CONCURRENT_CUE_SOUNDS",
+        "Builder/src/shared/presentation-cue-contract.ts#MAX_CUE_SOUND_DURATION_MS",
+        "Builder/src/client/pages/campaign-table.ts#presentationCuesAllowed",
+        "Builder/src/client/director-avatars.ts#bindDirectorAvatarFallback"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-RESUME",
+      "requirement": "Multi-session resume, absence/return personal recap, continuation beyond planned climax via new chapter plan",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/src/server/campaigns/campaign-memory.ts#recordSessionSuspend",
+        "Builder/src/server/campaigns/campaign-memory.ts#resumeSession",
+        "Builder/src/server/campaigns/campaign-memory.ts#buildPersonalRecap",
+        "Builder/src/server/campaigns/campaign-memory.ts#appendChapterSummary",
+        "Builder/src/server/http/server.ts#session/suspend",
+        "Builder/src/server/http/server.ts#session/resume",
+        "Builder/src/client/pages/campaign-detail.ts",
+        "Builder/src/client/api.ts#suspendCampaignSession"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts",
+        "Builder/tests/e2e/smoke-spine.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-SETTINGS-COHERENCE",
+      "requirement": "Locked Director, speech, humor/narration density, audio, a11y, and campaign rules preferences behave coherently over multi-session play",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/src/shared/settings-contract.ts#NARRATION_DENSITIES",
+        "Builder/src/server/settings/player-settings.ts",
+        "Builder/src/server/ai/director-gateway.ts#composeNarrationBody",
+        "Builder/src/client/pages/account.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase5-campaign-memory.test.mjs",
+        "Builder/tests/e2e/phase5-starter-resume.spec.ts"
+      ]
+    },
+    {
+      "id": "P5-CERTIFICATION",
+      "requirement": "Smoke spine campaign resume, certify:phase5 floor, Independent QA, Product Owner complete-experience gate",
+      "status": "IN_PROGRESS",
+      "implementation": [
+        "Builder/package.json#certify:phase5",
+        "Builder/tools/certification/run-certification.mjs",
+        "Builder/tests/e2e/smoke-spine.spec.ts#campaign resume"
+      ],
+      "verification": ["npm run certify:phase5"]
+    }
+  ]
+}
