@@ -8,9 +8,13 @@ blueprintSourceHash: 144f178d3cbf
 priorPhase: phase-2
 priorPhaseState: PHASE_CERTIFIED
 priorCertifiedCandidate: cand-e1c5d41b583b
-lifecycleState: IMPLEMENTING
+lifecycleState: PHASE_CERTIFIED
 humanGate: none
+builderVerifiedCandidate: cand-cc92bfc17c10
+certifiedCandidate: cand-cc92bfc17c10
 authoredAt: 2026-08-15T13:42:00Z
+builderVerifiedAt: 2026-08-16T13:30:25Z
+certifiedAt: 2026-08-16T13:32:00Z
 ---
 
 # Phase 3 execution pack

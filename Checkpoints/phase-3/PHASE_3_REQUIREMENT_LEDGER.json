@@ -2,8 +2,12 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-3",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "IMPLEMENTING",
+  "lifecycleState": "PHASE_CERTIFIED",
   "humanGate": "none",
+  "certifiedCandidateId": "cand-cc92bfc17c10",
+  "certifiedSourceTreeHash": "cc92bfc17c101405125b046e9166362c2cf62c6d73972eaee6e4d857a0c023c5",
+  "certifiedCommit": "029b147aad4b113805c88140c4dd0623280ccc6e",
+  "certifiedAt": "2026-08-16T13:32:00Z",
   "requirements": [
     {
       "id": "P3-COMBAT-CORE",
