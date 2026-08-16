@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 import {
+  ADVENTURE_TEMPLATES,
   CAMPAIGN_NAME_MAX_LENGTH,
   CAMPAIGN_SUMMARY_MAX_LENGTH,
   DIRECTOR_IDENTITY_LABELS,
@@ -21,6 +22,7 @@ import {
   INVITATION_RATE_LIMIT_MAX,
   INVITATION_RATE_LIMIT_WINDOW_MS,
   INVITATION_TTL_MS,
+  type AdventureTemplate,
   type CampaignDetailProjection,
   type CampaignListProjection,
   type CampaignMemberRole,
@@ -31,6 +33,7 @@ import {
   type InvitationPreview,
   type MembershipProjection,
   type SeatProjection,
+  isAdventureTemplate,
   isDirectorIdentity,
   isDirectorPersonality,
 } from '../../shared/campaign-contract.js';
@@ -40,6 +43,7 @@ import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
 } from './director-catalog.js';
+import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
 import {
   AlreadySeatedError,
   CampaignNotFoundError,
@@ -81,6 +85,9 @@ interface StoredCampaign {
   readonly directorPersonality: DirectorPersonality;
   readonly directorAvatarKey: string;
   readonly directorLockedAt: Timestamp | Date;
+  /** Starter pack this campaign was created from, or null for a blank table (Phase 5). */
+  readonly adventureTemplateId: string | null;
+  readonly adventurePackVersion: string | null;
   readonly createdAt: Timestamp | Date;
   readonly updatedAt: Timestamp | Date;
 }
@@ -287,10 +294,25 @@ function projectCampaign(
     director: projectDirector(stored),
     memberCount,
     seatCount,
+    adventureTemplateId: stored.adventureTemplateId ?? null,
+    adventurePackVersion: stored.adventurePackVersion ?? null,
     createdAt: toIso(stored.createdAt),
     updatedAt: toIso(stored.updatedAt),
     isCampaignOwner: membership.role === 'owner',
   };
+}
+
+/** Defaults to a blank table when omitted, so existing API callers are unaffected. */
+function validateAdventureTemplate(raw: unknown): AdventureTemplate {
+  if (raw === undefined || raw === null) {
+    return 'blank';
+  }
+  if (!isAdventureTemplate(raw)) {
+    throw new CampaignValidationError(
+      `Choose an adventure template: ${ADVENTURE_TEMPLATES.join(', ')}.`,
+    );
+  }
+  return raw;
 }
 
 function invitationCreatedProjection(stored: StoredInvitation): InvitationCreatedProjection {
@@ -346,10 +368,13 @@ export async function createCampaign(options: {
   readonly summary?: unknown;
   readonly directorIdentity: unknown;
   readonly directorPersonality: unknown;
+  /** Starter pack to seed from, or 'blank'. Omitted requests default to blank. */
+  readonly adventureTemplate?: unknown;
 }): Promise<CampaignProjection> {
   const { firestore, accountId, displayLabel } = options;
   const name = validateName(options.name);
   const summary = validateSummary(options.summary);
+  const adventureTemplate = validateAdventureTemplate(options.adventureTemplate);
 
   if (!isDirectorIdentity(options.directorIdentity)) {
     throw new CampaignValidationError('Choose Veyra or Garrick as the Game Director identity.');
@@ -364,6 +389,7 @@ export async function createCampaign(options: {
     personality: options.directorPersonality,
     lockedAt: now,
   });
+  const starterPack = resolveStarterPackForTemplate(adventureTemplate);
 
   const campaignId = randomUUID();
   const campaign: StoredCampaign = {
@@ -376,6 +402,8 @@ export async function createCampaign(options: {
     directorPersonality: director.personality,
     directorAvatarKey: director.avatarKey,
     directorLockedAt: director.lockedAt,
+    adventureTemplateId: starterPack?.packId ?? null,
+    adventurePackVersion: starterPack?.packVersion ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -398,11 +426,15 @@ export async function createCampaign(options: {
   await batch.commit();
 
   await seedCampaignSettings(firestore, campaignId, now);
+  await seedCampaignMemoryForTemplate(firestore, campaignId, campaign.adventureTemplateId);
   await appendChronicleEntry({
     firestore,
     campaignId,
     kind: 'campaign_created',
-    body: `${displayLabel} created this campaign with a locked Game Director configuration.`,
+    body:
+      starterPack === null
+        ? `${displayLabel} created this campaign with a locked Game Director configuration.`
+        : `${displayLabel} created this campaign from the "${starterPack.adventureTitle}" starter pack with a locked Game Director configuration.`,
   });
 
   return projectCampaign(campaign, membership, 1, 0);

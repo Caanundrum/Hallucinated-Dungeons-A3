@@ -38,6 +38,8 @@ export const COLLECTIONS = {
   campaignPresence: 'campaignPresence',
   campaignPresenceMeta: 'campaignPresenceMeta',
   adminAuditEvents: 'adminAuditEvents',
+  campaignMemory: 'campaignMemory',
+  campaignSessions: 'campaignSessions',
 } as const;
 
 export interface CanonicalStore {
