@@ -8,17 +8,28 @@
  * creation.
  */
 
-import type { DirectorCatalog, DirectorIdentity, DirectorPersonality } from '../../shared/campaign-contract.js';
+import type {
+  AdventureTemplate,
+  DirectorCatalog,
+  DirectorIdentity,
+  DirectorPersonality,
+} from '../../shared/campaign-contract.js';
 import {
+  ADVENTURE_TEMPLATES,
+  ADVENTURE_TEMPLATE_LABELS,
+  ADVENTURE_TEMPLATE_SUMMARIES,
   CAMPAIGN_NAME_MAX_LENGTH,
   CAMPAIGN_SUMMARY_MAX_LENGTH,
   DIRECTOR_CREATION_PREVIEW,
   DIRECTOR_IDENTITY_LABELS,
   DIRECTOR_PERSONALITY_LABELS,
+  RECOMMENDED_ADVENTURE_TEMPLATE,
   directorAvatarKey,
+  isAdventureTemplate,
   isDirectorIdentity,
   isDirectorPersonality,
 } from '../../shared/campaign-contract.js';
+import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, createCampaign, fetchDirectorCatalog } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -36,6 +47,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
   let summary = '';
   let directorIdentity: DirectorIdentity | null = null;
   let directorPersonality: DirectorPersonality | null = null;
+  let adventureTemplate: AdventureTemplate = RECOMMENDED_ADVENTURE_TEMPLATE;
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
@@ -68,6 +80,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     const identityLabel = DIRECTOR_IDENTITY_LABELS[directorIdentity];
     const personalityLabel = DIRECTOR_PERSONALITY_LABELS[directorPersonality];
     const avatarKey = directorAvatarKey(directorIdentity, directorPersonality);
+    const avatarLabel = `${identityLabel} — ${personalityLabel}`;
     const title = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
 
     return `
@@ -77,6 +90,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
           Review this configuration before you create it. Identity and personality lock for ordinary
           users after creation.
         </p>
+        ${directorAvatarMarkup({
+          avatarKey,
+          label: avatarLabel,
+          testId: 'preview-director-avatar',
+          className: 'director-avatar director-avatar-preview',
+        })}
         <dl class="account-details" data-testid="campaign-preview-details">
           <div>
             <dt>Title</dt>
@@ -93,6 +112,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
           <div>
             <dt>Avatar key</dt>
             <dd><code data-testid="preview-avatar-key">${escapeHtml(avatarKey)}</code></dd>
+          </div>
+          <div>
+            <dt>Starter adventure</dt>
+            <dd data-testid="preview-adventure-template">${escapeHtml(ADVENTURE_TEMPLATE_LABELS[adventureTemplate])}</dd>
           </div>
         </dl>
         <h3 class="preview-subheading">Sample scene tone</h3>
@@ -199,8 +222,38 @@ export function mountCampaignCreatePage(host: PageHost): void {
             : `<div class="message error" role="alert" tabindex="-1" data-testid="create-campaign-error">${escapeHtml(error)}</div>`
         }
 
+        <section class="panel" aria-labelledby="adventure-template-heading">
+          <h2 id="adventure-template-heading">1. Starter adventure</h2>
+          <p>
+            Emberferry Crossing is the recommended starting point: an original three-session
+            adventure with chapters, NPCs, and a starter map already in place. Choose the blank
+            table instead for rules practice or to build your own campaign from nothing — there is
+            no procedural worldgen behind it.
+          </p>
+          <ul class="option-list" data-testid="adventure-template-list">
+            ${ADVENTURE_TEMPLATES.map(
+              (templateId) => `
+              <li>
+                <label class="option${adventureTemplate === templateId ? ' selected' : ''}" data-testid="adventure-template-${escapeHtml(templateId)}">
+                  <input type="radio" name="adventure-template" value="${escapeHtml(templateId)}"
+                    ${adventureTemplate === templateId ? 'checked' : ''} />
+                  <span class="option-label">
+                    ${escapeHtml(ADVENTURE_TEMPLATE_LABELS[templateId])}
+                    ${
+                      templateId === RECOMMENDED_ADVENTURE_TEMPLATE
+                        ? '<span class="option-badge" data-testid="adventure-template-recommended">Recommended</span>'
+                        : ''
+                    }
+                  </span>
+                  <span class="option-summary">${escapeHtml(ADVENTURE_TEMPLATE_SUMMARIES[templateId])}</span>
+                </label>
+              </li>`,
+            ).join('')}
+          </ul>
+        </section>
+
         <section class="panel" aria-labelledby="campaign-basics-heading">
-          <h2 id="campaign-basics-heading">1. Campaign</h2>
+          <h2 id="campaign-basics-heading">2. Campaign</h2>
           <label class="field">
             <span>Title</span>
             <input type="text" data-testid="campaign-name" maxlength="${CAMPAIGN_NAME_MAX_LENGTH}"
@@ -213,7 +266,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         </section>
 
         <section class="panel" aria-labelledby="director-identity-heading">
-          <h2 id="director-identity-heading">2. Game Director identity</h2>
+          <h2 id="director-identity-heading">3. Game Director identity</h2>
           <p>Choose Veyra or Garrick first. Each has exactly one player-facing name.</p>
           <ul class="option-list" data-testid="director-identity-list">
             ${catalog.identities
@@ -233,7 +286,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         </section>
 
         <section class="panel${personalityLocked ? ' panel-gated' : ''}" aria-labelledby="director-personality-heading">
-          <h2 id="director-personality-heading">3. Game Director personality</h2>
+          <h2 id="director-personality-heading">4. Game Director personality</h2>
           ${
             personalityLocked
               ? `<p class="message notice" data-testid="personality-gated">
@@ -321,6 +374,26 @@ export function mountCampaignCreatePage(host: PageHost): void {
       });
 
     container
+      .querySelectorAll<HTMLInputElement>('input[name="adventure-template"]')
+      .forEach((input) => {
+        input.addEventListener('change', () => {
+          if (!isAdventureTemplate(input.value)) {
+            return;
+          }
+          adventureTemplate = input.value;
+          render();
+        });
+      });
+
+    if (directorIdentity !== null && directorPersonality !== null) {
+      bindDirectorAvatarFallback(
+        container,
+        'preview-director-avatar',
+        `${DIRECTOR_IDENTITY_LABELS[directorIdentity]} — ${DIRECTOR_PERSONALITY_LABELS[directorPersonality]}`,
+      );
+    }
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="create-campaign-submit"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -337,6 +410,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
               summary: summary.trim(),
               directorIdentity,
               directorPersonality,
+              adventureTemplate,
             });
             shell.announce(`Campaign ${campaign.name} created.`);
             navigate(`/campaigns/${campaign.campaignId}`);
@@ -414,6 +488,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       summary = '';
       directorIdentity = null;
       directorPersonality = null;
+      adventureTemplate = RECOMMENDED_ADVENTURE_TEMPLATE;
       catalog = null;
       error = null;
       busy = false;
