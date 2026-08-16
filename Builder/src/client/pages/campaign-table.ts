@@ -10,6 +10,7 @@ import type { TableStateProjection } from '../../shared/command-contract.js';
 import type { ChronicleFeedProjection, PartyChatFeedProjection } from '../../shared/communication-contract.js';
 import {
   ACTION_COMPOSER_STRUCTURE,
+  DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
   DOCK_TABS,
   PARTY_CHAT_MODE_LABELS,
@@ -18,6 +19,8 @@ import {
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
+import type { CampaignPresenceProjection } from '../../shared/presence-contract.js';
+import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type {
   CharacterProgressionProjection,
@@ -43,8 +46,12 @@ import {
   fetchRulesState,
   fetchTableState,
   fetchTimingAuthority,
+  heartbeatCampaignPresence,
+  interpretNaturalLanguage,
+  postDirectorAddress,
   postPartyChat,
   previewTableMove,
+  requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
 } from '../api.js';
@@ -76,10 +83,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let intentDraft: ActionDraftSuggestion | null = null;
   let reducedMotion = false;
   let lowEffects = false;
+  let textToSpeechEnabled = false;
+  let speechToTextEnabled = false;
   let seated = false;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
   let draft = '';
+  let directorDraft = '';
+  let directorReply: string | null = null;
+  let nlIntentText = '';
+  let presence: CampaignPresenceProjection | null = null;
+  let lastNarration: string | null = null;
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
@@ -87,7 +101,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let stageHandle: TableStageHandle | null = null;
   let stageMounting = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let presenceTimer: ReturnType<typeof setInterval> | null = null;
   let pollInFlight = false;
+  const presenceTabId = crypto.randomUUID();
   const mountToken = beginPageMount(container);
 
   /** Local poll interval for two-client table projection sync (Phase 2e). */
@@ -137,10 +153,120 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `You hold ${label} · expires ${timingAuthority.expiresAt}`;
   }
 
+  /** Visible prerequisite copy for disabled composer / training controls. */
+  function composerGateHint(): string {
+    if (candidate === null) {
+      return 'Arena candidate is still loading.';
+    }
+    if (!seated) {
+      return 'Seat a character you own on the campaign page, then claim Active Turn before mechanical actions.';
+    }
+    if (!holdsOwnAuthority()) {
+      return 'Claim Active Turn first. Table sync, moves, Interpret Action, natural-language intent, and training actions stay closed until you hold it.';
+    }
+    if (encounter?.status === 'active') {
+      const ownCombatant =
+        encounter.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+      const ownTurn =
+        ownCombatant !== null && encounter.activeCombatantId === ownCombatant.combatantId;
+      if (!ownTurn) {
+        return 'You hold Active Turn, but training actions wait until it is your combatant’s turn — use Next turn.';
+      }
+      if (ownCombatant?.actionEconomy.actionAvailable !== true) {
+        return 'Your turn is active, but your action is already spent — use Next turn or a still-available control.';
+      }
+    }
+    return 'You hold Active Turn. Declare Action and training controls open when prerequisites are met.';
+  }
+
   function presentationMeta(): string {
     const motion = reducedMotion ? 'reduced motion on' : 'reduced motion off';
     const effects = lowEffects ? 'low effects on' : 'low effects off';
-    return `Table presentation: ${motion} · ${effects}. No voice-selection controls in Phase 2.`;
+    const tts = textToSpeechEnabled ? 'TTS on' : 'TTS off';
+    const stt = speechToTextEnabled ? 'STT on' : 'STT off';
+    return `Table presentation: ${motion} · ${effects} · ${tts} · ${stt}.`;
+  }
+
+  function presenceStatusRank(status: string): number {
+    switch (status) {
+      case 'online':
+        return 0;
+      case 'grace':
+        return 1;
+      case 'spectator':
+        return 2;
+      case 'offline':
+        return 3;
+      default:
+        return 4;
+    }
+  }
+
+  function presenceStatusLabel(status: string, deviceCount: number): string {
+    const base =
+      status === 'online'
+        ? 'Online'
+        : status === 'grace'
+          ? 'Reconnecting'
+          : status === 'spectator'
+            ? 'Spectating'
+            : status === 'offline'
+              ? 'Offline'
+              : 'Away';
+    if (deviceCount <= 1) {
+      return base;
+    }
+    return `${base} · ${deviceCount} devices/tabs`;
+  }
+
+  function presenceBody(): string {
+    if (presence === null) {
+      return '<p class="record-meta" data-testid="presence-empty">Presence not yet heartbeated.</p>';
+    }
+    // Group by account so multi-tab heartbeats do not look like duplicate people.
+    const byAccount = new Map<
+      string,
+      {
+        displayLabel: string;
+        devices: Array<(typeof presence.devices)[number]>;
+      }
+    >();
+    for (const device of presence.devices) {
+      const existing = byAccount.get(device.accountId);
+      if (existing === undefined) {
+        byAccount.set(device.accountId, {
+          displayLabel: device.displayLabel,
+          devices: [device],
+        });
+      } else {
+        existing.devices.push(device);
+      }
+    }
+    const rows = [...byAccount.values()]
+      .map((group) => {
+        const primary = [...group.devices].sort(
+          (left, right) => presenceStatusRank(left.status) - presenceStatusRank(right.status),
+        )[0]!;
+        const detail = group.devices
+          .map(
+            (device) =>
+              `${device.status}${device.seatId !== null ? ' · seated' : ' · no seat'}`,
+          )
+          .join('; ');
+        return `
+        <li data-testid="presence-device" title="${escapeHtml(detail)}">
+          <strong>${escapeHtml(group.displayLabel)}</strong>
+          · ${escapeHtml(presenceStatusLabel(primary.status, group.devices.length))}
+        </li>`;
+      })
+      .join('');
+    return `
+      <div data-testid="presence-panel">
+        <p class="record-meta" data-testid="presence-meta">
+          Who is here · online ${presence.onlineAccountIds.length} · reconnecting ${presence.graceAccountIds.length}
+        </p>
+        <ul class="record-list" data-testid="presence-list">${rows || '<li>No one at the table yet.</li>'}</ul>
+      </div>`;
   }
 
   function dockBody(): string {
@@ -163,6 +289,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     )
                     .join('')}
                 </ol>`
+          }
+          ${
+            lastNarration === null
+              ? ''
+              : `<article class="rules-explanation" data-testid="director-narration">
+                  <h3>Director narration</h3>
+                  <p>${escapeHtml(lastNarration)}</p>
+                </article>`
           }
         </div>`;
     }
@@ -206,6 +340,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   <p class="record-meta">${escapeHtml(ruleExplanation.ruleId)} · ${escapeHtml(ruleExplanation.source)}</p>
                 </article>`
           }
+        </div>`;
+    }
+
+    if (activeTab === 'director_address') {
+      return `
+        <div class="dock-pane" data-testid="director-address-pane">
+          <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
+          ${
+            directorReply === null
+              ? ''
+              : `<article class="rules-explanation" data-testid="director-address-reply">
+                  <h3>Director reply</h3>
+                  <p>${escapeHtml(directorReply)}</p>
+                </article>`
+          }
+          <form class="dock-composer" data-testid="director-address-composer">
+            <label class="field">
+              <span>Private question to the Director</span>
+              <textarea data-testid="director-address-input" rows="3">${escapeHtml(directorDraft)}</textarea>
+            </label>
+            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null}">
+              ${busy ? 'Sending…' : 'Address the Director'}
+            </button>
+          </form>
         </div>`;
     }
 
@@ -254,6 +412,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null}">
             ${busy ? 'Sending…' : 'Send to Party Chat'}
           </button>
+          ${
+            speechToTextEnabled
+              ? `<button type="button" data-testid="party-chat-dictate" aria-disabled="${busy}">
+                   Dictate into draft
+                 </button>`
+              : ''
+          }
         </form>
       </div>`;
   }
@@ -383,25 +548,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </div>
         <div class="action-composer-controls rules-controls">
           <button type="button" data-rules-command="encounter.begin" data-testid="begin-encounter"
-            aria-disabled="${disable || encounter !== null}">Begin encounter</button>
+            aria-disabled="${disable || encounter !== null}" aria-describedby="composer-gate-hint">Begin encounter</button>
           <button type="button" data-rules-command="initiative.roll" data-testid="roll-initiative"
-            aria-disabled="${disable || encounter?.status !== 'setup'}">Roll initiative</button>
+            aria-disabled="${disable || encounter?.status !== 'setup'}" aria-describedby="composer-gate-hint">Roll initiative</button>
           <button type="button" data-rules-command="encounter.next_turn" data-testid="next-encounter-turn"
-            aria-disabled="${disable || encounter?.status !== 'active'}">Next turn</button>
+            aria-disabled="${disable || encounter?.status !== 'active'}" aria-describedby="composer-gate-hint">Next turn</button>
           <button type="button" data-rules-command="combat.attack" data-testid="rules-attack"
-            aria-disabled="${disable || !actionAvailable || selectedCombatantId === null}">Attack selected</button>
+            aria-disabled="${disable || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
           <button type="button" data-rules-command="combat.cast_spell" data-testid="rules-cast-spell"
-            aria-disabled="${disable || !actionAvailable || availableSpells.length === 0}">Cast spell</button>
+            aria-disabled="${disable || !actionAvailable || availableSpells.length === 0}" aria-describedby="composer-gate-hint">Cast spell</button>
           <button type="button" data-rules-command="combat.ready" data-testid="rules-ready"
-            aria-disabled="${disable || !actionAvailable}">Ready opportunity attack</button>
+            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Ready opportunity attack</button>
           <button type="button" data-rules-command="combat.reaction" data-testid="rules-reaction"
-            aria-disabled="${disable || openWindow === undefined}">Spend Reaction</button>
+            aria-disabled="${disable || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
           <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
-            aria-disabled="${disable || !actionAvailable}">Use healing potion</button>
+            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
-            aria-disabled="${disable || !deathSaveAvailable}">Death Save</button>
+            aria-disabled="${disable || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
           <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
-            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}">Training: drop to 0 HP</button>
+            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
             aria-disabled="${disable || !actionAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
@@ -423,12 +588,33 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const ownAuthority = holdsOwnAuthority();
     const syncDisabled = busy || candidate === null || !seated || tableState === null || !ownAuthority;
     const interpretDisabled = busy || candidate === null || !seated || !ownAuthority;
+    const gateHint = composerGateHint();
     return `
       <p data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
       <p class="record-meta" data-testid="table-state-meta">
         Table state version ${version} · last event sequence ${sequence}
       </p>
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
+      ${
+        seated
+          ? ''
+          : `<p class="record-meta" data-testid="table-sync-seat-hint">
+              Seat a character you own on the campaign page before claiming Active Turn.
+            </p>`
+      }
+      <div class="action-composer-controls action-composer-authority" data-testid="active-turn-controls">
+        <button type="button" data-testid="claim-active-turn"
+          aria-disabled="${busy || candidate === null || !seated}"
+          aria-describedby="composer-gate-hint">
+          ${busy ? 'Working…' : 'Claim Active Turn'}
+        </button>
+        <button type="button" data-testid="end-active-turn"
+          aria-disabled="${busy || candidate === null || !ownAuthority}"
+          aria-describedby="composer-gate-hint">
+          End Active Turn
+        </button>
+      </div>
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
         <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
         <label class="option compact">
@@ -448,40 +634,40 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-disabled="${busy || candidate === null}">
           Refresh table projection
         </button>
-      </div>
-      ${
-        seated
-          ? ''
-          : `<p class="record-meta" data-testid="table-sync-seat-hint">
-              Seat a character you own on the campaign page before claiming Active Turn.
-            </p>`
-      }
-      <div class="action-composer-controls">
-        <button type="button" data-testid="claim-active-turn"
-          aria-disabled="${busy || candidate === null || !seated}">
-          ${busy ? 'Working…' : 'Claim Active Turn'}
-        </button>
-        <button type="button" data-testid="end-active-turn"
-          aria-disabled="${busy || candidate === null || !ownAuthority}">
-          End Active Turn
-        </button>
         <button type="button" data-testid="commit-table-sync"
-          aria-disabled="${syncDisabled}">
+          aria-disabled="${syncDisabled}"
+          aria-describedby="composer-gate-hint">
           ${busy ? 'Committing…' : escapeHtml(ACTION_COMPOSER_STRUCTURE.tableSyncLabel)}
         </button>
         <button type="button" data-testid="commit-table-move"
-          aria-disabled="${syncDisabled || moveTarget === null}">
+          aria-disabled="${syncDisabled || moveTarget === null}"
+          aria-describedby="composer-gate-hint">
           ${busy ? 'Moving…' : 'Commit move'}
         </button>
         <button type="button" data-testid="open-adjacent-door"
-          aria-disabled="${syncDisabled}">
+          aria-disabled="${syncDisabled}"
+          aria-describedby="composer-gate-hint">
           Open adjacent door
         </button>
         <button type="button" data-testid="interpret-action"
-          aria-disabled="${interpretDisabled}">
+          aria-disabled="${interpretDisabled}"
+          aria-describedby="composer-gate-hint">
           ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)}
         </button>
+        <button type="button" data-testid="request-narration"
+          aria-disabled="${busy || candidate === null || !seated}">
+          Request Director narration
+        </button>
       </div>
+      <label class="field">
+        <span>Natural-language intent (Intent Intercept via Director gateway)</span>
+        <textarea data-testid="nl-intent-input" rows="2">${escapeHtml(nlIntentText)}</textarea>
+      </label>
+      <button type="button" data-testid="interpret-nl-intent"
+        aria-disabled="${interpretDisabled}"
+        aria-describedby="composer-gate-hint">
+        Interpret natural language
+      </button>
       <p class="record-meta" data-testid="move-target-meta">
         ${
           moveTarget === null
@@ -783,10 +969,228 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
+    panels
+      .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
+      ?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void (async () => {
+          if (candidate === null || busy || draft.trim().length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await postPartyChat({
+              candidateId: candidate.candidateId,
+              campaignId,
+              mode: chatMode,
+              body: draft.trim(),
+            });
+            draft = '';
+            partyChat = await fetchPartyChat(campaignId);
+            shell.announce('Party Chat message sent. It did not become a command.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Party Chat message could not be sent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="party-chat-dictate"]')
+      ?.addEventListener('click', () => {
+        const SpeechRecognitionCtor =
+          (
+            window as unknown as {
+              SpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+              webkitSpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+            }
+          ).SpeechRecognition ??
+          (
+            window as unknown as {
+              webkitSpeechRecognition?: new () => {
+                continuous: boolean;
+                interimResults: boolean;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+                onerror: (() => void) | null;
+                start: () => void;
+              };
+            }
+          ).webkitSpeechRecognition;
+        if (!speechToTextEnabled || SpeechRecognitionCtor === undefined) {
+          shell.announce(
+            'Speech-to-text is enabled in settings but this browser has no recognition API. Drafts stay editable and unsent.',
+          );
+          return;
+        }
+        const recognition = new SpeechRecognitionCtor();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.onresult = (event) => {
+          const transcript = event.results[0]?.[0]?.transcript?.trim() ?? '';
+          if (transcript.length > 0) {
+            draft = draft.length === 0 ? transcript : `${draft} ${transcript}`;
+            render();
+            shell.announce('Dictation placed into an editable unsent Party Chat draft.');
+          }
+        };
+        recognition.onerror = () => {
+          shell.announce('Dictation did not capture audio. Nothing was sent.');
+        };
+        recognition.start();
+      });
+
     const input = panels.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
     });
+
+    const directorInput = panels.querySelector<HTMLTextAreaElement>(
+      '[data-testid="director-address-input"]',
+    );
+    directorInput?.addEventListener('input', () => {
+      directorDraft = directorInput.value;
+    });
+
+    panels
+      .querySelector<HTMLFormElement>('[data-testid="director-address-composer"]')
+      ?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void (async () => {
+          if (candidate === null || busy || directorDraft.trim().length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const answered = await postDirectorAddress({
+              candidateId: candidate.candidateId,
+              campaignId,
+              body: directorDraft.trim(),
+            });
+            directorReply = answered.body;
+            directorDraft = '';
+            if (textToSpeechEnabled && 'speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(answered.body);
+              window.speechSynthesis.speak(utterance);
+            }
+            shell.announce('Director Address reply received. No table state changed.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Director Address could not be sent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    const nlInput = panels.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
+    nlInput?.addEventListener('input', () => {
+      nlIntentText = nlInput.value;
+    });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="interpret-nl-intent"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (
+            candidate === null ||
+            busy ||
+            !holdsOwnAuthority() ||
+            nlIntentText.trim().length === 0
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const interpreted = await interpretNaturalLanguage({
+              candidateId: candidate.candidateId,
+              campaignId,
+              text: nlIntentText.trim(),
+              moveTarget,
+            });
+            intentDraft = {
+              draftId: interpreted.draftId,
+              source: 'action_composer_interpret',
+              campaignId,
+              proposedCommandType: interpreted.proposedCommandType,
+              summary: interpreted.summary,
+              ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
+              interceptState: interpreted.interceptState,
+              createdAt: interpreted.createdAt,
+            };
+            shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Natural-language intent could not be interpreted.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    panels
+      .querySelector<HTMLButtonElement>('[data-testid="request-narration"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) return;
+          busy = true;
+          error = null;
+          render();
+          try {
+            const narration = await requestDirectorNarration({
+              candidateId: candidate.candidateId,
+              campaignId,
+              mechanicsSummary:
+                tableState === null
+                  ? 'The table is quiet.'
+                  : `Table state version ${tableState.stateVersion} is visible to seated players.`,
+            });
+            lastNarration = narration.body;
+            activeTab = 'chronicle';
+            if (textToSpeechEnabled && 'speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(narration.body);
+              window.speechSynthesis.speak(utterance);
+            }
+            shell.announce('Director narration delivered mechanics-first.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Director narration is unavailable.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
 
     panels
       .querySelector<HTMLButtonElement>('[data-testid="refresh-table-projection"]')
@@ -879,37 +1283,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Presentation preference could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-
-    panels
-      .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
-      ?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        void (async () => {
-          if (candidate === null || busy) return;
-          const body = input?.value.trim() ?? '';
-          if (body.length === 0) return;
-          busy = true;
-          error = null;
-          render();
-          try {
-            await postPartyChat({
-              candidateId: candidate.candidateId,
-              campaignId,
-              mode: chatMode,
-              body,
-            });
-            draft = '';
-            partyChat = await fetchPartyChat(campaignId);
-            shell.announce('Message sent to Party Chat.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure ? failure.message : 'Party Chat message failed.';
           } finally {
             busy = false;
             render();
@@ -1200,6 +1573,82 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
   }
 
+  function captureFocusedField(root: HTMLElement): {
+    readonly testId: string;
+    readonly start: number;
+    readonly end: number;
+  } | null {
+    const active = document.activeElement;
+    if (
+      !(active instanceof HTMLTextAreaElement) &&
+      !(active instanceof HTMLInputElement)
+    ) {
+      return null;
+    }
+    if (!root.contains(active)) {
+      return null;
+    }
+    const testId = active.getAttribute('data-testid');
+    if (testId === null) {
+      return null;
+    }
+    return {
+      testId,
+      start: active.selectionStart ?? 0,
+      end: active.selectionEnd ?? 0,
+    };
+  }
+
+  function restoreFocusedField(
+    root: HTMLElement,
+    saved: { readonly testId: string; readonly start: number; readonly end: number } | null,
+  ): void {
+    if (saved === null) {
+      return;
+    }
+    const el = root.querySelector(`[data-testid="${saved.testId}"]`);
+    if (!(el instanceof HTMLTextAreaElement) && !(el instanceof HTMLInputElement)) {
+      return;
+    }
+    el.focus({ preventScroll: true });
+    try {
+      el.setSelectionRange(saved.start, saved.end);
+    } catch {
+      // Some input types reject selection ranges.
+    }
+  }
+
+  function patchPresenceSection(): void {
+    const section = container.querySelector<HTMLElement>('[data-testid="presence-section"]');
+    if (section === null) {
+      return;
+    }
+    const heading = section.querySelector('#presence-heading');
+    section.innerHTML = `
+      <h2 id="presence-heading">Table presence</h2>
+      ${presenceBody()}`;
+    if (heading === null) {
+      // Keep structure stable for a11y; no event rebind needed for presence list.
+    }
+  }
+
+  function presenceFingerprint(
+    projection: typeof presence,
+  ): string {
+    if (projection === null) {
+      return 'null';
+    }
+    return [
+      projection.stateVersion,
+      projection.onlineAccountIds.join(','),
+      projection.graceAccountIds.join(','),
+      ...projection.devices.map(
+        (device) =>
+          `${device.accountId}:${device.status}:${device.tabId}:${device.lastHeartbeatAt}`,
+      ),
+    ].join('|');
+  }
+
   function renderTable(): void {
     ensurePageShell();
     const heading = container.querySelector<HTMLElement>('[data-testid="table-heading-slot"]');
@@ -1207,6 +1656,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (heading === null || panels === null) {
       return;
     }
+
+    const focused = captureFocusedField(panels);
+    const scrollY = window.scrollY;
 
     const mapMeta =
       mapBundle === null
@@ -1228,6 +1680,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }`;
 
     panels.innerHTML = `
+      <section class="panel" aria-labelledby="presence-heading" data-testid="presence-section">
+        <h2 id="presence-heading">Table presence</h2>
+        ${presenceBody()}
+      </section>
+
       <section class="panel communication-dock" aria-label="Communication Dock" data-testid="communication-dock">
         <div class="dock-tabs" role="tablist" aria-label="Dock destinations">
           ${DOCK_TABS.map(
@@ -1255,6 +1712,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
 
     bindPanelEvents(panels);
+    restoreFocusedField(panels, focused);
+    if (focused !== null) {
+      window.scrollTo(0, scrollY);
+    }
     syncStageFrameEffects();
     void ensureStage();
   }
@@ -1296,11 +1757,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
       return;
     }
-    const [tableFeed, mapFeed, timingFeed, rulesFeed] = await Promise.all([
+    const [tableFeed, mapFeed, timingFeed, rulesFeed, chatFeed, chronicleFeed] = await Promise.all([
       fetchTableState(campaignId),
       fetchCampaignMap(campaignId),
       fetchTimingAuthority(campaignId),
       seated ? fetchRulesState(campaignId) : Promise.resolve(null),
+      fetchPartyChat(campaignId),
+      fetchChronicle(campaignId),
     ]);
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -1309,9 +1772,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const priorMap = mapSyncFingerprint(mapBundle);
     const priorAuthorityId = timingAuthority?.timingAuthorityId ?? null;
     const priorAuthorityState = timingAuthority?.state ?? null;
+    const priorChatCount = partyChat?.messages.length ?? 0;
+    const priorChronicleCount = chronicle?.entries.length ?? 0;
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
+    partyChat = chatFeed;
+    chronicle = chronicleFeed;
     if (rulesFeed !== null) {
       encounter = rulesFeed.encounter;
       progression = rulesFeed.progression;
@@ -1321,7 +1788,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableFeed.stateVersion !== priorVersion ||
       mapSyncFingerprint(mapFeed) !== priorMap ||
       (timingFeed.authority?.timingAuthorityId ?? null) !== priorAuthorityId ||
-      (timingFeed.authority?.state ?? null) !== priorAuthorityState;
+      (timingFeed.authority?.state ?? null) !== priorAuthorityState ||
+      chatFeed.messages.length !== priorChatCount ||
+      chronicleFeed.entries.length !== priorChronicleCount;
     if (changed) {
       render();
     } else if (mapBundle !== null && stageHandle !== null) {
@@ -1334,6 +1803,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       clearInterval(pollTimer);
       pollTimer = null;
     }
+    if (presenceTimer !== null) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+  }
+
+  async function sendPresenceHeartbeat(): Promise<void> {
+    if (candidate === null || getAccount() === null) {
+      return;
+    }
+    const result = await heartbeatCampaignPresence({
+      candidateId: candidate.candidateId,
+      campaignId,
+      tabId: presenceTabId,
+      spectator: !seated,
+    });
+    presence = result.presence;
   }
 
   function startProjectionPoll(): void {
@@ -1355,6 +1841,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           pollInFlight = false;
         });
     }, TABLE_PROJECTION_POLL_MS);
+
+    presenceTimer = setInterval(() => {
+      if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
+        return;
+      }
+      const before = presenceFingerprint(presence);
+      void sendPresenceHeartbeat()
+        .then(() => {
+          // Presence heartbeats must not wipe Director Address / NL textareas.
+          // Patch the presence panel only when the projection actually changes.
+          if (presenceFingerprint(presence) === before) {
+            return;
+          }
+          patchPresenceSection();
+        })
+        .catch(() => {
+          // Soft-fail presence; next heartbeat retries.
+        });
+    }, PRESENCE_HEARTBEAT_INTERVAL_MS);
   }
 
   function onVisibilityRefresh(): void {
@@ -1398,8 +1903,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       progression = rulesFeed?.progression ?? null;
       reducedMotion = presentation.reducedMotion;
       lowEffects = presentation.lowEffects;
+      textToSpeechEnabled = presentation.reserved.textToSpeechEnabled;
+      speechToTextEnabled = presentation.reserved.speechToTextEnabled;
       applyPresentationPreferences({ reducedMotion, lowEffects });
       startProjectionPoll();
+      try {
+        await sendPresenceHeartbeat();
+      } catch {
+        // Presence soft-fails on first load.
+      }
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
       stopProjectionPoll();

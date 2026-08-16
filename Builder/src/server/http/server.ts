@@ -36,8 +36,32 @@ import {
 import {
   endSession,
   mintDevelopmentIdentity,
+  mintGoogleEmulatorIdentity,
+  mintQaFixtureSession,
   resolveSession,
 } from '../identity/development-identity.js';
+import {
+  assertAdminEmail,
+  buildAdminPanelSnapshot,
+  setAiKillSwitch,
+} from '../admin/admin-service.js';
+import {
+  accountInDisconnectGrace,
+  heartbeatPresence,
+  loadCampaignPresence,
+} from '../presence/presence-runtime.js';
+import {
+  AiDirectorUnavailableError,
+  PROVIDER_COMPLIANCE_REGISTRY,
+  answerDirectorAddress,
+  interpretNaturalLanguageIntent,
+  narrateVisibleBeat,
+} from '../ai/director-gateway.js';
+import {
+  DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH,
+  DIRECTOR_ADDRESS_NOTICE,
+} from '../../shared/communication-contract.js';
+import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import {
   AbilityRollsExhaustedError,
   CharacterIncompleteError,
@@ -84,6 +108,7 @@ import {
   claimActiveTurnAuthority,
   endActiveTurnAuthority,
   fetchActiveTimingAuthority,
+  lockActiveTurnOnDisconnect,
   TimingAuthorityError,
 } from '../table/timing-authority.js';
 import {
@@ -565,6 +590,133 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (path === '/api/identity/google-emulator-session' && method === 'POST') {
+      if (env.environmentClass !== 'local') {
+        sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return;
+      }
+      const email =
+        typeof (body as { email?: unknown }).email === 'string'
+          ? (body as { email: string }).email
+          : '';
+      try {
+        const minted = await mintGoogleEmulatorIdentity({ env, firestore, auth, email });
+        setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
+        sendJson(response, 201, minted.identity);
+      } catch (error) {
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error instanceof Error ? error.message : 'Google emulator identity failed.',
+        } satisfies ApiErrorBody);
+      }
+      return;
+    }
+
+    if (path === '/api/identity/qa-fixture-session' && method === 'POST') {
+      if (env.environmentClass !== 'local') {
+        sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return;
+      }
+      const fixtureLabel =
+        typeof (body as { fixtureLabel?: unknown }).fixtureLabel === 'string'
+          ? (body as { fixtureLabel: string }).fixtureLabel
+          : 'player';
+      try {
+        const minted = await mintQaFixtureSession({ env, firestore, auth, fixtureLabel });
+        setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
+        sendJson(response, 201, minted.identity);
+      } catch (error) {
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error instanceof Error ? error.message : 'QA fixture session failed.',
+        } satisfies ApiErrorBody);
+      }
+      return;
+    }
+
+    if (path === '/api/providers/registry' && method === 'GET') {
+      sendJson(response, 200, { providers: PROVIDER_COMPLIANCE_REGISTRY });
+      return;
+    }
+
+    if (path === '/api/admin' || path.startsWith('/api/admin/')) {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      if (path === '/api/admin' && method === 'GET') {
+        sendJson(
+          response,
+          200,
+          await buildAdminPanelSnapshot({
+            firestore,
+            accountId: session.accountId,
+            email: session.identity.email,
+            providerMode: session.identity.identityMode,
+          }),
+        );
+        return;
+      }
+      if (path === '/api/admin/ai-kill-switch' && method === 'POST') {
+        let body: unknown;
+        try {
+          body = await readJsonBody(request);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
+          return;
+        }
+        try {
+          assertAdminEmail(session.identity.email);
+          const enabled = (body as { enabled?: unknown }).enabled === true;
+          const next = await setAiKillSwitch({
+            firestore,
+            accountId: session.accountId,
+            email: session.identity.email!,
+            enabled,
+          });
+          sendJson(response, 200, { enabled: next });
+        } catch (error) {
+          sendJson(response, 403, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: error instanceof Error ? error.message : 'Admin operation refused.',
+          } satisfies ApiErrorBody);
+        }
+        return;
+      }
+      sendError(response, ERROR_CODES.NOT_FOUND);
+      return;
+    }
+
     if (path === '/api/session' && method === 'GET') {
       const session = await resolveSession({
         firestore,
@@ -616,12 +768,22 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         try {
-          const payload = body as { reducedMotion?: unknown; lowEffects?: unknown };
+          const payload = body as {
+            reducedMotion?: unknown;
+            lowEffects?: unknown;
+            speech?: {
+              textToSpeechEnabled?: unknown;
+              chronicleAutoplay?: unknown;
+              privateDirectorAutoplay?: unknown;
+              speechToTextEnabled?: unknown;
+            };
+          };
           const settings = await updatePlayerSettings({
             firestore,
             accountId: session.accountId,
             reducedMotion: payload.reducedMotion,
             ...(payload.lowEffects !== undefined ? { lowEffects: payload.lowEffects } : {}),
+            ...(payload.speech !== undefined ? { speech: payload.speech } : {}),
           });
           sendJson(response, 200, settings);
         } catch {
@@ -1156,6 +1318,203 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const presenceMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/presence$/.exec(path);
+      if (presenceMatch !== null) {
+        const campaignId = presenceMatch[1]!;
+        await readCampaignDetail({ firestore, accountId, campaignId });
+        if (method === 'GET') {
+          sendJson(response, 200, await loadCampaignPresence(firestore, campaignId));
+          return;
+        }
+        if (method === 'POST') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const payload = body as {
+            tabId?: unknown;
+            seatId?: unknown;
+            spectator?: unknown;
+            requestId?: unknown;
+          };
+          if (typeof payload.tabId !== 'string' || payload.tabId.length === 0) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          const detail = await readCampaignDetail({ firestore, accountId, campaignId });
+          const ownSeat = detail.ownSeat?.seatId ?? null;
+          const presence = await heartbeatPresence({
+            firestore,
+            campaignId,
+            accountId,
+            displayLabel: session.identity.displayLabel,
+            deviceSessionId: session.deviceSessionId,
+            tabId: payload.tabId,
+            seatId: typeof payload.seatId === 'string' ? payload.seatId : ownSeat,
+            spectator: payload.spectator === true,
+          });
+          // Detect grace for other seated accounts and lock their Active Turns.
+          for (const device of presence.devices) {
+            if (
+              device.accountId !== accountId &&
+              accountInDisconnectGrace(presence, device.accountId)
+            ) {
+              await lockActiveTurnOnDisconnect({
+                firestore,
+                campaignId,
+                accountId: device.accountId,
+              });
+            }
+          }
+          sendJson(response, 200, {
+            presence,
+            heartbeatIntervalMs: PRESENCE_HEARTBEAT_INTERVAL_MS,
+          });
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const directorAddressMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/director-address$/.exec(
+        path,
+      );
+      if (directorAddressMatch !== null) {
+        const campaignId = directorAddressMatch[1]!;
+        if (method === 'GET') {
+          sendJson(response, 200, { notice: DIRECTOR_ADDRESS_NOTICE });
+          return;
+        }
+        if (method === 'POST') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const text =
+            typeof (body as { body?: unknown }).body === 'string'
+              ? (body as { body: string }).body.trim()
+              : '';
+          if (text.length === 0 || text.length > DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          await readCampaignDetail({ firestore, accountId, campaignId });
+          try {
+            const answered = await answerDirectorAddress({
+              firestore,
+              campaignId,
+              accountId,
+              text,
+            });
+            sendJson(response, 201, answered);
+          } catch (error) {
+            if (error instanceof AiDirectorUnavailableError) {
+              sendJson(response, 503, {
+                error: ERROR_CODES.UPSTREAM_UNAVAILABLE,
+                message: error.message,
+              } satisfies ApiErrorBody);
+              return;
+            }
+            throw error;
+          }
+          return;
+        }
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+
+      const interpretNlMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/interpret-intent$/.exec(
+        path,
+      );
+      if (interpretNlMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = interpretNlMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          text?: unknown;
+          moveTarget?: { column?: unknown; row?: unknown } | null;
+        };
+        const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+        if (text.length === 0) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        await readCampaignDetail({ firestore, accountId, campaignId });
+        const moveTarget =
+          payload.moveTarget &&
+          typeof payload.moveTarget.column === 'number' &&
+          typeof payload.moveTarget.row === 'number'
+            ? { column: payload.moveTarget.column, row: payload.moveTarget.row }
+            : null;
+        try {
+          const interpreted = await interpretNaturalLanguageIntent({
+            firestore,
+            campaignId,
+            accountId,
+            text,
+            moveTarget,
+          });
+          sendJson(response, 201, interpreted);
+        } catch (error) {
+          if (error instanceof AiDirectorUnavailableError) {
+            sendJson(response, 503, {
+              error: ERROR_CODES.UPSTREAM_UNAVAILABLE,
+              message: error.message,
+            } satisfies ApiErrorBody);
+            return;
+          }
+          throw error;
+        }
+        return;
+      }
+
+      const narrateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/narrate$/.exec(path);
+      if (narrateMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = narrateMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const mechanicsSummary =
+          typeof (body as { mechanicsSummary?: unknown }).mechanicsSummary === 'string'
+            ? (body as { mechanicsSummary: string }).mechanicsSummary.trim()
+            : '';
+        if (mechanicsSummary.length === 0) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        await readCampaignDetail({ firestore, accountId, campaignId });
+        try {
+          const narration = await narrateVisibleBeat({
+            firestore,
+            campaignId,
+            accountId,
+            mechanicsSummary,
+          });
+          sendJson(response, 201, narration);
+        } catch (error) {
+          if (error instanceof AiDirectorUnavailableError) {
+            sendJson(response, 503, {
+              error: ERROR_CODES.UPSTREAM_UNAVAILABLE,
+              message: error.message,
+            } satisfies ApiErrorBody);
+            return;
+          }
+          throw error;
+        }
         return;
       }
 

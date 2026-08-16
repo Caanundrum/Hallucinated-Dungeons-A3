@@ -58,6 +58,8 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-2': 65,
   // Phase 3 adds two complete-rules scenarios and the permanent rules smoke segment.
   'phase-3': 69,
+  // Phase 4 adds presence/Admin/AI/speech/four-player scenarios plus multiplayer smoke segment.
+  'phase-4': 73,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -154,7 +156,17 @@ async function main() {
   };
 
   const phaseLabel =
-    PHASE === 'phase-3' ? '3' : PHASE === 'phase-2' ? '2' : PHASE === 'phase-1' ? '1' : PHASE === 'phase-0' ? '0' : PHASE;
+    PHASE === 'phase-4'
+      ? '4'
+      : PHASE === 'phase-3'
+        ? '3'
+        : PHASE === 'phase-2'
+          ? '2'
+          : PHASE === 'phase-1'
+            ? '1'
+            : PHASE === 'phase-0'
+              ? '0'
+              : PHASE;
   console.log(`Phase ${phaseLabel} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.

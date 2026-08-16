@@ -1,9 +1,8 @@
 /**
  * Per-account presentation settings.
  *
- * Blueprint ownership: Section 1.5.21 — local preferences only. Speech/AI
- * presentation fields are reserved defaults. Phase 1 exposes reducedMotion;
- * Phase 2 adds lowEffects for the tactical table.
+ * Blueprint ownership: Section 1.5.21. Phase 4 activates player-optional
+ * speech prefs (TTS/STT) stored under `reserved`.
  */
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
@@ -11,6 +10,7 @@ import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 import {
   RESERVED_PLAYER_PRESENTATION_DEFAULTS,
   type PlayerPresentationSettingsProjection,
+  type ReservedPlayerPresentationSettings,
 } from '../../shared/settings-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 
@@ -18,7 +18,7 @@ interface StoredAccountSettings {
   readonly accountId: string;
   readonly reducedMotion: boolean;
   readonly lowEffects: boolean;
-  readonly reserved: typeof RESERVED_PLAYER_PRESENTATION_DEFAULTS;
+  readonly reserved: ReservedPlayerPresentationSettings;
   readonly createdAt: Timestamp | Date;
   readonly updatedAt: Timestamp | Date;
 }
@@ -27,12 +27,25 @@ function toIso(value: Timestamp | Date): string {
   return value instanceof Date ? value.toISOString() : value.toDate().toISOString();
 }
 
+function normalizeReserved(
+  raw: Partial<ReservedPlayerPresentationSettings> | undefined,
+): ReservedPlayerPresentationSettings {
+  return {
+    textToSpeechEnabled: raw?.textToSpeechEnabled === true,
+    chronicleAutoplay: raw?.chronicleAutoplay === true,
+    privateDirectorAutoplay: raw?.privateDirectorAutoplay === true,
+    speechToTextEnabled: raw?.speechToTextEnabled === true,
+    narrationDensity: raw?.narrationDensity ?? RESERVED_PLAYER_PRESENTATION_DEFAULTS.narrationDensity,
+    dicePresentation: raw?.dicePresentation ?? RESERVED_PLAYER_PRESENTATION_DEFAULTS.dicePresentation,
+  };
+}
+
 function project(stored: StoredAccountSettings): PlayerPresentationSettingsProjection {
   return {
     accountId: stored.accountId,
     reducedMotion: stored.reducedMotion,
     lowEffects: stored.lowEffects,
-    reserved: RESERVED_PLAYER_PRESENTATION_DEFAULTS,
+    reserved: normalizeReserved(stored.reserved),
     updatedAt: toIso(stored.updatedAt),
   };
 }
@@ -49,7 +62,7 @@ async function ensure(firestore: Firestore, accountId: string): Promise<StoredAc
       accountId: raw.accountId,
       reducedMotion: raw.reducedMotion,
       lowEffects: raw.lowEffects === true,
-      reserved: RESERVED_PLAYER_PRESENTATION_DEFAULTS,
+      reserved: normalizeReserved(raw.reserved),
       createdAt: (raw.createdAt as Timestamp | Date | undefined) ?? new Date(0),
       updatedAt: (raw.updatedAt as Timestamp | Date | undefined) ?? new Date(0),
     };
@@ -79,6 +92,12 @@ export async function updatePlayerSettings(options: {
   readonly accountId: string;
   readonly reducedMotion: unknown;
   readonly lowEffects?: unknown;
+  readonly speech?: {
+    readonly textToSpeechEnabled?: unknown;
+    readonly chronicleAutoplay?: unknown;
+    readonly privateDirectorAutoplay?: unknown;
+    readonly speechToTextEnabled?: unknown;
+  };
 }): Promise<PlayerPresentationSettingsProjection> {
   const current = await ensure(options.firestore, options.accountId);
   if (typeof options.reducedMotion !== 'boolean') {
@@ -87,12 +106,42 @@ export async function updatePlayerSettings(options: {
   if (options.lowEffects !== undefined && typeof options.lowEffects !== 'boolean') {
     throw new Error('lowEffects must be a boolean');
   }
+  const speech = options.speech ?? {};
+  for (const key of [
+    'textToSpeechEnabled',
+    'chronicleAutoplay',
+    'privateDirectorAutoplay',
+    'speechToTextEnabled',
+  ] as const) {
+    if (speech[key] !== undefined && typeof speech[key] !== 'boolean') {
+      throw new Error(`${key} must be a boolean`);
+    }
+  }
+  const reserved: ReservedPlayerPresentationSettings = {
+    ...current.reserved,
+    textToSpeechEnabled:
+      typeof speech.textToSpeechEnabled === 'boolean'
+        ? speech.textToSpeechEnabled
+        : current.reserved.textToSpeechEnabled,
+    chronicleAutoplay:
+      typeof speech.chronicleAutoplay === 'boolean'
+        ? speech.chronicleAutoplay
+        : current.reserved.chronicleAutoplay,
+    privateDirectorAutoplay:
+      typeof speech.privateDirectorAutoplay === 'boolean'
+        ? speech.privateDirectorAutoplay
+        : current.reserved.privateDirectorAutoplay,
+    speechToTextEnabled:
+      typeof speech.speechToTextEnabled === 'boolean'
+        ? speech.speechToTextEnabled
+        : current.reserved.speechToTextEnabled,
+  };
   const updated: StoredAccountSettings = {
     ...current,
     reducedMotion: options.reducedMotion,
     lowEffects:
       typeof options.lowEffects === 'boolean' ? options.lowEffects : current.lowEffects,
-    reserved: RESERVED_PLAYER_PRESENTATION_DEFAULTS,
+    reserved,
     updatedAt: new Date(),
   };
   await options.firestore.collection(COLLECTIONS.accountSettings).doc(options.accountId).set(updated);

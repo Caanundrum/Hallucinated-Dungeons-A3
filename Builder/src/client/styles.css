@@ -413,6 +413,25 @@ button[aria-disabled="true"] {
   pointer-events: none;
 }
 
+.composer-gate-hint {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--amber-action);
+  background: color-mix(in srgb, var(--amber-action) 10%, var(--obsidian-surface));
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.action-composer-authority {
+  margin-top: var(--space-3);
+}
+
+.action-composer-authority [data-testid="claim-active-turn"] {
+  background: var(--amber-highlight);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber-highlight) 40%, transparent);
+}
+
 .lock-badge {
   display: inline-block;
   margin-left: var(--space-2);

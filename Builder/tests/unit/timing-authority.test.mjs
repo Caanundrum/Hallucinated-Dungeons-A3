@@ -39,5 +39,5 @@ test('action composer unlocks Interpret Action via Timing Authority copy', () =>
   assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Claim Active Turn/i);
   assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /Intent Intercept/i);
   assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /Party Chat still cannot/i);
-  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk']);
+  assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
 });

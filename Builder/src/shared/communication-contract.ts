@@ -8,13 +8,14 @@
  * until Timing Authority arrives.
  */
 
-export const DOCK_TABS = ['chronicle', 'party_chat', 'rules_desk'] as const;
+export const DOCK_TABS = ['chronicle', 'party_chat', 'rules_desk', 'director_address'] as const;
 export type DockTab = (typeof DOCK_TABS)[number];
 
 export const DOCK_TAB_LABELS: Record<DockTab, string> = {
   chronicle: 'Chronicle',
   party_chat: 'Party Chat',
   rules_desk: 'Rules Desk',
+  director_address: 'Director Address',
 };
 
 export const PARTY_CHAT_MODES = ['table_talk', 'speak_as_character'] as const;
@@ -78,15 +79,20 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
   heading: 'Declare Action',
   notice:
-    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Claim Active Turn Authority before committing table syncs, moves, or door opens. Interpret Action opens a structured Intent Intercept draft only while you hold that authority — it never invents AI rulings.',
+    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Claim Active Turn Authority before committing table syncs, moves, or door opens. Interpret Action and natural-language intent open a structured Intent Intercept draft only while you hold that authority — confirmation still goes through the command gateway.',
   tableSyncLabel: 'Commit table sync',
   interpretActionLabel: 'Interpret Action',
   interpretActionNotice:
-    'Interpret Action proposes a structured Intent Intercept draft from your current move target (or a table sync). Confirming the intercept submits a real command with your Timing Authority. Party Chat still cannot become a command.',
+    'Interpret Action proposes a structured Intent Intercept draft from your current move target (or a table sync). Natural-language intent uses the Director gateway with a Payload Manifest, still requires confirmation, and never auto-submits. Party Chat still cannot become a command.',
 };
 
 export const RULES_DESK_NOTICE =
-  'The Rules Desk will explain approved rules and visible modifiers when the rules engine and Director answers arrive in later phases. In Phase 1 it is a peer dock destination with honest guidance only — it cannot grant rulings or submit actions.';
+  'The Rules Desk explains approved rules and visible modifiers. It cannot grant rulings, mutate state, or submit actions.';
+
+export const DIRECTOR_ADDRESS_NOTICE =
+  'Director Address is a private, nonmechanical channel to the Game Director. It never mutates the table. Actionable wording may produce an Action Draft Suggestion you must open in Declare Action and confirm through Intent Intercept.';
+
+export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
 
 export function isDockTab(value: unknown): value is DockTab {
   return typeof value === 'string' && (DOCK_TABS as readonly string[]).includes(value);

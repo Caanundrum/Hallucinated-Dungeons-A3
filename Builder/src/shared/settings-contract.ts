@@ -124,20 +124,27 @@ export const ACCESSIBILITY_NOTES_MAX_LENGTH = 400;
 export const EXTERNAL_VOICE_NOTE_MAX_LENGTH = 200;
 export const EXPECTED_SESSION_LENGTH_MAX_LENGTH = 80;
 
-/** Reserved player presentation defaults — persisted, not exposed as dead UI. */
+/** Narration density and dice presentation remain player prefs. */
 export const NARRATION_DENSITIES = ['concise', 'balanced', 'cinematic'] as const;
 export type NarrationDensity = (typeof NARRATION_DENSITIES)[number];
 
 export const DICE_PRESENTATIONS = ['fast', 'standard'] as const;
 export type DicePresentation = (typeof DICE_PRESENTATIONS)[number];
 
-export interface ReservedPlayerPresentationSettings {
-  readonly textToSpeechEnabled: false;
-  readonly chronicleAutoplay: false;
-  readonly privateDirectorAutoplay: false;
-  readonly speechToTextEnabled: false;
-  readonly narrationDensity: 'balanced';
-  readonly dicePresentation: 'standard';
+/**
+ * Phase 4 speech prefs — player-optional. Defaults off. TTS speaks only
+ * already-visible text; STT fills editable unsent drafts only.
+ */
+export interface PlayerSpeechSettings {
+  readonly textToSpeechEnabled: boolean;
+  readonly chronicleAutoplay: boolean;
+  readonly privateDirectorAutoplay: boolean;
+  readonly speechToTextEnabled: boolean;
+}
+
+export interface ReservedPlayerPresentationSettings extends PlayerSpeechSettings {
+  readonly narrationDensity: NarrationDensity;
+  readonly dicePresentation: DicePresentation;
 }
 
 export const RESERVED_PLAYER_PRESENTATION_DEFAULTS: ReservedPlayerPresentationSettings = {
@@ -149,7 +156,7 @@ export const RESERVED_PLAYER_PRESENTATION_DEFAULTS: ReservedPlayerPresentationSe
   dicePresentation: 'standard',
 };
 
-/** Honest player preferences that already affect the page (Phase 1–2). */
+/** Honest player preferences that already affect the page (Phase 1–4). */
 export interface PlayerPresentationSettingsProjection {
   readonly accountId: string;
   readonly reducedMotion: boolean;

@@ -497,6 +497,12 @@ export async function savePlayerSettings(options: {
   readonly candidateId: string;
   readonly reducedMotion: boolean;
   readonly lowEffects?: boolean;
+  readonly speech?: {
+    readonly textToSpeechEnabled?: boolean;
+    readonly chronicleAutoplay?: boolean;
+    readonly privateDirectorAutoplay?: boolean;
+    readonly speechToTextEnabled?: boolean;
+  };
 }): Promise<PlayerPresentationSettingsProjection> {
   return (await request('/api/account/settings', {
     method: 'PUT',
@@ -504,8 +510,128 @@ export async function savePlayerSettings(options: {
     body: JSON.stringify({
       reducedMotion: options.reducedMotion,
       ...(options.lowEffects !== undefined ? { lowEffects: options.lowEffects } : {}),
+      ...(options.speech !== undefined ? { speech: options.speech } : {}),
     }),
   })) as PlayerPresentationSettingsProjection;
+}
+
+export async function enterGoogleEmulatorSession(options: {
+  readonly candidateId: string;
+  readonly email: string;
+}): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/identity/google-emulator-session', {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ email: options.email }),
+  })) as AccountProjection;
+}
+
+export async function fetchAdminPanel(): Promise<{
+  readonly isAdmin: boolean;
+  readonly bootstrapEmail: string;
+  readonly actorEmail: string | null;
+  readonly actorAccountId: string;
+  readonly auditEvents: readonly {
+    readonly id: string;
+    readonly actorEmail: string;
+    readonly action: string;
+    readonly detail: string;
+    readonly atMs: number;
+  }[];
+  readonly providerMode: string;
+  readonly aiKillSwitch: boolean;
+  readonly notice: string;
+}> {
+  return (await request('/api/admin')) as never;
+}
+
+export async function setAdminAiKillSwitch(options: {
+  readonly candidateId: string;
+  readonly enabled: boolean;
+}): Promise<{ readonly enabled: boolean }> {
+  return (await request('/api/admin/ai-kill-switch', {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ enabled: options.enabled }),
+  })) as { readonly enabled: boolean };
+}
+
+export async function fetchProviderRegistry(): Promise<{
+  readonly providers: readonly {
+    readonly providerId: string;
+    readonly displayName: string;
+    readonly category: string;
+  }[];
+}> {
+  return (await request('/api/providers/registry')) as never;
+}
+
+export async function heartbeatCampaignPresence(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly tabId: string;
+  readonly seatId?: string | null;
+  readonly spectator?: boolean;
+}): Promise<{
+  readonly presence: import('../shared/presence-contract.js').CampaignPresenceProjection;
+  readonly heartbeatIntervalMs: number;
+}> {
+  return (await request(`/api/campaigns/${options.campaignId}/presence`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      requestId: crypto.randomUUID(),
+      tabId: options.tabId,
+      ...(options.seatId !== undefined ? { seatId: options.seatId } : {}),
+      ...(options.spectator !== undefined ? { spectator: options.spectator } : {}),
+    }),
+  })) as never;
+}
+
+export async function fetchCampaignPresence(
+  campaignId: string,
+): Promise<import('../shared/presence-contract.js').CampaignPresenceProjection> {
+  return (await request(`/api/campaigns/${campaignId}/presence`)) as never;
+}
+
+export async function postDirectorAddress(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly body: string;
+}): Promise<import('../shared/ai-director-contract.js').DirectorAddressResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/director-address`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ body: options.body }),
+  })) as never;
+}
+
+export async function interpretNaturalLanguage(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly text: string;
+  readonly moveTarget?: { column: number; row: number } | null;
+}): Promise<import('../shared/ai-director-contract.js').IntentInterpretResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/interpret-intent`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      text: options.text,
+      ...(options.moveTarget !== undefined ? { moveTarget: options.moveTarget } : {}),
+    }),
+  })) as never;
+}
+
+export async function requestDirectorNarration(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly mechanicsSummary: string;
+}): Promise<import('../shared/ai-director-contract.js').DirectorNarrationProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/narrate`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ mechanicsSummary: options.mechanicsSummary }),
+  })) as never;
 }
 
 export async function recordFoundationCheck(options: {

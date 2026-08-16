@@ -69,20 +69,30 @@ export interface CandidateIdentity {
 }
 
 /**
- * Server-produced projection of the signed-in Development Test Identity.
+ * Server-produced projection of the signed-in account identity.
  * The browser renders this; it never invents or edits identity fields.
+ *
+ * Phase 4 extends modes: development_test_identity (Local Arena), google_sign_in
+ * (emulator locally / real Google on Milestone), and qa_fixture_session
+ * (machine-only Local Arena automation).
  */
 export interface DevelopmentIdentityProjection {
   readonly accountId: string;
   readonly displayLabel: string;
-  readonly identityMode: 'development_test_identity';
+  readonly identityMode:
+    | 'development_test_identity'
+    | 'google_sign_in'
+    | 'qa_fixture_session';
   readonly expiresAt: string;
+  /** Server-verified email when present; never accepted from client bodies. */
+  readonly email: string | null;
+  /** True only when email matches the bootstrap admin binding. */
+  readonly isBootstrapAdmin: boolean;
 }
 
 /**
- * Phase 1 account surface. Same Development Test Identity, projected as the
- * ordinary account the product uses for ownership and navigation. No second
- * identity provider is introduced (Section 1.5.20; P1-ACCOUNT-PROJECTION).
+ * Ordinary account surface for ownership and navigation.
+ * Phase 4 may project Google or QA fixture sessions through the same shape.
  */
 export type AccountProjection = DevelopmentIdentityProjection;
 
