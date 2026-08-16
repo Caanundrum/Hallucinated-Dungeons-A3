@@ -4,19 +4,19 @@ phase: phase-4
 lifecycleState: READY_FOR_QA
 blueprintVersion: ALPHA_3_V1
 blueprintSourceHash: 144f178d3cbfbe6572c299d4ad4b841ec3e6fa28ddedf5eddce0223e6250ce1e
-candidateId: cand-f79b57277ebf
-sourceTreeHash: f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f
-commit: 10dc550ce6ca745c7e457d3f2445066a079ce17e
+candidateId: cand-1de6ebed38c8
+sourceTreeHash: 1de6ebed38c802c61ccb718d24dca051f1db2ccca2504df9e8d2f07a46debd87
+commit: c1fb66a5d3659c7cfad3b41f03831ba49c903bbb
 humanGate: none
-verifiedAt: 2026-08-16T17:21:32Z
-certificationRunRecord: Evidence/phase-4/cand-f79b57277ebf-2026-08-16T17-19-24-693Z/certification-run-record.json
+verifiedAt: 2026-08-16T19:46:31Z
+certificationRunRecord: Evidence/phase-4/cand-1de6ebed38c8-2026-08-16T19-46-31-801Z/certification-run-record.json
 ---
 
 # Phase 4 — Builder Verification
 
 ## Result
 
-**PASSED** against frozen candidate `cand-f79b57277ebf`. Lifecycle: `READY_FOR_QA`.
+**PASSED** against frozen candidate `cand-1de6ebed38c8`. Lifecycle: `READY_FOR_QA`.
 
 No Product Owner visual gate for Phase 4 local certification (Section 25.4). Invite-Only Alpha / Public Milestone publication remains separately PO-authorized.
 
@@ -37,4 +37,4 @@ No Product Owner visual gate for Phase 4 local certification (Section 25.4). Inv
 
 ## Scope verified
 
-Presence / reconnect grace / Active Turn disconnect lock; Google emulator + QA fixture identity; Admin bootstrap + kill switch; Director Address / NL Intent Intercept / narration with Payload Manifests; player-optional TTS/STT; Provider Compliance Registry; four-player social sync; smoke spine multiplayer/AI segment.
+Presence / reconnect grace / Active Turn disconnect lock; account-grouped presence UI; Claim Active Turn authority strip + composer gate hints; Director/NL textarea stability across presence heartbeats; Google emulator + QA fixture identity; Admin bootstrap + kill switch; Director Address / NL Intent Intercept / narration with Payload Manifests; player-optional TTS/STT; Provider Compliance Registry; four-player social sync; smoke spine multiplayer/AI segment.

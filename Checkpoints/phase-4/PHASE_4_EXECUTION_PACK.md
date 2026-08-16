@@ -11,7 +11,7 @@ priorCertifiedCandidate: cand-cc92bfc17c10
 lifecycleState: PHASE_CERTIFIED
 humanGate: none
 humanGateNote: "Section 25.4 — no Phase 4 local visual PO gate. Invite-Only Alpha / Public Milestone publication still requires explicit Product Owner authorization of the exact candidate."
-certifiedCandidate: cand-f79b57277ebf
+certifiedCandidate: cand-1de6ebed38c8
 certifiedSourceTreeHash: f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f
 certifiedAt: 2026-08-16T17:28:30Z
 authoredAt: 2026-08-16T16:56:00Z

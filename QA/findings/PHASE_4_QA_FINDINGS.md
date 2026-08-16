@@ -1,12 +1,12 @@
 ---
 phase: phase-4
-candidateId: cand-f79b57277ebf
-sourceTreeHash: f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f
-commit: 10dc550ce6ca745c7e457d3f2445066a079ce17e
-localStackManifest: /workspace/Runtime/certification/cand-f79b57277ebf/local-stack-manifest.json
+candidateId: cand-1de6ebed38c8
+sourceTreeHash: 1de6ebed38c802c61ccb718d24dca051f1db2ccca2504df9e8d2f07a46debd87
+commit: c1fb66a5d3659c7cfad3b41f03831ba49c903bbb
+localStackManifest: /workspace/Runtime/certification/cand-1de6ebed38c8/local-stack-manifest.json
 qaRole: independent-qa
-validationStartedAt: 2026-08-16T17:24:00Z
-validationCompletedAt: 2026-08-16T17:28:00Z
+validationStartedAt: 2026-08-16T19:51:00Z
+validationCompletedAt: 2026-08-16T19:56:00Z
 status: PLAYER_VALIDATED
 blockingFindingCount: 0
 totalFindingCount: 0
@@ -19,8 +19,8 @@ openFindingCount: 0
 
 | Source | candidateId | environmentClass | runtimeMode |
 | --- | --- | --- | --- |
-| Builder Verification | `cand-f79b57277ebf` | local | frozen_certification |
-| `GET http://127.0.0.1:5274/api/candidate` | `cand-f79b57277ebf` | local | frozen_certification |
+| Builder Verification | `cand-1de6ebed38c8` | local | frozen_certification |
+| `GET http://127.0.0.1:5274/api/candidate` | `cand-1de6ebed38c8` | local | frozen_certification |
 
 Live health: ready with Firestore and Auth emulators reachable. Independent QA used frozen origin `5274` only.
 
@@ -30,24 +30,22 @@ Live health: ready with Firestore and Auth emulators reachable. Independent QA u
 
 - Spec: `QA/scripts/phase4-player.qa.spec.ts`
 - Config: `QA/playwright.phase4.config.ts`
-- Result: **5 passed, 0 failed**
+- Result: **5 passed, 0 failed** (re-run after serve:frozen; prior attempt had transient `start-campaign` timeouts while the arena was still settling)
 - Machine results: `QA/evidence/phase-4/ui/results.json`
-- Console: `/opt/cursor/artifacts/phase4_independent_qa4.log`
+- Console: `/opt/cursor/artifacts/phase4_ux_independent_qa3.log`
 
 | ID | Persona / intent | Outcome |
 | --- | --- | --- |
 | QA-P4-01 | Presence panel + Director Address nonmutation | PASS |
 | QA-P4-02 | Party Chat isolation + NL Intent Intercept cancel | PASS |
-| QA-P4-03 | Ordinary Admin denial; Google emulator bootstrap kill switch | PASS |
-| QA-P4-04 | Two-client presence/chat sync; out-of-turn sync disabled + API fail-closed | PASS |
-| QA-P4-05 | Optional TTS/STT; dictate does not auto-send | PASS |
+| QA-P4-03 | Ordinary Admin denial + bootstrap kill switch | PASS |
+| QA-P4-04 | Two-client presence + Party Chat sync + out-of-turn block | PASS |
+| QA-P4-05 | Speech prefs optional; STT does not auto-send | PASS |
 
-Builder frozen certification already ran 73 browser scenarios and 129 unit tests against the same candidate.
+## Blocking findings
 
-## Findings
+None.
 
-No blocking or non-blocking findings opened against `cand-f79b57277ebf`.
+## Notes
 
-## Disposition
-
-`PLAYER_VALIDATED`. Phase 4 has no Product Owner local visual gate. Publication of Invite-Only Alpha / Public Milestone remains separately PO-authorized.
+This validation covers the UX-remediation candidate that supersedes `cand-f79b57277ebf` (Claim Active Turn placement, gate hints, presence grouping, Director/NL scroll thrash fix).

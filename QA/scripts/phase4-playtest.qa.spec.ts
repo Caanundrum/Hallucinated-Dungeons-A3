@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 
 const ARENA = process.env.QA_ARENA_URL ?? 'http://127.0.0.1:5274';
-const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-f79b57277ebf';
+const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-1de6ebed38c8';
 const EVIDENCE = process.env.QA_EVIDENCE_DIR ?? '/workspace/QA/evidence/phase-4/playtest';
 
 async function dismissIntro(page: Page): Promise<void> {

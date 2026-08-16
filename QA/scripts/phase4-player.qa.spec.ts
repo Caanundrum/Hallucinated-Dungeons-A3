@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
 const ARENA = process.env.QA_ARENA_URL ?? 'http://127.0.0.1:5274';
-const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-f79b57277ebf';
+const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-1de6ebed38c8';
 
 async function dismissIntro(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');

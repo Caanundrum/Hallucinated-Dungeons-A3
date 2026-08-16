@@ -4,15 +4,16 @@ phase: phase-4
 lifecycleState: PHASE_CERTIFIED
 blueprintVersion: ALPHA_3_V1
 blueprintSourceHash: 144f178d3cbfbe6572c299d4ad4b841ec3e6fa28ddedf5eddce0223e6250ce1e
-certifiedCandidateId: cand-f79b57277ebf
-certifiedSourceTreeHash: f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f
-certifiedCommit: 10dc550ce6ca745c7e457d3f2445066a079ce17e
+certifiedCandidateId: cand-1de6ebed38c8
+certifiedSourceTreeHash: 1de6ebed38c802c61ccb718d24dca051f1db2ccca2504df9e8d2f07a46debd87
+certifiedCommit: c1fb66a5d3659c7cfad3b41f03831ba49c903bbb
 humanGate: none
 humanGateBasis: "Section 25 Phase 4 — no Product Owner local visual gate. Certification follows Builder Verification + Independent QA Player Validation only. Invite-Only Alpha / Public Milestone publication requires separate Product Owner authorization of the exact candidate."
 builderVerification: PASSED
 qaPlayerValidation: PLAYER_VALIDATED
 openBlockingFindings: 0
-certifiedAt: 2026-08-16T17:28:30Z
+certifiedAt: 2026-08-16T19:56:00Z
+supersedesCandidateId: cand-f79b57277ebf
 ---
 
 # Phase 4 — Realtime presence, identity, AI Director, speech
@@ -27,10 +28,11 @@ Phase 4 has **no** local Product Owner visual gate. Agents must not invent Produ
 
 | Field | Value |
 | --- | --- |
-| Candidate id | `cand-f79b57277ebf` |
-| Source tree hash | `f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f` |
-| Certified commit | `10dc550ce6ca745c7e457d3f2445066a079ce17e` |
+| Candidate id | `cand-1de6ebed38c8` |
+| Source tree hash | `1de6ebed38c802c61ccb718d24dca051f1db2ccca2504df9e8d2f07a46debd87` |
+| Certified commit | `c1fb66a5d3659c7cfad3b41f03831ba49c903bbb` |
 | Blueprint | `ALPHA_3_V1` |
+| Supersedes | `cand-f79b57277ebf` (UX remediation after extended playtest) |
 
 The candidate hash covers tracked Builder Root source, dependency lock, and security rules. QA, Runtime, Evidence, Checkpoint, and archive artifacts are evidence about the candidate and are excluded.
 
@@ -44,7 +46,9 @@ The candidate hash covers tracked Builder Root source, dependency lock, and secu
 
 ## Scope certified
 
-Realtime campaign presence with reconnect grace, multi-tab/device rows, spectator/absence, Active Turn disconnect lock; communication surfaces including Director Address audience routing; Google Sign-In mode via Auth emulator + machine-only QA fixtures alongside Local Arena development identity; Admin `/admin` with bootstrap `nick.donner@gmail.com`, audited AI kill switch, ordinary-user denial; deterministic Local Arena AI Director gateway with Payload Manifests, personality injection (Veyra/Garrick), NL Intent Intercept, mechanics-first narration; player-optional TTS/STT (STT → editable unsent drafts only); Provider Compliance Registry; four-plus simultaneous local player contexts; permanent smoke spine multiplayer/AI segment.
+Realtime campaign presence with reconnect grace, account-grouped multi-device presence, spectator/absence, Active Turn disconnect lock; communication surfaces including Director Address audience routing; Google Sign-In mode via Auth emulator + machine-only QA fixtures alongside Local Arena development identity; Admin `/admin` with bootstrap `nick.donner@gmail.com`, audited AI kill switch, ordinary-user denial; deterministic Local Arena AI Director gateway with Payload Manifests, personality injection (Veyra/Garrick), NL Intent Intercept, mechanics-first narration; player-optional TTS/STT (STT → editable unsent drafts only); Provider Compliance Registry; four-plus simultaneous local player contexts; permanent smoke spine multiplayer/AI segment.
+
+UX remediation included in this candidate: Claim Active Turn authority strip, visible composer gate hints, presence account grouping, presence-heartbeat no longer wiping Director/NL textareas (focus/scroll preserve on full panel renders).
 
 ## Honest bounds
 
