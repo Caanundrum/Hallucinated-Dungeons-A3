@@ -37,6 +37,9 @@ function hashId(parts: string[]): string {
   return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 24);
 }
 
+/** Firestore forbids document ids that begin and end with `__`. */
+const AI_KILL_SWITCH_DOC_ID = 'ai_kill_switch_meta';
+
 export function assertAdminEmail(email: string | null | undefined): void {
   if (!isBootstrapAdminEmail(email)) {
     throw new Error('Admin access requires bootstrap admin identity.');
@@ -50,7 +53,7 @@ export async function listAdminAuditEvents(
   const snap = await firestore.collection(COLLECTIONS.adminAuditEvents).get();
   return snap.docs
     .map((doc) => doc.data() as AdminAuditEvent)
-    .filter((row) => typeof row.id === 'string' && row.id !== '__ai_kill_switch__')
+    .filter((row) => typeof row.id === 'string' && row.id !== AI_KILL_SWITCH_DOC_ID)
     .sort((a, b) => b.atMs - a.atMs)
     .slice(0, limit);
 }
@@ -78,7 +81,7 @@ export async function recordAdminAudit(options: {
 export async function getAiKillSwitch(firestore: Firestore): Promise<boolean> {
   const doc = await firestore
     .collection(COLLECTIONS.adminAuditEvents)
-    .doc('__ai_kill_switch__')
+    .doc(AI_KILL_SWITCH_DOC_ID)
     .get();
   if (!doc.exists) return false;
   const data = doc.data() as { enabled?: boolean };
@@ -92,8 +95,8 @@ export async function setAiKillSwitch(options: {
   readonly enabled: boolean;
 }): Promise<boolean> {
   assertAdminEmail(options.email);
-  await options.firestore.collection(COLLECTIONS.adminAuditEvents).doc('__ai_kill_switch__').set({
-    id: '__ai_kill_switch__',
+  await options.firestore.collection(COLLECTIONS.adminAuditEvents).doc(AI_KILL_SWITCH_DOC_ID).set({
+    id: AI_KILL_SWITCH_DOC_ID,
     enabled: options.enabled,
     updatedAtMs: Date.now(),
     updatedBy: options.email,

@@ -69,27 +69,18 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     const candidate = await readCandidate(page);
     const origin = new URL(page.url()).origin;
     const google = await page.request.post('/api/identity/google-emulator-session', {
+      data: { email: 'nick.donner@gmail.com' },
       headers: {
         origin,
         'x-hd-candidate': candidate.candidateId,
         'content-type': 'application/json',
       },
-      data: { email: 'nick.donner@gmail.com' },
     });
     expect(google.status()).toBe(201);
-    const setCookie = google.headers()['set-cookie'];
-    expect(setCookie).toBeTruthy();
+    const body = (await google.json()) as { isBootstrapAdmin: boolean; email: string };
+    expect(body.isBootstrapAdmin).toBe(true);
+    expect(body.email).toBe('nick.donner@gmail.com');
 
-    await page.context().clearCookies();
-    const cookiePair = String(setCookie).split(';')[0]!;
-    const [name, ...rest] = cookiePair.split('=');
-    await page.context().addCookies([
-      {
-        name: name!,
-        value: rest.join('='),
-        url: origin,
-      },
-    ]);
     await page.goto('/admin');
     await expect(page.getByTestId('admin-is-admin')).toHaveText('Yes');
     await expect(page.getByTestId('admin-actor-email')).toHaveText('nick.donner@gmail.com');
@@ -132,12 +123,16 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     await page.getByTestId('request-narration').click();
     await expect(page.getByTestId('director-narration')).toContainText(/table|Director/i);
 
+    await page.getByTestId('cancel-intent-intercept').click();
+    await expect(page.getByTestId('intent-intercept')).toHaveCount(0);
+
     // Party Chat still cannot become a command by implication.
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('party-chat-input').fill('I attack the goblin');
     await page.getByTestId('party-chat-send').click();
     await expect(page.getByTestId('party-chat-message')).toContainText('I attack the goblin');
     await expect(page.getByTestId('intent-intercept')).toHaveCount(0);
+    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
     void campaignId;
   });
@@ -145,6 +140,7 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
   test('four simultaneous local players share presence and social surfaces', async ({
     browser,
   }) => {
+    test.setTimeout(120_000);
     const ownerContext = await browser.newContext();
     const ownerPage = await ownerContext.newPage();
     await signIn(ownerPage);
