@@ -105,6 +105,14 @@ import {
 } from '../table/commands.js';
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
 import {
+  CampaignMemoryError,
+  loadCampaignMemory,
+  readPersonalRecap,
+  recordSessionSuspend,
+  resumeSession,
+} from '../campaigns/campaign-memory.js';
+import { fetchPresentationCuePlan } from '../presentation/presentation-cues.js';
+import {
   claimActiveTurnAuthority,
   endActiveTurnAuthority,
   fetchActiveTimingAuthority,
@@ -187,6 +195,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
   [ERROR_CODES.TIMING_AUTHORITY_INVALID]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
+  [ERROR_CODES.SESSION_ALREADY_SUSPENDED]: 409,
+  [ERROR_CODES.SESSION_NOT_SUSPENDED]: 409,
 };
 
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
@@ -233,6 +243,10 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Your Timing Authority expired or belongs to another seat.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
+  [ERROR_CODES.SESSION_ALREADY_SUSPENDED]:
+    'This campaign session is already suspended. Resume it before suspending again.',
+  [ERROR_CODES.SESSION_NOT_SUSPENDED]:
+    'This campaign session is not suspended, so there is nothing to resume.',
 };
 
 export interface ArenaServerDependencies {
@@ -777,6 +791,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               privateDirectorAutoplay?: unknown;
               speechToTextEnabled?: unknown;
             };
+            narrationDensity?: unknown;
           };
           const settings = await updatePlayerSettings({
             firestore,
@@ -784,6 +799,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             reducedMotion: payload.reducedMotion,
             ...(payload.lowEffects !== undefined ? { lowEffects: payload.lowEffects } : {}),
             ...(payload.speech !== undefined ? { speech: payload.speech } : {}),
+            ...(payload.narrationDensity !== undefined
+              ? { narrationDensity: payload.narrationDensity }
+              : {}),
           });
           sendJson(response, 200, settings);
         } catch {
@@ -1149,6 +1167,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           summary?: unknown;
           directorIdentity?: unknown;
           directorPersonality?: unknown;
+          adventureTemplate?: unknown;
         };
         const campaign = await createCampaign({
           firestore,
@@ -1158,6 +1177,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           summary: payload.summary,
           directorIdentity: payload.directorIdentity,
           directorPersonality: payload.directorPersonality,
+          adventureTemplate: payload.adventureTemplate,
         });
         sendJson(response, 201, campaign);
         return;
@@ -1291,6 +1311,62 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const campaignId = chronicleMatch[1]!;
         await readCampaignDetail({ firestore, accountId, campaignId });
         sendJson(response, 200, await listChronicleEntries({ firestore, campaignId }));
+        return;
+      }
+
+      const campaignMemoryMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/memory$/.exec(path);
+      if (campaignMemoryMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = campaignMemoryMatch[1]!;
+        sendJson(response, 200, await loadCampaignMemory(firestore, campaignId, accountId));
+        return;
+      }
+
+      const campaignRecapMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/recap$/.exec(path);
+      if (campaignRecapMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = campaignRecapMatch[1]!;
+        sendJson(response, 200, await readPersonalRecap(firestore, campaignId, accountId));
+        return;
+      }
+
+      const sessionSuspendMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/session\/suspend$/.exec(
+        path,
+      );
+      if (sessionSuspendMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = sessionSuspendMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const note = (body as { note?: unknown } | undefined)?.note;
+        const suspended = await recordSessionSuspend(firestore, campaignId, accountId, {
+          ...(typeof note === 'string' ? { note } : {}),
+        });
+        sendJson(response, 200, suspended);
+        return;
+      }
+
+      const sessionResumeMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/session\/resume$/.exec(
+        path,
+      );
+      if (sessionResumeMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = sessionResumeMatch[1]!;
+        sendJson(response, 200, await resumeSession(firestore, campaignId, accountId));
         return;
       }
 
@@ -1605,6 +1681,22 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const presentationCuesMatch =
+        /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/presentation-cues$/.exec(path);
+      if (presentationCuesMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = presentationCuesMatch[1]!;
+        sendJson(
+          response,
+          200,
+          await fetchPresentationCuePlan({ firestore, accountId, campaignId }),
+        );
+        return;
+      }
+
       const movePreviewMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/move-preview$/.exec(path);
       if (movePreviewMatch !== null) {
         if (method !== 'POST') {
@@ -1749,6 +1841,21 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
       if (error instanceof CampaignValidationError) {
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error.message,
+        } satisfies ApiErrorBody);
+        return;
+      }
+      if (error instanceof CampaignMemoryError) {
+        const code = error.code as ErrorCode;
+        if (code in ERROR_STATUS) {
+          sendJson(response, ERROR_STATUS[code], {
+            error: code,
+            message: error.message,
+          } satisfies ApiErrorBody);
+          return;
+        }
         sendJson(response, 400, {
           error: ERROR_CODES.BAD_REQUEST,
           message: error.message,
