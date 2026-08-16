@@ -16,11 +16,13 @@ import {
   type MapBundleProjection,
   type MapCellRecord,
   type MapEdgeRecord,
+  type MapNotableFeatureRecord,
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
 import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
 import { loadMapRuntime, type StoredMapRuntime } from './map-runtime.js';
 import { visibleSquaresFrom } from './path-validator.js';
 
@@ -50,7 +52,7 @@ export async function assertCampaignMember(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
   readonly campaignId: string;
-}): Promise<void> {
+}): Promise<{ readonly adventureTemplateId: string | null }> {
   const { firestore, accountId, campaignId } = options;
   const membership = await firestore
     .collection(COLLECTIONS.campaignMemberships)
@@ -65,6 +67,8 @@ export async function assertCampaignMember(options: {
   if (!campaign.exists) {
     throw new MapProjectionError(ERROR_CODES.NOT_FOUND, 'No such route.');
   }
+  const data = campaign.data() as { adventureTemplateId?: string | null };
+  return { adventureTemplateId: data.adventureTemplateId ?? null };
 }
 
 export function buildStarterCells(): MapCellRecord[] {
@@ -219,18 +223,24 @@ function applyViewerFog(
   };
 }
 
+const DEFAULT_SCENE_BANNER = 'A quiet chamber waits for the party to explore.';
+const DEFAULT_NOTABLE_FEATURES: readonly MapNotableFeatureRecord[] = [];
+
 /** Full geometry without viewer fog — used by the movement validator. */
 export function buildAuthoritativeMapBundle(options: {
   readonly campaignId: string;
   readonly seats: readonly StoredSeat[];
   readonly runtime: StoredMapRuntime;
+  /** Starter pack id backing this campaign, or null/omitted for a blank table. */
+  readonly adventureTemplateId?: string | null;
 }): MapBundleProjection {
   const { campaignId, seats, runtime } = options;
+  const presentation = loadAdventureMapPresentation(options.adventureTemplateId ?? null);
   return {
     campaignId,
     mapBundleId: `starter:${campaignId}`,
     mapVersion: 1,
-    title: 'Local starter chamber',
+    title: presentation?.title ?? 'Local starter chamber',
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,
@@ -242,7 +252,9 @@ export function buildAuthoritativeMapBundle(options: {
     cells: buildStarterCells(),
     edges: applyDoorOverrides(buildStarterInteriorWalls(), runtime),
     tokens: buildTokens(seats, runtime),
-    artProvenance: 'procedural_local_placeholder',
+    artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
+    sceneBanner: presentation?.sceneBanner ?? DEFAULT_SCENE_BANNER,
+    notableFeatures: presentation?.notableFeatures ?? DEFAULT_NOTABLE_FEATURES,
     viewerSeatId: null,
     exploredSquareIds: [],
     visibleSquareIds: [],
@@ -271,14 +283,14 @@ export async function fetchCampaignMap(options: {
   readonly campaignId: string;
 }): Promise<MapBundleProjection> {
   const { firestore, accountId, campaignId } = options;
-  await assertCampaignMember({ firestore, accountId, campaignId });
+  const { adventureTemplateId } = await assertCampaignMember({ firestore, accountId, campaignId });
 
   const [seats, runtime] = await Promise.all([
     loadCampaignSeats(firestore, campaignId),
     loadMapRuntime(firestore, campaignId),
   ]);
   const ownSeat = seats.find((seat) => seat.ownerAccountId === accountId) ?? null;
-  const full = buildAuthoritativeMapBundle({ campaignId, seats, runtime });
+  const full = buildAuthoritativeMapBundle({ campaignId, seats, runtime, adventureTemplateId });
   return applyViewerFog(full, {
     accountId,
     viewerSeatId: ownSeat?.seatId ?? null,
