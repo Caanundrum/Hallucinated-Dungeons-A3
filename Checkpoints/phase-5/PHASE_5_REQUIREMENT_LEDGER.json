@@ -2,13 +2,15 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-5",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "READY_FOR_QA",
+  "lifecycleState": "AWAITING_HUMAN_APPROVAL",
   "humanGate": "product_owner_complete_experience",
   "builderVerifiedCandidate": "cand-bf752b208fb6",
   "builderVerifiedSourceTreeHash": "bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca",
   "builderVerification": "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
+  "qaFindings": "QA/findings/PHASE_5_QA_FINDINGS.md",
+  "qaStatus": "PLAYER_VALIDATED",
   "priorCertifiedCandidate": "cand-1de6ebed38c8",
-  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED (see builderVerification record above); Independent QA and Product Owner complete-experience approval remain separately required before PHASE_CERTIFIED. No approval is inferred here.",
+  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED and Independent QA PLAYER_VALIDATED against cand-bf752b208fb6. Product Owner complete-experience approval remains required before PHASE_CERTIFIED. No Product Owner approval is inferred here.",
   "requirements": [
     {
       "id": "P5-MEMORY",
@@ -116,16 +118,18 @@
     {
       "id": "P5-CERTIFICATION",
       "requirement": "Smoke spine campaign resume, certify:phase5 floor, Independent QA, Product Owner complete-experience gate",
-      "status": "BUILDER_VERIFIED_PENDING_QA_AND_PO",
-      "note": "certify:phase5 PASSED (Builder Verification, 76/76 browser scenarios). Independent QA and the Product Owner complete-experience gate are separate roles/steps not performed by this change; see PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md.",
+      "status": "AWAITING_PO_COMPLETE_EXPERIENCE",
+      "note": "certify:phase5 PASSED (76/76 browser). Independent QA PLAYER_VALIDATED (5/5). Product Owner complete-experience gate remains open on PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md — not inferred.",
       "implementation": [
         "Builder/package.json#certify:phase5",
         "Builder/tools/certification/run-certification.mjs",
-        "Builder/tests/e2e/smoke-spine.spec.ts#campaign resume"
+        "Builder/tests/e2e/smoke-spine.spec.ts#campaign resume",
+        "QA/scripts/phase5-player.qa.spec.ts"
       ],
       "verification": [
         "npm run certify:phase5",
-        "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md"
+        "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
+        "QA/findings/PHASE_5_QA_FINDINGS.md"
       ]
     }
   ]
