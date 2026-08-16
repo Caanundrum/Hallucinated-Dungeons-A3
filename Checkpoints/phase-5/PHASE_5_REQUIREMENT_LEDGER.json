@@ -2,15 +2,18 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-5",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "IMPLEMENTING",
+  "lifecycleState": "READY_FOR_QA",
   "humanGate": "product_owner_complete_experience",
+  "builderVerifiedCandidate": "cand-bf752b208fb6",
+  "builderVerifiedSourceTreeHash": "bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca",
+  "builderVerification": "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
   "priorCertifiedCandidate": "cand-1de6ebed38c8",
-  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Statuses become PASSED only when named verification executes against the frozen Phase 5 candidate.",
+  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED (see builderVerification record above); Independent QA and Product Owner complete-experience approval remain separately required before PHASE_CERTIFIED. No approval is inferred here.",
   "requirements": [
     {
       "id": "P5-MEMORY",
       "requirement": "Structured campaign memory: chapters, summaries, NPC motives/knowledge, quests, factions, social state, open threads, recaps, campaign-time continuity",
-      "status": "IN_PROGRESS",
+      "status": "VERIFIED",
       "implementation": [
         "Builder/src/shared/campaign-memory-contract.ts",
         "Builder/src/server/campaigns/campaign-memory.ts",
@@ -26,8 +29,8 @@
     },
     {
       "id": "P5-STARTER",
-      "requirement": "Original curated starter campaign (~3–5 sessions) as product content and versioned validation fixture",
-      "status": "IN_PROGRESS",
+      "requirement": "Original curated starter campaign (~3\u20135 sessions) as product content and versioned validation fixture",
+      "status": "VERIFIED",
       "implementation": [
         "Builder/src/shared/content/emberferry-crossing.ts",
         "Builder/src/server/campaigns/campaign-memory.ts#resolveStarterPackForTemplate",
@@ -44,7 +47,7 @@
     {
       "id": "P5-PRESENTATION",
       "requirement": "Production maps/portraits/tokens/effects hooks, Presentation Cue Plans, non-musical sound, Director speech fallback, 12 personality Director avatars",
-      "status": "IN_PROGRESS",
+      "status": "VERIFIED",
       "implementation": [
         "Builder/src/shared/presentation-cue-contract.ts",
         "Builder/src/server/presentation/presentation-cues.ts",
@@ -62,7 +65,7 @@
     {
       "id": "P5-ASSETS",
       "requirement": "Asset provenance, performance budgets, reduced-effects/static fallbacks, cross-screen visual coherence",
-      "status": "IN_PROGRESS",
+      "status": "VERIFIED",
       "implementation": [
         "Checkpoints/phase-5/ASSET_PROVENANCE.md",
         "Builder/src/shared/presentation-cue-contract.ts#MAX_CONCURRENT_CUE_SOUNDS",
@@ -78,7 +81,7 @@
     {
       "id": "P5-RESUME",
       "requirement": "Multi-session resume, absence/return personal recap, continuation beyond planned climax via new chapter plan",
-      "status": "IN_PROGRESS",
+      "status": "VERIFIED",
       "implementation": [
         "Builder/src/server/campaigns/campaign-memory.ts#recordSessionSuspend",
         "Builder/src/server/campaigns/campaign-memory.ts#resumeSession",
@@ -98,7 +101,7 @@
     {
       "id": "P5-SETTINGS-COHERENCE",
       "requirement": "Locked Director, speech, humor/narration density, audio, a11y, and campaign rules preferences behave coherently over multi-session play",
-      "status": "IN_PROGRESS",
+      "status": "VERIFIED",
       "implementation": [
         "Builder/src/shared/settings-contract.ts#NARRATION_DENSITIES",
         "Builder/src/server/settings/player-settings.ts",
@@ -113,13 +116,17 @@
     {
       "id": "P5-CERTIFICATION",
       "requirement": "Smoke spine campaign resume, certify:phase5 floor, Independent QA, Product Owner complete-experience gate",
-      "status": "IN_PROGRESS",
+      "status": "BUILDER_VERIFIED_PENDING_QA_AND_PO",
+      "note": "certify:phase5 PASSED (Builder Verification, 76/76 browser scenarios). Independent QA and the Product Owner complete-experience gate are separate roles/steps not performed by this change; see PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md.",
       "implementation": [
         "Builder/package.json#certify:phase5",
         "Builder/tools/certification/run-certification.mjs",
         "Builder/tests/e2e/smoke-spine.spec.ts#campaign resume"
       ],
-      "verification": ["npm run certify:phase5"]
+      "verification": [
+        "npm run certify:phase5",
+        "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md"
+      ]
     }
   ]
 }
