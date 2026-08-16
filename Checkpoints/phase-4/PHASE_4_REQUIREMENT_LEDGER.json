@@ -2,9 +2,11 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-4",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "IMPLEMENTING",
+  "lifecycleState": "PHASE_CERTIFIED",
   "humanGate": "none",
   "publicationGate": "Product Owner authorization required for Invite-Only Alpha or Public Milestone of the exact candidate",
+  "certifiedCandidate": "cand-f79b57277ebf",
+  "certifiedSourceTreeHash": "f79b57277ebfc5074dca3bdf270738a69b94fab939e2d4295211728daffa685f",
   "priorCertifiedCandidate": "cand-cc92bfc17c10",
   "requirements": [
     {
