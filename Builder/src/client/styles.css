@@ -1366,6 +1366,11 @@ html.hd-low-effects .map-square-fog,
   pointer-events: none;
 }
 
+.table-stage-semantic g[data-notable-feature],
+.table-stage-semantic g[data-notable-feature] * {
+  pointer-events: none;
+}
+
 .table-stage-canvas {
   position: absolute;
   inset: 0;

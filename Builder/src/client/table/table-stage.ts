@@ -131,6 +131,16 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
       </g>`;
     })
     .join('');
+  const features = map.notableFeatures
+    .map((feature) => {
+      const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      return `<g data-notable-feature="${escapeHtml(feature.label)}">
+        <circle cx="${x}" cy="${y}" r="4" fill="#f2d38a" stroke="#7a5a1e" stroke-width="1" />
+        <text x="${x + 7}" y="${y + 4}" fill="#f2d38a" font-size="11" font-family="Georgia, serif" font-style="italic">${escapeHtml(feature.label)}</text>
+      </g>`;
+    })
+    .join('');
 
   let wrap = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
   if (wrap === null) {
@@ -146,6 +156,7 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
     <g data-layer="grid_reference">${gridLines.join('')}</g>
     <g data-layer="structural_underlays">${edges}</g>
     <g data-layer="tokens_entities">${tokens}</g>
+    <g data-layer="overhead_environment" data-testid="table-stage-notable-features">${features}</g>
   </svg>`;
 }
 
@@ -266,6 +277,26 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       label.x = tokenX + 6;
       label.y = tokenY + tokenHeight / 2 - 7;
       layers.token_information.addChild(label);
+    }
+
+    for (const feature of map.notableFeatures) {
+      const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      const marker = new Graphics();
+      marker.circle(x, y, 4).fill({ color: 0xf2d38a, alpha: 0.95 });
+      layers.overhead_environment.addChild(marker);
+      const featureLabel = new Text({
+        text: feature.label,
+        style: {
+          fill: 0xf2d38a,
+          fontSize: 11,
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          fontStyle: 'italic',
+        },
+      });
+      featureLabel.x = x + 7;
+      featureLabel.y = y - 6;
+      layers.overhead_environment.addChild(featureLabel);
     }
 
     const viewWidth = application.screen.width;

@@ -23,6 +23,10 @@ import type { CampaignPresenceProjection } from '../../shared/presence-contract.
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type {
+  PresentationCueKind,
+  PresentationCuePlanProjection,
+} from '../../shared/presentation-cue-contract.js';
+import type {
   CharacterProgressionProjection,
   EncounterProjection,
   RuleExplanationProjection,
@@ -42,6 +46,7 @@ import {
   fetchChronicle,
   fetchPartyChat,
   fetchPlayerSettings,
+  fetchPresentationCuePlan,
   fetchRuleExplanation,
   fetchRulesState,
   fetchTableState,
@@ -61,6 +66,21 @@ import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import type { PageHost } from './home.js';
+
+/** Distinct short tone per cue kind so table events are at least audibly distinguishable. */
+const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
+  attack_hit: 440,
+  attack_miss: 260,
+  critical_hit: 660,
+  spell_cast: 520,
+  door_opened: 300,
+  creature_down: 180,
+  creature_revived: 560,
+  death_save_made: 340,
+  rest_completed: 480,
+  level_up: 720,
+  token_moved: 200,
+};
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
@@ -94,6 +114,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
   let lastNarration: string | null = null;
+  const playedCueDedupeKeys = new Set<string>();
+  let cuePlanInFlight = false;
+  let presentationAudioContext: AudioContext | null = null;
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
@@ -125,7 +148,111 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .map((edge) => `${edge.edgeId}:${edge.doorState ?? 'closed'}`)
       .sort()
       .join('|');
-    return `${tokens}#${doors}#${map.exploredSquareIds.join(',')}#${map.visibleSquareIds.join(',')}`;
+    return `${map.title}#${map.artProvenance}#${map.sceneBanner}#${tokens}#${doors}#${map.exploredSquareIds.join(',')}#${map.visibleSquareIds.join(',')}`;
+  }
+
+  /** "original_phase5_starter_v1" -> "original phase5 starter v1", never a fabricated art label. */
+  function humanizeArtProvenance(provenance: string): string {
+    return provenance.replace(/_/g, ' ');
+  }
+
+  function getPresentationAudioContext(): AudioContext | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const AudioContextCtor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AudioContextCtor === undefined) {
+      return null;
+    }
+    if (presentationAudioContext === null) {
+      presentationAudioContext = new AudioContextCtor();
+    }
+    return presentationAudioContext;
+  }
+
+  /** Short sine-tone burst — never speech, never longer than the contract's SFX budget. */
+  function playCueTone(context: AudioContext, frequencyHz: number, durationMs: number): void {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequencyHz;
+    const now = context.currentTime;
+    const seconds = Math.max(durationMs, 1) / 1000;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.2, now + Math.min(0.02, seconds / 4));
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + seconds);
+  }
+
+  /** Gate per Section 25 Phase 5: never play SFX under reduced motion, low effects, or over live TTS. */
+  function presentationCuesAllowed(): boolean {
+    if (reducedMotion || lowEffects) {
+      return false;
+    }
+    if (
+      textToSpeechEnabled &&
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window &&
+      window.speechSynthesis.speaking
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Marks every cue currently on the server plan as already-seen without
+   * playing any sound. Called once on page load so a returning player is not
+   * greeted with a burst of tones replaying recent table history.
+   */
+  async function establishPresentationCueBaseline(): Promise<void> {
+    try {
+      const plan = await fetchPresentationCuePlan(campaignId);
+      for (const cue of plan.cues) {
+        playedCueDedupeKeys.add(cue.dedupeKey);
+      }
+    } catch {
+      // Best-effort baseline; a later refresh can still establish it.
+    }
+  }
+
+  /**
+   * Fetches the server-derived Presentation Cue Plan and plays short Web
+   * Audio tones for cues not yet seen. Cues are derived only from committed
+   * events server-side (`presentation-cues.ts`) — this function never invents
+   * state and never reads Director narration text.
+   */
+  async function processPresentationCues(): Promise<void> {
+    if (!isPageMountCurrent(container, mountToken) || cuePlanInFlight) {
+      return;
+    }
+    cuePlanInFlight = true;
+    try {
+      const plan: PresentationCuePlanProjection = await fetchPresentationCuePlan(campaignId);
+      const freshCues = plan.cues.filter((cue) => !playedCueDedupeKeys.has(cue.dedupeKey));
+      for (const cue of freshCues) {
+        playedCueDedupeKeys.add(cue.dedupeKey);
+      }
+      if (freshCues.length === 0 || !presentationCuesAllowed()) {
+        return;
+      }
+      const context = getPresentationAudioContext();
+      if (context === null) {
+        return;
+      }
+      for (const cue of freshCues.slice(0, plan.maxConcurrentSounds)) {
+        playCueTone(context, CUE_TONE_FREQUENCY_HZ[cue.kind] ?? 400, plan.maxCueSoundDurationMs);
+      }
+    } catch {
+      // Presentation cues are best-effort flavor; never block the table on failure.
+    } finally {
+      cuePlanInFlight = false;
+    }
   }
 
   function holdsOwnAuthority(): boolean {
@@ -1663,7 +1790,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const mapMeta =
       mapBundle === null
         ? 'Map projection pending.'
-        : `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square · art: procedural local placeholder`;
+        : `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square · art: ${escapeHtml(humanizeArtProvenance(mapBundle.artProvenance))}`;
 
     heading.innerHTML = `
       <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
@@ -1673,6 +1800,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         so a second local seat can recover the same state.
       </p>
       <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+      ${
+        mapBundle === null
+          ? ''
+          : `<p class="scene-banner" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
+      }
+      ${
+        mapBundle === null || mapBundle.notableFeatures.length === 0
+          ? ''
+          : `<ul class="record-list compact" data-testid="map-notable-features">
+              ${mapBundle.notableFeatures
+                .map(
+                  (feature) => `
+                <li data-testid="map-notable-feature">
+                  ${escapeHtml(feature.label)} · column ${feature.column}, row ${feature.row}
+                </li>`,
+                )
+                .join('')}
+            </ul>`
+      }
       ${
         error === null
           ? ''
@@ -1796,6 +1942,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } else if (mapBundle !== null && stageHandle !== null) {
       stageHandle.renderMap(mapBundle);
     }
+    void processPresentationCues();
   }
 
   function stopProjectionPoll(): void {
@@ -1912,6 +2059,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       } catch {
         // Presence soft-fails on first load.
       }
+      await establishPresentationCueBaseline();
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
       stopProjectionPoll();
