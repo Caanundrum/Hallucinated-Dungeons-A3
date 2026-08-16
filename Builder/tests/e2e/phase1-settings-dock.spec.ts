@@ -124,14 +124,17 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     );
   });
 
-  test('account reduced-motion preference persists without exposing speech controls', async ({
+  test('account reduced-motion preference persists and speech prefs stay optional defaults', async ({
     page,
   }) => {
     await signIn(page);
     await page.getByTestId('nav-account').click();
     await expect(page.getByTestId('account-heading')).toBeVisible();
     await expect(page.getByTestId('account-reduced-motion')).toBeVisible();
-    await expect(page.locator('text=Speech and AI presentation')).toBeVisible();
+    await expect(page.getByTestId('account-tts')).toBeVisible();
+    await expect(page.getByTestId('account-stt')).toBeVisible();
+    await expect(page.getByTestId('account-tts')).not.toBeChecked();
+    await expect(page.getByTestId('account-stt')).not.toBeChecked();
     await page.getByTestId('account-reduced-motion').check();
     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);
     await page.reload();

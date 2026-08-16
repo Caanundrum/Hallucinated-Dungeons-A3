@@ -68,7 +68,8 @@ test.describe('Phase 2 table a11y presentation', () => {
     await expect(page.getByTestId('table-a11y-panel')).toBeVisible();
     await expect(page.getByTestId('table-presentation-meta')).toContainText('reduced motion off');
     await expect(page.getByTestId('table-presentation-meta')).toContainText('low effects off');
-    await expect(page.getByTestId('table-presentation-meta')).toContainText('No voice-selection');
+    await expect(page.getByTestId('table-presentation-meta')).toContainText('TTS off');
+    await expect(page.getByTestId('table-presentation-meta')).toContainText('STT off');
     await expect(page.getByTestId('account-voice-select')).toHaveCount(0);
 
     await page.getByTestId('table-reduced-motion').check();
