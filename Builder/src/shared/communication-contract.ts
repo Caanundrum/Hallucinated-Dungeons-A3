@@ -34,6 +34,9 @@ export const CHRONICLE_ENTRY_KINDS = [
   'seat_created',
   'settings_updated',
   'session_zero_recorded',
+  'session_suspended',
+  'session_resumed',
+  'chapter_closed',
 ] as const;
 export type ChronicleEntryKind = (typeof CHRONICLE_ENTRY_KINDS)[number];
 
