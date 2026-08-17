@@ -585,6 +585,26 @@ export async function savePlayerSettings(options: {
   })) as PlayerPresentationSettingsProjection;
 }
 
+export interface AccountDeletionStatusProjection {
+  readonly requested: boolean;
+  readonly requestedAt: string | null;
+  readonly notice: string;
+}
+
+export async function fetchAccountDeletionStatus(): Promise<AccountDeletionStatusProjection> {
+  return (await request('/api/account/deletion-status')) as AccountDeletionStatusProjection;
+}
+
+export async function requestAccountDeletion(
+  candidateId: string,
+): Promise<AccountDeletionStatusProjection> {
+  return (await request('/api/account/deletion-request', {
+    method: 'POST',
+    candidateId,
+    body: JSON.stringify({}),
+  })) as AccountDeletionStatusProjection;
+}
+
 export async function enterGoogleEmulatorSession(options: {
   readonly candidateId: string;
   readonly email: string;

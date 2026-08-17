@@ -98,6 +98,17 @@ import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
 import {
+  getAccountDeletionStatus,
+  requestAccountDeletion,
+} from '../privacy/account-deletion.js';
+import {
+  checkRateLimit,
+  rateLimitKeyForAiGateway,
+  rateLimitKeyForCommands,
+  rateLimitKeyForPartyChat,
+  readArenaRateLimitDefaults,
+} from '../security/rate-limit.js';
+import {
   acceptTableCommand,
   fetchTableState,
   previewTableMove,
@@ -182,6 +193,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]: 403,
   [ERROR_CODES.INVITATION_UNAVAILABLE]: 404,
   [ERROR_CODES.INVITATION_RATE_LIMITED]: 429,
+  [ERROR_CODES.RATE_LIMITED]: 429,
   [ERROR_CODES.NOT_AUTHENTICATED]: 401,
   [ERROR_CODES.NOT_FOUND]: 404,
   [ERROR_CODES.NOTE_EMPTY]: 400,
@@ -220,6 +232,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'That invitation is not available. Ask the campaign owner for a current invite link.',
   [ERROR_CODES.INVITATION_RATE_LIMITED]:
     'Too many invitation links were created recently. Wait a bit, then try again.',
+  [ERROR_CODES.RATE_LIMITED]:
+    'Too many requests were sent in a short time. Wait a moment, then try again.',
   [ERROR_CODES.NOT_AUTHENTICATED]:
     'Sign in with a Local Arena development account before continuing.',
   [ERROR_CODES.NOT_FOUND]: 'No such route.',
@@ -308,6 +322,22 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 function sendError(response: ServerResponse, code: ErrorCode): void {
   const body: ApiErrorBody = { error: code, message: ERROR_MESSAGES[code] };
   sendJson(response, ERROR_STATUS[code], body);
+}
+
+/** Applies an in-memory sliding-window check; returns false when the response was already sent. */
+function allowUnderRateLimit(
+  response: ServerResponse,
+  options: { readonly key: string; readonly limit: number; readonly windowMs: number },
+): boolean {
+  const result = checkRateLimit(options);
+  if (!result.allowed) {
+    if (result.retryAfterMs !== undefined) {
+      response.setHeader('retry-after', String(Math.ceil(result.retryAfterMs / 1000)));
+    }
+    sendError(response, ERROR_CODES.RATE_LIMITED);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -808,6 +838,35 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         } catch {
           sendError(response, ERROR_CODES.BAD_REQUEST);
         }
+        return;
+      }
+      sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+      return;
+    }
+
+    if (path === '/api/account/deletion-request' || path === '/api/account/deletion-status') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      if (path === '/api/account/deletion-status' && method === 'GET') {
+        sendJson(
+          response,
+          200,
+          await getAccountDeletionStatus(firestore, session.accountId),
+        );
+        return;
+      }
+      if (path === '/api/account/deletion-request' && method === 'POST') {
+        sendJson(
+          response,
+          201,
+          await requestAccountDeletion(firestore, session.accountId),
+        );
         return;
       }
       sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
@@ -1403,6 +1462,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         if (method === 'POST') {
+          const limits = readArenaRateLimitDefaults();
+          if (
+            !allowUnderRateLimit(response, {
+              key: rateLimitKeyForPartyChat(accountId),
+              limit: limits.chatPerWindow,
+              windowMs: limits.windowMs,
+            })
+          ) {
+            return;
+          }
           const body = await readBody();
           if (body === BODY_REJECTED) {
             return;
@@ -1490,6 +1559,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         if (method === 'POST') {
+          const limits = readArenaRateLimitDefaults();
+          if (
+            !allowUnderRateLimit(response, {
+              key: rateLimitKeyForAiGateway(accountId),
+              limit: limits.aiPerWindow,
+              windowMs: limits.windowMs,
+            })
+          ) {
+            return;
+          }
           const body = await readBody();
           if (body === BODY_REJECTED) {
             return;
@@ -1533,6 +1612,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       if (interpretNlMatch !== null) {
         if (method !== 'POST') {
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const limits = readArenaRateLimitDefaults();
+        if (
+          !allowUnderRateLimit(response, {
+            key: rateLimitKeyForAiGateway(accountId),
+            limit: limits.aiPerWindow,
+            windowMs: limits.windowMs,
+          })
+        ) {
           return;
         }
         const campaignId = interpretNlMatch[1]!;
@@ -1582,6 +1671,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       if (narrateMatch !== null) {
         if (method !== 'POST') {
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const limits = readArenaRateLimitDefaults();
+        if (
+          !allowUnderRateLimit(response, {
+            key: rateLimitKeyForAiGateway(accountId),
+            limit: limits.aiPerWindow,
+            windowMs: limits.windowMs,
+          })
+        ) {
           return;
         }
         const campaignId = narrateMatch[1]!;
@@ -1752,6 +1851,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       if (tableCommandsMatch !== null) {
         if (method !== 'POST') {
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const limits = readArenaRateLimitDefaults();
+        if (
+          !allowUnderRateLimit(response, {
+            key: rateLimitKeyForCommands(accountId),
+            limit: limits.commandsPerWindow,
+            windowMs: limits.windowMs,
+          })
+        ) {
           return;
         }
         const campaignId = tableCommandsMatch[1]!;
