@@ -1,0 +1,77 @@
+{
+  "recordType": "phase_requirement_ledger",
+  "phase": "phase-6",
+  "blueprintVersion": "ALPHA_3_V1",
+  "lifecycleState": "PHASE_CERTIFIED",
+  "humanGate": "none",
+  "priorCertifiedCandidate": "cand-77e0e060e3b4",
+  "certifiedCandidate": "cand-ba96785c84c8",
+  "certificate": "Checkpoints/phase-6/PHASE_6_CERTIFICATE.md",
+  "note": "Phase 6 PHASE_CERTIFIED for cand-ba96785c84c8. Builder Verification PASSED, Independent QA PLAYER_VALIDATED, Judge CHALLENGE_PASSED. No PO local gate. Safari/tablet AT remain BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION on this host.",
+  "deviceCertificationBounds": {
+    "chromium": "REQUIRED",
+    "firefox": "ORDINARY_REGRESSION_WHEN_AVAILABLE",
+    "safari": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION",
+    "certifiedTabletHardware": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION",
+    "realScreenReaderAT": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION"
+  },
+  "requirements": [
+    {
+      "id": "P6-SECURITY",
+      "requirement": "Security, privacy, abuse/rate/cost controls, secret handling, policy refusals, deletion/retention hooks",
+      "status": "IMPLEMENTED_PENDING_CERT",
+      "implementation": [
+        "Builder/src/server/security/rate-limit.ts",
+        "Builder/src/server/privacy/account-deletion.ts",
+        "Builder/src/server/http/server.ts",
+        "Builder/src/client/pages/account.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase6-rate-limit.test.mjs",
+        "Builder/tests/e2e/phase6-security-abuse.spec.ts"
+      ]
+    },
+    {
+      "id": "P6-A11Y-DEVICE",
+      "requirement": "WCAG 2.2 AA core-loop, keyboard/high-zoom/reduced-motion/low-effects; honest browser/device matrix",
+      "status": "IMPLEMENTED_PENDING_CERT",
+      "implementation": ["Builder/tests/e2e/phase6-a11y-wcag.spec.ts"],
+      "verification": ["Builder/tests/e2e/phase6-a11y-wcag.spec.ts"],
+      "bounds": "Real Safari/tablet/VoiceOver BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION on this host"
+    },
+    {
+      "id": "P6-CHAOS",
+      "requirement": "Chaos and interruption testing for clients, commands, AI, speech, reconnect, evidence integrity",
+      "status": "IMPLEMENTED_PENDING_CERT",
+      "implementation": ["Builder/tests/e2e/phase6-chaos-recovery.spec.ts"],
+      "verification": ["Builder/tests/e2e/phase6-chaos-recovery.spec.ts"]
+    },
+    {
+      "id": "P6-LONGITUDINAL",
+      "requirement": "Longitudinal multi-session groups through starter campaign and beyond planned climax",
+      "status": "IMPLEMENTED_PENDING_CERT",
+      "implementation": ["Builder/tests/e2e/phase6-longitudinal.spec.ts"],
+      "verification": ["Builder/tests/e2e/phase6-longitudinal.spec.ts"]
+    },
+    {
+      "id": "P6-JUDGE",
+      "requirement": "Deep Independent QA Judge challenge of Builder evidence and QA findings",
+      "status": "PACKED_PENDING_EVIDENCE",
+      "implementation": [
+        "Checkpoints/phase-6/INDEPENDENT_QA_JUDGE.md",
+        "QA/scripts/phase6-judge.challenge.mjs"
+      ],
+      "verification": []
+    },
+    {
+      "id": "P6-CUMULATIVE",
+      "requirement": "Full cumulative regression of the complete applicable catalog",
+      "status": "WIRED_PENDING_CERT",
+      "implementation": [
+        "Builder/package.json#certify:phase6",
+        "Builder/tools/certification/run-certification.mjs"
+      ],
+      "verification": ["npm run certify:phase6"]
+    }
+  ]
+}

@@ -15,7 +15,14 @@ import {
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
 import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchPlayerSettings, savePlayerSettings } from '../api.js';
+import {
+  ApiFailure,
+  fetchAccountDeletionStatus,
+  fetchPlayerSettings,
+  requestAccountDeletion,
+  savePlayerSettings,
+  type AccountDeletionStatusProjection,
+} from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import {
@@ -40,6 +47,7 @@ export function mountAccountPage(host: PageHost): void {
   let textToSpeechEnabled = false;
   let speechToTextEnabled = false;
   let narrationDensity: NarrationDensity = 'balanced';
+  let deletionStatus: AccountDeletionStatusProjection | null = null;
   const mountToken = beginPageMount(container);
 
   function render(): void {
@@ -170,6 +178,38 @@ export function mountAccountPage(host: PageHost): void {
             Signing out ends this browser session. It does not delete characters or other
             records already stored for this account.
           </p>
+          <section class="panel" aria-labelledby="account-deletion-heading">
+            <h2 id="account-deletion-heading">Local data deletion request</h2>
+            <p class="record-meta">
+              Local Arena clears local development data in the emulator when you request it.
+              This is not a hosted production deletion claim.
+            </p>
+            <p class="record-meta" data-testid="account-deletion-status">
+              ${
+                deletionStatus === null
+                  ? 'Deletion status has not been loaded yet.'
+                  : deletionStatus.requested
+                    ? `Deletion requested${
+                        deletionStatus.requestedAt
+                          ? ` at ${escapeHtml(formatTimestamp(deletionStatus.requestedAt))}`
+                          : ''
+                      }. ${escapeHtml(deletionStatus.notice)}`
+                    : `No deletion request on file. ${escapeHtml(deletionStatus.notice)}`
+              }
+            </p>
+            <div class="actions">
+              <button type="button" class="secondary" data-testid="request-account-deletion"
+                aria-disabled="${busy || (deletionStatus?.requested ?? false)}">
+                ${
+                  deletionStatus?.requested
+                    ? 'Deletion already requested'
+                    : busy
+                      ? 'Requesting…'
+                      : 'Request local data deletion'
+                }
+              </button>
+            </div>
+          </section>
         </div>`;
     }
 
@@ -403,6 +443,7 @@ export function mountAccountPage(host: PageHost): void {
           try {
             await signOutAccount(candidate);
             clearPresentationPreferences();
+            deletionStatus = null;
             shell.announce('Signed out.');
           } catch (failure) {
             error =
@@ -413,6 +454,40 @@ export function mountAccountPage(host: PageHost): void {
           }
         })();
       });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="request-account-deletion"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || deletionStatus?.requested) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            deletionStatus = await requestAccountDeletion(candidate.candidateId);
+            shell.announce('Local Arena deletion request recorded.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Could not record a deletion request.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+  }
+
+  async function loadDeletionStatus(): Promise<void> {
+    try {
+      deletionStatus = await fetchAccountDeletionStatus();
+      render();
+    } catch {
+      // Status is optional on first paint; the button still works.
+    }
   }
 
   subscribeAccount(() => {
@@ -435,6 +510,9 @@ export function mountAccountPage(host: PageHost): void {
           // Presentation settings are optional on first paint.
         }
       })();
+      void loadDeletionStatus();
+    } else {
+      deletionStatus = null;
     }
   });
 
@@ -454,5 +532,6 @@ export function mountAccountPage(host: PageHost): void {
         // ignore
       }
     })();
+    void loadDeletionStatus();
   }
 }

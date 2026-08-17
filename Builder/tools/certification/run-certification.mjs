@@ -63,6 +63,8 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   // Phase 5 adds the starter-campaign/memory/resume/narration-density suite plus the
   // permanent campaign-resume smoke segment.
   'phase-5': 77,
+  // Phase 6 adds security/a11y/chaos/longitudinal hardening suites on the full cumulative catalog.
+  'phase-6': 84,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -159,19 +161,21 @@ async function main() {
   };
 
   const phaseLabel =
-    PHASE === 'phase-5'
-      ? '5'
-      : PHASE === 'phase-4'
-        ? '4'
-        : PHASE === 'phase-3'
-          ? '3'
-          : PHASE === 'phase-2'
-            ? '2'
-            : PHASE === 'phase-1'
-              ? '1'
-              : PHASE === 'phase-0'
-                ? '0'
-                : PHASE;
+    PHASE === 'phase-6'
+      ? '6'
+      : PHASE === 'phase-5'
+        ? '5'
+        : PHASE === 'phase-4'
+          ? '4'
+          : PHASE === 'phase-3'
+            ? '3'
+            : PHASE === 'phase-2'
+              ? '2'
+              : PHASE === 'phase-1'
+                ? '1'
+                : PHASE === 'phase-0'
+                  ? '0'
+                  : PHASE;
   console.log(`Phase ${phaseLabel} Builder Verification — Frozen Local Certification Mode\n`);
 
   // 1. Pinned toolchain.

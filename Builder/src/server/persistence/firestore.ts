@@ -27,6 +27,7 @@ export const COLLECTIONS = {
   campaignSeats: 'campaignSeats',
   campaignSettings: 'campaignSettings',
   accountSettings: 'accountSettings',
+  accountDeletionRequests: 'accountDeletionRequests',
   partyChatMessages: 'partyChatMessages',
   chronicleEntries: 'chronicleEntries',
   campaignCommands: 'campaignCommands',
