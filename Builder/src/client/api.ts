@@ -661,6 +661,17 @@ export async function acceptLegalDocument(
   })) as LegalAcceptanceProjection;
 }
 
+export async function enterHostedGoogleSession(options: {
+  readonly candidateId: string;
+  readonly googleIdToken: string;
+}): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/identity/google-session', {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ googleIdToken: options.googleIdToken }),
+  })) as AccountProjection;
+}
+
 export async function enterGoogleEmulatorSession(options: {
   readonly candidateId: string;
   readonly email: string;

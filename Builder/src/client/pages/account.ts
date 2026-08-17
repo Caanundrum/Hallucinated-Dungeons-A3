@@ -14,7 +14,7 @@ import {
   isNarrationDensity,
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
-import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, signInAccount, signInGoogleEmulator, signInHostedGoogle, signOutAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   acceptLegalDocument,
@@ -35,6 +35,47 @@ import {
   clearPresentationPreferences,
 } from '../presentation-preferences.js';
 import type { PageHost } from './home.js';
+
+interface GoogleIdentityServices {
+  readonly accounts: {
+    readonly id: {
+      initialize: (config: {
+        client_id: string;
+        callback: (response: { credential: string }) => void;
+      }) => void;
+      renderButton: (parent: HTMLElement, options: Record<string, string>) => void;
+    };
+  };
+}
+
+function googleIdentity(): GoogleIdentityServices | undefined {
+  return (window as unknown as { google?: GoogleIdentityServices }).google;
+}
+
+function loadGoogleIdentityServices(): Promise<void> {
+  if (googleIdentity()?.accounts.id !== undefined) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-hd-gis]');
+    if (existing instanceof HTMLScriptElement) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google Sign-In failed to load.')), {
+        once: true,
+      });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.dataset.hdGis = 'true';
+    script.addEventListener('load', () => resolve(), { once: true });
+    script.addEventListener('error', () => reject(new Error('Google Sign-In failed to load.')), {
+      once: true,
+    });
+    document.head.appendChild(script);
+  });
+}
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -57,6 +98,7 @@ export function mountAccountPage(host: PageHost): void {
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let goldMaster: GoldMasterPackageProjection | null = null;
   const goldMasterSurface = candidate?.publicSurface === 'gold_master';
+  const hostedGoogleClientId = candidate?.hostedGoogleClientId ?? null;
   const mountToken = beginPageMount(container);
 
   function render(): void {
@@ -105,10 +147,22 @@ export function mountAccountPage(host: PageHost): void {
           <section class="panel" aria-labelledby="google-sign-in-heading">
             <h2 id="google-sign-in-heading">Google Sign-In</h2>
             <p>
-              Hosted player identity is Google-only. On this Local Arena host the control talks to
-              the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.
+              ${
+                hostedGoogleClientId !== null
+                  ? 'Invite-Only Alpha uses Google Sign-In only. There is no development login and no password on this site.'
+                  : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
+              }
             </p>
-            <label class="field">
+            ${
+              hostedGoogleClientId !== null
+                ? `<div class="actions">
+              ${
+                candidate === null
+                  ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
+                  : `<div data-testid="account-google-hosted-button"></div>`
+              }
+            </div>`
+                : `<label class="field">
               <span>Emulator email</span>
               <input type="email" data-testid="account-google-email" value="${escapeHtml(googleEmail)}" />
             </label>
@@ -121,7 +175,8 @@ export function mountAccountPage(host: PageHost): void {
                        ${busy ? 'Signing in…' : 'Sign in with Google emulator'}
                      </button>`
               }
-            </div>
+            </div>`
+            }
           </section>
         </div>`;
     } else {
@@ -129,7 +184,11 @@ export function mountAccountPage(host: PageHost): void {
         <div class="page">
           <h1 data-testid="account-heading">Account</h1>
           <p class="tagline">
-            Signed in for local testing. Characters you create are owned by this account.
+            ${
+              hostedGoogleClientId !== null
+                ? 'Signed in with Google. Characters you create are owned by this account.'
+                : 'Signed in for local testing. Characters you create are owned by this account.'
+            }
           </p>
           ${
             error === null
@@ -137,7 +196,7 @@ export function mountAccountPage(host: PageHost): void {
               : `<div class="message error" role="alert" tabindex="-1" data-testid="account-error">${escapeHtml(error)}</div>`
           }
           <section class="panel" aria-labelledby="account-details-heading">
-            <h2 id="account-details-heading">Your development account</h2>
+            <h2 id="account-details-heading">${hostedGoogleClientId !== null ? 'Your account' : 'Your development account'}</h2>
             <dl class="account-details" data-testid="account-details">
               <div>
                 <dt>Display name</dt>
@@ -368,6 +427,56 @@ export function mountAccountPage(host: PageHost): void {
           }
         })();
       });
+
+    const hostedButtonHost = container.querySelector<HTMLElement>(
+      '[data-testid="account-google-hosted-button"]',
+    );
+    if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null && !busy) {
+      void loadGoogleIdentityServices()
+        .then(() => {
+          const api = googleIdentity();
+          if (api === undefined || !isPageMountCurrent(container, mountToken)) {
+            return;
+          }
+          hostedButtonHost.replaceChildren();
+          api.accounts.id.initialize({
+            client_id: hostedGoogleClientId,
+            callback: (response) => {
+              void (async () => {
+                if (busy) {
+                  return;
+                }
+                busy = true;
+                error = null;
+                render();
+                try {
+                  const next = await signInHostedGoogle(candidate, response.credential);
+                  shell.announce(`Signed in as ${next.displayLabel}.`);
+                } catch (failure) {
+                  error =
+                    failure instanceof ApiFailure
+                      ? failure.message
+                      : 'Google Sign-In failed.';
+                } finally {
+                  busy = false;
+                  render();
+                }
+              })();
+            },
+          });
+          api.accounts.id.renderButton(hostedButtonHost, {
+            type: 'standard',
+            theme: 'filled_black',
+            size: 'large',
+            text: 'signin_with',
+            shape: 'rectangular',
+          });
+        })
+        .catch(() => {
+          error = 'Google Sign-In failed to load.';
+          render();
+        });
+    }
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
       button.addEventListener('click', () => {

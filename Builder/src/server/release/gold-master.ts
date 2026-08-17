@@ -80,9 +80,13 @@ export function buildGoldMasterPackage(env: ServerEnvironment): GoldMasterPackag
       supportPath: 'invitation channel named in legal documents',
     },
     honestBounds: [
-      'This process is the Local Execution Environment. Launch Production is not configured and has not been deployed.',
+      env.environmentClass === 'milestone'
+        ? 'This process is Invite-Only Alpha on Milestone Firebase. Launch Production is not configured and has not been deployed.'
+        : 'This process is the Local Execution Environment. Launch Production is not configured and has not been deployed.',
       'Safari, certified tablet hardware, and real screen-reader AT remain BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION on this host.',
-      'Google Sign-In on this host uses the Auth emulator. It is not a live OAuth popup against a public Google Cloud project.',
+      env.environmentClass === 'milestone'
+        ? 'Google Sign-In uses live Google OAuth. Development identities, QA fixtures, and the QA harness are stripped.'
+        : 'Google Sign-In on this host uses the Auth emulator. It is not a live OAuth popup against a public Google Cloud project.',
       'The Local Arena Director remains a deterministic simulator. Hosted LLM providers stay registered pending credentials.',
       'Age/region eligibility collection is inactive because no selected provider currently requires it.',
     ],
