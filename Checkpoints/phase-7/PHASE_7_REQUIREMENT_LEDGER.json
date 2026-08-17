@@ -2,12 +2,12 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-7",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "AWAITING_HUMAN_APPROVAL",
+  "lifecycleState": "PHASE_CERTIFIED",
   "humanGate": "product_owner_release",
   "priorCertifiedCandidate": "cand-ba96785c84c8",
-  "certifiedCandidate": null,
-  "certificate": null,
-  "note": "Phase 7 AWAITING_HUMAN_APPROVAL for cand-fd5997306889. BV PASSED 90/90, Independent QA PLAYER_VALIDATED 4/4, Judge CHALLENGE_PASSED. Product Owner release gate is required. Launch Production NOT_DEPLOYED.",
+  "certifiedCandidate": "cand-fd5997306889",
+  "certificate": "Checkpoints/phase-7/PHASE_7_CERTIFICATE.md",
+  "note": "Phase 7 PHASE_CERTIFIED. Product Owner Nick approved cand-fd5997306889 on 2026-08-17. Launch Production remains NOT_DEPLOYED / NOT_GRANTED. Next workstream is Invite-Only Alpha Milestone hosting for player testing.",
   "deviceCertificationBounds": {
     "chromium": "REQUIRED",
     "firefox": "ORDINARY_REGRESSION_WHEN_AVAILABLE",
@@ -21,7 +21,7 @@
     {
       "id": "P7-IDENTITY-CUTOVER",
       "requirement": "Final public identity is Google Sign-In only on Gold Master / hosted artifacts; development identities and QA fixtures fail closed there",
-      "status": "BUILDER_VERIFIED_PENDING_QA",
+      "status": "CERTIFIED",
       "implementation": [
         "Builder/src/shared/public-surface-contract.ts",
         "Builder/src/server/release/public-surface.ts",
@@ -36,7 +36,7 @@
     {
       "id": "P7-STRIP-HARNESS",
       "requirement": "Remove QA harness, fixture minting, diagnostics fixture controls from hosted artifacts; retain only non-mutating operational health",
-      "status": "BUILDER_VERIFIED_PENDING_QA",
+      "status": "CERTIFIED",
       "implementation": [
         "Builder/src/server/release/qa-harness.ts",
         "Builder/src/server/http/server.ts"
@@ -49,7 +49,7 @@
     {
       "id": "P7-LEGAL-PROVIDER",
       "requirement": "Final legal documents/acceptance, privacy, provider/service registry, conditional age/region policy, quotas, monitoring, incident/rollback/support paths",
-      "status": "BUILDER_VERIFIED_PENDING_QA",
+      "status": "CERTIFIED",
       "implementation": [
         "Builder/src/server/legal/legal-registry.ts",
         "Builder/src/server/legal/legal-acceptance.ts",
@@ -66,7 +66,7 @@
     {
       "id": "P7-CUMULATIVE",
       "requirement": "Full cumulative regression of the complete applicable catalog against the exact release candidate",
-      "status": "BUILDER_VERIFIED",
+      "status": "CERTIFIED",
       "implementation": [
         "Builder/package.json#certify:phase7",
         "Builder/tools/certification/run-certification.mjs"
@@ -86,7 +86,7 @@
     {
       "id": "P7-RELEASE-GATE",
       "requirement": "Product Owner release approval of the exact candidate, hosted presentation, legal/provider experience, and publication decision. Launch Production deploy is not implied.",
-      "status": "AWAITING_HUMAN_APPROVAL",
+      "status": "APPROVED",
       "implementation": [
         "Checkpoints/phase-7/PHASE_7_HUMAN_APPROVAL_CHECKPOINT.md"
       ],
