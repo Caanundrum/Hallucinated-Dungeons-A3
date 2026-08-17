@@ -7,6 +7,8 @@
  * rules contracts belong to later phases and are deliberately absent.
  */
 
+import type { PublicSurface } from './public-surface-contract.js';
+
 export const ENVIRONMENT_CLASSES = ['local', 'milestone', 'launch'] as const;
 export type EnvironmentClass = (typeof ENVIRONMENT_CLASSES)[number];
 
@@ -67,6 +69,7 @@ export interface CandidateIdentity {
   readonly blueprintVersion: string;
   readonly environmentClass: EnvironmentClass;
   readonly runtimeMode: RuntimeMode;
+  readonly publicSurface: PublicSurface;
   readonly firebaseProjectId: string;
   readonly environmentSchemaVersion: string;
 }

@@ -25,4 +25,4 @@ export interface AccountIdentityProjection {
 }
 
 export const GOOGLE_SIGN_IN_NOTICE =
-  'Hosted player identity uses Google Sign-In only. The Local Arena may still mint development identities and machine-only QA fixtures until Product Owner identity cutover.';
+  'Hosted player identity uses Google Sign-In only. Local Arena may still mint development identities and machine-only QA fixtures. Gold Master artifacts strip those paths.';

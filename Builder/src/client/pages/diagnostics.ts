@@ -52,6 +52,18 @@ function formatTimestamp(iso: string): string {
 export function mountDiagnosticsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Local Arena diagnostics');
+  if (candidate?.publicSurface === 'gold_master') {
+    container.innerHTML = `
+      <div class="page">
+        <h1 data-testid="diagnostics-heading">Diagnostics stripped</h1>
+        <p data-testid="diagnostics-stripped-notice">
+          Local Arena diagnostics, development-identity minting, and QA fixture controls are
+          stripped from Gold Master artifacts. Operational health remains at /api/health and
+          cannot mint identities or mutate gameplay.
+        </p>
+      </div>`;
+    return;
+  }
   const mountToken = beginPageMount(container);
 
   const state: DiagnosticsState = {

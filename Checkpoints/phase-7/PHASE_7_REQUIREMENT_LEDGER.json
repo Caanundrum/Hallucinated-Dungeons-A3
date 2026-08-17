@@ -1,0 +1,96 @@
+{
+  "recordType": "phase_requirement_ledger",
+  "phase": "phase-7",
+  "blueprintVersion": "ALPHA_3_V1",
+  "lifecycleState": "PHASE_CERTIFIED",
+  "humanGate": "product_owner_release",
+  "priorCertifiedCandidate": "cand-ba96785c84c8",
+  "certifiedCandidate": "cand-fd5997306889",
+  "certificate": "Checkpoints/phase-7/PHASE_7_CERTIFICATE.md",
+  "note": "Phase 7 PHASE_CERTIFIED. Product Owner Nick approved cand-fd5997306889 on 2026-08-17. Launch Production remains NOT_DEPLOYED / NOT_GRANTED. Next workstream is Invite-Only Alpha Milestone hosting for player testing.",
+  "deviceCertificationBounds": {
+    "chromium": "REQUIRED",
+    "firefox": "ORDINARY_REGRESSION_WHEN_AVAILABLE",
+    "safari": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION",
+    "certifiedTabletHardware": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION",
+    "realScreenReaderAT": "BLOCKED_FOR_FINAL_DEVICE_CERTIFICATION"
+  },
+  "launchProduction": "NOT_DEPLOYED",
+  "productOwnerAuthorization": "NOT_GRANTED",
+  "requirements": [
+    {
+      "id": "P7-IDENTITY-CUTOVER",
+      "requirement": "Final public identity is Google Sign-In only on Gold Master / hosted artifacts; development identities and QA fixtures fail closed there",
+      "status": "CERTIFIED",
+      "implementation": [
+        "Builder/src/shared/public-surface-contract.ts",
+        "Builder/src/server/release/public-surface.ts",
+        "Builder/src/server/identity/development-identity.ts",
+        "Builder/src/server/http/server.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase7-gold-master.test.mjs",
+        "Builder/tests/e2e/phase7-gold-master.spec.ts"
+      ]
+    },
+    {
+      "id": "P7-STRIP-HARNESS",
+      "requirement": "Remove QA harness, fixture minting, diagnostics fixture controls from hosted artifacts; retain only non-mutating operational health",
+      "status": "CERTIFIED",
+      "implementation": [
+        "Builder/src/server/release/qa-harness.ts",
+        "Builder/src/server/http/server.ts"
+      ],
+      "verification": [
+        "Builder/tests/unit/phase7-gold-master.test.mjs",
+        "Builder/tests/e2e/phase7-gold-master.spec.ts"
+      ]
+    },
+    {
+      "id": "P7-LEGAL-PROVIDER",
+      "requirement": "Final legal documents/acceptance, privacy, provider/service registry, conditional age/region policy, quotas, monitoring, incident/rollback/support paths",
+      "status": "CERTIFIED",
+      "implementation": [
+        "Builder/src/server/legal/legal-registry.ts",
+        "Builder/src/server/legal/legal-acceptance.ts",
+        "Builder/src/server/release/gold-master.ts",
+        "Checkpoints/phase-7/INCIDENT_RUNBOOK.md",
+        "Checkpoints/phase-7/ROLLBACK_PROCEDURE.md"
+      ],
+      "verification": [
+        "Builder/tests/unit/legal-registry.test.mjs",
+        "Builder/tests/unit/phase7-gold-master.test.mjs",
+        "Builder/tests/e2e/phase7-gold-master.spec.ts"
+      ]
+    },
+    {
+      "id": "P7-CUMULATIVE",
+      "requirement": "Full cumulative regression of the complete applicable catalog against the exact release candidate",
+      "status": "CERTIFIED",
+      "implementation": [
+        "Builder/package.json#certify:phase7",
+        "Builder/tools/certification/run-certification.mjs"
+      ],
+      "verification": ["npm run certify:phase7"]
+    },
+    {
+      "id": "P7-JUDGE",
+      "requirement": "Independent QA Judge release challenge of Builder evidence and QA findings",
+      "status": "CHALLENGE_PASSED",
+      "implementation": [
+        "Checkpoints/phase-7/INDEPENDENT_QA_JUDGE.md",
+        "QA/scripts/phase7-judge.challenge.mjs"
+      ],
+      "verification": []
+    },
+    {
+      "id": "P7-RELEASE-GATE",
+      "requirement": "Product Owner release approval of the exact candidate, hosted presentation, legal/provider experience, and publication decision. Launch Production deploy is not implied.",
+      "status": "APPROVED",
+      "implementation": [
+        "Checkpoints/phase-7/PHASE_7_HUMAN_APPROVAL_CHECKPOINT.md"
+      ],
+      "verification": []
+    }
+  ]
+}

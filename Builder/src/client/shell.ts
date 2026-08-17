@@ -99,7 +99,11 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
               <li><a href="/campaigns" data-link data-testid="nav-campaigns">Campaigns</a></li>
               <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
               <li><a href="/admin" data-link data-testid="nav-admin">Admin</a></li>
-              <li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Diagnostics</a></li>
+              ${
+                candidate?.publicSurface === 'gold_master'
+                  ? ''
+                  : '<li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Diagnostics</a></li>'
+              }
             </ul>
           </nav>
           <div class="shell-account" data-testid="shell-account-slot"></div>
@@ -158,6 +162,11 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           accountBusy = true;
           renderAccountChip();
           try {
+            if (candidate.publicSurface === 'gold_master') {
+              navigate('/account');
+              announce('Open Account to sign in with Google.');
+              return;
+            }
             const account = await signInAccount(candidate);
             announce(`Signed in as ${account.displayLabel}.`);
           } catch (failure) {

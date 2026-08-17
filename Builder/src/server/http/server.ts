@@ -33,7 +33,14 @@ import {
   commitFoundationCheck,
   readFoundationProjection,
 } from '../foundation/foundation-checks.js';
+import { getLegalDocument } from '../legal/legal-registry.js';
+import { renderLegalPage } from '../legal/render-legal-page.js';
+import { acceptCurrentLegalDocument, readLegalAcceptance } from '../legal/legal-acceptance.js';
+import { buildGoldMasterPackage } from '../release/gold-master.js';
+import { isLocalArenaPublicSurface } from '../release/public-surface.js';
+import { qaHarnessStatus, runQaHarnessOperation } from '../release/qa-harness.js';
 import {
+  IdentityUnavailableError,
   endSession,
   mintDevelopmentIdentity,
   mintGoogleEmulatorIdentity,
@@ -136,8 +143,6 @@ import {
   updateCampaignSettings,
 } from '../settings/campaign-settings.js';
 import { readPlayerSettings, updatePlayerSettings } from '../settings/player-settings.js';
-import { getLegalDocument } from '../legal/legal-registry.js';
-import { renderLegalPage } from '../legal/render-legal-page.js';
 import { buildDraftOptions } from '../rules/character-rules.js';
 import { parseChoices } from '../characters/parse-choices.js';
 import {
@@ -227,7 +232,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ERROR_CODES.FORBIDDEN_ORIGIN]:
     'This request did not come from the declared Local Arena client origin.',
   [ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE]:
-    'Development identities are available only in the Local Execution Environment.',
+    'That identity or QA capability is available only on the Local Arena public surface. Gold Master artifacts strip development identities, QA fixtures, and the QA harness.',
   [ERROR_CODES.INVITATION_UNAVAILABLE]:
     'That invitation is not available. Ask the campaign owner for a current invite link.',
   [ERROR_CODES.INVITATION_RATE_LIMITED]:
@@ -282,6 +287,7 @@ function candidateIdentity(env: ServerEnvironment): CandidateIdentity {
     blueprintVersion: env.blueprintVersion,
     environmentClass: env.environmentClass,
     runtimeMode: env.runtimeMode,
+    publicSurface: env.publicSurface,
     firebaseProjectId: env.firebaseProjectId,
     environmentSchemaVersion: env.environmentSchemaVersion,
   };
@@ -625,13 +631,21 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     }
 
     if (path === '/api/identity/development-session' && method === 'POST') {
-      if (env.environmentClass !== 'local') {
+      if (!isLocalArenaPublicSurface(env)) {
         sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
         return;
       }
-      const minted = await mintDevelopmentIdentity({ env, firestore, auth });
-      setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
-      sendJson(response, 201, minted.identity);
+      try {
+        const minted = await mintDevelopmentIdentity({ env, firestore, auth });
+        setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
+        sendJson(response, 201, minted.identity);
+      } catch (error) {
+        if (error instanceof IdentityUnavailableError) {
+          sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+          return;
+        }
+        throw error;
+      }
       return;
     }
 
@@ -669,7 +683,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     }
 
     if (path === '/api/identity/qa-fixture-session' && method === 'POST') {
-      if (env.environmentClass !== 'local') {
+      if (!isLocalArenaPublicSurface(env)) {
         sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
         return;
       }
@@ -703,6 +717,105 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
     if (path === '/api/providers/registry' && method === 'GET') {
       sendJson(response, 200, { providers: PROVIDER_COMPLIANCE_REGISTRY });
+      return;
+    }
+
+    if (path === '/api/release/gold-master' && method === 'GET') {
+      sendJson(response, 200, buildGoldMasterPackage(env));
+      return;
+    }
+
+    if (path === '/api/qa/harness') {
+      if (method === 'GET') {
+        try {
+          sendJson(response, 200, qaHarnessStatus(env));
+        } catch (error) {
+          if (error instanceof IdentityUnavailableError) {
+            sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+            return;
+          }
+          throw error;
+        }
+        return;
+      }
+      if (method === 'POST') {
+        let body: unknown;
+        try {
+          body = await readJsonBody(request);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
+          return;
+        }
+        const operation =
+          typeof (body as { operation?: unknown }).operation === 'string'
+            ? (body as { operation: string }).operation
+            : 'status';
+        try {
+          sendJson(response, 200, runQaHarnessOperation(env, operation));
+        } catch (error) {
+          if (error instanceof IdentityUnavailableError) {
+            sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+            return;
+          }
+          sendJson(response, 400, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: error instanceof Error ? error.message : 'QA harness refused the operation.',
+          } satisfies ApiErrorBody);
+        }
+        return;
+      }
+      sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+      return;
+    }
+
+    if (path === '/api/legal/acceptance') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      if (method === 'GET') {
+        sendJson(response, 200, await readLegalAcceptance(firestore, session.accountId));
+        return;
+      }
+      if (method === 'POST') {
+        let body: unknown;
+        try {
+          body = await readJsonBody(request);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
+          return;
+        }
+        const route =
+          typeof (body as { route?: unknown }).route === 'string'
+            ? (body as { route: string }).route
+            : '';
+        try {
+          sendJson(
+            response,
+            201,
+            await acceptCurrentLegalDocument(firestore, session.accountId, route),
+          );
+        } catch (error) {
+          sendJson(response, 400, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: error instanceof Error ? error.message : 'Legal acceptance failed.',
+          } satisfies ApiErrorBody);
+        }
+        return;
+      }
+      sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
       return;
     }
 

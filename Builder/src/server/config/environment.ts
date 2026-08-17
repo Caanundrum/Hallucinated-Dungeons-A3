@@ -17,6 +17,10 @@ import {
   type EnvironmentClass,
   type RuntimeMode,
 } from '../../shared/contract.js';
+import {
+  isPublicSurface,
+  type PublicSurface,
+} from '../../shared/public-surface-contract.js';
 
 export interface HostPort {
   readonly host: string;
@@ -38,6 +42,8 @@ export interface ServerEnvironment {
   readonly seedVersion: string;
   /** Absolute directory of the built client bundle, or null in Rapid Builder Mode. */
   readonly clientBundleDir: string | null;
+  /** Local Arena vs Gold Master artifact profile. Independent of environmentClass. */
+  readonly publicSurface: PublicSurface;
 }
 
 export class EnvironmentError extends Error {
@@ -68,6 +74,7 @@ const KNOWN_HD_VARIABLES = new Set([
   'HD_SEED_VERSION',
   'HD_WORKING_DIRECTORY',
   'HD_ARCHIVE_DIRECTORY',
+  'HD_PUBLIC_SURFACE',
 ]);
 
 /**
@@ -236,10 +243,18 @@ export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): Ser
     );
   }
 
+  const publicSurfaceRaw = (env.HD_PUBLIC_SURFACE ?? 'local_arena').trim();
+  if (!isPublicSurface(publicSurfaceRaw)) {
+    throw new EnvironmentError(
+      `HD_PUBLIC_SURFACE must be local_arena or gold_master. Received "${publicSurfaceRaw}".`,
+    );
+  }
+
   return {
     environmentSchemaVersion: schemaVersion,
     environmentClass,
     runtimeMode,
+    publicSurface: publicSurfaceRaw,
     candidateId: required(env, 'HD_CANDIDATE_ID'),
     blueprintVersion: required(env, 'HD_BLUEPRINT_VERSION'),
     firebaseProjectId,

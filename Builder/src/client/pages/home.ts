@@ -16,6 +16,7 @@
  */
 
 import type { CandidateIdentity } from '../../shared/contract.js';
+import { BROWSER_SUPPORT_MATRIX } from '../../shared/public-surface-contract.js';
 import { escapeHtml } from '../dom-utils.js';
 import type { ShellHandle } from '../shell.js';
 
@@ -31,6 +32,21 @@ export interface PageHost {
  * same session, without persisting anything in browser storage.
  */
 let introAlreadyShown = false;
+
+function browserStatusLabel(status: (typeof BROWSER_SUPPORT_MATRIX)[number]['status']): string {
+  switch (status) {
+    case 'certified_chromium_class':
+      return 'Certified on this candidate (Chromium-class automated evidence)';
+    case 'ordinary_regression_when_available':
+      return 'Ordinary regression when available — not a full certification claim on this host';
+    case 'not_yet_certified':
+      return 'Not yet certified for this milestone';
+    case 'unsupported':
+      return 'Unsupported for the full tactical table';
+    default:
+      return status;
+  }
+}
 
 const DOORWAY_MOTIF = `
   <svg class="intro-motif" width="72" height="72" viewBox="0 0 96 96" fill="none" aria-hidden="true" focusable="false">
@@ -68,19 +84,41 @@ export function mountHomePage(host: PageHost): void {
       <section class="panel" aria-labelledby="status-heading">
         <h2 id="status-heading">What's here right now</h2>
         <p>
-          Sign in with a Local Arena development account, create characters in the Character
-          Vault, and create or join campaigns with a fixed Game Director identity and personality.
-          Diagnostics remains available for the Phase 0 foundation write/read path.
+          ${
+            candidate?.publicSurface === 'gold_master'
+              ? 'This Gold Master artifact uses Google Sign-In as the only player-facing identity. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality.'
+              : 'This Local Arena build may mint a development account for testing. Hosted Gold Master artifacts use Google Sign-In only and strip development identities, QA fixtures, and the QA harness. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality.'
+          }
         </p>
         <div class="actions">
           <a href="/account" data-link data-testid="home-account-link">Open Account</a>
           <a href="/characters" data-link data-testid="home-characters-link">Open the Character Vault</a>
           <a href="/campaigns" data-link data-testid="home-campaigns-link">Open Campaigns</a>
         </div>
-        <p class="record-meta">
+        ${
+          candidate?.publicSurface === 'gold_master'
+            ? ''
+            : `<p class="record-meta">
           <a href="/diagnostics" data-link data-testid="home-diagnostics-link">Local Arena diagnostics</a>
-          (foundation write/read path for builders — not required for play).
+          (foundation write/read path for builders — not required for play; stripped from Gold Master artifacts).
+        </p>`
+        }
+      </section>
+      <section class="panel" aria-labelledby="browser-support-heading">
+        <h2 id="browser-support-heading">Certified browsers and devices</h2>
+        <p class="record-meta">
+          Support is release-tested rather than assumed. A browser listed here as not yet certified
+          is not a claim of Safari or tablet hardware evidence.
         </p>
+        <ul class="support-matrix" data-testid="browser-support-matrix">
+          ${BROWSER_SUPPORT_MATRIX.map(
+            (entry) => `
+            <li data-testid="browser-support-${escapeHtml(entry.id)}" data-support-status="${escapeHtml(entry.status)}">
+              <strong>${escapeHtml(entry.label)}</strong>
+              — ${escapeHtml(browserStatusLabel(entry.status))}
+            </li>`,
+          ).join('')}
+        </ul>
       </section>
       <div class="candidate-strip" data-testid="candidate-strip">
         ${
@@ -88,6 +126,7 @@ export function mountHomePage(host: PageHost): void {
             ? 'Contacting the Local Arena server…'
             : `<span>Candidate <b data-testid="candidate-id">${escapeHtml(candidate.candidateId)}</b></span>
                <span>Environment <b data-testid="environment-class">${escapeHtml(candidate.environmentClass)}</b></span>
+               <span>Surface <b data-testid="public-surface">${escapeHtml(candidate.publicSurface)}</b></span>
                <span>Blueprint <b>${escapeHtml(candidate.blueprintVersion)}</b></span>`
         }
       </div>

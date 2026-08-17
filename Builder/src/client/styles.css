@@ -536,6 +536,15 @@ button[aria-disabled="true"] {
   font-family: var(--font-mono);
 }
 
+.support-matrix {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.support-matrix li {
+  margin: 0.35rem 0;
+}
+
 .empty-state {
   color: var(--text-secondary);
   font-style: italic;

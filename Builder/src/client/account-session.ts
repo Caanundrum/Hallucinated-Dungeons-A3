@@ -8,7 +8,7 @@
  */
 
 import type { AccountProjection, CandidateIdentity } from '../shared/contract.js';
-import { ApiFailure, enterLocalArena, fetchSession, leaveLocalArena } from './api.js';
+import { ApiFailure, enterGoogleEmulatorSession, enterLocalArena, fetchSession, leaveLocalArena } from './api.js';
 
 type Listener = () => void;
 
@@ -60,6 +60,20 @@ export async function hydrateAccount(): Promise<AccountProjection | null> {
 /** Mints a Development Test Identity and projects it as the signed-in account. */
 export async function signInAccount(candidate: CandidateIdentity): Promise<AccountProjection> {
   account = await enterLocalArena(candidate.candidateId);
+  hydrated = true;
+  notify();
+  return account;
+}
+
+/** Hosted-identity rehearsal: Google Sign-In mode via the Auth emulator. */
+export async function signInGoogleEmulator(
+  candidate: CandidateIdentity,
+  email: string,
+): Promise<AccountProjection> {
+  account = await enterGoogleEmulatorSession({
+    candidateId: candidate.candidateId,
+    email,
+  });
   hydrated = true;
   notify();
   return account;

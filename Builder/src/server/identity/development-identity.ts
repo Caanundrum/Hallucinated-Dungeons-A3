@@ -19,6 +19,7 @@ import type { IdentityProviderMode } from '../../shared/presence-contract.js';
 import type { ServerEnvironment } from '../config/environment.js';
 import { isBootstrapAdminEmail } from '../admin/admin-auth.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { isLocalArenaPublicSurface } from '../release/public-surface.js';
 
 /** Lifetime of a minted development identity and its session. */
 export const DEVELOPMENT_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -114,9 +115,9 @@ export async function mintDevelopmentIdentity(options: {
   readonly now?: Date;
 }): Promise<MintedSession> {
   const { env, firestore, auth } = options;
-  if (env.environmentClass !== 'local') {
+  if (!isLocalArenaPublicSurface(env)) {
     throw new IdentityUnavailableError(
-      'Development identities exist only inside the Local Arena.',
+      'Development identities exist only inside the Local Arena public surface and are stripped from Gold Master artifacts.',
     );
   }
 
@@ -240,8 +241,8 @@ export async function mintQaFixtureSession(options: {
   readonly now?: Date;
 }): Promise<MintedSession> {
   const { env, firestore, auth } = options;
-  if (env.environmentClass !== 'local') {
-    throw new IdentityUnavailableError('QA fixture sessions exist only inside the Local Arena.');
+  if (!isLocalArenaPublicSurface(env)) {
+    throw new IdentityUnavailableError('QA fixture sessions exist only inside the Local Arena public surface and are stripped from Gold Master artifacts.');
   }
 
   const now = options.now ?? new Date();

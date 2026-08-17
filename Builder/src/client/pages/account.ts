@@ -14,14 +14,19 @@ import {
   isNarrationDensity,
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
-import { getAccount, signInAccount, signOutAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
+  acceptLegalDocument,
   fetchAccountDeletionStatus,
+  fetchGoldMasterPackage,
+  fetchLegalAcceptance,
   fetchPlayerSettings,
   requestAccountDeletion,
   savePlayerSettings,
   type AccountDeletionStatusProjection,
+  type GoldMasterPackageProjection,
+  type LegalAcceptanceProjection,
 } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
@@ -48,6 +53,10 @@ export function mountAccountPage(host: PageHost): void {
   let speechToTextEnabled = false;
   let narrationDensity: NarrationDensity = 'balanced';
   let deletionStatus: AccountDeletionStatusProjection | null = null;
+  let googleEmail = 'phase7-player@example.com';
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
+  let goldMaster: GoldMasterPackageProjection | null = null;
+  const goldMasterSurface = candidate?.publicSurface === 'gold_master';
   const mountToken = beginPageMount(container);
 
   function render(): void {
@@ -61,19 +70,25 @@ export function mountAccountPage(host: PageHost): void {
         <div class="page">
           <h1 data-testid="account-heading">Account</h1>
           <p class="tagline">
-            Sign in with a Local Arena development account. This is the same ownership
-            identity characters and campaigns use — not a second login system.
+            ${
+              goldMasterSurface
+                ? 'Hosted player identity uses Google Sign-In only. This Gold Master artifact does not mint Local Arena development identities.'
+                : 'Local Arena testing can mint a development account. Hosted Gold Master artifacts use Google Sign-In only.'
+            }
           </p>
           ${
             error === null
               ? ''
               : `<div class="message error" role="alert" tabindex="-1" data-testid="account-error">${escapeHtml(error)}</div>`
           }
-          <section class="panel" aria-labelledby="sign-in-heading">
+          ${
+            goldMasterSurface
+              ? ''
+              : `<section class="panel" aria-labelledby="sign-in-heading">
             <h2 id="sign-in-heading">Development account</h2>
             <p>
               The server mints a temporary development identity for local testing.
-              There is no password to create or store. Google Sign-In arrives in a later phase.
+              There is no password to create or store. This path is stripped from Gold Master artifacts.
             </p>
             <div class="actions">
               ${
@@ -82,6 +97,28 @@ export function mountAccountPage(host: PageHost): void {
                   : `<button type="button" data-testid="account-enter"
                        aria-disabled="${busy}">
                        ${busy ? 'Signing in…' : 'Sign in for local testing'}
+                     </button>`
+              }
+            </div>
+          </section>`
+          }
+          <section class="panel" aria-labelledby="google-sign-in-heading">
+            <h2 id="google-sign-in-heading">Google Sign-In</h2>
+            <p>
+              Hosted player identity is Google-only. On this Local Arena host the control talks to
+              the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.
+            </p>
+            <label class="field">
+              <span>Emulator email</span>
+              <input type="email" data-testid="account-google-email" value="${escapeHtml(googleEmail)}" />
+            </label>
+            <div class="actions">
+              ${
+                candidate === null
+                  ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
+                  : `<button type="button" data-testid="account-google-emulator-enter"
+                       aria-disabled="${busy}">
+                       ${busy ? 'Signing in…' : 'Sign in with Google emulator'}
                      </button>`
               }
             </div>
@@ -210,6 +247,57 @@ export function mountAccountPage(host: PageHost): void {
               </button>
             </div>
           </section>
+          <section class="panel" aria-labelledby="legal-acceptance-heading">
+            <h2 id="legal-acceptance-heading">Legal acceptance</h2>
+            <p class="record-meta">
+              Gold Master legal documents are versioned. Recording acceptance stores the current
+              route, version, and content digest on the server — the browser does not invent them.
+            </p>
+            <ul data-testid="legal-acceptance-list">
+              ${
+                legalAcceptance === null
+                  ? '<li>Acceptance status has not been loaded yet.</li>'
+                  : legalAcceptance.documents
+                      .map(
+                        (document) => `
+                  <li data-testid="legal-acceptance-${escapeHtml(document.route.replace(/\//g, '-'))}">
+                    <a href="${escapeHtml(document.route)}" target="_blank" rel="noopener noreferrer">${escapeHtml(document.title)}</a>
+                    — ${escapeHtml(document.version)}
+                    ${document.accepted ? 'accepted' : 'not yet accepted'}
+                    <button type="button" class="secondary" data-legal-route="${escapeHtml(document.route)}"
+                      data-testid="accept-legal-${escapeHtml(document.route.replace(/\//g, '-'))}"
+                      aria-disabled="${busy || document.accepted}">
+                      ${document.accepted ? 'Accepted' : 'Record acceptance'}
+                    </button>
+                  </li>`,
+                      )
+                      .join('')
+              }
+            </ul>
+            <p class="record-meta" data-testid="legal-acceptance-summary">
+              ${
+                legalAcceptance === null
+                  ? ''
+                  : legalAcceptance.allCurrentAccepted
+                    ? 'All current legal documents are accepted.'
+                    : 'One or more current legal documents still need acceptance.'
+              }
+            </p>
+          </section>
+          <section class="panel" aria-labelledby="gold-master-heading">
+            <h2 id="gold-master-heading">Gold Master package</h2>
+            <p class="record-meta" data-testid="gold-master-status">
+              ${
+                goldMaster === null
+                  ? 'Gold Master package has not been loaded yet.'
+                  : `Launch Production ${escapeHtml(goldMaster.launchProduction)}. Product Owner authorization ${escapeHtml(goldMaster.productOwnerAuthorization)}. Eligibility ${escapeHtml(goldMaster.eligibilityPolicy.status)}.`
+              }
+            </p>
+            <p class="record-meta">
+              Support: use the invitation channel named in the legal documents. Hosted on-call is
+              not standing until Launch Production is authorized.
+            </p>
+          </section>
         </div>`;
     }
 
@@ -243,6 +331,72 @@ export function mountAccountPage(host: PageHost): void {
           }
         })();
       });
+
+    container
+      .querySelector<HTMLInputElement>('[data-testid="account-google-email"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLInputElement) {
+          googleEmail = event.target.value;
+        }
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="account-google-emulator-enter"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          const emailInput = container.querySelector<HTMLInputElement>(
+            '[data-testid="account-google-email"]',
+          );
+          googleEmail = emailInput?.value.trim() || googleEmail;
+          busy = true;
+          error = null;
+          render();
+          try {
+            const next = await signInGoogleEmulator(candidate, googleEmail);
+            shell.announce(`Signed in as ${next.displayLabel}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Google emulator sign-in failed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
+      button.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || button.getAttribute('aria-disabled') === 'true') {
+            return;
+          }
+          const route = button.dataset.legalRoute;
+          if (route === undefined || route.length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            legalAcceptance = await acceptLegalDocument(candidate.candidateId, route);
+            shell.announce(`Recorded acceptance of ${route}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Legal acceptance could not be recorded.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+    });
 
     container
       .querySelector<HTMLInputElement>('[data-testid="account-reduced-motion"]')
@@ -444,6 +598,7 @@ export function mountAccountPage(host: PageHost): void {
             await signOutAccount(candidate);
             clearPresentationPreferences();
             deletionStatus = null;
+            legalAcceptance = null;
             shell.announce('Signed out.');
           } catch (failure) {
             error =
@@ -490,6 +645,24 @@ export function mountAccountPage(host: PageHost): void {
     }
   }
 
+  async function loadLegalAndGoldMaster(): Promise<void> {
+    try {
+      goldMaster = await fetchGoldMasterPackage();
+      render();
+    } catch {
+      // Package is optional on first paint.
+    }
+    if (getAccount() === null) {
+      return;
+    }
+    try {
+      legalAcceptance = await fetchLegalAcceptance();
+      render();
+    } catch {
+      // Acceptance is optional on first paint.
+    }
+  }
+
   subscribeAccount(() => {
     if (!isPageMountCurrent(container, mountToken) || busy) {
       return;
@@ -511,12 +684,15 @@ export function mountAccountPage(host: PageHost): void {
         }
       })();
       void loadDeletionStatus();
+      void loadLegalAndGoldMaster();
     } else {
       deletionStatus = null;
+      legalAcceptance = null;
     }
   });
 
   render();
+  void loadLegalAndGoldMaster();
   if (getAccount() !== null) {
     void (async () => {
       try {
