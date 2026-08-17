@@ -38,9 +38,14 @@ import {
   type StarterCampaignPack,
   type StarterMapFeatureSeed,
 } from '../../shared/content/emberferry-crossing.js';
+import {
+  resolveEmberferryScene,
+  type EmberferrySceneDefinition,
+} from '../../shared/content/emberferry-maps.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { CampaignNotFoundError } from './errors.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
+import { emptyMapRuntime } from '../table/map-runtime.js';
 
 export class CampaignMemoryError extends Error {
   readonly code: string;
@@ -133,24 +138,30 @@ export function resolveStarterPackForTemplate(
 }
 
 /**
- * Map-presentation fields for a starter pack, for `map-projection.ts` only.
- * Never returns NPC, quest, faction, or thread records.
+ * Map-presentation + chapter scene for a starter pack, for `map-projection.ts`
+ * only. Never returns NPC, quest, faction, or thread records.
  */
-export function loadAdventureMapPresentation(adventureTemplateId: string | null): {
+export function loadAdventureMapPresentation(
+  adventureTemplateId: string | null,
+  currentChapterId: string | null = null,
+): {
   readonly title: string;
   readonly artProvenance: MapArtProvenance;
   readonly sceneBanner: string;
   readonly notableFeatures: readonly StarterMapFeatureSeed[];
+  readonly scene: EmberferrySceneDefinition | null;
 } | null {
   const pack = resolveStarterPack(adventureTemplateId);
   if (pack === null) {
     return null;
   }
+  const scene = resolveEmberferryScene(currentChapterId ?? pack.chapters[0]?.chapterId ?? null);
   return {
-    title: pack.startingMapTitle,
+    title: scene.title,
     artProvenance: pack.artProvenance as MapArtProvenance,
-    sceneBanner: pack.startingSceneBanner,
-    notableFeatures: pack.startingMapFeatures,
+    sceneBanner: scene.sceneBanner,
+    notableFeatures: scene.notableFeatures,
+    scene,
   };
 }
 
@@ -349,6 +360,14 @@ export async function appendChapterSummary(
     updatedAt: now,
   };
   await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated);
+  // Traveling to the next Emberferry scene reseats tokens on that scene's
+  // spawn anchors — prior dock coordinates are not meaningful in the caves.
+  if (nextChapter !== null) {
+    await firestore
+      .collection(COLLECTIONS.campaignTableProjections)
+      .doc(campaignId)
+      .set(emptyMapRuntime(campaignId));
+  }
   await appendChronicleEntry({
     firestore,
     campaignId,
@@ -357,6 +376,46 @@ export async function appendChapterSummary(
   });
   const session = await loadStoredSession(firestore, campaignId);
   return projectMemory(updated, session);
+}
+
+/**
+ * Closes the current chapter for a campaign member (owner or seated player) and
+ * advances to the next chapter's map scene when one exists.
+ */
+export async function closeCurrentChapter(
+  firestore: Firestore,
+  campaignId: string,
+  accountId: string,
+  options: { readonly recordedSummary?: string } = {},
+): Promise<CampaignMemoryProjection> {
+  await requireMembership(firestore, campaignId, accountId);
+  const memory = await loadStoredMemory(firestore, campaignId);
+  if (memory.currentChapterId === null) {
+    throw new CampaignMemoryError(
+      'BAD_REQUEST',
+      'This campaign has no current chapter to close.',
+    );
+  }
+  const current =
+    memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null;
+  if (current === null) {
+    throw new CampaignMemoryError('BAD_REQUEST', 'No such chapter on this campaign.');
+  }
+  if (current.recordedSummary !== null) {
+    throw new CampaignMemoryError(
+      'BAD_REQUEST',
+      'This chapter is already closed. Resume play on the next scene from Campaign memory.',
+    );
+  }
+  const recordedSummary =
+    options.recordedSummary !== undefined && options.recordedSummary.trim().length > 0
+      ? options.recordedSummary.trim().slice(0, 480)
+      : `The party finished "${current.title}" and travels onward.`;
+  return appendChapterSummary(firestore, campaignId, {
+    chapterId: current.chapterId,
+    recordedSummary,
+    advance: true,
+  });
 }
 
 function nextCampaignTime(current: CampaignTimeProjection): CampaignTimeProjection {

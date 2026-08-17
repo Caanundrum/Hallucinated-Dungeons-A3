@@ -226,9 +226,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
           <h2 id="adventure-template-heading">1. Starter adventure</h2>
           <p>
             Emberferry Crossing is the recommended starting point: an original three-session
-            adventure with chapters, NPCs, and a starter map already in place. Choose the blank
-            table instead for rules practice or to build your own campaign from nothing — there is
-            no procedural worldgen behind it.
+            adventure with chapter-linked tactical scenes (Mist Dock → Mist-Cut Caves → Drowned
+            Bell Tower), NPCs, and campaign memory. Choose the blank table instead for rules
+            practice — there is no procedural worldgen behind it.
           </p>
           <ul class="option-list" data-testid="adventure-template-list">
             ${ADVENTURE_TEMPLATES.map(

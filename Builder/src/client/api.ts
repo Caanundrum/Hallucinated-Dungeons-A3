@@ -423,6 +423,20 @@ export async function resumeCampaignSession(options: {
   })) as CampaignSessionResumeResponse;
 }
 
+export async function closeCampaignChapter(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly recordedSummary?: string;
+}): Promise<CampaignMemoryProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/chapters/close`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      ...(options.recordedSummary !== undefined ? { recordedSummary: options.recordedSummary } : {}),
+    }),
+  })) as CampaignMemoryProjection;
+}
+
 export async function fetchPresentationCuePlan(
   campaignId: string,
 ): Promise<PresentationCuePlanProjection> {

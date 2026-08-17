@@ -102,7 +102,9 @@ test.describe('Phase 5 Independent QA — starter, memory, resume, presentation'
     await expect(page.getByTestId('personal-recap-panel')).toBeVisible();
   });
 
-  test('QA-P5-03: table shows Emberferry Mist Dock presentation + claim path', async ({ page }) => {
+  test('QA-P5-03: Mist Dock looks like a dock scene; token move changes stage anchor', async ({
+    page,
+  }) => {
     await signIn(page);
     await quickCharacter(page, 'QA P5 Dockhand');
     await createEmberferry(page, 'QA P5 Dock Table');
@@ -111,8 +113,36 @@ test.describe('Phase 5 Independent QA — starter, memory, resume, presentation'
     await expect(page.getByTestId('map-bundle-meta')).toContainText(/Emberferry Mist Dock/i);
     await expect(page.getByTestId('map-bundle-meta')).toContainText(/original phase5 starter v1/i);
     await expect(page.getByTestId('map-scene-banner')).toBeVisible();
+    // Dock scene uses distinct river/dock terrain, not a uniform chamber.
+    await expect(
+      page.locator('[data-testid="table-stage-semantic"] rect[data-terrain="blocked"]').first(),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="table-stage-semantic"] rect[data-terrain="floor"]').first(),
+    ).toBeVisible();
+
+    const token = page.locator('[data-testid="table-stage-semantic"] [data-token]').first();
+    await expect(token).toBeVisible();
+    const beforeCol = Number(await token.getAttribute('data-anchor-column'));
+    const beforeRow = Number(await token.getAttribute('data-anchor-row'));
     await page.getByTestId('claim-active-turn').click();
     await expect(page.getByTestId('timing-authority-meta')).toContainText(/Active Turn/i);
+    await page.locator(`[data-square="${beforeCol + 1},${beforeRow}"]`).click();
+    await page.getByTestId('commit-table-move').click();
+    await expect(token).toHaveAttribute('data-anchor-column', String(beforeCol + 1), {
+      timeout: 10_000,
+    });
+  });
+
+  test('QA-P5-06: closing a chapter travels the table to Mist-Cut Caves', async ({ page }) => {
+    await signIn(page);
+    await quickCharacter(page, 'QA P5 Traveler');
+    await createEmberferry(page, 'QA P5 Travel Table');
+    await page.getByTestId('close-chapter').click();
+    await expect(page.getByTestId('current-chapter')).toContainText(/Mist-Cut Caves/i);
+    await seatOwnCharacter(page);
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-bundle-meta')).toContainText(/Mist-Cut Caves/i);
   });
 
   test('QA-P5-04: narration density preference is operable on Account', async ({ page }) => {

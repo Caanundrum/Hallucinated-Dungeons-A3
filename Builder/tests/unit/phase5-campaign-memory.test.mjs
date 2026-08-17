@@ -102,7 +102,25 @@ test('loadAdventureMapPresentation reports starter map fields for Emberferry and
   assert.equal(presentation.artProvenance, 'original_phase5_starter_v1');
   assert.ok(presentation.sceneBanner.length > 0);
   assert.equal(presentation.notableFeatures.length, 3);
+  assert.ok(presentation.scene !== null);
+  assert.equal(presentation.scene.sceneId, 'emberferry-mist-dock');
+  assert.ok(presentation.scene.cells.some((cell) => cell.terrain === 'blocked'));
+  assert.ok(presentation.scene.cells.some((cell) => cell.terrain === 'floor'));
   assert.equal(loadAdventureMapPresentation(null), null);
+});
+
+test('Emberferry chapter scenes swap titles and geometry', async () => {
+  const { resolveEmberferryScene, listEmberferryScenes } = await import(
+    '../../dist/shared/content/emberferry-maps.js'
+  );
+  const scenes = listEmberferryScenes();
+  assert.equal(scenes.length, 3);
+  assert.equal(resolveEmberferryScene('emberferry-ch1-dockside').title, 'Emberferry Mist Dock');
+  assert.equal(resolveEmberferryScene('emberferry-ch2-mist-caves').title, 'Mist-Cut Caves');
+  assert.equal(resolveEmberferryScene('emberferry-ch3-bell-tower').title, 'Drowned Bell Tower');
+  const dock = resolveEmberferryScene('emberferry-ch1-dockside');
+  const caves = resolveEmberferryScene('emberferry-ch2-mist-caves');
+  assert.notEqual(dock.cells.map((c) => c.terrain).join(''), caves.cells.map((c) => c.terrain).join(''));
 });
 
 test('map art provenance contract names both the placeholder and the starter presentation', () => {

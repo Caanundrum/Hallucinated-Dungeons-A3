@@ -19,6 +19,7 @@ import {
   resumeCampaignSession,
   revokeCampaignInvitation,
   suspendCampaignSession,
+  closeCampaignChapter,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
@@ -219,6 +220,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       openInvitation === null
         ? null
         : `${window.location.origin}${openInvitation.invitePath}`;
+    const currentMemoryChapter =
+      memory === null
+        ? null
+        : (memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null);
+    const canCloseChapter =
+      currentMemoryChapter !== null && currentMemoryChapter.recordedSummary === null;
 
     const nextStep =
       ownSeat === null
@@ -357,7 +364,15 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                    <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
                      View personal recap
                    </button>
-                 </div>`
+                   <button type="button" class="secondary" data-testid="close-chapter"
+                     aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
+                     Close chapter &amp; travel
+                   </button>
+                 </div>
+                 <p class="record-meta" data-testid="chapter-travel-hint">
+                   Closing the current chapter advances Emberferry to the next tactical scene
+                   (Mist Dock → Mist-Cut Caves → Drowned Bell Tower) and reseats tokens there.
+                 </p>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}
         </section>
@@ -660,6 +675,38 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             recap = await fetchPersonalRecap(campaignId);
           } catch (failure) {
             error = failure instanceof ApiFailure ? failure.message : 'The recap could not be loaded.';
+          } finally {
+            sessionBusy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="close-chapter"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || sessionBusy || !canCloseChapter) {
+            return;
+          }
+          sessionBusy = true;
+          error = null;
+          render();
+          try {
+            memory = await closeCampaignChapter({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            const nextTitle =
+              memory.chapters.find((chapter) => chapter.chapterId === memory!.currentChapterId)
+                ?.title ?? 'the next scene';
+            sessionMessage = `Chapter closed. The table now opens on "${nextTitle}".`;
+            shell.announce(sessionMessage);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The chapter could not be closed.';
           } finally {
             sessionBusy = false;
             render();

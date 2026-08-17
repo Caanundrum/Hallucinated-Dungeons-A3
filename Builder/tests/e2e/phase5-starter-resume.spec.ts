@@ -149,6 +149,36 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await expect(page.getByTestId('map-scene-banner')).toContainText('Ember-mist');
     await expect(page.getByTestId('map-notable-feature').first()).toBeVisible();
     await expect(page.getByTestId('table-stage-notable-features').locator('[data-notable-feature]')).toHaveCount(3);
+
+    // Token is visible on the dock; a committed one-step move changes its anchor on the SVG stage.
+    const token = page.locator('[data-testid="table-stage-semantic"] [data-token]').first();
+    await expect(token).toBeVisible();
+    const beforeCol = await token.getAttribute('data-anchor-column');
+    const beforeRow = await token.getAttribute('data-anchor-row');
+    expect(beforeCol).toBeTruthy();
+    expect(beforeRow).toBeTruthy();
+    await page.getByTestId('claim-active-turn').click();
+    const targetCol = Number(beforeCol) + 1;
+    const targetRow = Number(beforeRow);
+    await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
+    await expect(page.getByTestId('move-target-meta')).toContainText(/Legal|Move target/i);
+    await page.getByTestId('commit-table-move').click();
+    await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
+    await expect(token).toHaveAttribute('data-anchor-row', String(targetRow));
+  });
+
+  test('closing a chapter travels to the Mist-Cut Caves map scene', async ({ page }) => {
+    await signIn(page);
+    await createQuickCharacter(page, 'Chapter Traveler');
+    await createEmberferryCampaign(page, 'Chapter Travel Table');
+    await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await page.getByTestId('close-chapter').click();
+    await expect(page.getByTestId('session-action-message')).toContainText(/Mist-Cut Caves|chapter closed/i);
+    await expect(page.getByTestId('current-chapter')).toContainText('The Mist-Cut Caves');
+    await seatOwnCharacter(page);
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-bundle-meta')).toContainText('Mist-Cut Caves');
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/caves|Bluff/i);
   });
 
   test('narration density on Account applies to Director narration length on the table', async ({

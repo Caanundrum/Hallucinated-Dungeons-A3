@@ -72,15 +72,9 @@ and campaign detail (`campaign-detail.ts`, `data-testid="director-avatar"`).
 
 | Asset | Role | Provenance | Fallback |
 | --- | --- | --- | --- |
-| Starter map title, scene banner, and 3 notable-feature labels (`Builder/src/shared/content/emberferry-crossing.ts`) | Presentation text overlaid on the existing Phase 2 procedural map geometry for campaigns created from the Emberferry Crossing starter pack | Original creation for this project — text-only presentation layer, no new geometry, texture, or image asset | Campaigns created with the `blank` template keep the honest `procedural_local_placeholder` title (`"Local starter chamber"`) and provenance; nothing here claims production art the geometry does not have |
+| Starter map scenes (Mist Dock / Mist-Cut Caves / Drowned Bell Tower) authored in `Builder/src/shared/content/emberferry-maps.ts` | Chapter-linked tactical geometry + presentation text for Emberferry Crossing | Original creation for this project — authored procedural terrain (floor / difficult / blocked), edges, spawn anchors, and notable-feature labels. Not painted tile art or town illustrations | Blank campaigns keep the Phase 2 `procedural_local_placeholder` chamber; Emberferry scenes never claim hand-painted production tiles |
 
-The map's coordinate space, cell terrain, edges, and token rendering are unchanged Phase 2
-procedural output (`Builder/src/server/table/map-projection.ts`). Phase 5 adds an honest
-`artProvenance` value (`original_phase5_starter_v1`) that names this text/label presentation layer
-specifically — it does not claim illustrated tile art, and the client
-(`Builder/src/client/pages/campaign-table.ts`) renders whichever provenance value the server sends
-verbatim (humanized for display) rather than a fixed string, so a future gray-box addition cannot
-silently inherit a more finished-sounding label.
+The Mist Dock / Caves / Bell Tower layouts are distinct authored grids so the table visibly changes when a chapter is closed and travel advances. Token moves animate on the stage. Provenance remains `original_phase5_starter_v1` for that authored procedural presentation layer — it does not claim illustrated tile art.
 
 ## 3. Presentation Cue Plan audio
 

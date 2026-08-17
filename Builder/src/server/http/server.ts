@@ -106,6 +106,7 @@ import {
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
 import {
   CampaignMemoryError,
+  closeCurrentChapter,
   loadCampaignMemory,
   readPersonalRecap,
   recordSessionSuspend,
@@ -1367,6 +1368,30 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         }
         const campaignId = sessionResumeMatch[1]!;
         sendJson(response, 200, await resumeSession(firestore, campaignId, accountId));
+        return;
+      }
+
+      const chapterCloseMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/chapters\/close$/.exec(
+        path,
+      );
+      if (chapterCloseMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = chapterCloseMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const recordedSummary = (body as { recordedSummary?: unknown } | undefined)?.recordedSummary;
+        sendJson(
+          response,
+          200,
+          await closeCurrentChapter(firestore, campaignId, accountId, {
+            ...(typeof recordedSummary === 'string' ? { recordedSummary } : {}),
+          }),
+        );
         return;
       }
 

@@ -62,7 +62,7 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-4': 73,
   // Phase 5 adds the starter-campaign/memory/resume/narration-density suite plus the
   // permanent campaign-resume smoke segment.
-  'phase-5': 76,
+  'phase-5': 77,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =

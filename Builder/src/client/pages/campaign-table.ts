@@ -148,7 +148,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .map((edge) => `${edge.edgeId}:${edge.doorState ?? 'closed'}`)
       .sort()
       .join('|');
-    return `${map.title}#${map.artProvenance}#${map.sceneBanner}#${tokens}#${doors}#${map.exploredSquareIds.join(',')}#${map.visibleSquareIds.join(',')}`;
+    return `${map.mapBundleId}#${map.mapVersion}#${map.title}#${map.artProvenance}#${map.sceneBanner}#${tokens}#${doors}#${map.exploredSquareIds.join(',')}#${map.visibleSquareIds.join(',')}`;
   }
 
   /** "original_phase5_starter_v1" -> "original phase5 starter v1", never a fabricated art label. */
@@ -798,7 +798,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <p class="record-meta" data-testid="move-target-meta">
         ${
           moveTarget === null
-            ? 'Click a known map square to set a one-step move destination.'
+            ? 'How to move: Claim Active Turn, click an adjacent known square on the map, then Commit move. Your token slides to the new square.'
             : `Move target: column ${moveTarget.column}, row ${moveTarget.row}${movePreviewNote ? ` · ${escapeHtml(movePreviewNote)}` : ''}`
         }
       </p>
@@ -850,9 +850,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (slot === null) {
       return;
     }
-    if (stageHandle !== null && slot.querySelector('[data-testid="table-stage-canvas"]')) {
+    if (
+      stageHandle !== null &&
+      (slot.querySelector('[data-testid="table-stage-canvas"]') ||
+        slot.querySelector('[data-testid="table-stage-semantic"]'))
+    ) {
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
+        stageHandle.setMoveTarget(moveTarget);
         stageHandle.setSquareClickHandler((square) => {
           void onSquareSelected(square);
         });
@@ -870,6 +875,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
+        stageHandle.setMoveTarget(moveTarget);
         stageHandle.setSquareClickHandler((square) => {
           void onSquareSelected(square);
         });
@@ -892,6 +898,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     moveTarget = square;
+    stageHandle?.setMoveTarget(square);
     movePreviewNote = 'Checking path…';
     render();
     try {
@@ -901,7 +908,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         path: [square],
       });
       movePreviewNote = preview.legal
-        ? `Legal · ${preview.totalCostFeet} ft · ${preview.remainingBudgetFeet} ft remain`
+        ? `Legal · ${preview.totalCostFeet} ft · ${preview.remainingBudgetFeet} ft remain — click Commit move`
         : preview.rejectionMessage ?? 'Illegal path';
     } catch (failure) {
       movePreviewNote =
