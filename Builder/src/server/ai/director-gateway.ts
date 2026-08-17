@@ -79,7 +79,7 @@ export const PROVIDER_COMPLIANCE_REGISTRY: readonly ProviderComplianceEntry[] = 
     localArena: 'emulator',
     milestone: 'google_oauth',
     ageRegionGate: 'conditional',
-    notes: 'Only player-facing hosted identity. Local Arena may still use development identities until cutover.',
+    notes: 'Only player-facing hosted identity. Local Arena may mint development identities; Gold Master artifacts strip that path. This host uses the Auth emulator, not live OAuth.',
   },
 ];
 

@@ -337,4 +337,27 @@ test.describe('Permanent smoke spine', () => {
     await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
   });
+
+  test('public identity and legal: Gold Master package is local, legal V2 names Google Sign-In', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const skip = page.getByTestId('skip-intro');
+    if (await skip.isVisible().catch(() => false)) {
+      await skip.click();
+    }
+    await expect(page.getByTestId('public-surface')).toHaveText('local_arena');
+    const pack = await page.request.get('/api/release/gold-master');
+    expect(pack.ok()).toBeTruthy();
+    const body = (await pack.json()) as {
+      launchProduction: string;
+      legalDocuments: readonly { version: string }[];
+    };
+    expect(body.launchProduction).toBe('NOT_DEPLOYED');
+    expect(body.legalDocuments.every((document) => document.version === 'V2')).toBeTruthy();
+
+    await page.goto('/legal/privacy');
+    await expect(page.getByTestId('legal-version')).toHaveText('V2');
+    await expect(page.locator('body')).toContainText('Google Sign-In');
+  });
 });

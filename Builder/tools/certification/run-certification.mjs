@@ -65,6 +65,8 @@ const EXPECTED_BROWSER_SCENARIOS_BY_PHASE = {
   'phase-5': 77,
   // Phase 6 adds security/a11y/chaos/longitudinal hardening suites on the full cumulative catalog.
   'phase-6': 84,
+  // Phase 7 adds Gold Master legal/identity/release scenarios plus the public-identity smoke segment.
+  'phase-7': 90,
 };
 
 const EXPECTED_BROWSER_SCENARIOS =
@@ -161,8 +163,10 @@ async function main() {
   };
 
   const phaseLabel =
-    PHASE === 'phase-6'
-      ? '6'
+    PHASE === 'phase-7'
+      ? '7'
+      : PHASE === 'phase-6'
+        ? '6'
       : PHASE === 'phase-5'
         ? '5'
         : PHASE === 'phase-4'

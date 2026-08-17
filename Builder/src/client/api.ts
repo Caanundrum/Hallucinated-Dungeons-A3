@@ -605,6 +605,62 @@ export async function requestAccountDeletion(
   })) as AccountDeletionStatusProjection;
 }
 
+export interface GoldMasterPackageProjection {
+  readonly recordType: 'gold_master_package';
+  readonly candidateId: string;
+  readonly publicSurface: string;
+  readonly launchProduction: 'NOT_DEPLOYED';
+  readonly productOwnerAuthorization: 'NOT_GRANTED';
+  readonly strippedFromHostedArtifacts: readonly string[];
+  readonly localArenaStillExposesStrippedCapabilities: boolean;
+  readonly eligibilityPolicy: { readonly status: string; readonly notice: string };
+  readonly honestBounds: readonly string[];
+}
+
+export async function fetchGoldMasterPackage(): Promise<GoldMasterPackageProjection> {
+  return (await request('/api/release/gold-master')) as GoldMasterPackageProjection;
+}
+
+export interface QaHarnessProjection {
+  readonly available: boolean;
+  readonly publicSurface: string;
+  readonly operations: readonly string[];
+  readonly notice: string;
+}
+
+export async function fetchQaHarnessStatus(): Promise<QaHarnessProjection> {
+  return (await request('/api/qa/harness')) as QaHarnessProjection;
+}
+
+export interface LegalAcceptanceItemProjection {
+  readonly route: string;
+  readonly title: string;
+  readonly version: string;
+  readonly accepted: boolean;
+  readonly acceptedAt: string | null;
+}
+
+export interface LegalAcceptanceProjection {
+  readonly accountId: string;
+  readonly documents: readonly LegalAcceptanceItemProjection[];
+  readonly allCurrentAccepted: boolean;
+}
+
+export async function fetchLegalAcceptance(): Promise<LegalAcceptanceProjection> {
+  return (await request('/api/legal/acceptance')) as LegalAcceptanceProjection;
+}
+
+export async function acceptLegalDocument(
+  candidateId: string,
+  route: string,
+): Promise<LegalAcceptanceProjection> {
+  return (await request('/api/legal/acceptance', {
+    method: 'POST',
+    candidateId,
+    body: JSON.stringify({ route }),
+  })) as LegalAcceptanceProjection;
+}
+
 export async function enterGoogleEmulatorSession(options: {
   readonly candidateId: string;
   readonly email: string;

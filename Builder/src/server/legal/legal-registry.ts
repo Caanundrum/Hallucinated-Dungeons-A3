@@ -8,16 +8,12 @@
  * requirement, and human approver/timestamp.
  *
  * This registry is Builder-authored content, versioned and reviewed the same
- * way any other source file is, not runtime AI generation. It is genuine
- * draft content for an unpaid, invitation-only Alpha, not placeholder text —
- * every document says plainly what the product currently does, and updates
- * as later phases add capability (for example, Google Sign-In and AI
- * narration are described as arriving in a later phase, not claimed now).
+ * way any other source file is, not runtime AI generation. Gold Master V2
+ * describes Google Sign-In as the hosted player identity, Local Arena-only
+ * development identities, and the Director gateway as it exists today.
  *
- * Phase 1 serves these documents as read-only pages. Recording a player's
- * acceptance of a specific version is a capability a later chunk adds when an
- * account-creation flow exists to attach it to; this registry is the single
- * source that flow will read from, so it does not have to be reinvented.
+ * Phase 7 records a player's acceptance of a specific version against this
+ * registry. The documents remain readable without script execution.
  */
 
 import { createHash } from 'node:crypto';
@@ -56,13 +52,13 @@ function contentDigest(document: Omit<LegalDocument, 'contactPath'>): string {
 const TERMS_OF_SERVICE: LegalDocument = {
   route: '/legal/terms',
   title: 'Terms of Service',
-  version: 'V1',
-  effectiveDate: '2026-08-12',
-  lastReviewedDate: '2026-08-12',
+  version: 'V2',
+  effectiveDate: '2026-08-17',
+  lastReviewedDate: '2026-08-17',
   materiality: 'material',
   supportedRegions: ['global'],
-  supersededVersion: null,
-  reConsentRequired: false,
+  supersededVersion: 'V1',
+  reConsentRequired: true,
   contactPath: '/legal/content-and-safety#contact',
   sections: [
     {
@@ -86,7 +82,7 @@ const TERMS_OF_SERVICE: LegalDocument = {
       heading: '3. Accounts and character ownership',
       paragraphs: [
         'Every player character is owned by exactly one authenticated account, established when the character is created. No host, other player, or automated system may transfer, borrow, or seize that ownership.',
-        'During local development and Alpha testing, the server may issue a temporary development identity for testing. It carries no password, and it is not a substitute for the account identity used once public sign-in is available.',
+        'Hosted player identity uses Google Sign-In only. Temporary development identities and machine-only QA fixture sessions exist solely inside the Local Arena testing environment; they are stripped from Gold Master and Launch Production artifacts and cannot be converted into a hosted Google account.',
       ],
     },
     {
@@ -119,21 +115,21 @@ const TERMS_OF_SERVICE: LegalDocument = {
 const PRIVACY_NOTICE: LegalDocument = {
   route: '/legal/privacy',
   title: 'Privacy Notice',
-  version: 'V1',
-  effectiveDate: '2026-08-12',
-  lastReviewedDate: '2026-08-12',
+  version: 'V2',
+  effectiveDate: '2026-08-17',
+  lastReviewedDate: '2026-08-17',
   materiality: 'material',
   supportedRegions: ['global'],
-  supersededVersion: null,
-  reConsentRequired: false,
+  supersededVersion: 'V1',
+  reConsentRequired: true,
   contactPath: '/legal/content-and-safety#contact',
   sections: [
     {
       id: 'what-we-collect',
       heading: '1. What we currently collect',
       paragraphs: [
-        'During local development and Alpha testing, the product issues a temporary development identity so a tester can be recognized without a password. That identity, the characters and campaigns you create, and your gameplay records are stored so the product can persist your progress between visits.',
-        'Public sign-in through an external identity provider is planned for a later phase and is not active yet. This notice will be updated with the specifics before that provider is used.',
+        'On hosted Gold Master and Launch Production artifacts, the product uses Google Sign-In as the only player-facing identity. The Google account identifier and any server-verified email needed for Admin authorization and audit, plus the characters, campaigns, and gameplay records you create, are stored so the product can persist your progress.',
+        'Inside the Local Arena only, a temporary development identity may be minted for testing. That identity carries no password, never appears on hosted artifacts, and cannot be converted into a public Google account.',
       ],
     },
     {
@@ -156,7 +152,7 @@ const PRIVACY_NOTICE: LegalDocument = {
       id: 'local-identities',
       heading: '4. Local development identities',
       paragraphs: [
-        'A local development identity is created only inside the local, non-public testing environment and never inside the public Alpha. It is not visible outside that environment and cannot be converted into a public account.',
+        'A local development identity is created only inside the local, non-public testing environment and never inside Gold Master or Launch Production artifacts. It is not visible outside that environment and cannot be converted into a public account.',
       ],
     },
     {
@@ -172,20 +168,20 @@ const PRIVACY_NOTICE: LegalDocument = {
 const ALPHA_PARTICIPATION_TERMS: LegalDocument = {
   route: '/legal/alpha-participation',
   title: 'Alpha Participation Terms',
-  version: 'V1',
-  effectiveDate: '2026-08-12',
-  lastReviewedDate: '2026-08-12',
+  version: 'V2',
+  effectiveDate: '2026-08-17',
+  lastReviewedDate: '2026-08-17',
   materiality: 'material',
   supportedRegions: ['global'],
-  supersededVersion: null,
-  reConsentRequired: false,
+  supersededVersion: 'V1',
+  reConsentRequired: true,
   contactPath: '/legal/content-and-safety#contact',
   sections: [
     {
       id: 'what-alpha-means',
       heading: '1. What "Alpha" means here',
       paragraphs: [
-        'The product is being built in phases. Features described elsewhere as belonging to a later phase are not available yet, and nothing in the product should be read as claiming otherwise.',
+        'The product is being built in phases. A locally certified Gold Master is not a Launch Production deployment. Publication to Launch Production happens only after Product Owner authorization of an exact candidate hash, and Alpha 3 has no Open Alpha mode.',
         'Bugs, incomplete features, and occasional instability are expected. Reporting them is a core part of participating.',
       ],
     },
@@ -223,13 +219,13 @@ const ALPHA_PARTICIPATION_TERMS: LegalDocument = {
 const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
   route: '/legal/content-and-safety',
   title: 'Content and Safety Notice',
-  version: 'V1',
-  effectiveDate: '2026-08-12',
-  lastReviewedDate: '2026-08-12',
+  version: 'V2',
+  effectiveDate: '2026-08-17',
+  lastReviewedDate: '2026-08-17',
   materiality: 'material',
   supportedRegions: ['global'],
-  supersededVersion: null,
-  reConsentRequired: false,
+  supersededVersion: 'V1',
+  reConsentRequired: true,
   contactPath: '/legal/content-and-safety#contact',
   sections: [
     {
@@ -241,9 +237,10 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
     },
     {
       id: 'ai-narration',
-      heading: '2. AI-assisted narration (a later phase)',
+      heading: '2. AI-assisted narration',
       paragraphs: [
-        'An AI Game Director is planned to narrate scenes and portray non-player characters in a later phase. It is not active in the current build, and this notice will describe its safety controls in detail before it is enabled for any tester.',
+        'An AI Game Director narrates scenes and portrays non-player characters. In the Local Arena the Director is a deterministic simulator behind the same production gateway. Hosted builds use only providers listed in the server provider registry; live LLM credentials are not present in this Local Arena candidate.',
+        'The Director cannot mutate table state, invent hidden facts, or act as a second rules engine. Party Chat remains a social surface, not a command path.',
       ],
     },
     {
@@ -257,7 +254,7 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
       id: 'age-region',
       heading: '4. Age and region notices',
       paragraphs: [
-        'Any age or region restriction required by a specific provider or by applicable law is enforced at the point that provider or capability is used, and is described there rather than assumed for the entire product up front.',
+        'Any age or region restriction required by a specific provider or by applicable law is enforced at the point that provider or capability is used. No selected hosted provider currently requires an adult-eligibility gate, so this candidate does not collect an adult affirmation merely because the schema exists.',
       ],
     },
     {

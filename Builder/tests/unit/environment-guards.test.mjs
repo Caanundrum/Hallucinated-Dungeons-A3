@@ -42,6 +42,7 @@ function expectRejection(env, expectedFragment) {
 test('a complete local environment is accepted and frozen', () => {
   const env = loadServerEnvironment(validEnvironment());
   assert.equal(env.environmentClass, 'local');
+  assert.equal(env.publicSurface, 'local_arena');
   assert.equal(env.firebaseProjectId, 'hallucinated-dungeons-local');
   assert.equal(env.firestoreEmulator.port, 8080);
   assert.equal(env.clientOrigin, 'http://127.0.0.1:5173');
@@ -130,6 +131,20 @@ test('frozen certification requires a built client bundle', () => {
   );
   assert.equal(env.runtimeMode, 'frozen_certification');
   assert.equal(env.clientBundleDir, '/tmp/frozen/dist/client');
+});
+
+test('public surface defaults to local_arena and accepts gold_master rehearsal', () => {
+  const local = loadServerEnvironment(validEnvironment());
+  assert.equal(local.publicSurface, 'local_arena');
+
+  const gold = loadServerEnvironment(validEnvironment({ HD_PUBLIC_SURFACE: 'gold_master' }));
+  assert.equal(gold.publicSurface, 'gold_master');
+  assert.equal(gold.environmentClass, 'local');
+
+  expectRejection(
+    validEnvironment({ HD_PUBLIC_SURFACE: 'launch_production' }),
+    /HD_PUBLIC_SURFACE must be local_arena or gold_master/,
+  );
 });
 
 test('a malformed host:port is refused', () => {

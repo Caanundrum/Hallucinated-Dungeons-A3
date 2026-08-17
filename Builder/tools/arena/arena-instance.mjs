@@ -202,6 +202,7 @@ export async function startArenaInstance(options) {
       HD_CLIENT_ORIGIN: clientOrigin,
       HD_SEED_VERSION: seedVersion,
       HD_WORKING_DIRECTORY: paths.workingDirectory,
+      HD_PUBLIC_SURFACE: process.env.HD_PUBLIC_SURFACE ?? 'local_arena',
     };
     if (runtimeMode === 'frozen_certification') {
       serverEnv.HD_CLIENT_BUNDLE_DIR = join(candidateSourceDir, 'dist', 'client');
