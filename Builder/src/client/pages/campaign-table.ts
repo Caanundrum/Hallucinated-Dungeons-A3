@@ -105,6 +105,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let lowEffects = false;
   let textToSpeechEnabled = false;
   let speechToTextEnabled = false;
+  /** Bumped on player-driven presentation saves so an in-flight table load cannot clobber them. */
+  let presentationWriteEpoch = 0;
   let seated = false;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
@@ -1356,6 +1358,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
             return;
           }
+          presentationWriteEpoch += 1;
           busy = true;
           error = null;
           render();
@@ -1392,6 +1395,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
             return;
           }
+          presentationWriteEpoch += 1;
           busy = true;
           error = null;
           render();
@@ -2033,6 +2037,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     error = null;
     render();
+    const presentationEpochAtLoad = presentationWriteEpoch;
     try {
       const detail = await fetchCampaignDetail(campaignId);
       campaignName = detail.campaign.name;
@@ -2055,11 +2060,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       timingAuthority = timingFeed.authority;
       encounter = rulesFeed?.encounter ?? null;
       progression = rulesFeed?.progression ?? null;
-      reducedMotion = presentation.reducedMotion;
-      lowEffects = presentation.lowEffects;
-      textToSpeechEnabled = presentation.reserved.textToSpeechEnabled;
-      speechToTextEnabled = presentation.reserved.speechToTextEnabled;
-      applyPresentationPreferences({ reducedMotion, lowEffects });
+      if (presentationEpochAtLoad === presentationWriteEpoch) {
+        reducedMotion = presentation.reducedMotion;
+        lowEffects = presentation.lowEffects;
+        textToSpeechEnabled = presentation.reserved.textToSpeechEnabled;
+        speechToTextEnabled = presentation.reserved.speechToTextEnabled;
+        applyPresentationPreferences({ reducedMotion, lowEffects });
+      }
       startProjectionPoll();
       try {
         await sendPresenceHeartbeat();
