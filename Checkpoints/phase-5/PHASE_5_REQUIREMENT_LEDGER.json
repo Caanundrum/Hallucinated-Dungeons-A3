@@ -4,13 +4,14 @@
   "blueprintVersion": "ALPHA_3_V1",
   "lifecycleState": "AWAITING_HUMAN_APPROVAL",
   "humanGate": "product_owner_complete_experience",
-  "builderVerifiedCandidate": "cand-bf752b208fb6",
-  "builderVerifiedSourceTreeHash": "bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca",
+  "builderVerifiedCandidate": "cand-77e0e060e3b4",
+  "builderVerifiedSourceTreeHash": "77e0e060e3b42496ec31040aa2731cb805f3e2e0bbe81db1c3fcd45a75d53412",
   "builderVerification": "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
   "qaFindings": "QA/findings/PHASE_5_QA_FINDINGS.md",
   "qaStatus": "PLAYER_VALIDATED",
   "priorCertifiedCandidate": "cand-1de6ebed38c8",
-  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED and Independent QA PLAYER_VALIDATED against cand-bf752b208fb6. Product Owner complete-experience approval remains required before PHASE_CERTIFIED. No Product Owner approval is inferred here.",
+  "supersededCandidates": ["cand-bf752b208fb6"],
+  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED and Independent QA PLAYER_VALIDATED against cand-77e0e060e3b4 (table/token remediation superseding cand-bf752b208fb6). Product Owner complete-experience approval remains required before PHASE_CERTIFIED. No Product Owner approval is inferred here.",
   "requirements": [
     {
       "id": "P5-MEMORY",

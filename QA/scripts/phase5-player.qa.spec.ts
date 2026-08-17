@@ -4,14 +4,14 @@
  *
  * Run from QA/ with Builder Playwright on NODE_PATH:
  *   NODE_PATH=/workspace/Builder/node_modules \
- *   QA_CANDIDATE_ID=cand-bf752b208fb6 QA_ARENA_URL=http://127.0.0.1:5274 \
+ *   QA_CANDIDATE_ID=cand-77e0e060e3b4 QA_ARENA_URL=http://127.0.0.1:5274 \
  *   /workspace/Builder/node_modules/.bin/playwright test -c playwright.phase5.config.ts
  */
 
 import { expect, test, type Page } from '@playwright/test';
 
 const ARENA = process.env.QA_ARENA_URL ?? 'http://127.0.0.1:5274';
-const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-bf752b208fb6';
+const CANDIDATE = process.env.QA_CANDIDATE_ID ?? 'cand-77e0e060e3b4';
 
 async function dismissIntro(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');

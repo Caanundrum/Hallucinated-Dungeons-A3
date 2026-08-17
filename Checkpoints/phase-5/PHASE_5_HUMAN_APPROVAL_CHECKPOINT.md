@@ -2,15 +2,16 @@
 phase: phase-5
 recordType: human_approval_checkpoint
 lifecycleState: AWAITING_HUMAN_APPROVAL
-candidateId: cand-bf752b208fb6
-sourceTreeHash: bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca
-commit: 0af794364b4719ee1b7c1f2f1413b391c8790c31
+candidateId: cand-77e0e060e3b4
+sourceTreeHash: 77e0e060e3b42496ec31040aa2731cb805f3e2e0bbe81db1c3fcd45a75d53412
+commit: b900b146f6c4586680c4cdf919e7d161892f272f
 blueprintVersion: ALPHA_3_V1
 builderVerification: Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md
 qaFindings: QA/findings/PHASE_5_QA_FINDINGS.md
 productOwnerApproval: PENDING
 approvedAt: null
 approver: null
+supersedes: cand-bf752b208fb6
 ---
 
 # Phase 5 — Human Approval Checkpoint
@@ -23,6 +24,7 @@ Section 25 assigns Phase 5 an explicit Product Owner **complete-experience** gat
 2. Director persona / voice / humor consistency
 3. Starter-campaign presentation, pacing, and clarity
 4. Multi-session resume / return experience
+5. **Play table** — Mist Dock / chapter travel / visible token movement (remediation after prior PO feedback)
 
 ## Bound candidate
 
@@ -30,10 +32,11 @@ Approval binds **only** to the exact candidate recorded here. Any later source c
 
 | Field | Value |
 | --- | --- |
-| candidateId | `cand-bf752b208fb6` |
-| sourceTreeHash | `bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca` |
-| commit | `0af794364b4719ee1b7c1f2f1413b391c8790c31` |
+| candidateId | `cand-77e0e060e3b4` |
+| sourceTreeHash | `77e0e060e3b42496ec31040aa2731cb805f3e2e0bbe81db1c3fcd45a75d53412` |
+| commit | `b900b146f6c4586680c4cdf919e7d161892f272f` |
 | frozen origin (local) | `http://127.0.0.1:5274` |
+| supersedes | `cand-bf752b208fb6` |
 
 ## Prior gates already satisfied
 

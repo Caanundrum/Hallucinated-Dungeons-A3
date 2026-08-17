@@ -4,47 +4,44 @@ phase: phase-5
 lifecycleState: READY_FOR_QA
 blueprintVersion: ALPHA_3_V1
 blueprintSourceHash: 144f178d3cbfbe6572c299d4ad4b841ec3e6fa28ddedf5eddce0223e6250ce1e
-candidateId: cand-bf752b208fb6
-sourceTreeHash: bf752b208fb654fb4f5a8ef0c2b00755ddb88ce7d76ab7f53f3316124d2f78ca
-commit: 0af794364b4719ee1b7c1f2f1413b391c8790c31
+candidateId: cand-77e0e060e3b4
+sourceTreeHash: 77e0e060e3b42496ec31040aa2731cb805f3e2e0bbe81db1c3fcd45a75d53412
+commit: b900b146f6c4586680c4cdf919e7d161892f272f
 humanGate: product_owner_complete_experience
-verifiedAt: 2026-08-16T22:12:06Z
-certificationRunRecord: Evidence/phase-5/cand-bf752b208fb6-2026-08-16T22-12-06-625Z/certification-run-record.json
+verifiedAt: 2026-08-17T00:50:25Z
+certificationRunRecord: Evidence/phase-5/cand-77e0e060e3b4-2026-08-17T00-50-25-311Z/certification-run-record.json
+supersedes: cand-bf752b208fb6
 ---
 
 # Phase 5 — Builder Verification
 
 ## Result
 
-**PASSED** against frozen candidate `cand-bf752b208fb6`. Lifecycle: `READY_FOR_QA`.
+**PASSED** against frozen candidate `cand-77e0e060e3b4`. Lifecycle: `READY_FOR_QA`.
 
-Section 25 assigns Phase 5 an explicit Product Owner **complete-experience** gate (game feel, Director persona/voice/humor consistency, starter-campaign presentation and pacing, multi-session resume/return experience). This document covers Builder Verification only — the automated toolchain/build/scan/test pipeline. Independent QA and Product Owner review (`Checkpoints/phase-5/PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md`) remain separately required before `PHASE_CERTIFIED`. No Product Owner approval is claimed or implied by this record.
+This candidate **supersedes** `cand-bf752b208fb6` after Product Owner feedback that the play table never changed and tokens never visibly moved. Remediation ships chapter-linked Emberferry tactical scenes (Mist Dock → Mist-Cut Caves → Drowned Bell Tower), animated token moves, move-target highlighting, and Close chapter & travel.
+
+Section 25 assigns Phase 5 an explicit Product Owner **complete-experience** gate. This document covers Builder Verification only. Independent QA and Product Owner review remain separately required before `PHASE_CERTIFIED`. No Product Owner approval is claimed or implied.
 
 ## Evidence
 
 | Check | Outcome |
 | --- | --- |
 | Toolchain | pass |
-| Builder Root clean | pass — 164 tracked files |
-| Code completeness | pass — 0 findings (149 files scanned) |
-| Architecture conformance | pass — 0 violations (141 files, 6 rules) |
+| Builder Root clean | pass — 165 tracked files |
+| Code completeness | pass — 0 findings (150 files scanned) |
+| Architecture conformance | pass — 0 violations (142 files, 6 rules) |
 | Greenfield tree | pass |
 | Blueprint preflight | pass — `ALPHA_3_V1` / `144f178d3cbf` |
 | Frozen runtime | pass — `http://127.0.0.1:5274` |
-| Unit suite | pass — 143/143 |
-| Browser suite | pass — **76/76** |
+| Unit suite | pass — 144/144 |
+| Browser suite | pass — **77/77** |
 | Candidate unchanged | pass |
 
 ## Scope verified
 
-Structured campaign memory (chapters, NPC motive/knowledge/audience records, quests, factions, social links, open threads, campaign time, recap projection) with server-enforced audience filtering so `secret` records never reach a client projection; original starter campaign pack "Emberferry Crossing" (`emberferry-crossing-v1`, 3 sessions) as the default, prominent adventure template with "Blank" retained as an honest empty-table option (no fabricated sandbox worldgen is exposed); campaign creation wired end-to-end (server, HTTP body, client API, create-page UI) to seed memory and map presentation from the chosen template; session suspend/resume API with campaign-time continuity and personal recap; Presentation Cue Plans derived from the table event log with dedupe keys and a documented performance budget, played back as short Web Audio tones gated by reduced motion / low effects / speech-mute; 12 original Director avatar SVGs (Veyra/Garrick × six personalities) with an accessible text fallback when an asset key is unrecognized; adventure-aware map presentation ("Emberferry Mist Dock" title, `original_phase5_starter_v1` provenance, scene banner, notable features) while blank campaigns keep the existing generic procedural placeholder; narration density (concise/balanced/cinematic) exposed on the Account page and applied to Director simulator narration length; permanent smoke spine campaign-resume segment.
-
-## Honest bounds
-
-- The Director simulator narration remains the existing deterministic Local Arena simulator behind the production gateway boundary; narration density changes its length/detail, not its underlying provider.
-- Presentation cues never invent table state — they are derived read-only from already-committed events and gate a short tone, nothing more.
-- "Blank" campaigns intentionally do not expose any generated/procedural worldgen narrative; they are an honest empty table for rules practice.
+Prior Phase 5 memory/starter/presentation/resume scope, plus table remediation: authored Emberferry scene geometry per chapter; token move animation and destination highlight on the SVG/Pixi stage; Close chapter & travel API/UI that advances chapter and reseats tokens on the next scene; honest provenance update that these are authored procedural scenes, not painted tile art.
 
 ## Explicitly not certified here
 
-Independent QA player validation and Product Owner complete-experience approval remain pending (`Checkpoints/phase-5/PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md`). This record does not advance `lifecycleState` past `READY_FOR_QA`.
+Independent QA player validation and Product Owner complete-experience approval remain pending (`Checkpoints/phase-5/PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md`).
