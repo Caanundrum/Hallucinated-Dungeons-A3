@@ -294,4 +294,47 @@ test.describe('Permanent smoke spine', () => {
     await expect(page.getByTestId('party-chat-message')).toContainText('I open the door');
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
   });
+
+  test('campaign resume: suspend and resume restores chapter continuity', async ({ page }) => {
+    await openArena(page);
+    await enterArena(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await page.getByTestId('identity-name').fill('Smoke Spine Voyager');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    // Emberferry Crossing is the Phase 5 default starter template.
+    await expect(page.getByTestId('adventure-template-emberferry_crossing')).toHaveClass(/selected/);
+    await page.getByTestId('campaign-name').fill('Smoke Spine Resume');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    await page.getByTestId('identity-veyra').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await page.getByTestId('create-campaign-submit').click();
+    await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Resume');
+
+    await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
+
+    await page.getByTestId('suspend-session').click();
+    await expect(page.getByTestId('session-action-message')).toContainText('Session suspended');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+
+    await page.getByTestId('resume-session').click();
+    await expect(page.getByTestId('session-action-message')).toContainText('Session resumed');
+    await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await expect(page.getByTestId('recap-headline')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+  });
 });

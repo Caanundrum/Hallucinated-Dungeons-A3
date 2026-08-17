@@ -1361,8 +1361,24 @@ html.hd-low-effects .map-square-fog,
   cursor: pointer;
 }
 
+.table-stage-semantic rect.map-square-selected {
+  stroke: #f0c043;
+  stroke-width: 3;
+}
+
+.table-stage-semantic g[data-token] {
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
+}
+
 .table-stage-semantic g[data-token],
 .table-stage-semantic g[data-token] * {
+  pointer-events: none;
+}
+
+.table-stage-semantic g[data-notable-feature],
+.table-stage-semantic g[data-notable-feature] * {
   pointer-events: none;
 }
 

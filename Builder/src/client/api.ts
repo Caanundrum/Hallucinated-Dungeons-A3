@@ -33,6 +33,13 @@ import type {
   SeatProjection,
 } from '../shared/campaign-contract.js';
 import type {
+  CampaignMemoryProjection,
+  CampaignSessionResumeResponse,
+  CampaignSessionSuspendResponse,
+  PersonalRecapProjection,
+} from '../shared/campaign-memory-contract.js';
+import type { PresentationCuePlanProjection } from '../shared/presentation-cue-contract.js';
+import type {
   ChronicleFeedProjection,
   PartyChatFeedProjection,
   PartyChatMessageProjection,
@@ -258,6 +265,8 @@ export async function createCampaign(options: {
   readonly summary: string;
   readonly directorIdentity: string;
   readonly directorPersonality: string;
+  /** Starter pack to seed from, or 'blank'. Omitted defaults to a blank table. */
+  readonly adventureTemplate?: string;
 }): Promise<CampaignProjection> {
   return (await request<CampaignProjection>('/api/campaigns', {
     method: 'POST',
@@ -267,6 +276,9 @@ export async function createCampaign(options: {
       summary: options.summary,
       directorIdentity: options.directorIdentity,
       directorPersonality: options.directorPersonality,
+      ...(options.adventureTemplate !== undefined
+        ? { adventureTemplate: options.adventureTemplate }
+        : {}),
     }),
   })) as CampaignProjection;
 }
@@ -378,6 +390,59 @@ export async function fetchTableState(campaignId: string): Promise<TableStatePro
 
 export async function fetchCampaignMap(campaignId: string): Promise<MapBundleProjection> {
   return (await request(`/api/campaigns/${campaignId}/map`)) as MapBundleProjection;
+}
+
+export async function fetchCampaignMemory(campaignId: string): Promise<CampaignMemoryProjection> {
+  return (await request(`/api/campaigns/${campaignId}/memory`)) as CampaignMemoryProjection;
+}
+
+export async function fetchPersonalRecap(campaignId: string): Promise<PersonalRecapProjection> {
+  return (await request(`/api/campaigns/${campaignId}/recap`)) as PersonalRecapProjection;
+}
+
+export async function suspendCampaignSession(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly note?: string;
+}): Promise<CampaignSessionSuspendResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/session/suspend`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ ...(options.note !== undefined ? { note: options.note } : {}) }),
+  })) as CampaignSessionSuspendResponse;
+}
+
+export async function resumeCampaignSession(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<CampaignSessionResumeResponse> {
+  return (await request(`/api/campaigns/${options.campaignId}/session/resume`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({}),
+  })) as CampaignSessionResumeResponse;
+}
+
+export async function closeCampaignChapter(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly recordedSummary?: string;
+}): Promise<CampaignMemoryProjection> {
+  return (await request(`/api/campaigns/${options.campaignId}/chapters/close`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      ...(options.recordedSummary !== undefined ? { recordedSummary: options.recordedSummary } : {}),
+    }),
+  })) as CampaignMemoryProjection;
+}
+
+export async function fetchPresentationCuePlan(
+  campaignId: string,
+): Promise<PresentationCuePlanProjection> {
+  return (await request(
+    `/api/campaigns/${campaignId}/presentation-cues`,
+  )) as PresentationCuePlanProjection;
 }
 
 export async function submitTableCommand(options: {
@@ -503,6 +568,8 @@ export async function savePlayerSettings(options: {
     readonly privateDirectorAutoplay?: boolean;
     readonly speechToTextEnabled?: boolean;
   };
+  /** Player-controlled narration length (Section 25 Phase 5). */
+  readonly narrationDensity?: string;
 }): Promise<PlayerPresentationSettingsProjection> {
   return (await request('/api/account/settings', {
     method: 'PUT',
@@ -511,6 +578,9 @@ export async function savePlayerSettings(options: {
       reducedMotion: options.reducedMotion,
       ...(options.lowEffects !== undefined ? { lowEffects: options.lowEffects } : {}),
       ...(options.speech !== undefined ? { speech: options.speech } : {}),
+      ...(options.narrationDensity !== undefined
+        ? { narrationDensity: options.narrationDensity }
+        : {}),
     }),
   })) as PlayerPresentationSettingsProjection;
 }

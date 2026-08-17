@@ -16,11 +16,13 @@ import {
   type MapBundleProjection,
   type MapCellRecord,
   type MapEdgeRecord,
+  type MapNotableFeatureRecord,
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
 import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
 import { loadMapRuntime, type StoredMapRuntime } from './map-runtime.js';
 import { visibleSquaresFrom } from './path-validator.js';
 
@@ -50,7 +52,7 @@ export async function assertCampaignMember(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
   readonly campaignId: string;
-}): Promise<void> {
+}): Promise<{ readonly adventureTemplateId: string | null }> {
   const { firestore, accountId, campaignId } = options;
   const membership = await firestore
     .collection(COLLECTIONS.campaignMemberships)
@@ -65,6 +67,8 @@ export async function assertCampaignMember(options: {
   if (!campaign.exists) {
     throw new MapProjectionError(ERROR_CODES.NOT_FOUND, 'No such route.');
   }
+  const data = campaign.data() as { adventureTemplateId?: string | null };
+  return { adventureTemplateId: data.adventureTemplateId ?? null };
 }
 
 export function buildStarterCells(): MapCellRecord[] {
@@ -102,7 +106,17 @@ export function buildStarterInteriorWalls(): MapEdgeRecord[] {
   return edges;
 }
 
-function spawnAnchors(): Array<{ column: number; row: number }> {
+function spawnAnchors(options: {
+  readonly adventureTemplateId?: string | null;
+  readonly currentChapterId?: string | null;
+}): Array<{ column: number; row: number }> {
+  const presentation = loadAdventureMapPresentation(
+    options.adventureTemplateId ?? null,
+    options.currentChapterId ?? null,
+  );
+  if (presentation?.scene !== undefined && presentation.scene !== null) {
+    return [...presentation.scene.spawnAnchors];
+  }
   return [
     { column: 2, row: 2 },
     { column: 2, row: 5 },
@@ -127,8 +141,12 @@ function applyDoorOverrides(
 function buildTokens(
   seats: readonly StoredSeat[],
   runtime: StoredMapRuntime,
+  options: {
+    readonly adventureTemplateId?: string | null;
+    readonly currentChapterId?: string | null;
+  },
 ): MapTokenProjection[] {
-  const anchors = spawnAnchors();
+  const anchors = spawnAnchors(options);
   const bySeat = new Map(runtime.tokenPositions.map((entry) => [entry.seatId, entry]));
   return seats.map((seat, index) => {
     const stored = bySeat.get(seat.seatId);
@@ -219,18 +237,39 @@ function applyViewerFog(
   };
 }
 
+const DEFAULT_SCENE_BANNER = 'A quiet chamber waits for the party to explore.';
+const DEFAULT_NOTABLE_FEATURES: readonly MapNotableFeatureRecord[] = [];
+
+function movementRevision(runtime: StoredMapRuntime): number {
+  return runtime.tokenPositions.reduce(
+    (sum, entry) => sum + (entry.column + 1) * 17 + (entry.row + 1) * 31,
+    runtime.tokenPositions.length,
+  );
+}
+
 /** Full geometry without viewer fog — used by the movement validator. */
 export function buildAuthoritativeMapBundle(options: {
   readonly campaignId: string;
   readonly seats: readonly StoredSeat[];
   readonly runtime: StoredMapRuntime;
+  /** Starter pack id backing this campaign, or null/omitted for a blank table. */
+  readonly adventureTemplateId?: string | null;
+  /** Current Emberferry chapter — selects dock / caves / bell-tower scene. */
+  readonly currentChapterId?: string | null;
 }): MapBundleProjection {
   const { campaignId, seats, runtime } = options;
+  const presentation = loadAdventureMapPresentation(
+    options.adventureTemplateId ?? null,
+    options.currentChapterId ?? null,
+  );
+  const scene = presentation?.scene ?? null;
+  const cells = scene !== null ? [...scene.cells] : buildStarterCells();
+  const baseEdges = scene !== null ? scene.edges : buildStarterInteriorWalls();
   return {
     campaignId,
-    mapBundleId: `starter:${campaignId}`,
-    mapVersion: 1,
-    title: 'Local starter chamber',
+    mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : `starter:${campaignId}`,
+    mapVersion: 1 + movementRevision(runtime),
+    title: presentation?.title ?? 'Local starter chamber',
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,
@@ -239,10 +278,15 @@ export function buildAuthoritativeMapBundle(options: {
       feetPerSquare: FEET_PER_SQUARE,
       pixelsPerSquare: PIXELS_PER_SQUARE,
     },
-    cells: buildStarterCells(),
-    edges: applyDoorOverrides(buildStarterInteriorWalls(), runtime),
-    tokens: buildTokens(seats, runtime),
-    artProvenance: 'procedural_local_placeholder',
+    cells,
+    edges: applyDoorOverrides(baseEdges, runtime),
+    tokens: buildTokens(seats, runtime, {
+      adventureTemplateId: options.adventureTemplateId ?? null,
+      currentChapterId: options.currentChapterId ?? null,
+    }),
+    artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
+    sceneBanner: presentation?.sceneBanner ?? DEFAULT_SCENE_BANNER,
+    notableFeatures: presentation?.notableFeatures ?? DEFAULT_NOTABLE_FEATURES,
     viewerSeatId: null,
     exploredSquareIds: [],
     visibleSquareIds: [],
@@ -271,14 +315,25 @@ export async function fetchCampaignMap(options: {
   readonly campaignId: string;
 }): Promise<MapBundleProjection> {
   const { firestore, accountId, campaignId } = options;
-  await assertCampaignMember({ firestore, accountId, campaignId });
+  const { adventureTemplateId } = await assertCampaignMember({ firestore, accountId, campaignId });
 
-  const [seats, runtime] = await Promise.all([
+  const [seats, runtime, memorySnap] = await Promise.all([
     loadCampaignSeats(firestore, campaignId),
     loadMapRuntime(firestore, campaignId),
+    firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).get(),
   ]);
+  const memoryData = memorySnap.exists
+    ? (memorySnap.data() as { currentChapterId?: string | null })
+    : null;
+  const currentChapterId = memoryData?.currentChapterId ?? null;
   const ownSeat = seats.find((seat) => seat.ownerAccountId === accountId) ?? null;
-  const full = buildAuthoritativeMapBundle({ campaignId, seats, runtime });
+  const full = buildAuthoritativeMapBundle({
+    campaignId,
+    seats,
+    runtime,
+    adventureTemplateId,
+    currentChapterId,
+  });
   return applyViewerFog(full, {
     accountId,
     viewerSeatId: ownSeat?.seatId ?? null,

@@ -7,15 +7,22 @@
  */
 
 import type { CampaignDetailProjection } from '../../shared/campaign-contract.js';
+import type { CampaignMemoryProjection, PersonalRecapProjection } from '../../shared/campaign-memory-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   createCampaignInvitation,
   createCampaignSeat,
   fetchCampaignDetail,
+  fetchCampaignMemory,
+  fetchPersonalRecap,
+  resumeCampaignSession,
   revokeCampaignInvitation,
+  suspendCampaignSession,
+  closeCampaignChapter,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
@@ -23,6 +30,147 @@ import type { PageHost } from './home.js';
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
+
+function renderMemoryPanel(memory: CampaignMemoryProjection): string {
+  const currentChapter =
+    memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null;
+  return `
+    <p class="record-meta" data-testid="campaign-time">
+      ${escapeHtml(memory.campaignTime.label)} ·
+      Session ${memory.session.state === 'suspended' ? 'suspended' : 'active'}
+      ${
+        memory.session.state === 'suspended' && memory.session.suspendedAt !== null
+          ? `· suspended ${escapeHtml(formatTimestamp(memory.session.suspendedAt))}`
+          : ''
+      }
+    </p>
+    ${
+      currentChapter === null
+        ? '<p class="empty-state" data-testid="current-chapter-empty">No current chapter — this is a blank table.</p>'
+        : `<p data-testid="current-chapter">
+             <strong>${escapeHtml(currentChapter.sessionLabel)}: ${escapeHtml(currentChapter.title)}</strong><br />
+             ${escapeHtml(currentChapter.planSummary)}
+           </p>`
+    }
+    ${
+      memory.chapters.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Chapters</h3>
+           <ul class="record-list" data-testid="chapter-list">
+             ${memory.chapters
+               .map(
+                 (chapter) => `
+               <li data-testid="chapter-item">
+                 <span class="record-note">${escapeHtml(chapter.sessionLabel)}: ${escapeHtml(chapter.title)}</span>
+                 <span class="record-meta">
+                   ${chapter.recordedSummary === null ? 'Not yet played' : escapeHtml(chapter.recordedSummary)}
+                 </span>
+               </li>`,
+               )
+               .join('')}
+           </ul>`
+    }
+    ${
+      memory.quests.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Quests</h3>
+           <ul class="record-list" data-testid="quest-list">
+             ${memory.quests
+               .map(
+                 (quest) => `
+               <li data-testid="quest-item">
+                 <span class="record-note">${escapeHtml(quest.title)}</span>
+                 <span class="record-meta">${escapeHtml(quest.status)} · ${escapeHtml(quest.summary)}</span>
+               </li>`,
+               )
+               .join('')}
+           </ul>`
+    }
+    ${
+      memory.npcs.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Known NPCs</h3>
+           <ul class="record-list" data-testid="npc-list">
+             ${memory.npcs
+               .map(
+                 (npc) => `
+               <li data-testid="npc-item">
+                 <span class="record-note">${escapeHtml(npc.name)} — ${escapeHtml(npc.role)}</span>
+                 <span class="record-meta">${escapeHtml(npc.knowledge)}</span>
+               </li>`,
+               )
+               .join('')}
+           </ul>`
+    }
+    ${
+      memory.factions.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Factions</h3>
+           <ul class="record-list" data-testid="faction-list">
+             ${memory.factions
+               .map(
+                 (faction) => `
+               <li data-testid="faction-item">
+                 <span class="record-note">${escapeHtml(faction.name)}</span>
+                 <span class="record-meta">${escapeHtml(faction.stance)} · ${escapeHtml(faction.summary)}</span>
+               </li>`,
+               )
+               .join('')}
+           </ul>`
+    }
+    ${
+      memory.socialLinks.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Social links</h3>
+           <ul class="record-list" data-testid="social-link-list">
+             ${memory.socialLinks
+               .map(
+                 (link) => `<li data-testid="social-link-item"><span class="record-note">${escapeHtml(link.description)}</span></li>`,
+               )
+               .join('')}
+           </ul>`
+    }
+    ${
+      memory.openThreads.length === 0
+        ? ''
+        : `<h3 class="preview-subheading">Open threads</h3>
+           <ul class="record-list" data-testid="open-thread-list">
+             ${memory.openThreads
+               .map(
+                 (thread) => `<li data-testid="open-thread-item"><span class="record-note">${escapeHtml(thread.summary)}</span></li>`,
+               )
+               .join('')}
+           </ul>`
+    }`;
+}
+
+function renderRecapPanel(recap: PersonalRecapProjection): string {
+  return `
+    <section class="panel panel-nested" aria-labelledby="recap-heading" data-testid="personal-recap-panel">
+      <h3 id="recap-heading">Your personal recap</h3>
+      <p data-testid="recap-headline">${escapeHtml(recap.headline)}</p>
+      ${
+        recap.recentChapterSummaries.length === 0
+          ? ''
+          : `<ul class="record-list" data-testid="recap-recent-chapters">
+               ${recap.recentChapterSummaries
+                 .map((summary) => `<li>${escapeHtml(summary)}</li>`)
+                 .join('')}
+             </ul>`
+      }
+      ${
+        recap.activeQuests.length === 0
+          ? ''
+          : `<p class="record-meta" data-testid="recap-active-quests">Active quests: ${escapeHtml(recap.activeQuests.join(', '))}</p>`
+      }
+      ${
+        recap.openThreads.length === 0
+          ? ''
+          : `<p class="record-meta" data-testid="recap-open-threads">Open threads: ${escapeHtml(recap.openThreads.join(', '))}</p>`
+      }
+      <p class="record-meta" data-testid="recap-campaign-time">${escapeHtml(recap.campaignTimeLabel)}</p>
+    </section>`;
 }
 
 export function mountCampaignDetailPage(host: PageHost, campaignId: string): void {
@@ -41,6 +189,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   let copyFeedback: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let memory: CampaignMemoryProjection | null = null;
+  let memoryError: string | null = null;
+  let recap: PersonalRecapProjection | null = null;
+  let sessionBusy = false;
+  let sessionMessage: string | null = null;
   const mountToken = beginPageMount(container);
 
   function renderSignedIn(): void {
@@ -67,6 +220,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       openInvitation === null
         ? null
         : `${window.location.origin}${openInvitation.invitePath}`;
+    const currentMemoryChapter =
+      memory === null
+        ? null
+        : (memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null);
+    const canCloseChapter =
+      currentMemoryChapter !== null && currentMemoryChapter.recordedSummary === null;
 
     const nextStep =
       ownSeat === null
@@ -128,6 +287,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             configuration for the later AI-enabled table; it does not activate AI narration in this
             build.
           </p>
+          ${directorAvatarMarkup({
+            avatarKey: campaign.director.avatarKey,
+            label: `${campaign.director.identityLabel} — ${campaign.director.personalityLabel}`,
+            testId: 'director-avatar',
+            className: 'director-avatar director-avatar-detail',
+          })}
           <dl class="account-details locked-details" data-testid="director-config">
             <div>
               <dt>Identity</dt>
@@ -168,6 +333,48 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               )
               .join('')}
           </ul>
+        </section>
+
+        <section class="panel" aria-labelledby="campaign-memory-heading" data-testid="campaign-memory-panel">
+          <h2 id="campaign-memory-heading">Campaign memory</h2>
+          ${
+            memoryError !== null
+              ? `<p class="message error" role="alert" data-testid="campaign-memory-error">${escapeHtml(memoryError)}</p>`
+              : memory === null
+                ? '<p class="empty-state" data-testid="campaign-memory-empty">Campaign memory is loading…</p>'
+                : renderMemoryPanel(memory)
+          }
+          ${
+            sessionMessage === null
+              ? ''
+              : `<p class="message success" data-testid="session-action-message">${escapeHtml(sessionMessage)}</p>`
+          }
+          ${
+            memory === null
+              ? ''
+              : `<div class="actions">
+                   <button type="button" data-testid="suspend-session"
+                     aria-disabled="${sessionBusy || memory.session.state === 'suspended' ? 'true' : 'false'}">
+                     ${sessionBusy ? 'Working…' : 'Suspend session'}
+                   </button>
+                   <button type="button" class="secondary" data-testid="resume-session"
+                     aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
+                     ${sessionBusy ? 'Working…' : 'Resume session'}
+                   </button>
+                   <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
+                     View personal recap
+                   </button>
+                   <button type="button" class="secondary" data-testid="close-chapter"
+                     aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
+                     Close chapter &amp; travel
+                   </button>
+                 </div>
+                 <p class="record-meta" data-testid="chapter-travel-hint">
+                   Closing the current chapter advances Emberferry to the next tactical scene
+                   (Mist Dock → Mist-Cut Caves → Drowned Bell Tower) and reseats tokens there.
+                 </p>`
+          }
+          ${recap === null ? '' : renderRecapPanel(recap)}
         </section>
 
         ${
@@ -390,6 +597,122 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
         })();
       });
+
+    bindDirectorAvatarFallback(
+      container,
+      'director-avatar',
+      `${campaign.director.identityLabel} — ${campaign.director.personalityLabel}`,
+    );
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="suspend-session"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || sessionBusy || memory?.session.state === 'suspended') {
+            return;
+          }
+          sessionBusy = true;
+          error = null;
+          render();
+          try {
+            const result = await suspendCampaignSession({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            memory = result.memory;
+            sessionMessage = `Session suspended. ${result.tableStateVersionNote}`;
+            shell.announce('Campaign session suspended.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The session could not be suspended.';
+          } finally {
+            sessionBusy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="resume-session"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || sessionBusy || memory?.session.state !== 'suspended') {
+            return;
+          }
+          sessionBusy = true;
+          error = null;
+          render();
+          try {
+            const result = await resumeCampaignSession({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            memory = result.memory;
+            recap = result.recap;
+            sessionMessage = 'Session resumed.';
+            shell.announce('Campaign session resumed.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The session could not be resumed.';
+          } finally {
+            sessionBusy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="view-recap"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (sessionBusy) {
+            return;
+          }
+          sessionBusy = true;
+          error = null;
+          render();
+          try {
+            recap = await fetchPersonalRecap(campaignId);
+          } catch (failure) {
+            error = failure instanceof ApiFailure ? failure.message : 'The recap could not be loaded.';
+          } finally {
+            sessionBusy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="close-chapter"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || sessionBusy || !canCloseChapter) {
+            return;
+          }
+          sessionBusy = true;
+          error = null;
+          render();
+          try {
+            memory = await closeCampaignChapter({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            const nextTitle =
+              memory.chapters.find((chapter) => chapter.chapterId === memory!.currentChapterId)
+                ?.title ?? 'the next scene';
+            sessionMessage = `Chapter closed. The table now opens on "${nextTitle}".`;
+            shell.announce(sessionMessage);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The chapter could not be closed.';
+          } finally {
+            sessionBusy = false;
+            render();
+          }
+        })();
+      });
   }
 
   function render(): void {
@@ -445,6 +768,16 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       } else {
         error =
           failure instanceof ApiFailure ? failure.message : 'This campaign could not be loaded.';
+      }
+    }
+    if (detail !== null) {
+      memoryError = null;
+      try {
+        memory = await fetchCampaignMemory(campaignId);
+      } catch (failure) {
+        memory = null;
+        memoryError =
+          failure instanceof ApiFailure ? failure.message : 'Campaign memory could not be loaded.';
       }
     }
     render();

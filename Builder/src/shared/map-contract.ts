@@ -56,6 +56,19 @@ export const TERRAIN_KINDS = ['floor', 'difficult', 'blocked'] as const;
 export type TerrainKind = (typeof TERRAIN_KINDS)[number];
 
 /**
+ * Honest art provenance values a map bundle may report (Section 25 Phase 5
+ * build scope item 4 — asset provenance). `procedural_local_placeholder`
+ * remains the blank-table default; `original_phase5_starter_v1` names the
+ * curated Emberferry Crossing starter presentation. Neither value claims
+ * production art the build does not have.
+ */
+export const MAP_ART_PROVENANCE_VALUES = [
+  'procedural_local_placeholder',
+  'original_phase5_starter_v1',
+] as const;
+export type MapArtProvenance = (typeof MAP_ART_PROVENANCE_VALUES)[number];
+
+/**
  * Named WebGL layers in bottom-to-top order (Section 9.11.1).
  * Numerical z values are assigned only here — never in feature components.
  */
@@ -131,6 +144,13 @@ export interface MapTokenProjection {
   readonly footprint: MapFootprint;
 }
 
+/** A named point of interest on the map, independent of fog-of-war cells. */
+export interface MapNotableFeatureRecord {
+  readonly column: number;
+  readonly row: number;
+  readonly label: string;
+}
+
 export interface MapCoordinateSpace {
   readonly coordinateSpaceId: string;
   readonly schemaVersion: typeof MAP_COORDINATE_SCHEMA_VERSION;
@@ -150,11 +170,19 @@ export interface MapBundleProjection {
   readonly cells: readonly MapCellRecord[];
   readonly edges: readonly MapEdgeRecord[];
   readonly tokens: readonly MapTokenProjection[];
-  /** Honest placeholder art provenance for Phase 2b (procedural floor, not production pack). */
-  readonly artProvenance: 'procedural_local_placeholder';
+  /** Honest art provenance — procedural placeholder or a named starter pack presentation. */
+  readonly artProvenance: MapArtProvenance;
+  /** Short scene-setting line shown above the stage, independent of fog-of-war. */
+  readonly sceneBanner: string;
+  /** Named points of interest for richer cell labels than bare terrain. */
+  readonly notableFeatures: readonly MapNotableFeatureRecord[];
   readonly viewerSeatId: string | null;
   readonly exploredSquareIds: readonly string[];
   readonly visibleSquareIds: readonly string[];
+}
+
+export function isMapArtProvenance(value: unknown): value is MapArtProvenance {
+  return typeof value === 'string' && (MAP_ART_PROVENANCE_VALUES as readonly string[]).includes(value);
 }
 
 export function isCreatureSize(value: unknown): value is CreatureSize {

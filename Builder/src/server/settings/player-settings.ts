@@ -9,6 +9,7 @@ import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 import {
   RESERVED_PLAYER_PRESENTATION_DEFAULTS,
+  isNarrationDensity,
   type PlayerPresentationSettingsProjection,
   type ReservedPlayerPresentationSettings,
 } from '../../shared/settings-contract.js';
@@ -98,6 +99,8 @@ export async function updatePlayerSettings(options: {
     readonly privateDirectorAutoplay?: unknown;
     readonly speechToTextEnabled?: unknown;
   };
+  /** Player-controlled narration length (Section 25 Phase 5). */
+  readonly narrationDensity?: unknown;
 }): Promise<PlayerPresentationSettingsProjection> {
   const current = await ensure(options.firestore, options.accountId);
   if (typeof options.reducedMotion !== 'boolean') {
@@ -105,6 +108,9 @@ export async function updatePlayerSettings(options: {
   }
   if (options.lowEffects !== undefined && typeof options.lowEffects !== 'boolean') {
     throw new Error('lowEffects must be a boolean');
+  }
+  if (options.narrationDensity !== undefined && !isNarrationDensity(options.narrationDensity)) {
+    throw new Error('narrationDensity must be one of concise, balanced, cinematic');
   }
   const speech = options.speech ?? {};
   for (const key of [
@@ -135,6 +141,9 @@ export async function updatePlayerSettings(options: {
       typeof speech.speechToTextEnabled === 'boolean'
         ? speech.speechToTextEnabled
         : current.reserved.speechToTextEnabled,
+    narrationDensity: isNarrationDensity(options.narrationDensity)
+      ? options.narrationDensity
+      : current.reserved.narrationDensity,
   };
   const updated: StoredAccountSettings = {
     ...current,

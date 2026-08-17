@@ -47,6 +47,35 @@ import { requireTimingAuthority, TimingAuthorityError } from './timing-authority
 
 export { TimingAuthorityError };
 
+async function loadMapBuildContext(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<{
+  readonly adventureTemplateId: string | null;
+  readonly currentChapterId: string | null;
+  readonly seats: Awaited<ReturnType<typeof loadCampaignSeats>>;
+  readonly runtime: StoredMapRuntime;
+}> {
+  const [campaignSnap, seats, runtime, memorySnap] = await Promise.all([
+    firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get(),
+    loadCampaignSeats(firestore, campaignId),
+    loadMapRuntime(firestore, campaignId),
+    firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).get(),
+  ]);
+  const campaignData = campaignSnap.exists
+    ? (campaignSnap.data() as { adventureTemplateId?: string | null })
+    : null;
+  const memoryData = memorySnap.exists
+    ? (memorySnap.data() as { currentChapterId?: string | null })
+    : null;
+  return {
+    adventureTemplateId: campaignData?.adventureTemplateId ?? null,
+    currentChapterId: memoryData?.currentChapterId ?? null,
+    seats,
+    runtime,
+  };
+}
+
 export class TableCommandError extends Error {
   readonly code: string;
 
@@ -240,11 +269,14 @@ export async function previewTableMove(options: {
   const { firestore, accountId, campaignId, path } = options;
   await assertCampaignMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
-  const [seats, runtime] = await Promise.all([
-    loadCampaignSeats(firestore, campaignId),
-    loadMapRuntime(firestore, campaignId),
-  ]);
-  const map = buildAuthoritativeMapBundle({ campaignId, seats, runtime });
+  const context = await loadMapBuildContext(firestore, campaignId);
+  const map = buildAuthoritativeMapBundle({
+    campaignId,
+    seats: context.seats,
+    runtime: context.runtime,
+    adventureTemplateId: context.adventureTemplateId,
+    currentChapterId: context.currentChapterId,
+  });
   const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
   if (token === undefined) {
     throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
@@ -398,10 +430,7 @@ export async function acceptTableCommand(options: {
     commandType,
     consume: false,
   });
-  const [seatsForAuthMap, runtimeForAuthMap] = await Promise.all([
-    loadCampaignSeats(firestore, campaignId),
-    loadMapRuntime(firestore, campaignId),
-  ]);
+  const mapContext = await loadMapBuildContext(firestore, campaignId);
 
   // Pre-validate movement / door outside the transaction using current runtime.
   let movePath: readonly { readonly column: number; readonly row: number }[] | undefined;
@@ -415,8 +444,10 @@ export async function acceptTableCommand(options: {
     }
     const map = buildAuthoritativeMapBundle({
       campaignId,
-      seats: seatsForAuthMap,
-      runtime: runtimeForAuthMap,
+      seats: mapContext.seats,
+      runtime: mapContext.runtime,
+      adventureTemplateId: mapContext.adventureTemplateId,
+      currentChapterId: mapContext.currentChapterId,
     });
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token === undefined) {
@@ -453,8 +484,10 @@ export async function acceptTableCommand(options: {
     }
     const map = buildAuthoritativeMapBundle({
       campaignId,
-      seats: seatsForAuthMap,
-      runtime: runtimeForAuthMap,
+      seats: mapContext.seats,
+      runtime: mapContext.runtime,
+      adventureTemplateId: mapContext.adventureTemplateId,
+      currentChapterId: mapContext.currentChapterId,
     });
     const edge = map.edges.find((entry) => entry.edgeId === edgeId);
     if (edge === undefined || edge.kind !== 'door') {
@@ -490,8 +523,10 @@ export async function acceptTableCommand(options: {
   if (commandType === 'table.sync') {
     const map = buildAuthoritativeMapBundle({
       campaignId,
-      seats: seatsForAuthMap,
-      runtime: runtimeForAuthMap,
+      seats: mapContext.seats,
+      runtime: mapContext.runtime,
+      adventureTemplateId: mapContext.adventureTemplateId,
+      currentChapterId: mapContext.currentChapterId,
     });
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token !== undefined) {

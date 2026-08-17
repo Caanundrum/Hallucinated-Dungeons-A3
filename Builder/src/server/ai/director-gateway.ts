@@ -26,8 +26,10 @@ import type {
   IntentInterpretResponse,
   ProviderComplianceEntry,
 } from '../../shared/ai-director-contract.js';
+import type { NarrationDensity } from '../../shared/settings-contract.js';
 import { getAiKillSwitch } from '../admin/admin-service.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { readPlayerSettings } from '../settings/player-settings.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
   'party_chat_ooc',
@@ -129,6 +131,47 @@ function humorLine(personality: DirectorPersonality): string {
     default:
       return ' A lightly knowing beat lands, then control returns to the table.';
   }
+}
+
+/**
+ * Extra sensory-detail sentence layered on top of `humorLine` for the
+ * `cinematic` narration density (Section 25 Phase 5). Never introduces new
+ * mechanical state — it only dresses the already-committed mechanics summary.
+ */
+function cinematicLine(personality: DirectorPersonality): string {
+  switch (personality) {
+    case 'sassy_companion':
+      return ' The room holds its breath just long enough to be dramatic about it.';
+    case 'dry_storyteller':
+      return ' Dust settles, torchlight flickers, and the scene resets around the result.';
+    case 'dramatic_chronicler':
+      return ' Shadows stretch across the stone as the consequence settles into the scene.';
+    case 'friendly_adventurer':
+      return ' The party trades a glance, already imagining what happens next.';
+    case 'encouraging_guide':
+      return ' The scene settles, giving everyone a clear beat to plan the next move.';
+    case 'seasoned_host':
+    default:
+      return ' The Director lets the moment breathe before the table presses on.';
+  }
+}
+
+/** Builds narration body text for the given density, without inventing state. */
+function composeNarrationBody(
+  mechanicsSummary: string,
+  personality: DirectorPersonality,
+  density: NarrationDensity,
+): { readonly body: string; readonly humorApplied: boolean } {
+  if (density === 'concise') {
+    return { body: mechanicsSummary, humorApplied: false };
+  }
+  if (density === 'cinematic') {
+    return {
+      body: `${mechanicsSummary}${humorLine(personality)}${cinematicLine(personality)}`,
+      humorApplied: true,
+    };
+  }
+  return { body: `${mechanicsSummary}${humorLine(personality)}`, humorApplied: true };
 }
 
 async function requireAiEnabled(firestore: Firestore): Promise<void> {
@@ -271,9 +314,17 @@ export async function narrateVisibleBeat(options: {
 }): Promise<DirectorNarrationProjection> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
+  const playerSettings = await readPlayerSettings({
+    firestore: options.firestore,
+    accountId: options.accountId,
+  });
+  const narrationDensity = playerSettings.reserved.narrationDensity;
   const createdAt = new Date().toISOString();
-  const humorApplied = true;
-  const body = `${options.mechanicsSummary}${humorLine(director.personality)}`;
+  const { body, humorApplied } = composeNarrationBody(
+    options.mechanicsSummary,
+    director.personality,
+    narrationDensity,
+  );
   const manifest = buildManifest({
     role: 'narrator',
     campaignId: options.campaignId,
@@ -292,6 +343,7 @@ export async function narrateVisibleBeat(options: {
     mechanicsFirstSummary: options.mechanicsSummary,
     humorApplied,
     fallbackUsed: false,
+    narrationDensity,
     directorIdentity: director.identity,
     directorPersonality: director.personality,
     avatarKey: director.avatarKey,

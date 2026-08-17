@@ -128,6 +128,22 @@ export const EXPECTED_SESSION_LENGTH_MAX_LENGTH = 80;
 export const NARRATION_DENSITIES = ['concise', 'balanced', 'cinematic'] as const;
 export type NarrationDensity = (typeof NARRATION_DENSITIES)[number];
 
+export const NARRATION_DENSITY_LABELS: Record<NarrationDensity, string> = {
+  concise: 'Concise',
+  balanced: 'Balanced',
+  cinematic: 'Cinematic',
+};
+
+export const NARRATION_DENSITY_SUMMARIES: Record<NarrationDensity, string> = {
+  concise: 'Shortest mechanics-first narration. Good for fast tables that want the numbers, not the prose.',
+  balanced: 'The default mix of mechanics-first narration and a light Director aside.',
+  cinematic: 'Longer scene-setting narration with more sensory detail around the same mechanics.',
+};
+
+export function isNarrationDensity(value: unknown): value is NarrationDensity {
+  return typeof value === 'string' && (NARRATION_DENSITIES as readonly string[]).includes(value);
+}
+
 export const DICE_PRESENTATIONS = ['fast', 'standard'] as const;
 export type DicePresentation = (typeof DICE_PRESENTATIONS)[number];
 

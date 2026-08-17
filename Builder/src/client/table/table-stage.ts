@@ -6,6 +6,9 @@
  * server. The SVG mirror paints the same projection for environments where
  * WebGL/Canvas2D GPU paths stay blank or CSP blocks Pixi's shader compiler;
  * Pixi still owns the named scene graph when it can initialize.
+ *
+ * Phase 5: Emberferry scenes tint terrain by provenance (dock wood / river /
+ * mist), animate token moves, and highlight the selected move square.
  */
 
 import { Application, Container, Graphics, Text } from 'pixi.js';
@@ -14,6 +17,7 @@ import {
   WEBGL_LAYER_Z_INDEX,
   WEBGL_RENDER_LAYERS,
   type MapBundleProjection,
+  type MapSquareCoordinate,
   type WebGlRenderLayer,
 } from '../../shared/map-contract.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -24,6 +28,7 @@ export interface TableStageHandle {
   readonly setSquareClickHandler: (
     handler: ((square: { column: number; row: number }) => void) | null,
   ) => void;
+  readonly setMoveTarget: (square: MapSquareCoordinate | null) => void;
 }
 
 function layerContainer(name: WebGlRenderLayer): Container {
@@ -34,9 +39,30 @@ function layerContainer(name: WebGlRenderLayer): Container {
   return container;
 }
 
-function terrainColor(terrain: string, known = true): number {
+function prefersReducedMotion(): boolean {
+  return (
+    document.documentElement.classList.contains('hd-reduced-motion') ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+function isEmberferryScene(map: MapBundleProjection): boolean {
+  return map.artProvenance === 'original_phase5_starter_v1';
+}
+
+function terrainColor(terrain: string, known = true, emberferry = false): number {
   if (!known) {
     return 0x050403;
+  }
+  if (emberferry) {
+    switch (terrain) {
+      case 'blocked':
+        return 0x0f2a3a; // river / rock in shadow
+      case 'difficult':
+        return 0x3d5a4a; // ember-mist boards / flooded stone
+      default:
+        return 0x6b4e2e; // timber dock / dry stone
+    }
   }
   switch (terrain) {
     case 'blocked':
@@ -48,9 +74,19 @@ function terrainColor(terrain: string, known = true): number {
   }
 }
 
-function terrainCss(terrain: string, known: boolean): string {
+function terrainCss(terrain: string, known: boolean, emberferry = false): string {
   if (!known) {
     return '#050403';
+  }
+  if (emberferry) {
+    switch (terrain) {
+      case 'blocked':
+        return '#0f2a3a';
+      case 'difficult':
+        return '#3d5a4a';
+      default:
+        return '#6b4e2e';
+    }
   }
   switch (terrain) {
     case 'blocked':
@@ -62,13 +98,36 @@ function terrainCss(terrain: string, known: boolean): string {
   }
 }
 
-function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
+function tokenPixelBox(
+  map: MapBundleProjection,
+  token: MapBundleProjection['tokens'][number],
+): { x: number; y: number; w: number; h: number } {
+  const pad = 6;
+  const { pixelsPerSquare } = map.coordinateSpace;
+  return {
+    x: token.footprint.anchor.column * pixelsPerSquare + pad,
+    y: token.footprint.anchor.row * pixelsPerSquare + pad,
+    w: token.footprint.width * pixelsPerSquare - pad * 2,
+    h: token.footprint.height * pixelsPerSquare - pad * 2,
+  };
+}
+
+function paintSemanticSvg(
+  host: HTMLElement,
+  map: MapBundleProjection,
+  moveTarget: MapSquareCoordinate | null,
+  priorTokenBoxes: Map<string, { x: number; y: number }>,
+): Map<string, { x: number; y: number }> {
   const lowEffects =
     document.documentElement.classList.contains('hd-low-effects') ||
     document.documentElement.classList.contains('hd-reduced-motion');
+  const emberferry = isEmberferryScene(map);
   const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
   const width = columns * pixelsPerSquare;
   const height = rows * pixelsPerSquare;
+  const reduceMotion = prefersReducedMotion() || lowEffects;
+  const nextBoxes = new Map<string, { x: number; y: number }>();
+
   const cells = map.cells
     .map((cell) => {
       const fogClass = cell.known
@@ -76,7 +135,13 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
         : lowEffects
           ? ' map-square-fog map-square-fog-flat'
           : ' map-square-fog';
-      return `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known)}" class="map-square${fogClass}" />`;
+      const selected =
+        moveTarget !== null &&
+        moveTarget.column === cell.column &&
+        moveTarget.row === cell.row
+          ? ' map-square-selected'
+          : '';
+      return `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${fogClass}${selected}" />`;
     })
     .join('');
   const gridLines: string[] = [];
@@ -120,14 +185,29 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
     .join('');
   const tokens = map.tokens
     .map((token) => {
-      const pad = 6;
-      const x = token.footprint.anchor.column * pixelsPerSquare + pad;
-      const y = token.footprint.anchor.row * pixelsPerSquare + pad;
-      const w = token.footprint.width * pixelsPerSquare - pad * 2;
-      const h = token.footprint.height * pixelsPerSquare - pad * 2;
-      return `<g data-token="${escapeHtml(token.tokenId)}">
-        <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#d4a017" />
-        <text x="${x + 6}" y="${y + h / 2 + 4}" fill="#1a1208" font-size="12" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
+      const box = tokenPixelBox(map, token);
+      nextBoxes.set(token.tokenId, { x: box.x, y: box.y });
+      const prior = priorTokenBoxes.get(token.tokenId);
+      const animate =
+        !reduceMotion &&
+        prior !== undefined &&
+        (prior.x !== box.x || prior.y !== box.y);
+      const transform = animate
+        ? `translate(${prior.x - box.x}px, ${prior.y - box.y}px)`
+        : 'translate(0px, 0px)';
+      return `<g data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
+        <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="8" fill="#f0c043" stroke="#1a1208" stroke-width="2" />
+        <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="12" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
+      </g>`;
+    })
+    .join('');
+  const features = map.notableFeatures
+    .map((feature) => {
+      const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      return `<g data-notable-feature="${escapeHtml(feature.label)}">
+        <circle cx="${x}" cy="${y}" r="6" fill="#f2d38a" stroke="#1a1208" stroke-width="1.5" />
+        <text x="${x + 8}" y="${y + 4}" fill="#f8e7b0" font-size="11" font-family="Georgia, serif" font-style="italic">${escapeHtml(feature.label)}</text>
       </g>`;
     })
     .join('');
@@ -140,13 +220,25 @@ function paintSemanticSvg(host: HTMLElement, map: MapBundleProjection): void {
     wrap.className = 'table-stage-semantic';
     host.appendChild(wrap);
   }
-  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg">
-    <rect width="${width}" height="${height}" fill="#0c0a08" />
+  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
+    <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
     <g data-layer="terrain_art">${cells}</g>
     <g data-layer="grid_reference">${gridLines.join('')}</g>
     <g data-layer="structural_underlays">${edges}</g>
     <g data-layer="tokens_entities">${tokens}</g>
+    <g data-layer="overhead_environment" data-testid="table-stage-notable-features">${features}</g>
   </svg>`;
+
+  if (!reduceMotion) {
+    requestAnimationFrame(() => {
+      wrap?.querySelectorAll<SVGGElement>('g.token-moving').forEach((node) => {
+        node.style.transition = 'transform 280ms ease-out';
+        node.style.transform = 'translate(0px, 0px)';
+      });
+    });
+  }
+
+  return nextBoxes;
 }
 
 /**
@@ -161,10 +253,12 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   let currentMap: MapBundleProjection | null = null;
+  let moveTarget: MapSquareCoordinate | null = null;
   let squareClickHandler: ((square: { column: number; row: number }) => void) | null = null;
   let application: Application | null = null;
   let root: Container | null = null;
   let layers: Record<WebGlRenderLayer, Container> | null = null;
+  let priorTokenBoxes = new Map<string, { x: number; y: number }>();
 
   function bindSquareClicks(): void {
     host.querySelectorAll<SVGRectElement>('rect[data-square]').forEach((rect) => {
@@ -186,6 +280,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     if (application === null || root === null || layers === null) {
       return;
     }
+    const emberferry = isEmberferryScene(map);
     const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
     const width = columns * pixelsPerSquare;
     const height = rows * pixelsPerSquare;
@@ -195,14 +290,19 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
 
     const background = new Graphics();
-    background.rect(0, 0, width, height).fill({ color: 0x0c0a08, alpha: 0.01 });
+    background.rect(0, 0, width, height).fill({
+      color: emberferry ? 0x071820 : 0x0c0a08,
+      alpha: 0.01,
+    });
     layers.world_background.addChild(background);
 
     const terrain = new Graphics();
     for (const cell of map.cells) {
       const x = cell.column * pixelsPerSquare;
       const y = cell.row * pixelsPerSquare;
-      terrain.rect(x, y, pixelsPerSquare, pixelsPerSquare).fill(terrainColor(cell.terrain, cell.known));
+      terrain
+        .rect(x, y, pixelsPerSquare, pixelsPerSquare)
+        .fill(terrainColor(cell.terrain, cell.known, emberferry));
     }
     layers.terrain_art.addChild(terrain);
 
@@ -240,18 +340,27 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
     layers.structural_underlays.addChild(structural);
 
+    if (moveTarget !== null) {
+      const preview = new Graphics();
+      preview
+        .rect(
+          moveTarget.column * pixelsPerSquare + 2,
+          moveTarget.row * pixelsPerSquare + 2,
+          pixelsPerSquare - 4,
+          pixelsPerSquare - 4,
+        )
+        .stroke({ width: 3, color: 0xf0c043, alpha: 0.95 });
+      layers.action_previews.addChild(preview);
+    }
+
     for (const token of map.tokens) {
-      const { footprint } = token;
+      const box = tokenPixelBox(map, token);
       const tokenGfx = new Graphics();
-      const pad = 6;
-      const tokenWidth = footprint.width * pixelsPerSquare - pad * 2;
-      const tokenHeight = footprint.height * pixelsPerSquare - pad * 2;
-      const tokenX = footprint.anchor.column * pixelsPerSquare + pad;
-      const tokenY = footprint.anchor.row * pixelsPerSquare + pad;
-      tokenGfx.roundRect(tokenX, tokenY, tokenWidth, tokenHeight, 8).fill({
-        color: 0xd4a017,
-        alpha: 0.92,
+      tokenGfx.roundRect(box.x, box.y, box.w, box.h, 8).fill({
+        color: 0xf0c043,
+        alpha: 0.95,
       });
+      tokenGfx.stroke({ width: 2, color: 0x1a1208, alpha: 1 });
       layers.tokens_entities.addChild(tokenGfx);
 
       const label = new Text({
@@ -263,9 +372,29 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           fontWeight: '700',
         },
       });
-      label.x = tokenX + 6;
-      label.y = tokenY + tokenHeight / 2 - 7;
+      label.x = box.x + 6;
+      label.y = box.y + box.h / 2 - 7;
       layers.token_information.addChild(label);
+    }
+
+    for (const feature of map.notableFeatures) {
+      const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      const marker = new Graphics();
+      marker.circle(x, y, 6).fill({ color: 0xf2d38a, alpha: 0.95 });
+      layers.overhead_environment.addChild(marker);
+      const featureLabel = new Text({
+        text: feature.label,
+        style: {
+          fill: 0xf8e7b0,
+          fontSize: 11,
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          fontStyle: 'italic',
+        },
+      });
+      featureLabel.x = x + 8;
+      featureLabel.y = y - 6;
+      layers.overhead_environment.addChild(featureLabel);
     }
 
     const viewWidth = application.screen.width;
@@ -276,7 +405,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   function paint(map: MapBundleProjection): void {
     currentMap = map;
-    paintSemanticSvg(host, map);
+    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, priorTokenBoxes);
     paintPixi(map);
     bindSquareClicks();
   }
@@ -338,6 +467,12 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     setSquareClickHandler(handler) {
       squareClickHandler = handler;
       bindSquareClicks();
+    },
+    setMoveTarget(square) {
+      moveTarget = square;
+      if (currentMap !== null) {
+        paint(currentMap);
+      }
     },
     destroy() {
       window.removeEventListener('resize', onResize);

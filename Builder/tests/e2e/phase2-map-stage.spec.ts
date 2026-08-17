@@ -38,6 +38,10 @@ async function createQuickCharacter(page: Page, name: string): Promise<void> {
 async function createCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('nav-campaigns').click();
   await page.getByTestId('start-campaign').click();
+  // Phase 5 defaults create to the Emberferry Crossing starter pack; this
+  // suite asserts the blank table's procedural placeholder presentation, so
+  // it must explicitly pick the blank template.
+  await page.getByTestId('adventure-template-blank').click();
   await page.getByTestId('campaign-name').fill(name);
   await page.getByTestId('campaign-name').dispatchEvent('change');
   await page.getByTestId('identity-veyra').click();

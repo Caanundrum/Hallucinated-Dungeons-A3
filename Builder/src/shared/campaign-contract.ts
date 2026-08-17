@@ -113,6 +113,34 @@ export const DIRECTOR_CREATION_PREVIEW: Record<
   },
 };
 
+/**
+ * Adventure template chosen at campaign creation (Section 25 Phase 5 build
+ * scope item 2). `emberferry_crossing` seeds the original starter campaign
+ * pack; `blank` is an honest empty table for rules practice — never a
+ * "sandbox procedural worldgen" claim.
+ */
+export const ADVENTURE_TEMPLATES = ['emberferry_crossing', 'blank'] as const;
+export type AdventureTemplate = (typeof ADVENTURE_TEMPLATES)[number];
+
+export const ADVENTURE_TEMPLATE_LABELS: Record<AdventureTemplate, string> = {
+  emberferry_crossing: 'Emberferry Crossing',
+  blank: 'Blank table (no starter adventure)',
+};
+
+export const ADVENTURE_TEMPLATE_SUMMARIES: Record<AdventureTemplate, string> = {
+  emberferry_crossing:
+    'An original three-session starter campaign: a river-trade dock, mist-cut caves, and a drowned bell tower, with chapters and a personal recap already in place.',
+  blank:
+    'An empty table with no seeded chapters, NPCs, or map presentation — for rules practice or building your own campaign from nothing.',
+};
+
+/** Visually recommended default on the creation form; never silently forced. */
+export const RECOMMENDED_ADVENTURE_TEMPLATE: AdventureTemplate = 'emberferry_crossing';
+
+export function isAdventureTemplate(value: unknown): value is AdventureTemplate {
+  return typeof value === 'string' && (ADVENTURE_TEMPLATES as readonly string[]).includes(value);
+}
+
 /** Maximum length of a campaign title. */
 export const CAMPAIGN_NAME_MAX_LENGTH = 80;
 
@@ -186,6 +214,9 @@ export interface CampaignProjection {
   readonly director: DirectorConfiguration;
   readonly memberCount: number;
   readonly seatCount: number;
+  /** Starter pack this campaign was created from, or null for a blank table. */
+  readonly adventureTemplateId: string | null;
+  readonly adventurePackVersion: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   /**
