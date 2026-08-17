@@ -8,7 +8,7 @@ blueprintSourceHash: 144f178d3cbf
 priorPhase: phase-4
 priorPhaseState: PHASE_CERTIFIED
 priorCertifiedCandidate: cand-1de6ebed38c8
-lifecycleState: AWAITING_HUMAN_APPROVAL
+lifecycleState: PHASE_CERTIFIED
 humanGate: product_owner_complete_experience
 humanGateNote: "Section 25.4 / Phase 5 — Product Owner reviews complete game feel (art, motion, sound, Director persona/voice, humor, starter-campaign presentation) after Builder Verification and Independent QA. Approval binds only to the exact candidate hash."
 authoredAt: 2026-08-16T20:20:00Z

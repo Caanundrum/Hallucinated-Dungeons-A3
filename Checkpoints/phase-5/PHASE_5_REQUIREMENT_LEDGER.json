@@ -2,16 +2,20 @@
   "recordType": "phase_requirement_ledger",
   "phase": "phase-5",
   "blueprintVersion": "ALPHA_3_V1",
-  "lifecycleState": "AWAITING_HUMAN_APPROVAL",
+  "lifecycleState": "PHASE_CERTIFIED",
   "humanGate": "product_owner_complete_experience",
   "builderVerifiedCandidate": "cand-77e0e060e3b4",
   "builderVerifiedSourceTreeHash": "77e0e060e3b42496ec31040aa2731cb805f3e2e0bbe81db1c3fcd45a75d53412",
   "builderVerification": "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
   "qaFindings": "QA/findings/PHASE_5_QA_FINDINGS.md",
   "qaStatus": "PLAYER_VALIDATED",
+  "productOwnerApproval": "APPROVED",
+  "approver": "Nick",
+  "approvedAt": "2026-08-17T02:22:00Z",
+  "certificate": "Checkpoints/phase-5/PHASE_5_CERTIFICATE.md",
   "priorCertifiedCandidate": "cand-1de6ebed38c8",
   "supersededCandidates": ["cand-bf752b208fb6"],
-  "note": "Scope control for Phase 5 only. Section 25 is the phase-scope authority. Builder Verification PASSED and Independent QA PLAYER_VALIDATED against cand-77e0e060e3b4 (table/token remediation superseding cand-bf752b208fb6). Product Owner complete-experience approval remains required before PHASE_CERTIFIED. No Product Owner approval is inferred here.",
+  "note": "Phase 5 PHASE_CERTIFIED. Product Owner Nick approved cand-77e0e060e3b4 on 2026-08-17. Phase 6 may proceed.",
   "requirements": [
     {
       "id": "P5-MEMORY",
@@ -119,8 +123,8 @@
     {
       "id": "P5-CERTIFICATION",
       "requirement": "Smoke spine campaign resume, certify:phase5 floor, Independent QA, Product Owner complete-experience gate",
-      "status": "AWAITING_PO_COMPLETE_EXPERIENCE",
-      "note": "certify:phase5 PASSED (76/76 browser). Independent QA PLAYER_VALIDATED (5/5). Product Owner complete-experience gate remains open on PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md — not inferred.",
+      "status": "CERTIFIED",
+      "note": "certify:phase5 PASSED (77/77). Independent QA PLAYER_VALIDATED (6/6). Product Owner Nick APPROVED cand-77e0e060e3b4 on 2026-08-17. See PHASE_5_CERTIFICATE.md.",
       "implementation": [
         "Builder/package.json#certify:phase5",
         "Builder/tools/certification/run-certification.mjs",
@@ -130,7 +134,9 @@
       "verification": [
         "npm run certify:phase5",
         "Checkpoints/phase-5/PHASE_5_BUILDER_VERIFICATION.md",
-        "QA/findings/PHASE_5_QA_FINDINGS.md"
+        "QA/findings/PHASE_5_QA_FINDINGS.md",
+        "Checkpoints/phase-5/PHASE_5_HUMAN_APPROVAL_CHECKPOINT.md",
+        "Checkpoints/phase-5/PHASE_5_CERTIFICATE.md"
       ]
     }
   ]
