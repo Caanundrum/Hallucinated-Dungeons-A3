@@ -1,0 +1,1264 @@
+{
+  "recordType": "certification_run_record",
+  "recordVersion": "1",
+  "phase": "phase-7",
+  "status": "PASSED",
+  "mode": "frozen_certification",
+  "startedAt": "2026-08-17T11:50:12.816Z",
+  "endedAt": "2026-08-17T11:53:08.367Z",
+  "candidate": {
+    "candidateId": "cand-fd5997306889",
+    "sourceTreeHash": "fd5997306889cf809e4236ee932a395dbbaf88adf66bccf47808d9f8e16d9f07",
+    "commit": "45d4f73733855d15add7b155bfb448b3d7040a12",
+    "dirtyTree": false,
+    "dirtyPaths": [],
+    "dependencyLockHash": "bd5d2990b2b78c71c0742e2410edae2a02dd75447d6582b778e8aed8e5bea47f",
+    "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1",
+    "fileCount": 179
+  },
+  "blueprintVersion": "ALPHA_3_V1",
+  "blueprintSourceHash": "144f178d3cbfbe6572c299d4ad4b841ec3e6fa28ddedf5eddce0223e6250ce1e",
+  "localStackManifestPath": "/workspace/Runtime/certification/cand-fd5997306889/local-stack-manifest.json",
+  "localStackManifest": {
+    "manifestVersion": "1",
+    "generatedAt": "2026-08-17T11:50:31.662Z",
+    "phase": "phase-0",
+    "environmentClass": "local",
+    "runtimeMode": "frozen_certification",
+    "candidate": {
+      "candidateId": "cand-fd5997306889",
+      "sourceTreeHash": "fd5997306889cf809e4236ee932a395dbbaf88adf66bccf47808d9f8e16d9f07",
+      "commit": "45d4f73733855d15add7b155bfb448b3d7040a12",
+      "clean": true,
+      "dirtyPaths": [],
+      "fileCount": 179,
+      "dependencyLockHash": "bd5d2990b2b78c71c0742e2410edae2a02dd75447d6582b778e8aed8e5bea47f",
+      "rulesHash": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1"
+    },
+    "blueprint": {
+      "version": "ALPHA_3_V1",
+      "fileName": "HALLUCINATED_DUNGEONS_ALPHA_3_MASTER_BLUEPRINT_V1.md",
+      "sourceHash": "144f178d3cbfbe6572c299d4ad4b841ec3e6fa28ddedf5eddce0223e6250ce1e",
+      "lineCount": 15538,
+      "preflightPassed": true
+    },
+    "workingDirectory": {
+      "resolved": "/workspace",
+      "resolutionSource": "environment",
+      "builderRoot": "/workspace/Builder",
+      "qaRoot": "/workspace/QA",
+      "runtimeRoot": "/workspace/Runtime",
+      "evidenceRoot": "/workspace/Evidence",
+      "checkpointRoot": "/workspace/Checkpoints",
+      "pendingArchiveRoot": "/workspace/Pending-Archive"
+    },
+    "archive": {
+      "directory": null,
+      "status": "ARCHIVE_PENDING"
+    },
+    "origins": {
+      "client": "http://127.0.0.1:5274",
+      "server": "http://127.0.0.1:5274",
+      "emulatorUi": "http://127.0.0.1:4100"
+    },
+    "ports": {
+      "firestore": 8180,
+      "auth": 9199,
+      "ui": 4100,
+      "server": 5274,
+      "client": 5274
+    },
+    "emulators": {
+      "projectId": "hallucinated-dungeons-local",
+      "configPath": "/workspace/Runtime/certification/cand-fd5997306889/firebase.emulators.json",
+      "services": {
+        "firestore": "127.0.0.1:8180",
+        "auth": "127.0.0.1:9199",
+        "ui": "127.0.0.1:4100"
+      }
+    },
+    "services": {
+      "client": "implemented",
+      "server": "implemented",
+      "firestoreEmulator": "implemented",
+      "authEmulator": "implemented",
+      "websocket": "NOT_YET_IMPLEMENTED — Phase 2"
+    },
+    "toolchain": {
+      "node": "22.14.0",
+      "npm": "npm/10.9.7 node/v22.14.0 linux x64 workspaces/false",
+      "java": "21.0.10",
+      "firebaseTools": "13.35.1",
+      "typescript": "5.9.3",
+      "vite": "6.4.3",
+      "playwright": "1.62.1",
+      "firebaseAdmin": "13.10.0"
+    },
+    "seed": {
+      "version": "phase0-baseline-v1"
+    },
+    "environmentSchemaVersion": "1",
+    "isolation": {
+      "milestoneEnvironmentConfigured": false,
+      "launchProductionEnvironmentConfigured": false,
+      "productionCredentialsPresent": false,
+      "note": "Phase 0 builds and certifies the Local Execution Environment only. No Milestone or Launch Production target is configured or reachable from this stack."
+    }
+  },
+  "readiness": {
+    "ok": true,
+    "checks": [
+      {
+        "name": "client_origin_serves_page",
+        "ok": true,
+        "detail": "http://127.0.0.1:5274 -> HTTP 200"
+      },
+      {
+        "name": "server_health_ready",
+        "ok": true,
+        "detail": "status=ready firestore=true auth=true"
+      },
+      {
+        "name": "candidate_endpoint_matches_manifest",
+        "ok": true,
+        "detail": "served=cand-fd5997306889 expected=cand-fd5997306889"
+      },
+      {
+        "name": "approved_emulator_project",
+        "ok": true,
+        "detail": "served=hallucinated-dungeons-local"
+      },
+      {
+        "name": "environment_class_local",
+        "ok": true,
+        "detail": "served=local"
+      },
+      {
+        "name": "identity_route_rejects_foreign_origin",
+        "ok": true,
+        "detail": "HTTP 403"
+      },
+      {
+        "name": "baseline_seed_matches",
+        "ok": true,
+        "detail": "loaded=phase0-baseline-v1"
+      },
+      {
+        "name": "no_production_credentials_present",
+        "ok": true,
+        "detail": "none set"
+      },
+      {
+        "name": "rules_hash_recorded",
+        "ok": true,
+        "detail": "d40ba75e207f6e00c2aed9b0d261a386570a650f702537734944685575b85df1"
+      },
+      {
+        "name": "dependency_lock_hash_recorded",
+        "ok": true,
+        "detail": "bd5d2990b2b78c71c0742e2410edae2a02dd75447d6582b778e8aed8e5bea47f"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "22.14.0",
+    "platform": "linux-x64"
+  },
+  "steps": [
+    {
+      "name": "pinned_toolchain_verified",
+      "ok": true,
+      "detail": "Node.js 22.14.0, npm 10.9.7, Java (emulators) 21, Firebase CLI 13.35.1, Firebase Admin SDK 13.10.0, TypeScript 5.9.3, Vite 6.4.3, Playwright 1.62.1"
+    },
+    {
+      "name": "builder_root_clean",
+      "ok": true,
+      "detail": "cand-fd5997306889 (179 tracked files)"
+    },
+    {
+      "name": "code_completeness_scan",
+      "ok": true,
+      "detail": "164 files scanned, 0 classified finding(s)"
+    },
+    {
+      "name": "architecture_conformance",
+      "ok": true,
+      "detail": "156 files, 6 rules, 0 violations"
+    },
+    {
+      "name": "greenfield_source_tree_clean",
+      "ok": true,
+      "detail": "179 tracked files, 752 locked packages"
+    },
+    {
+      "name": "blueprint_preflight",
+      "ok": true,
+      "detail": "ALPHA_3_V1 144f178d3cbf (15538 lines)"
+    },
+    {
+      "name": "candidate_materialized",
+      "ok": true,
+      "detail": "179 tracked files -> /workspace/Runtime/candidates/cand-fd5997306889/Builder"
+    },
+    {
+      "name": "clean_dependency_install_from_lockfile",
+      "ok": true,
+      "detail": "npm ci exit=0"
+    },
+    {
+      "name": "candidate_build",
+      "ok": true,
+      "detail": "npm run build exit=0"
+    },
+    {
+      "name": "frozen_runtime_ready",
+      "ok": true,
+      "detail": "http://127.0.0.1:5274 candidate=cand-fd5997306889"
+    },
+    {
+      "name": "focused_unit_suite",
+      "ok": true,
+      "detail": "exit=0 pass=156 fail=0 skipped=0"
+    },
+    {
+      "name": "actual_page_self_play_and_smoke_spine",
+      "ok": true,
+      "detail": "90/90 passed, 0 failed, 0 skipped"
+    },
+    {
+      "name": "browser_suite_executed_expected_scenarios",
+      "ok": true,
+      "detail": "90 scenario(s) executed, 90 expected"
+    },
+    {
+      "name": "candidate_unchanged_during_run",
+      "ok": true,
+      "detail": "cand-fd5997306889"
+    }
+  ],
+  "failures": [],
+  "codeCompletenessScan": {
+    "ok": true,
+    "scanVersion": "completeness-scan-v1",
+    "filesScanned": 164,
+    "findings": [],
+    "approvedFuturePhase": [
+      {
+        "text": "NOT_YET_IMPLEMENTED — Phase 2",
+        "file": "tools/arena/local-stack-manifest.mjs",
+        "justification": "Section 25 assigns realtime projection delivery to Phase 2. The manifest states the service is absent rather than reporting a socket that does not exist."
+      }
+    ],
+    "selfExclusion": {
+      "file": "tools/certification/code-completeness-scan.mjs",
+      "reason": "This file defines the detection patterns and would match itself.",
+      "coveredBy": "tools/certification/greenfield-evidence.mjs"
+    }
+  },
+  "architectureConformance": {
+    "ok": true,
+    "conformanceVersion": "architecture-conformance-v1",
+    "filesScanned": 156,
+    "ruleCount": 6,
+    "findings": [],
+    "selfExclusion": {
+      "file": "tools/certification/architecture-conformance.mjs",
+      "reason": "This file defines the detection patterns and would match itself.",
+      "coveredBy": "tools/certification/code-completeness-scan.mjs"
+    }
+  },
+  "greenfieldEvidence": {
+    "ok": true,
+    "violations": [],
+    "evidence": {
+      "evidenceType": "greenfield_completion_evidence",
+      "blueprintSection": "1.4.7",
+      "treeManifest": {
+        "fileCount": 179,
+        "files": [
+          {
+            "path": ".firebaserc",
+            "mode": "100644",
+            "objectId": "43fa0adde1b6941e61054dbf0066dab403eb23ce"
+          },
+          {
+            "path": "firebase.json",
+            "mode": "100644",
+            "objectId": "3abc59cd8b655ea4964b312f47bd85ed35e8b706"
+          },
+          {
+            "path": "firestore.rules",
+            "mode": "100644",
+            "objectId": "cb45ddbab13f387e186fbb34b8b6d10c91eaa93b"
+          },
+          {
+            "path": "package-lock.json",
+            "mode": "100644",
+            "objectId": "a06a839675bbf301ff4454aa2bbe805389b67cc3"
+          },
+          {
+            "path": "package.json",
+            "mode": "100644",
+            "objectId": "f1f75633458a0db7381c227827b9484faabce99e"
+          },
+          {
+            "path": "playwright.config.ts",
+            "mode": "100644",
+            "objectId": "15564b3a36f948ea1a2a4047f05b8d5a01c22714"
+          },
+          {
+            "path": "src/client/account-session.ts",
+            "mode": "100644",
+            "objectId": "3afcf73f2624178a1b73f4ce891846a58cd9288b"
+          },
+          {
+            "path": "src/client/api.ts",
+            "mode": "100644",
+            "objectId": "707567d4a01aba9f4baa5ba58a36161319485980"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__dramatic_chronicler.svg",
+            "mode": "100644",
+            "objectId": "1011ee575e537b939e4ef599248f97a58189c793"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__dry_storyteller.svg",
+            "mode": "100644",
+            "objectId": "cbbae53b1b370ac93e844f6e102f45d3253aedb3"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__encouraging_guide.svg",
+            "mode": "100644",
+            "objectId": "601f0c783d54046060b8a8e46afcce02cfca1ed3"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__friendly_adventurer.svg",
+            "mode": "100644",
+            "objectId": "d10a2510b9f7363aa5445bb78337dd61fa9ca29a"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__sassy_companion.svg",
+            "mode": "100644",
+            "objectId": "7b5b2d3f6645679c70c095be7dcfbe1f1b35af9e"
+          },
+          {
+            "path": "src/client/assets/directors/garrick__seasoned_host.svg",
+            "mode": "100644",
+            "objectId": "edb5c97c54de2fc00f5bb0ff3a77434933684ac5"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__dramatic_chronicler.svg",
+            "mode": "100644",
+            "objectId": "db4b1d87e065d85cec0292b67dade752f33f26fc"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__dry_storyteller.svg",
+            "mode": "100644",
+            "objectId": "986ae2be99122ad1f9601fb884141470e2eefc39"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__encouraging_guide.svg",
+            "mode": "100644",
+            "objectId": "a696fb90ab2240de289b7ec1061de1b4dccd5ee1"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__friendly_adventurer.svg",
+            "mode": "100644",
+            "objectId": "e8a8941453d0796545eb8aeed5db55262243f58c"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__sassy_companion.svg",
+            "mode": "100644",
+            "objectId": "dc184ee106121a35b0f230a1551d5c2b18332dad"
+          },
+          {
+            "path": "src/client/assets/directors/veyra__seasoned_host.svg",
+            "mode": "100644",
+            "objectId": "d93fe82ea13b6788d246c4d5e9091e4c171bc375"
+          },
+          {
+            "path": "src/client/assets/svg-module.d.ts",
+            "mode": "100644",
+            "objectId": "112c6f11238cc73a4078532298c9efd572aa2951"
+          },
+          {
+            "path": "src/client/auth-gate.ts",
+            "mode": "100644",
+            "objectId": "ce4555cff512dc338fe1983781ebbf6a305e144b"
+          },
+          {
+            "path": "src/client/character-sheet-view.ts",
+            "mode": "100644",
+            "objectId": "6fba852fd19f2e514843dad0d73263fd2b8cc949"
+          },
+          {
+            "path": "src/client/director-avatars.ts",
+            "mode": "100644",
+            "objectId": "a21c7bef841e2f3da4b436bcff57f823f4e5ab74"
+          },
+          {
+            "path": "src/client/dom-utils.ts",
+            "mode": "100644",
+            "objectId": "f60d565d9124472576347c930a50e908b5442ee2"
+          },
+          {
+            "path": "src/client/index.html",
+            "mode": "100644",
+            "objectId": "5d3b1599f92845ff3ef1e64fe3871f5ca3180925"
+          },
+          {
+            "path": "src/client/main.ts",
+            "mode": "100644",
+            "objectId": "0f97c7abe7a1db15fa7ec2e82828ca6744dba0a7"
+          },
+          {
+            "path": "src/client/page-mount.ts",
+            "mode": "100644",
+            "objectId": "9e013efd309f8cf21ee9894199ba414d73f4715f"
+          },
+          {
+            "path": "src/client/pages/account.ts",
+            "mode": "100644",
+            "objectId": "1e09498ed1ebd412b694612a12d1408fe7f0821a"
+          },
+          {
+            "path": "src/client/pages/admin.ts",
+            "mode": "100644",
+            "objectId": "f9b3f0ef21c18361dda1c4a83814b17cb0cb9191"
+          },
+          {
+            "path": "src/client/pages/campaign-create.ts",
+            "mode": "100644",
+            "objectId": "7b15e74410cde554bb77f716379fd3a6d8718609"
+          },
+          {
+            "path": "src/client/pages/campaign-detail.ts",
+            "mode": "100644",
+            "objectId": "ccbe25edd2ccdcb1528cf42aa74820e3f034b80a"
+          },
+          {
+            "path": "src/client/pages/campaign-settings.ts",
+            "mode": "100644",
+            "objectId": "c4ec84006dfa4d129cb4f806556e1e05243bbd42"
+          },
+          {
+            "path": "src/client/pages/campaign-table.ts",
+            "mode": "100644",
+            "objectId": "21e6bc9f5f1cacd3fb92b84a7462e70b1eaa4144"
+          },
+          {
+            "path": "src/client/pages/campaigns.ts",
+            "mode": "100644",
+            "objectId": "efcd6bce1a39616da73cfcbec98771828755779a"
+          },
+          {
+            "path": "src/client/pages/character-create.ts",
+            "mode": "100644",
+            "objectId": "cac3f35dd99a18b57cb1c6f61f05ee8379b96cf2"
+          },
+          {
+            "path": "src/client/pages/character-sheet.ts",
+            "mode": "100644",
+            "objectId": "876f57ce0f22b7f4e08eb7d4d22f712f42f4fab4"
+          },
+          {
+            "path": "src/client/pages/characters.ts",
+            "mode": "100644",
+            "objectId": "0e9cd1b8fd50f5291e7f5a6efacdc0e766a4815f"
+          },
+          {
+            "path": "src/client/pages/diagnostics.ts",
+            "mode": "100644",
+            "objectId": "4ebd13640e52f93734aaf9776a0fdf2f3b5d4049"
+          },
+          {
+            "path": "src/client/pages/home.ts",
+            "mode": "100644",
+            "objectId": "ec7e7aa5a9e61f3baeb31ae1749a74efabf504e7"
+          },
+          {
+            "path": "src/client/pages/invite.ts",
+            "mode": "100644",
+            "objectId": "64632199867329028602db043d192e33864bfba5"
+          },
+          {
+            "path": "src/client/pages/not-found.ts",
+            "mode": "100644",
+            "objectId": "4e0142438afb1053e3a7cc8e0ca402bb41df0c47"
+          },
+          {
+            "path": "src/client/presentation-preferences.ts",
+            "mode": "100644",
+            "objectId": "b6020b8c3e00e14141f75e10ad3dcba387b6b457"
+          },
+          {
+            "path": "src/client/router.ts",
+            "mode": "100644",
+            "objectId": "e2caa1b8a6b2bdda0ccc205ba01d707f7dfef0ac"
+          },
+          {
+            "path": "src/client/shell.ts",
+            "mode": "100644",
+            "objectId": "cef450075c8307128dbc825ec3bc2640e2a0fc43"
+          },
+          {
+            "path": "src/client/styles.css",
+            "mode": "100644",
+            "objectId": "9eb57d4b9e9170d3f5ba5d0ee386c1383971dc56"
+          },
+          {
+            "path": "src/client/table/table-stage.ts",
+            "mode": "100644",
+            "objectId": "837beca43726d140b614226bc421ee7766873de3"
+          },
+          {
+            "path": "src/server/admin/admin-auth.ts",
+            "mode": "100644",
+            "objectId": "41928d0ed8f822ea6c90e7ae5fb140296a881a88"
+          },
+          {
+            "path": "src/server/admin/admin-service.ts",
+            "mode": "100644",
+            "objectId": "05b4ed809d1327cbf666835197873554ceaa8558"
+          },
+          {
+            "path": "src/server/ai/director-gateway.ts",
+            "mode": "100644",
+            "objectId": "72c3418aad8c6d1cb08cdad323c5b101f472cd37"
+          },
+          {
+            "path": "src/server/campaigns/campaign-memory.ts",
+            "mode": "100644",
+            "objectId": "524d5a5d240a863f9659ea53be2a9eda3ca82404"
+          },
+          {
+            "path": "src/server/campaigns/campaigns.ts",
+            "mode": "100644",
+            "objectId": "bca6a5490d4cc250ce3885617843fa56069c03ed"
+          },
+          {
+            "path": "src/server/campaigns/director-catalog.ts",
+            "mode": "100644",
+            "objectId": "a4c3817f600627d8da2b3607e0a0a67b3726a8e6"
+          },
+          {
+            "path": "src/server/campaigns/errors.ts",
+            "mode": "100644",
+            "objectId": "daac08eb8078e725aa6e77120ff61e83b21b42aa"
+          },
+          {
+            "path": "src/server/characters/characters.ts",
+            "mode": "100644",
+            "objectId": "30776244f7cd4fd5a99760317f3d67a9dcd677ee"
+          },
+          {
+            "path": "src/server/characters/parse-choices.ts",
+            "mode": "100644",
+            "objectId": "3e04613d73ef3996525ed476a608fe093f6c277e"
+          },
+          {
+            "path": "src/server/communication/chronicle.ts",
+            "mode": "100644",
+            "objectId": "c4e3e3564dda0ce3bf91a50d0c26cd446f3feff3"
+          },
+          {
+            "path": "src/server/communication/party-chat.ts",
+            "mode": "100644",
+            "objectId": "96d239fdcb29af182e8fd4e84bec3d2ba83373b1"
+          },
+          {
+            "path": "src/server/config/environment.ts",
+            "mode": "100644",
+            "objectId": "a5f78aa545908ad6a7ba4964684bd890d9581cac"
+          },
+          {
+            "path": "src/server/foundation/foundation-checks.ts",
+            "mode": "100644",
+            "objectId": "938a3e51a8183617a908e565390e3f8b8212104d"
+          },
+          {
+            "path": "src/server/http/server.ts",
+            "mode": "100644",
+            "objectId": "9deb2a4cc65851b3a689b7f4c3ce6ffaf56abac5"
+          },
+          {
+            "path": "src/server/identity/development-identity.ts",
+            "mode": "100644",
+            "objectId": "911937c3bd5f2c56681425fb9597ad6e922a2046"
+          },
+          {
+            "path": "src/server/index.ts",
+            "mode": "100644",
+            "objectId": "13d8ac5cba354d6eb06f9a2e51d340b640578c40"
+          },
+          {
+            "path": "src/server/legal/legal-acceptance.ts",
+            "mode": "100644",
+            "objectId": "83dac7e9b28d013c2aabca110a4d1986d94304e1"
+          },
+          {
+            "path": "src/server/legal/legal-registry.ts",
+            "mode": "100644",
+            "objectId": "a61f7575b01dd5ba87b1f4bb6c37e167bae7d9b0"
+          },
+          {
+            "path": "src/server/legal/render-legal-page.ts",
+            "mode": "100644",
+            "objectId": "f8e9a6fe9fe4b6b2e1199ae40886ce78b4482933"
+          },
+          {
+            "path": "src/server/persistence/firestore.ts",
+            "mode": "100644",
+            "objectId": "1db38a310e5d2f47449a859b2a62651d53359478"
+          },
+          {
+            "path": "src/server/presence/presence-runtime.ts",
+            "mode": "100644",
+            "objectId": "32a0052cf3c8bcaef2f8cf9e6039ab472784f209"
+          },
+          {
+            "path": "src/server/presentation/presentation-cues.ts",
+            "mode": "100644",
+            "objectId": "0954c4efb9014e7ddea4882773ee665dd3df4878"
+          },
+          {
+            "path": "src/server/privacy/account-deletion.ts",
+            "mode": "100644",
+            "objectId": "f183cdeae90ce8bdbccf33bf91501962f2641b40"
+          },
+          {
+            "path": "src/server/release/gold-master.ts",
+            "mode": "100644",
+            "objectId": "b1459917fec1c38e2ff277de2d1fe2a84862d57e"
+          },
+          {
+            "path": "src/server/release/public-surface.ts",
+            "mode": "100644",
+            "objectId": "3760daa9ac40cb1d798ec2775318d31559c26126"
+          },
+          {
+            "path": "src/server/release/qa-harness.ts",
+            "mode": "100644",
+            "objectId": "ce79975db5a7e55c0b54c631ffd76d41fbd10a48"
+          },
+          {
+            "path": "src/server/rules/character-rules.ts",
+            "mode": "100644",
+            "objectId": "78395405b68506078fa59d48db23acb5ee587f4e"
+          },
+          {
+            "path": "src/server/rules/engine/adjudication.ts",
+            "mode": "100644",
+            "objectId": "ca39c3744eb398f7b78de9cbfa139da8d2c8b11c"
+          },
+          {
+            "path": "src/server/rules/engine/areas.ts",
+            "mode": "100644",
+            "objectId": "cc4230a3fb67ba2b10ef35cd91cc433cacf38e9f"
+          },
+          {
+            "path": "src/server/rules/engine/conditions.ts",
+            "mode": "100644",
+            "objectId": "f1b35fe1ed88876e98b8e544cc76f914bef4ddc0"
+          },
+          {
+            "path": "src/server/rules/engine/dice.ts",
+            "mode": "100644",
+            "objectId": "1bd35f57b4a4f335dc8bdc6f304da3dd113e9050"
+          },
+          {
+            "path": "src/server/rules/engine/encounter-runtime.ts",
+            "mode": "100644",
+            "objectId": "b79bde2f054f2ddfde464b7206021c3ad8e9c9ef"
+          },
+          {
+            "path": "src/server/rules/engine/rules-commands.ts",
+            "mode": "100644",
+            "objectId": "030e5195ff5648a99bb7c05065c77144a08caf74"
+          },
+          {
+            "path": "src/server/rules/engine/rules-explanations.ts",
+            "mode": "100644",
+            "objectId": "ff8a778b928bd031ac3b3c82fd8efd29d278da43"
+          },
+          {
+            "path": "src/server/rules/engine/spell-effects.ts",
+            "mode": "100644",
+            "objectId": "688d2357b5815d67272a44d5ecd589c1fa77de59"
+          },
+          {
+            "path": "src/server/rules/engine/xp-progression.ts",
+            "mode": "100644",
+            "objectId": "fd2de3516b1dcd1f30b06423ea5037009402e057"
+          },
+          {
+            "path": "src/server/rules/srd-manifest.ts",
+            "mode": "100644",
+            "objectId": "ae5031e12934d0fe58dc1f24adddf26bd83c27e1"
+          },
+          {
+            "path": "src/server/security/rate-limit.ts",
+            "mode": "100644",
+            "objectId": "a5227d70d95da992e01f5b90f00bccfeb4c1036b"
+          },
+          {
+            "path": "src/server/settings/campaign-settings.ts",
+            "mode": "100644",
+            "objectId": "11174a9d2d87f372c8cb0bc39eb499cea58ef8e1"
+          },
+          {
+            "path": "src/server/settings/player-settings.ts",
+            "mode": "100644",
+            "objectId": "8cd7e0bc68efa90b07b50092d3e6cae1cd917392"
+          },
+          {
+            "path": "src/server/table/commands.ts",
+            "mode": "100644",
+            "objectId": "8d9d571b9bdd9dddb7b583edbd399d3923e62112"
+          },
+          {
+            "path": "src/server/table/map-projection.ts",
+            "mode": "100644",
+            "objectId": "1f976dc32bf0369611e281a05b83ee70ce389118"
+          },
+          {
+            "path": "src/server/table/map-runtime.ts",
+            "mode": "100644",
+            "objectId": "3a5c4bb2b58ebf86d12b385a4d479dff5272b95d"
+          },
+          {
+            "path": "src/server/table/path-validator.ts",
+            "mode": "100644",
+            "objectId": "41dacc2d62a85e842f4c62031809a24e95dc6e78"
+          },
+          {
+            "path": "src/server/table/timing-authority.ts",
+            "mode": "100644",
+            "objectId": "1aad7642813258deaed865b97df6cce4d58b3da7"
+          },
+          {
+            "path": "src/shared/ai-director-contract.ts",
+            "mode": "100644",
+            "objectId": "e3069cb72ad5a2ed5b8fa42d239517227f640bd4"
+          },
+          {
+            "path": "src/shared/campaign-contract.ts",
+            "mode": "100644",
+            "objectId": "c799e9dbc6677e43eb84156f491c55f7ff90d654"
+          },
+          {
+            "path": "src/shared/campaign-memory-contract.ts",
+            "mode": "100644",
+            "objectId": "fe0103af10540cadace44ee3823159369535b71a"
+          },
+          {
+            "path": "src/shared/character-contract.ts",
+            "mode": "100644",
+            "objectId": "1796c63f88047566a857a550e7d099d87ec8eadc"
+          },
+          {
+            "path": "src/shared/command-contract.ts",
+            "mode": "100644",
+            "objectId": "ac6f8edc389de3e061825fa0fbcd453a2489275e"
+          },
+          {
+            "path": "src/shared/communication-contract.ts",
+            "mode": "100644",
+            "objectId": "8c3e0bc4e885c8c152634abcd49208803bba7168"
+          },
+          {
+            "path": "src/shared/content/emberferry-crossing.ts",
+            "mode": "100644",
+            "objectId": "e3e47017b225fca03c1e10cbd4a2e8200bf383e7"
+          },
+          {
+            "path": "src/shared/content/emberferry-maps.ts",
+            "mode": "100644",
+            "objectId": "4d76568064b5cb69063d1d9f7378fcc8bb926ad7"
+          },
+          {
+            "path": "src/shared/contract.ts",
+            "mode": "100644",
+            "objectId": "7e6c5cf4e42f55d471826f45213093e1941fcece"
+          },
+          {
+            "path": "src/shared/identity-contract.ts",
+            "mode": "100644",
+            "objectId": "e56da8f173309747bd58791dbddf247853928ae6"
+          },
+          {
+            "path": "src/shared/map-contract.ts",
+            "mode": "100644",
+            "objectId": "6b14219c07a908089a05ce4662b1d445f3ced398"
+          },
+          {
+            "path": "src/shared/movement-contract.ts",
+            "mode": "100644",
+            "objectId": "4616e5a9e9b47f90b7863c9479d960f65a06221d"
+          },
+          {
+            "path": "src/shared/presence-contract.ts",
+            "mode": "100644",
+            "objectId": "a9b3d78d44b8c49dce0e138f35c552dc418d9782"
+          },
+          {
+            "path": "src/shared/presentation-cue-contract.ts",
+            "mode": "100644",
+            "objectId": "d213a8c2c75e6f862d31c97a442f95809141db28"
+          },
+          {
+            "path": "src/shared/public-surface-contract.ts",
+            "mode": "100644",
+            "objectId": "a3cbd358b3d24f47783b943b599cc093cd8d68a7"
+          },
+          {
+            "path": "src/shared/routes.ts",
+            "mode": "100644",
+            "objectId": "d07f849fd36d2d793b1a7a8dbbedba939d1d4079"
+          },
+          {
+            "path": "src/shared/rules-combat-contract.ts",
+            "mode": "100644",
+            "objectId": "ec9ea3bee2783e73457b4d0cc06d5370c7ebad9e"
+          },
+          {
+            "path": "src/shared/settings-contract.ts",
+            "mode": "100644",
+            "objectId": "4e8f99174d426a5e6297ba9a254c08dcfe614a4e"
+          },
+          {
+            "path": "src/shared/timing-authority-contract.ts",
+            "mode": "100644",
+            "objectId": "ffde3977e226788e0d7d98563f479e4f0968d0b8"
+          },
+          {
+            "path": "tests/e2e/arena-page.ts",
+            "mode": "100644",
+            "objectId": "bc2330a4be09b3d2561a10eea77830ada0dd8149"
+          },
+          {
+            "path": "tests/e2e/phase0-self-play.spec.ts",
+            "mode": "100644",
+            "objectId": "acbc1b68f2b15a0b6ae5c4c428199e2b829dac0e"
+          },
+          {
+            "path": "tests/e2e/phase1-account.spec.ts",
+            "mode": "100644",
+            "objectId": "d4251346181ffc51e9eaf848773baf0ba05311f5"
+          },
+          {
+            "path": "tests/e2e/phase1-campaigns.spec.ts",
+            "mode": "100644",
+            "objectId": "5393a5ac7df1f176e3668db56b271b8615d321df"
+          },
+          {
+            "path": "tests/e2e/phase1-characters.spec.ts",
+            "mode": "100644",
+            "objectId": "b06696ab37afaeecd606b9f2a25b28e1b898b0c4"
+          },
+          {
+            "path": "tests/e2e/phase1-reentry.spec.ts",
+            "mode": "100644",
+            "objectId": "1136b1b5c2472203b9680a60b8106d70be931fa6"
+          },
+          {
+            "path": "tests/e2e/phase1-settings-dock.spec.ts",
+            "mode": "100644",
+            "objectId": "11739a11d931a7bbea8c603ebaa36cfd9556779c"
+          },
+          {
+            "path": "tests/e2e/phase1-shell.spec.ts",
+            "mode": "100644",
+            "objectId": "f61e4bba52c7e09bd80b4f82161f94aa575b7d35"
+          },
+          {
+            "path": "tests/e2e/phase2-map-stage.spec.ts",
+            "mode": "100644",
+            "objectId": "060cb00e22a0aef5fc033f162198dd78ba152658"
+          },
+          {
+            "path": "tests/e2e/phase2-movement.spec.ts",
+            "mode": "100644",
+            "objectId": "e5cfd6d5f4edd5db1b612d893f9f085ea4d1f682"
+          },
+          {
+            "path": "tests/e2e/phase2-table-a11y.spec.ts",
+            "mode": "100644",
+            "objectId": "0156ca12fecae9d5f8e7bcc29d13ab855c109fec"
+          },
+          {
+            "path": "tests/e2e/phase2-table-commands.spec.ts",
+            "mode": "100644",
+            "objectId": "0accd2f0bf85b534375b74edd01c2943c7f594f8"
+          },
+          {
+            "path": "tests/e2e/phase2-timing-authority.spec.ts",
+            "mode": "100644",
+            "objectId": "e2cb708a041cc781a4c33ed8f55f116e71c52c0e"
+          },
+          {
+            "path": "tests/e2e/phase2-two-client-sync.spec.ts",
+            "mode": "100644",
+            "objectId": "08dc8b89cad597f1bd3ac0d4d7e6aca076983dd7"
+          },
+          {
+            "path": "tests/e2e/phase3-rules-encounter.spec.ts",
+            "mode": "100644",
+            "objectId": "2ea0e47d5a2342cdfa5d93a47047747f07c1a5d2"
+          },
+          {
+            "path": "tests/e2e/phase4-realtime-ai.spec.ts",
+            "mode": "100644",
+            "objectId": "8bfbac5ab48b2ff374c728a0afbd89f75f290078"
+          },
+          {
+            "path": "tests/e2e/phase5-starter-resume.spec.ts",
+            "mode": "100644",
+            "objectId": "5969e366e9120ea33e08803bc7bf8f3ebc041497"
+          },
+          {
+            "path": "tests/e2e/phase6-a11y-wcag.spec.ts",
+            "mode": "100644",
+            "objectId": "7ae9c6e9d268a78b3a4dee95bfc31d4427491f55"
+          },
+          {
+            "path": "tests/e2e/phase6-chaos-recovery.spec.ts",
+            "mode": "100644",
+            "objectId": "3c2b009c9df9f7e8861aa98f282ecb332af2b0a1"
+          },
+          {
+            "path": "tests/e2e/phase6-longitudinal.spec.ts",
+            "mode": "100644",
+            "objectId": "5acf9f2b4b766b61ea87ea7d9d3ad2ed52019a11"
+          },
+          {
+            "path": "tests/e2e/phase6-security-abuse.spec.ts",
+            "mode": "100644",
+            "objectId": "cefae073053791a02b37bddc64202bfc841c4f80"
+          },
+          {
+            "path": "tests/e2e/phase7-gold-master.spec.ts",
+            "mode": "100644",
+            "objectId": "16cb495709e77c695adf040d092411d3c32e7347"
+          },
+          {
+            "path": "tests/e2e/qa-regressions.spec.ts",
+            "mode": "100644",
+            "objectId": "c960a352067805ca6a5b3cf36c1eaeea1ecc38c6"
+          },
+          {
+            "path": "tests/e2e/smoke-spine.spec.ts",
+            "mode": "100644",
+            "objectId": "b439f09db5c6729c46aab213179fb8cc1c553538"
+          },
+          {
+            "path": "tests/unit/architecture-conformance.test.mjs",
+            "mode": "100644",
+            "objectId": "82a154a6d1faf2f82011739b754dc448d6056b50"
+          },
+          {
+            "path": "tests/unit/blueprint-preflight.test.mjs",
+            "mode": "100644",
+            "objectId": "48a821a6b27777391a134df6ccb201723389a3f7"
+          },
+          {
+            "path": "tests/unit/campaign-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "373f661908ca295a74e7be2e29ac33b672725f68"
+          },
+          {
+            "path": "tests/unit/character-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "f9d73b1e28b4b396aa445dcdf1dd208d7b46169b"
+          },
+          {
+            "path": "tests/unit/character-rules.test.mjs",
+            "mode": "100644",
+            "objectId": "b963cecf29682b4fe8bcaf3af76d54083f476d15"
+          },
+          {
+            "path": "tests/unit/characters-service.test.mjs",
+            "mode": "100644",
+            "objectId": "96d698b8484be3922634512443ddab4c990e0cd8"
+          },
+          {
+            "path": "tests/unit/contract.test.mjs",
+            "mode": "100644",
+            "objectId": "adc575c7651038e28c8bb4034d88bf2378578f79"
+          },
+          {
+            "path": "tests/unit/environment-guards.test.mjs",
+            "mode": "100644",
+            "objectId": "26c2cec632261cb0eb727867f323642f2fe4e2b4"
+          },
+          {
+            "path": "tests/unit/legal-registry.test.mjs",
+            "mode": "100644",
+            "objectId": "a186d0224c053a01dd04c4d34c27e9b52e408c6f"
+          },
+          {
+            "path": "tests/unit/map-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "dc69e48f50129fc1b53b9ba09a9ab3faa83ecabd"
+          },
+          {
+            "path": "tests/unit/parse-choices.test.mjs",
+            "mode": "100644",
+            "objectId": "aa4e23635aab39326555da3bbfef076226c2c518"
+          },
+          {
+            "path": "tests/unit/path-validator.test.mjs",
+            "mode": "100644",
+            "objectId": "b02f4bb9eeb8f41feaf6030a52c37abb123cfb3a"
+          },
+          {
+            "path": "tests/unit/phase1-coverage-model.test.mjs",
+            "mode": "100644",
+            "objectId": "220a1df04b758a812c17f623eecf2613949b2ef1"
+          },
+          {
+            "path": "tests/unit/phase3-rules-engine.test.mjs",
+            "mode": "100644",
+            "objectId": "4328a6fabec8d5c1bd9f9388fd0f9123cc0ac0e1"
+          },
+          {
+            "path": "tests/unit/phase4-presence-admin.test.mjs",
+            "mode": "100644",
+            "objectId": "1145ff7fe91037edb7482e9448cdd9d0b68c4ceb"
+          },
+          {
+            "path": "tests/unit/phase5-campaign-memory.test.mjs",
+            "mode": "100644",
+            "objectId": "14fc52cb91e91dbdb983c1f381e265b55066e9f5"
+          },
+          {
+            "path": "tests/unit/phase6-rate-limit.test.mjs",
+            "mode": "100644",
+            "objectId": "9d37edc679121581bb2b3483516db160c096c52c"
+          },
+          {
+            "path": "tests/unit/phase7-gold-master.test.mjs",
+            "mode": "100644",
+            "objectId": "ce76abe9bb6c66218692965eb882b82ca699c503"
+          },
+          {
+            "path": "tests/unit/settings-communication-contract.test.mjs",
+            "mode": "100644",
+            "objectId": "8e1d4a11adaf364a5c391bc14e4e4442a854773d"
+          },
+          {
+            "path": "tests/unit/srd-manifest.test.mjs",
+            "mode": "100644",
+            "objectId": "eef54010de496c686ccf8289debbd0907ad4e136"
+          },
+          {
+            "path": "tests/unit/stable-identifiers.test.mjs",
+            "mode": "100644",
+            "objectId": "2027292ec7bff6fcb989e6d3359873566e497f69"
+          },
+          {
+            "path": "tests/unit/table-commands.test.mjs",
+            "mode": "100644",
+            "objectId": "dd4f158765378086e8de529591b1439758b106f5"
+          },
+          {
+            "path": "tests/unit/timing-authority.test.mjs",
+            "mode": "100644",
+            "objectId": "bb9b4b148f3a2847b0fc6d534f107f2f61e8337b"
+          },
+          {
+            "path": "tests/unit/workspace-roots.test.mjs",
+            "mode": "100644",
+            "objectId": "ad005e8646b3f722c932c5fefd223c908c471a81"
+          },
+          {
+            "path": "tools/arena/arena-instance.mjs",
+            "mode": "100644",
+            "objectId": "e49d5a1c7aee062c468f664fc3082f68fb65e923"
+          },
+          {
+            "path": "tools/arena/emulators.mjs",
+            "mode": "100644",
+            "objectId": "8743f5bbc9694deebb9368601269b56b79958ee8"
+          },
+          {
+            "path": "tools/arena/local-stack-manifest.mjs",
+            "mode": "100644",
+            "objectId": "0f38503b785057976b5f2880a8ecd759ce37cab3"
+          },
+          {
+            "path": "tools/arena/project.mjs",
+            "mode": "100644",
+            "objectId": "4966da930b3be9625fa1a43b8b58f33d0be56824"
+          },
+          {
+            "path": "tools/arena/seed.mjs",
+            "mode": "100644",
+            "objectId": "bcaa913f6ac3a9fa0f6d334f47702a4e941b8735"
+          },
+          {
+            "path": "tools/arena/start-arena.mjs",
+            "mode": "100644",
+            "objectId": "8de2626c398bf4cf4066799c2acf1c1cbcba2f3d"
+          },
+          {
+            "path": "tools/blueprint/preflight.mjs",
+            "mode": "100644",
+            "objectId": "cd5c9e495327ca43bcce3c3e0a441c507d07473f"
+          },
+          {
+            "path": "tools/candidate/candidate-identity.mjs",
+            "mode": "100644",
+            "objectId": "fbdabe49fa94f98d8e7f729e813d305326309e39"
+          },
+          {
+            "path": "tools/certification/architecture-conformance.mjs",
+            "mode": "100644",
+            "objectId": "f6eeba186e558adaf1f24de5a024b0ec605b9233"
+          },
+          {
+            "path": "tools/certification/code-completeness-scan.mjs",
+            "mode": "100644",
+            "objectId": "7a02ea2adfed82dac327872b0be6cb66213ebd62"
+          },
+          {
+            "path": "tools/certification/greenfield-evidence.mjs",
+            "mode": "100644",
+            "objectId": "84220d4b3c76931dc5d90a0afc01502457ddd5a9"
+          },
+          {
+            "path": "tools/certification/run-certification.mjs",
+            "mode": "100644",
+            "objectId": "46c4a7ac0cd0943283603d68d8db4c9da118cc73"
+          },
+          {
+            "path": "tools/certification/serve-frozen.mjs",
+            "mode": "100644",
+            "objectId": "03231ecfd9067d61c0cd91478484abbca6db18a3"
+          },
+          {
+            "path": "tools/verify-toolchain.mjs",
+            "mode": "100644",
+            "objectId": "76eda926bfd026f8027b2887b69406f287f4a14c"
+          },
+          {
+            "path": "tools/workspace/init-working-directory.mjs",
+            "mode": "100644",
+            "objectId": "511826beecfb7b44e920fdff77b9273459095aeb"
+          },
+          {
+            "path": "tools/workspace/working-directory.mjs",
+            "mode": "100644",
+            "objectId": "4b7b8aa1da59ffd26a34ec2e0e35f8d42fc1ad04"
+          },
+          {
+            "path": "tsconfig.base.json",
+            "mode": "100644",
+            "objectId": "9823d34584df0ef959e0df78bffc779e14f47a49"
+          },
+          {
+            "path": "tsconfig.client.json",
+            "mode": "100644",
+            "objectId": "4afb3898f4e282ff2e31dd6d694cbf35eedde275"
+          },
+          {
+            "path": "tsconfig.server.json",
+            "mode": "100644",
+            "objectId": "d50c9e9833f3b3f40c9eef47675d8ca16617f17b"
+          },
+          {
+            "path": "vite.config.ts",
+            "mode": "100644",
+            "objectId": "aa9f5228392ea7b7c20b00cab91ef76c4e9d2c80"
+          }
+        ]
+      },
+      "frameworkGeneratedFiles": {
+        "generator": "none",
+        "note": "No scaffolding generator was run. Every tracked file in Builder Root was authored directly against the V1 blueprint, so the approved-generated-file list is empty by construction rather than by omission.",
+        "files": []
+      },
+      "dependencies": {
+        "format": "lockfile-derived-package-list-v1",
+        "packageCount": 752,
+        "directDependencyCount": 2,
+        "directDevDependencyCount": 5,
+        "sbomHash": "1b50d8ae61b56f91caf50a61a30458ec9a7fa80ebfc9e52614254ac932d3732b",
+        "lockfileHash": "bd5d2990b2b78c71c0742e2410edae2a02dd75447d6582b778e8aed8e5bea47f"
+      },
+      "prohibitedPatternScan": {
+        "topologyRules": [
+          "hex_grid",
+          "isometric_topology",
+          "topology_switch",
+          "compatibility_layer"
+        ],
+        "secretAndImportRules": [
+          "private_key_block",
+          "service_account_json",
+          "google_api_key",
+          "password_credential_flow",
+          "password_literal",
+          "database_export"
+        ],
+        "trackedPathRules": [
+          "QA/",
+          "Evidence/",
+          "Runtime/",
+          "Checkpoints/",
+          "Pending-Archive/"
+        ],
+        "violationCount": 0,
+        "selfExclusion": {
+          "file": "tools/certification/greenfield-evidence.mjs",
+          "reason": "This file defines the detection patterns and would match itself.",
+          "coveredBy": "tools/certification/code-completeness-scan.mjs"
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "command": "npm ci --no-audit --no-fund",
+      "cwd": "/workspace/Runtime/candidates/cand-fd5997306889/Builder",
+      "startedAt": "2026-08-17T11:50:13.138Z",
+      "endedAt": "2026-08-17T11:50:18.831Z",
+      "exitCode": 0,
+      "stdoutTail": "\nadded 701 packages in 6s\n",
+      "stderrTail": "npm warn deprecated tar@6.2.1: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead\nnpm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.\nnpm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).\nnpm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\n"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "/workspace/Runtime/candidates/cand-fd5997306889/Builder",
+      "startedAt": "2026-08-17T11:50:18.832Z",
+      "endedAt": "2026-08-17T11:50:23.903Z",
+      "exitCode": 0,
+      "stdoutTail": "\n> hallucinated-dungeons-alpha3@0.0.0 build\n> npm run build:server && npm run build:client\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:server\n> tsc --project tsconfig.server.json\n\n\n> hallucinated-dungeons-alpha3@0.0.0 build:client\n> vite build --config vite.config.ts\n\nvite v6.4.3 building for production...\ntransforming...\n✓ 764 modules transformed.\nrendering chunks...\ncomputing gzip size...\n../../dist/client/index.html                               0.59 kB │ gzip:   0.36 kB\n../../dist/client/assets/index-CFjZfIEv.css               22.94 kB │ gzip:   4.95 kB\n../../dist/client/assets/Filter-Dv4bh0FA.js                0.95 kB │ gzip:   0.51 kB │ map:     4.03 kB\n../../dist/client/assets/BufferResource-BANJe8ya.js       10.65 kB │ gzip:   2.83 kB │ map:    27.70 kB\n../../dist/client/assets/webworkerAll-B7pOIBHp.js         15.43 kB │ gzip:   4.90 kB │ map:    56.90 kB\n../../dist/client/assets/CanvasRenderer-k-NwI8Aq.js       17.52 kB │ gzip:   5.86 kB │ map:    76.79 kB\n../../dist/client/assets/WebGPURenderer-Rwj5eHeq.js       38.93 kB │ gzip:  10.87 kB │ map:   131.38 kB\n../../dist/client/assets/browserAll-Diyqt1de.js           43.07 kB │ gzip:  11.31 kB │ map:   162.02 kB\n../../dist/client/assets/RenderTargetSystem-BQfn7T0M.js   46.44 kB │ gzip:  12.76 kB │ map:   177.39 kB\n../../dist/client/assets/WebGLRenderer-CW7yuFpS.js        68.75 kB │ gzip:  18.88 kB │ map:   228.80 kB\n../../dist/client/assets/index-BH6D0WDb.js               511.69 kB │ gzip: 139.93 kB │ map: 2,077.68 kB\n✓ built in 2.87s\n",
+      "stderrTail": "\n(!) Some chunks are larger than 500 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\n"
+    },
+    {
+      "command": "node --test tests/unit/*.test.mjs",
+      "cwd": "/workspace/Runtime/candidates/cand-fd5997306889/Builder",
+      "startedAt": "2026-08-17T11:50:31.744Z",
+      "endedAt": "2026-08-17T11:50:32.617Z",
+      "exitCode": 0,
+      "stdoutTail": "ery casting class has enough spells on its list to make a legal character\n  ---\n  duration_ms: 0.976962\n  ...\n# Subtest: every species is internally consistent\nok 136 - every species is internally consistent\n  ---\n  duration_ms: 0.273496\n  ...\n# Subtest: every background grants the SRD-shaped package\nok 137 - every background grants the SRD-shaped package\n  ---\n  duration_ms: 0.177067\n  ...\n# Subtest: every spell lists at least one real class list\nok 138 - every spell lists at least one real class list\n  ---\n  duration_ms: 0.158288\n  ...\n# Subtest: armor records are usable by the Armor Class calculation\nok 139 - armor records are usable by the Armor Class calculation\n  ---\n  duration_ms: 0.218122\n  ...\n# Subtest: Phase 1 stable identifier inventory names every required id class\nok 140 - Phase 1 stable identifier inventory names every required id class\n  ---\n  duration_ms: 3.474884\n  ...\n# Subtest: shared contracts still expose the Phase 1 continuity identifiers\nok 141 - shared contracts still expose the Phase 1 continuity identifiers\n  ---\n  duration_ms: 5.528199\n  ...\n# Subtest: table command gateway accepts tactical and Phase 3 rules commands\nok 142 - table command gateway accepts tactical and Phase 3 rules commands\n  ---\n  duration_ms: 0.553611\n  ...\n# Subtest: stale version, not-seated, and illegal-path failures have dedicated machine codes\nok 143 - stale version, not-seated, and illegal-path failures have dedicated machine codes\n  ---\n  duration_ms: 0.105268\n  ...\n# Subtest: persistence collections reserve command, event, and projection stores\nok 144 - persistence collections reserve command, event, and projection stores\n  ---\n  duration_ms: 0.075148\n  ...\n# Subtest: action composer stays separate from Party Chat and references Timing Authority\nok 145 - action composer stays separate from Party Chat and references Timing Authority\n  ---\n  duration_ms: 0.575469\n  ...\n# Subtest: timing authority contract covers Active Turn, Reaction, and Decision windows\nok 146 - timing authority contract covers Active Turn, Reaction, and Decision windows\n  ---\n  duration_ms: 0.862741\n  ...\n# Subtest: timing authority failure codes and collection are reserved\nok 147 - timing authority failure codes and collection are reserved\n  ---\n  duration_ms: 0.08522\n  ...\n# Subtest: action composer unlocks Interpret Action via Timing Authority copy\nok 148 - action composer unlocks Interpret Action via Timing Authority copy\n  ---\n  duration_ms: 0.206158\n  ...\n# Subtest: every role root resolves beneath the working directory\nok 149 - every role root resolves beneath the working directory\n  ---\n  duration_ms: 1.708877\n  ...\n# Subtest: the working directory defaults to the parent of Builder Root\nok 150 - the working directory defaults to the parent of Builder Root\n  ---\n  duration_ms: 0.198719\n  ...\n# Subtest: an explicit working directory is honored when it contains Builder Root\nok 151 - an explicit working directory is honored when it contains Builder Root\n  ---\n  duration_ms: 0.315347\n  ...\n# Subtest: a working directory that does not contain this Builder Root is refused\nok 152 - a working directory that does not contain this Builder Root is refused\n  ---\n  duration_ms: 0.408031\n  ...\n# Subtest: a relative working directory is refused\nok 153 - a relative working directory is refused\n  ---\n  duration_ms: 0.147599\n  ...\n# Subtest: an archive directory inside the working directory is refused\nok 154 - an archive directory inside the working directory is refused\n  ---\n  duration_ms: 0.123336\n  ...\n# Subtest: the archive status is ARCHIVE_PENDING when none is configured\nok 155 - the archive status is ARCHIVE_PENDING when none is configured\n  ---\n  duration_ms: 0.144819\n  ...\n# Subtest: each created subtree records the role that owns writes there\nok 156 - each created subtree records the role that owns writes there\n  ---\n  duration_ms: 10.625569\n  ...\n1..156\n# tests 156\n# suites 0\n# pass 156\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 840.706593\n",
+      "stderrTail": ""
+    },
+    {
+      "command": "/workspace/Runtime/candidates/cand-fd5997306889/Builder/node_modules/.bin/playwright test",
+      "cwd": "/workspace/Runtime/candidates/cand-fd5997306889/Builder",
+      "startedAt": "2026-08-17T11:50:32.618Z",
+      "endedAt": "2026-08-17T11:53:07.928Z",
+      "exitCode": 0,
+      "stdoutTail": " tests/e2e/phase7-gold-master.spec.ts:30:3 › Phase 7 Gold Master release packaging › legal V2 documents name Google hosted identity and Local Arena-only development identities (136ms)\n  ✓  68 [chromium] › tests/e2e/phase7-gold-master.spec.ts:40:3 › Phase 7 Gold Master release packaging › QA harness is available on this Local Arena surface and Gold Master package is NOT_DEPLOYED (56ms)\n  ✓  69 [chromium] › tests/e2e/phase7-gold-master.spec.ts:64:3 › Phase 7 Gold Master release packaging › signed-in player can record legal acceptance of current V2 documents (423ms)\n  ✓  70 [chromium] › tests/e2e/phase7-gold-master.spec.ts:75:3 › Phase 7 Gold Master release packaging › Google emulator sign-in projects google_sign_in identity mode (1.1s)\n  ✓  71 [chromium] › tests/e2e/qa-regressions.spec.ts:34:3 › QA regression coverage › P0-QA-001: a session that ends mid-use is explained on the page (1.7s)\n  ✓  72 [chromium] › tests/e2e/qa-regressions.spec.ts:50:3 › QA regression coverage › P0-QA-001: reloading with a dead session explains itself rather than emptying quietly (1.6s)\n  ✓  73 [chromium] › tests/e2e/qa-regressions.spec.ts:67:3 › QA regression coverage › P0-QA-002: signing out is confirmed on screen (1.2s)\n  ✓  74 [chromium] › tests/e2e/qa-regressions.spec.ts:77:3 › QA regression coverage › P0-QA-003: the live region survives re-rendering (1.2s)\n  ✓  75 [chromium] › tests/e2e/qa-regressions.spec.ts:99:3 › QA regression coverage › P0-QA-004: a failure replaces the previous success announcement (1.6s)\n  ✓  76 [chromium] › tests/e2e/qa-regressions.spec.ts:113:3 › QA regression coverage › P0-QA-005: keyboard focus is preserved across an action (381ms)\n  ✓  77 [chromium] › tests/e2e/qa-regressions.spec.ts:135:3 › QA regression coverage › P0-QA-009: focus moves to the explanation when the focused control is removed (436ms)\n  ✓  78 [chromium] › tests/e2e/qa-regressions.spec.ts:167:3 › QA regression coverage › P0-QA-006: a partial list says how many records exist (867ms)\n  ✓  79 [chromium] › tests/e2e/qa-regressions.spec.ts:194:3 › QA regression coverage › P0-QA-007: an oversized body is refused without stalling the connection (301ms)\n  ✓  80 [chromium] › tests/e2e/qa-regressions.spec.ts:257:3 › QA regression coverage › P0-QA-008: server responses carry their hardening headers (57ms)\n  ✓  81 [chromium] › tests/e2e/smoke-spine.spec.ts:26:3 › Permanent smoke spine › startup: the page loads and reports its candidate and environment (187ms)\n  ✓  82 [chromium] › tests/e2e/smoke-spine.spec.ts:34:3 › Permanent smoke spine › development identity: the server mints an identity the page renders (257ms)\n  ✓  83 [chromium] › tests/e2e/smoke-spine.spec.ts:42:3 › Permanent smoke spine › canonical write and read: a submitted note is persisted and rendered back (1.3s)\n  ✓  84 [chromium] › tests/e2e/smoke-spine.spec.ts:58:3 › Permanent smoke spine › character continuity: quick-start creates a vault character owned by this account (2.5s)\n  ✓  85 [chromium] › tests/e2e/smoke-spine.spec.ts:86:3 › Permanent smoke spine › campaign continuity: create, configure settings, reload, and recover the same campaign (3.6s)\n  ✓  86 [chromium] › tests/e2e/smoke-spine.spec.ts:134:3 › Permanent smoke spine › tactical interaction: claim Active Turn, sync, and commit a legal move (4.2s)\n  ✓  87 [chromium] › tests/e2e/smoke-spine.spec.ts:203:3 › Permanent smoke spine › rules action: begin a training encounter, roll initiative, and resolve one attack (2.9s)\n  ✓  88 [chromium] › tests/e2e/smoke-spine.spec.ts:255:3 › Permanent smoke spine › multiplayer and AI: presence, Director Address, and Party Chat stay isolated from commands (2.6s)\n  ✓  89 [chromium] › tests/e2e/smoke-spine.spec.ts:298:3 › Permanent smoke spine › campaign resume: suspend and resume restores chapter continuity (4.9s)\n  ✓  90 [chromium] › tests/e2e/smoke-spine.spec.ts:341:3 › Permanent smoke spine › public identity and legal: Gold Master package is local, legal V2 names Google Sign-In (275ms)\n\n  90 passed (2.6m)\n",
+      "stderrTail": "(node:105734) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:105734) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    }
+  ],
+  "browserSuite": {
+    "total": 90,
+    "passed": 90,
+    "failed": 0,
+    "skipped": 0
+  }
+}
