@@ -1,0 +1,58 @@
+# Firebase App Hosting settings for Invite-Only Alpha.
+# App root in the GitHub connection is Builder/.
+
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  minInstances: 0
+  maxInstances: 4
+  concurrency: 80
+
+scripts:
+  buildCommand: npm ci && npm run build && npm prune --omit=dev
+  runCommand: node dist/server/index.js
+
+outputFiles:
+  serverApp:
+    include:
+      - dist
+      - package.json
+      - node_modules
+
+env:
+  - variable: HD_ENV_SCHEMA_VERSION
+    value: "1"
+    availability:
+      - RUNTIME
+  - variable: HD_ENVIRONMENT_CLASS
+    value: milestone
+    availability:
+      - RUNTIME
+  - variable: HD_RUNTIME_MODE
+    value: frozen_certification
+    availability:
+      - RUNTIME
+  - variable: HD_PUBLIC_SURFACE
+    value: gold_master
+    availability:
+      - RUNTIME
+  - variable: HD_SERVER_HOST
+    value: "0.0.0.0"
+    availability:
+      - RUNTIME
+  - variable: HD_CANDIDATE_ID
+    value: cand-fd5997306889
+    availability:
+      - RUNTIME
+  - variable: HD_BLUEPRINT_VERSION
+    value: ALPHA_3_V1
+    availability:
+      - RUNTIME
+  - variable: HD_FIREBASE_PROJECT_ID
+    value: hd-a3-staging
+    availability:
+      - RUNTIME
+  - variable: HD_SEED_VERSION
+    value: phase7-gold-master-v1
+    availability:
+      - RUNTIME

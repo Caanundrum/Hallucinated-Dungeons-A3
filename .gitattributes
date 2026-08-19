@@ -1,0 +1,4 @@
+# Shell scripts must stay LF. Windows CRLF in entrypoint.sh makes Cloud Run
+# exit before binding PORT=8080.
+*.sh text eol=lf
+Dockerfile text eol=lf

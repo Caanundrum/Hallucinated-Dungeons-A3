@@ -39,3 +39,4 @@ test-results/
 .env
 .env.local
 *.local
+Builder/tools/milestone/deploy.secrets.ps1

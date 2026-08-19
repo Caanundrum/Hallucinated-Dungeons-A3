@@ -12,6 +12,8 @@
  * Launch Production remains refused until separately authorized.
  */
 
+import { join } from 'node:path';
+
 import {
   ENVIRONMENT_CLASSES,
   ENVIRONMENT_SCHEMA_VERSION,
@@ -176,12 +178,43 @@ function assertNoUnknownHdVariables(env: NodeJS.ProcessEnv): void {
   }
 }
 
+function setIfEmpty(env: NodeJS.ProcessEnv, name: string, value: string): void {
+  if ((env[name] ?? '').trim() === '') {
+    env[name] = value;
+  }
+}
+
+/**
+ * Cloud Run sets PORT and K_SERVICE. Windows `gcloud run deploy --source .`
+ * can also skip a CRLF entrypoint script, so Node fills hosted defaults here
+ * instead of depending on a shell wrapper.
+ */
+export function applyHostedRuntimeDefaults(env: NodeJS.ProcessEnv): void {
+  const onCloudRun = (env.K_SERVICE ?? '').trim() !== '';
+  const milestone = (env.HD_ENVIRONMENT_CLASS ?? '').trim() === 'milestone' || onCloudRun;
+  if (!milestone) {
+    return;
+  }
+  setIfEmpty(env, 'HD_ENV_SCHEMA_VERSION', ENVIRONMENT_SCHEMA_VERSION);
+  setIfEmpty(env, 'HD_ENVIRONMENT_CLASS', 'milestone');
+  setIfEmpty(env, 'HD_RUNTIME_MODE', 'frozen_certification');
+  setIfEmpty(env, 'HD_PUBLIC_SURFACE', 'gold_master');
+  setIfEmpty(env, 'HD_SERVER_HOST', '0.0.0.0');
+  setIfEmpty(env, 'HD_CLIENT_BUNDLE_DIR', join(process.cwd(), 'dist', 'client'));
+  setIfEmpty(env, 'HD_CLIENT_ORIGIN', 'https://placeholder.invalid');
+  const cloudPort = (env.PORT ?? '').trim();
+  if ((env.HD_SERVER_PORT ?? '').trim() === '' && cloudPort !== '') {
+    env.HD_SERVER_PORT = cloudPort;
+  }
+}
+
 /**
  * Reads, validates, and freezes the environment for one server process.
  * Throws {@link EnvironmentError} with an operator-readable reason on any
  * missing, unknown, mixed, or non-local configuration.
  */
 export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): ServerEnvironment {
+  applyHostedRuntimeDefaults(env);
   assertNoUnknownHdVariables(env);
 
   const schemaVersion = required(env, 'HD_ENV_SCHEMA_VERSION');
@@ -369,8 +402,8 @@ function loadMilestoneEnvironment(options: {
     );
   }
 
-  const googleOAuthClientId = required(env, 'HD_GOOGLE_OAUTH_CLIENT_ID');
-  const firebaseWebApiKey = required(env, 'HD_FIREBASE_WEB_API_KEY');
+  const googleOAuthClientId = (env.HD_GOOGLE_OAUTH_CLIENT_ID ?? '').trim();
+  const firebaseWebApiKey = (env.HD_FIREBASE_WEB_API_KEY ?? '').trim();
 
   return {
     environmentSchemaVersion: options.schemaVersion,
@@ -387,8 +420,8 @@ function loadMilestoneEnvironment(options: {
     clientOrigin: clientOriginUrl.origin,
     seedVersion: required(env, 'HD_SEED_VERSION'),
     clientBundleDir: options.clientBundleDir === '' ? null : options.clientBundleDir,
-    googleOAuthClientId,
-    firebaseWebApiKey,
+    googleOAuthClientId: googleOAuthClientId === '' ? null : googleOAuthClientId,
+    firebaseWebApiKey: firebaseWebApiKey === '' ? null : firebaseWebApiKey,
   };
 }
 

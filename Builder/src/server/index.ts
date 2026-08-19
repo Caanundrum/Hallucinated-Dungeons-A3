@@ -10,6 +10,7 @@ import { createArenaServer } from './http/server.js';
 import { createCanonicalStore } from './persistence/firestore.js';
 
 async function main(): Promise<void> {
+  process.stdout.write('[arena-server] process start\n');
   let env;
   try {
     env = loadServerEnvironment();

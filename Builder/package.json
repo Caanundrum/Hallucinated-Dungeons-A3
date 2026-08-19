@@ -2,6 +2,7 @@
   "name": "hallucinated-dungeons-alpha3",
   "version": "0.0.0",
   "private": true,
+  "main": "dist/server/index.js",
   "description": "Hallucinated Dungeons Alpha 3 Builder Root. Phase 0 greenfield foundation: Local Arena, development identity, and the canonical browser -> server -> emulator write/read path.",
   "type": "module",
   "engines": {
@@ -13,6 +14,7 @@
     "build": "npm run build:server && npm run build:client",
     "build:server": "tsc --project tsconfig.server.json",
     "build:client": "vite build --config vite.config.ts",
+    "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit",
     "arena:start": "node tools/arena/start-arena.mjs",
     "test:unit": "npm run build:server && node --test tests/unit/*.test.mjs",
