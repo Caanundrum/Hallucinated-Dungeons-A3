@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "hallucinated-dungeons-local"
+    "default": "hallucinated-dungeons-local",
+    "staging": "hd-a3-staging"
   }
 }
