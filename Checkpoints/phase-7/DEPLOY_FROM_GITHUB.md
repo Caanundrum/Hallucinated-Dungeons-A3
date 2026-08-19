@@ -1,74 +1,89 @@
-# Publish from the Google Cloud website (no PowerShell)
+# Connect Firebase to GitHub (automatic player publishes)
 
-This game is a Node server. The Firebase website cannot run it by itself.
-Firebase Hosting and `firebase deploy` do not start `/api`.
+This is the Firebase product that watches GitHub: **App Hosting**, not
+Firebase Hosting. Hosting is static files. App Hosting builds the Node
+server and puts it on a `*.hosted.app` URL whenever `main` changes.
 
-The matching click path is **Cloud Run** in the same Google project as
-Firebase (`hd-a3-staging`). That is still "the Firebase project." It is not
-a different Google account.
+Do this in the Firebase website. Do not give Codex or Antigravity GitHub
+access. Only your GitHub account.
 
-Do not connect Codex or Antigravity to GitHub. Only your account.
+The current player URL
+`https://hd-a3-staging-in4per6l4a-uc.a.run.app` stays up until you point
+testers at the new App Hosting URL.
 
-## Fix the blank "Skip to main" page right now (no Git)
+## Step 1. Open App Hosting
 
-The live site is using a placeholder origin. Change that on the existing
-service:
+1. Open https://console.firebase.google.com/project/hd-a3-staging/apphosting
+2. Top bar must say **hd-a3-staging**.
+3. If Firebase asks to upgrade to **Blaze**, accept it. App Hosting needs
+   Blaze. You already used Cloud Run, so this project is likely already Blaze.
 
-1. Open:
+## Step 2. Create the backend and connect GitHub
 
-   https://console.cloud.google.com/run/detail/us-central1/hd-a3-staging/yaml?project=hd-a3-staging
-
-   If that looks wrong, open https://console.cloud.google.com/run?project=hd-a3-staging
-   and click the service **hd-a3-staging**.
-
-2. Confirm the top bar project is **hd-a3-staging**.
-3. Click **Edit & deploy new revision**.
-4. Open **Containers**, then **Variables & secrets** (wording may be
-   **Environment variables**).
-5. Find `HD_CLIENT_ORIGIN`.
-6. Change its value to exactly:
-
-   `https://hd-a3-staging-in4per6l4a-uc.a.run.app`
-
-   No trailing slash.
-7. Click **Deploy**.
-8. Wait until the new revision is ready.
-9. Hard-refresh the player URL.
-
-You should see the Hallucinated Dungeons shell, not only Skip to main.
-
-## Later: connect GitHub so pushes deploy themselves
-
-This is the closest thing to "Firebase talks to Git." Cloud Run watches the
-repo and rebuilds when you push.
-
-1. Open the same Cloud Run service **hd-a3-staging**.
-2. Click **Connect to repo**.
-3. Choose **Cloud Build** and **GitHub**.
-4. Authenticate with the GitHub account that owns
+1. Click **Get started** or **Create backend**.
+2. Region: **us-central1**.
+3. Connect GitHub with the account that owns
    `Caanundrum/Hallucinated-Dungeons-A3`.
-5. Select that repository. If it is missing, click **Manage connected
-   repositories** and grant the Cloud Build GitHub app access to it.
-6. Build settings:
+4. Install the Firebase GitHub app if asked. Grant it that repository.
+5. Repository: `Caanundrum/Hallucinated-Dungeons-A3`.
+6. App root directory: `Builder`
+7. Live branch: `main`
+8. Automatic rollouts: **On**
+9. Backend name: `hd-a3-player`
+10. Runtime: **Node.js 22** (not 20, not 18).
+11. Create a web app if asked, or reuse the existing Web app.
+12. Finish. The first build may take several minutes.
 
-   - Branch: `^main$` (only after the Windows/origin fixes are on `main`)
-   - Build type: **Dockerfile**
-   - Source location / Dockerfile: `Builder/Dockerfile`
-   - Build context directory: `Builder`
-   - Entrypoint: leave blank
-7. Save.
+If GitHub does not list the repo, click the link to manage repository access
+and enable `Hallucinated-Dungeons-A3`.
 
-Keep the environment variables already on the service, including
-`HD_CLIENT_ORIGIN` set to the `.run.app` URL, plus the OAuth client ID and
-Web API key. Git deploys reuse those. Do not put keys in the repository.
+## Step 3. Add the two Google Sign-In values
 
-After this, a merge to `main` rebuilds the player site. You do not run
+Do not put these in GitHub. Add them in Firebase:
+
+1. App Hosting → **hd-a3-player** → **Settings** → **Environment**
+2. Add:
+
+   - `HD_GOOGLE_OAUTH_CLIENT_ID` = your Web client ID
+     (ends with `.apps.googleusercontent.com`)
+   - `HD_FIREBASE_WEB_API_KEY` = your Web API key (starts with `AIza`)
+
+3. Save. Trigger a new rollout if Firebase does not start one itself
+   (**Rollout** / **Create rollout**).
+
+## Step 4. Point Google Auth at the new URL
+
+When the rollout succeeds, Firebase shows a URL like:
+
+`https://hd-a3-player--hd-a3-staging.us-central1.hosted.app`
+
+Copy that exact URL.
+
+1. Firebase Auth → Settings → Authorized domains → add the host only
+   (`hd-a3-player--hd-a3-staging.us-central1.hosted.app`).
+2. Google Cloud → Credentials → your OAuth Web client → Authorized
+   JavaScript origins → add the full `https://…hosted.app` URL.
+3. Optional, in App Hosting Environment, set `HD_CLIENT_ORIGIN` to that
+   same `https://…` URL. If you skip this, the server still accepts the
+   live host.
+
+Hard-refresh the new URL. Sign in with Google yourself first.
+
+## After that
+
+A merge to `main` starts a new App Hosting rollout. You do not use
 PowerShell for ordinary publishes.
 
-## What not to use
+Keep testers on the current `.run.app` URL until the `.hosted.app` URL
+signs in cleanly.
 
-- Firebase Console → Hosting → GitHub: static files only. It will not run
-  this Node `/api` server.
-- Firebase App Hosting: built for Next.js / Angular style apps. This project
-  is a custom Node server with a Dockerfile. Cloud Run is the correct
-  GitHub connection.
+## If the first GitHub build fails
+
+Open App Hosting → the failed rollout → logs.
+
+Common causes:
+
+- App root was left as `/` instead of `Builder`
+- Runtime is not Node 22
+- The two Google Sign-In variables are missing
+- The Firebase GitHub app cannot read the repo

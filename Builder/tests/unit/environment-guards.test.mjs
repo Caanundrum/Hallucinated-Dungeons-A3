@@ -116,7 +116,22 @@ test('Cloud Run PORT and K_SERVICE fill hosted Milestone defaults', () => {
   assert.equal(env.publicSurface, 'gold_master');
   assert.equal(env.serverHost, '0.0.0.0');
   assert.equal(env.serverPort, 8080);
-  assert.equal(env.clientBundleDir, '/app/dist/client');
+  assert.match(env.clientBundleDir ?? '', /dist[/\\]client$/);
+});
+
+test('Firebase App Hosting can omit HD_CLIENT_ORIGIN on first rollout', () => {
+  const env = loadServerEnvironment({
+    K_SERVICE: 'hd-a3-player',
+    PORT: '8080',
+    HD_CANDIDATE_ID: 'cand-milestone1',
+    HD_BLUEPRINT_VERSION: 'ALPHA_3_V1',
+    HD_FIREBASE_PROJECT_ID: 'hd-a3-staging',
+    HD_SEED_VERSION: 'phase7-gold-master-v1',
+    HD_GOOGLE_OAUTH_CLIENT_ID: '1234567890-abc.apps.googleusercontent.com',
+    HD_FIREBASE_WEB_API_KEY: 'AIzaSyMilestoneTestKey',
+  });
+  assert.equal(env.clientOrigin, 'https://placeholder.invalid');
+  assert.equal(env.environmentClass, 'milestone');
 });
 
 test('Milestone refuses emulator hosts, local project id, loopback origin, and local_arena surface', () => {

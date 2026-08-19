@@ -13,6 +13,7 @@
     "build": "npm run build:server && npm run build:client",
     "build:server": "tsc --project tsconfig.server.json",
     "build:client": "vite build --config vite.config.ts",
+    "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit",
     "arena:start": "node tools/arena/start-arena.mjs",
     "test:unit": "npm run build:server && node --test tests/unit/*.test.mjs",

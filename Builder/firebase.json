@@ -2,6 +2,11 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "apphosting": {
+    "backendId": "hd-a3-player",
+    "rootDir": ".",
+    "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "tests"]
+  },
   "emulators": {
     "singleProjectMode": true,
     "auth": {

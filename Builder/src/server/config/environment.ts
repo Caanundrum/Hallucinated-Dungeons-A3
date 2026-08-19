@@ -12,6 +12,8 @@
  * Launch Production remains refused until separately authorized.
  */
 
+import { join } from 'node:path';
+
 import {
   ENVIRONMENT_CLASSES,
   ENVIRONMENT_SCHEMA_VERSION,
@@ -198,7 +200,8 @@ export function applyHostedRuntimeDefaults(env: NodeJS.ProcessEnv): void {
   setIfEmpty(env, 'HD_RUNTIME_MODE', 'frozen_certification');
   setIfEmpty(env, 'HD_PUBLIC_SURFACE', 'gold_master');
   setIfEmpty(env, 'HD_SERVER_HOST', '0.0.0.0');
-  setIfEmpty(env, 'HD_CLIENT_BUNDLE_DIR', '/app/dist/client');
+  setIfEmpty(env, 'HD_CLIENT_BUNDLE_DIR', join(process.cwd(), 'dist', 'client'));
+  setIfEmpty(env, 'HD_CLIENT_ORIGIN', 'https://placeholder.invalid');
   const cloudPort = (env.PORT ?? '').trim();
   if ((env.HD_SERVER_PORT ?? '').trim() === '' && cloudPort !== '') {
     env.HD_SERVER_PORT = cloudPort;
