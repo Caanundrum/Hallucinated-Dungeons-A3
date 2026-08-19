@@ -402,8 +402,8 @@ function loadMilestoneEnvironment(options: {
     );
   }
 
-  const googleOAuthClientId = required(env, 'HD_GOOGLE_OAUTH_CLIENT_ID');
-  const firebaseWebApiKey = required(env, 'HD_FIREBASE_WEB_API_KEY');
+  const googleOAuthClientId = (env.HD_GOOGLE_OAUTH_CLIENT_ID ?? '').trim();
+  const firebaseWebApiKey = (env.HD_FIREBASE_WEB_API_KEY ?? '').trim();
 
   return {
     environmentSchemaVersion: options.schemaVersion,
@@ -420,8 +420,8 @@ function loadMilestoneEnvironment(options: {
     clientOrigin: clientOriginUrl.origin,
     seedVersion: required(env, 'HD_SEED_VERSION'),
     clientBundleDir: options.clientBundleDir === '' ? null : options.clientBundleDir,
-    googleOAuthClientId,
-    firebaseWebApiKey,
+    googleOAuthClientId: googleOAuthClientId === '' ? null : googleOAuthClientId,
+    firebaseWebApiKey: firebaseWebApiKey === '' ? null : firebaseWebApiKey,
   };
 }
 

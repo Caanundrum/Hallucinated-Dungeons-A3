@@ -127,11 +127,11 @@ test('Firebase App Hosting can omit HD_CLIENT_ORIGIN on first rollout', () => {
     HD_BLUEPRINT_VERSION: 'ALPHA_3_V1',
     HD_FIREBASE_PROJECT_ID: 'hd-a3-staging',
     HD_SEED_VERSION: 'phase7-gold-master-v1',
-    HD_GOOGLE_OAUTH_CLIENT_ID: '1234567890-abc.apps.googleusercontent.com',
-    HD_FIREBASE_WEB_API_KEY: 'AIzaSyMilestoneTestKey',
   });
   assert.equal(env.clientOrigin, 'https://placeholder.invalid');
   assert.equal(env.environmentClass, 'milestone');
+  assert.equal(env.googleOAuthClientId, null);
+  assert.equal(env.firebaseWebApiKey, null);
 });
 
 test('Milestone refuses emulator hosts, local project id, loopback origin, and local_arena surface', () => {

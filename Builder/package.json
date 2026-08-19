@@ -2,6 +2,7 @@
   "name": "hallucinated-dungeons-alpha3",
   "version": "0.0.0",
   "private": true,
+  "main": "dist/server/index.js",
   "description": "Hallucinated Dungeons Alpha 3 Builder Root. Phase 0 greenfield foundation: Local Arena, development identity, and the canonical browser -> server -> emulator write/read path.",
   "type": "module",
   "engines": {
