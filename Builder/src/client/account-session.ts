@@ -8,7 +8,7 @@
  */
 
 import type { AccountProjection, CandidateIdentity } from '../shared/contract.js';
-import { ApiFailure, enterGoogleEmulatorSession, enterLocalArena, fetchSession, leaveLocalArena } from './api.js';
+import { ApiFailure, enterGoogleEmulatorSession, enterHostedGoogleSession, enterLocalArena, fetchSession, leaveLocalArena } from './api.js';
 
 type Listener = () => void;
 
@@ -73,6 +73,20 @@ export async function signInGoogleEmulator(
   account = await enterGoogleEmulatorSession({
     candidateId: candidate.candidateId,
     email,
+  });
+  hydrated = true;
+  notify();
+  return account;
+}
+
+/** Invite-Only Alpha: Google Identity Services ID token exchanged on the server. */
+export async function signInHostedGoogle(
+  candidate: CandidateIdentity,
+  googleIdToken: string,
+): Promise<AccountProjection> {
+  account = await enterHostedGoogleSession({
+    candidateId: candidate.candidateId,
+    googleIdToken,
   });
   hydrated = true;
   notify();

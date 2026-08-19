@@ -17,9 +17,11 @@ import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 import type { DevelopmentIdentityProjection } from '../../shared/contract.js';
 import type { IdentityProviderMode } from '../../shared/presence-contract.js';
 import type { ServerEnvironment } from '../config/environment.js';
+import { isHostedEnvironmentClass } from '../config/environment.js';
 import { isBootstrapAdminEmail } from '../admin/admin-auth.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { isLocalArenaPublicSurface } from '../release/public-surface.js';
+import type { HostedGoogleProfile } from './google-hosted.js';
 
 /** Lifetime of a minted development identity and its session. */
 export const DEVELOPMENT_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -279,6 +281,56 @@ export async function mintQaFixtureSession(options: {
       displayLabel,
       identityMode: 'qa_fixture_session',
       email: null,
+      expiresAt,
+    }),
+  });
+}
+
+/**
+ * Issues a player session for a Google identity already verified by Firebase
+ * Auth on Milestone. Never accepts a client-supplied email.
+ */
+export async function issueHostedGoogleSession(options: {
+  readonly env: ServerEnvironment;
+  readonly firestore: Firestore;
+  readonly profile: HostedGoogleProfile;
+  readonly now?: Date;
+}): Promise<MintedSession> {
+  const { env, firestore, profile } = options;
+  if (!isHostedEnvironmentClass(env.environmentClass) || env.publicSurface !== 'gold_master') {
+    throw new IdentityUnavailableError(
+      'Hosted Google Sign-In exists only on Milestone / Launch Production Gold Master artifacts.',
+    );
+  }
+
+  const now = options.now ?? new Date();
+  const expiresAt = new Date(now.getTime() + DEVELOPMENT_SESSION_TTL_MS);
+  const accountId = `google-${profile.uid}`.slice(0, 64);
+
+  await firestore.collection(COLLECTIONS.developmentIdentities).doc(accountId).set({
+    accountId,
+    displayLabel: profile.displayName,
+    identityMode: 'google_sign_in',
+    email: profile.email,
+    createdAt: now,
+    expiresAt,
+    creationAuthority: 'hosted_google_sign_in',
+    environmentClass: env.environmentClass,
+    candidateId: env.candidateId,
+    firebaseUid: profile.uid,
+  });
+
+  return issueSession({
+    firestore,
+    env,
+    accountId,
+    now,
+    expiresAt,
+    identity: projectIdentity({
+      accountId,
+      displayLabel: profile.displayName,
+      identityMode: 'google_sign_in',
+      email: profile.email,
       expiresAt,
     }),
   });

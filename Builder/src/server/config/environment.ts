@@ -7,7 +7,9 @@
  *
  * The rule this file enforces: an ordinary local run must be structurally
  * incapable of reaching a live project, a public origin, or a production
- * credential. Anything ambiguous fails startup instead of degrading quietly.
+ * credential. Invite-Only Alpha (`environmentClass=milestone`) is the opposite
+ * contract: live Firebase, https origin, Gold Master surface, no emulators.
+ * Launch Production remains refused until separately authorized.
  */
 
 import {
@@ -34,8 +36,8 @@ export interface ServerEnvironment {
   readonly candidateId: string;
   readonly blueprintVersion: string;
   readonly firebaseProjectId: string;
-  readonly firestoreEmulator: HostPort;
-  readonly authEmulator: HostPort;
+  readonly firestoreEmulator: HostPort | null;
+  readonly authEmulator: HostPort | null;
   readonly serverHost: string;
   readonly serverPort: number;
   readonly clientOrigin: string;
@@ -44,6 +46,10 @@ export interface ServerEnvironment {
   readonly clientBundleDir: string | null;
   /** Local Arena vs Gold Master artifact profile. Independent of environmentClass. */
   readonly publicSurface: PublicSurface;
+  /** Google Identity Services client id; set only on hosted Milestone. */
+  readonly googleOAuthClientId: string | null;
+  /** Firebase Web API key used to exchange a Google ID token; hosted only. */
+  readonly firebaseWebApiKey: string | null;
 }
 
 export class EnvironmentError extends Error {
@@ -75,6 +81,8 @@ const KNOWN_HD_VARIABLES = new Set([
   'HD_WORKING_DIRECTORY',
   'HD_ARCHIVE_DIRECTORY',
   'HD_PUBLIC_SURFACE',
+  'HD_GOOGLE_OAUTH_CLIENT_ID',
+  'HD_FIREBASE_WEB_API_KEY',
 ]);
 
 /**
@@ -94,6 +102,12 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
 /** Project identifier the Local Arena is permitted to bind to. */
 export const LOCAL_PROJECT_ID = 'hallucinated-dungeons-local';
+
+const HOSTED_CREDENTIAL_VARIABLES = PROHIBITED_LOCAL_CREDENTIAL_VARIABLES;
+
+export function isHostedEnvironmentClass(value: EnvironmentClass): boolean {
+  return value === 'milestone' || value === 'launch';
+}
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
@@ -185,18 +199,83 @@ export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): Ser
       `HD_ENVIRONMENT_CLASS must be one of ${ENVIRONMENT_CLASSES.join(', ')}. Received "${environmentClass}".`,
     );
   }
-  if (environmentClass !== 'local') {
+  if (environmentClass === 'launch') {
     throw new EnvironmentError(
-      `This candidate implements the Local Execution Environment only. The "${environmentClass}" environment class is introduced by the phase that owns hosted publication, so it is refused here instead of being partially honored.`,
+      'Launch Production is not authorized on this candidate. Invite-Only Alpha uses HD_ENVIRONMENT_CLASS=milestone.',
     );
   }
-
-  assertNoProhibitedCredentials(env);
 
   const runtimeMode = required(env, 'HD_RUNTIME_MODE') as RuntimeMode;
   if (!RUNTIME_MODES.includes(runtimeMode)) {
     throw new EnvironmentError(
       `HD_RUNTIME_MODE must be one of ${RUNTIME_MODES.join(', ')}. Received "${runtimeMode}".`,
+    );
+  }
+
+  const publicSurfaceRaw = (env.HD_PUBLIC_SURFACE ?? 'local_arena').trim();
+  if (!isPublicSurface(publicSurfaceRaw)) {
+    throw new EnvironmentError(
+      `HD_PUBLIC_SURFACE must be local_arena or gold_master. Received "${publicSurfaceRaw}".`,
+    );
+  }
+
+  const clientBundleDir = (env.HD_CLIENT_BUNDLE_DIR ?? '').trim();
+  if (runtimeMode === 'frozen_certification' && clientBundleDir === '') {
+    throw new EnvironmentError(
+      'HD_CLIENT_BUNDLE_DIR is required in frozen_certification mode: the frozen runtime serves the built bundle rather than a hot-reloading dev server.',
+    );
+  }
+
+  const serverPortRaw = required(env, 'HD_SERVER_PORT');
+  const serverPort = Number(serverPortRaw);
+  if (!Number.isInteger(serverPort) || serverPort <= 0 || serverPort > 65535) {
+    throw new EnvironmentError(`HD_SERVER_PORT must be a valid port. Received "${serverPortRaw}".`);
+  }
+
+  if (environmentClass === 'milestone') {
+    return loadMilestoneEnvironment({
+      env,
+      schemaVersion,
+      runtimeMode,
+      publicSurface: publicSurfaceRaw,
+      serverPort,
+      clientBundleDir,
+    });
+  }
+
+  return loadLocalEnvironment({
+    env,
+    schemaVersion,
+    runtimeMode,
+    publicSurface: publicSurfaceRaw,
+    serverPort,
+    clientBundleDir,
+  });
+}
+
+function hostedCredentialPresent(env: NodeJS.ProcessEnv): boolean {
+  return HOSTED_CREDENTIAL_VARIABLES.some((name) => (env[name] ?? '').trim() !== '');
+}
+
+function loadLocalEnvironment(options: {
+  readonly env: NodeJS.ProcessEnv;
+  readonly schemaVersion: string;
+  readonly runtimeMode: RuntimeMode;
+  readonly publicSurface: PublicSurface;
+  readonly serverPort: number;
+  readonly clientBundleDir: string;
+}): ServerEnvironment {
+  const { env } = options;
+  assertNoProhibitedCredentials(env);
+
+  if ((env.HD_GOOGLE_OAUTH_CLIENT_ID ?? '').trim() !== '') {
+    throw new EnvironmentError(
+      'HD_GOOGLE_OAUTH_CLIENT_ID is a hosted Milestone variable and is refused in the Local Arena.',
+    );
+  }
+  if ((env.HD_FIREBASE_WEB_API_KEY ?? '').trim() !== '') {
+    throw new EnvironmentError(
+      'HD_FIREBASE_WEB_API_KEY is a hosted Milestone variable and is refused in the Local Arena.',
     );
   }
 
@@ -222,12 +301,6 @@ export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): Ser
   const serverHost = required(env, 'HD_SERVER_HOST');
   assertLoopback('HD_SERVER_HOST', serverHost);
 
-  const serverPortRaw = required(env, 'HD_SERVER_PORT');
-  const serverPort = Number(serverPortRaw);
-  if (!Number.isInteger(serverPort) || serverPort <= 0 || serverPort > 65535) {
-    throw new EnvironmentError(`HD_SERVER_PORT must be a valid port. Received "${serverPortRaw}".`);
-  }
-
   const clientOriginUrl = parseOrigin('HD_CLIENT_ORIGIN', required(env, 'HD_CLIENT_ORIGIN'));
   assertLoopback('HD_CLIENT_ORIGIN', clientOriginUrl.hostname);
   if (clientOriginUrl.protocol !== 'http:') {
@@ -236,35 +309,97 @@ export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): Ser
     );
   }
 
-  const clientBundleDir = (env.HD_CLIENT_BUNDLE_DIR ?? '').trim();
-  if (runtimeMode === 'frozen_certification' && clientBundleDir === '') {
-    throw new EnvironmentError(
-      'HD_CLIENT_BUNDLE_DIR is required in frozen_certification mode: the frozen runtime serves the built bundle rather than a hot-reloading dev server.',
-    );
-  }
-
-  const publicSurfaceRaw = (env.HD_PUBLIC_SURFACE ?? 'local_arena').trim();
-  if (!isPublicSurface(publicSurfaceRaw)) {
-    throw new EnvironmentError(
-      `HD_PUBLIC_SURFACE must be local_arena or gold_master. Received "${publicSurfaceRaw}".`,
-    );
-  }
-
   return {
-    environmentSchemaVersion: schemaVersion,
-    environmentClass,
-    runtimeMode,
-    publicSurface: publicSurfaceRaw,
+    environmentSchemaVersion: options.schemaVersion,
+    environmentClass: 'local',
+    runtimeMode: options.runtimeMode,
+    publicSurface: options.publicSurface,
     candidateId: required(env, 'HD_CANDIDATE_ID'),
     blueprintVersion: required(env, 'HD_BLUEPRINT_VERSION'),
     firebaseProjectId,
     firestoreEmulator,
     authEmulator,
     serverHost,
-    serverPort,
+    serverPort: options.serverPort,
     clientOrigin: clientOriginUrl.origin,
     seedVersion: required(env, 'HD_SEED_VERSION'),
-    clientBundleDir: clientBundleDir === '' ? null : clientBundleDir,
+    clientBundleDir: options.clientBundleDir === '' ? null : options.clientBundleDir,
+    googleOAuthClientId: null,
+    firebaseWebApiKey: null,
+  };
+}
+
+function loadMilestoneEnvironment(options: {
+  readonly env: NodeJS.ProcessEnv;
+  readonly schemaVersion: string;
+  readonly runtimeMode: RuntimeMode;
+  readonly publicSurface: PublicSurface;
+  readonly serverPort: number;
+  readonly clientBundleDir: string;
+}): ServerEnvironment {
+  const { env } = options;
+  if (options.publicSurface !== 'gold_master') {
+    throw new EnvironmentError(
+      'Milestone hosting requires HD_PUBLIC_SURFACE=gold_master so Local Arena identity and QA routes stay stripped.',
+    );
+  }
+  if ((env.HD_FIRESTORE_EMULATOR_HOST ?? '').trim() !== '' || (env.HD_AUTH_EMULATOR_HOST ?? '').trim() !== '') {
+    throw new EnvironmentError(
+      'Milestone hosting refuses emulator host variables. Live Firestore and Auth are required.',
+    );
+  }
+  if (!hostedCredentialPresent(env)) {
+    throw new EnvironmentError(
+      `Milestone hosting requires a Firebase Admin credential (${HOSTED_CREDENTIAL_VARIABLES.join(', ')}).`,
+    );
+  }
+
+  const firebaseProjectId = required(env, 'HD_FIREBASE_PROJECT_ID');
+  if (firebaseProjectId === LOCAL_PROJECT_ID) {
+    throw new EnvironmentError(
+      `Milestone hosting cannot bind to the Local Arena emulator project "${LOCAL_PROJECT_ID}".`,
+    );
+  }
+
+  const serverHost = required(env, 'HD_SERVER_HOST');
+  if (serverHost !== '0.0.0.0' && !LOOPBACK_HOSTS.has(serverHost)) {
+    throw new EnvironmentError(
+      `HD_SERVER_HOST for Milestone must be 0.0.0.0 (container) or loopback. Received "${serverHost}".`,
+    );
+  }
+
+  const clientOriginUrl = parseOrigin('HD_CLIENT_ORIGIN', required(env, 'HD_CLIENT_ORIGIN'));
+  if (clientOriginUrl.protocol !== 'https:') {
+    throw new EnvironmentError(
+      `HD_CLIENT_ORIGIN for Milestone must be https. Received "${clientOriginUrl.protocol}".`,
+    );
+  }
+  if (LOOPBACK_HOSTS.has(clientOriginUrl.hostname)) {
+    throw new EnvironmentError(
+      'HD_CLIENT_ORIGIN for Milestone must be the public player origin, not loopback.',
+    );
+  }
+
+  const googleOAuthClientId = required(env, 'HD_GOOGLE_OAUTH_CLIENT_ID');
+  const firebaseWebApiKey = required(env, 'HD_FIREBASE_WEB_API_KEY');
+
+  return {
+    environmentSchemaVersion: options.schemaVersion,
+    environmentClass: 'milestone',
+    runtimeMode: options.runtimeMode,
+    publicSurface: options.publicSurface,
+    candidateId: required(env, 'HD_CANDIDATE_ID'),
+    blueprintVersion: required(env, 'HD_BLUEPRINT_VERSION'),
+    firebaseProjectId,
+    firestoreEmulator: null,
+    authEmulator: null,
+    serverHost,
+    serverPort: options.serverPort,
+    clientOrigin: clientOriginUrl.origin,
+    seedVersion: required(env, 'HD_SEED_VERSION'),
+    clientBundleDir: options.clientBundleDir === '' ? null : options.clientBundleDir,
+    googleOAuthClientId,
+    firebaseWebApiKey,
   };
 }
 

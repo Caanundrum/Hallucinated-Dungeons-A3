@@ -72,6 +72,8 @@ export interface CandidateIdentity {
   readonly publicSurface: PublicSurface;
   readonly firebaseProjectId: string;
   readonly environmentSchemaVersion: string;
+  /** Google Identity Services client id on hosted Milestone; null in Local Arena. */
+  readonly hostedGoogleClientId: string | null;
 }
 
 /**
@@ -153,6 +155,7 @@ export interface HealthResponse {
   readonly checks: {
     readonly firestoreEmulator: boolean;
     readonly authEmulator: boolean;
+    readonly hostedPersistence: boolean;
   };
 }
 

@@ -59,13 +59,21 @@ const APP_NAME = 'hallucinated-dungeons-local-arena';
  * stale shell variable cannot silently redirect canonical writes.
  */
 export function createCanonicalStore(env: ServerEnvironment): CanonicalStore {
-  process.env.FIRESTORE_EMULATOR_HOST = `${env.firestoreEmulator.host}:${env.firestoreEmulator.port}`;
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = `${env.authEmulator.host}:${env.authEmulator.port}`;
+  if (env.environmentClass === 'local') {
+    if (env.firestoreEmulator === null || env.authEmulator === null) {
+      throw new Error('Local Arena persistence requires emulator hosts.');
+    }
+    process.env.FIRESTORE_EMULATOR_HOST = `${env.firestoreEmulator.host}:${env.firestoreEmulator.port}`;
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = `${env.authEmulator.host}:${env.authEmulator.port}`;
+  } else {
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+    delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  }
 
   const existing = getApps().find((candidate) => candidate.name === APP_NAME);
   const app =
     existing ??
-    initializeApp({ projectId: env.firebaseProjectId }, APP_NAME);
+    initializeApp(hostedAdminOptions(env), APP_NAME);
 
   const firestore = getFirestore(app);
   firestore.settings({ ignoreUndefinedProperties: false });
@@ -78,6 +86,30 @@ export function createCanonicalStore(env: ServerEnvironment): CanonicalStore {
       await deleteApp(app);
     },
   };
+}
+
+function hostedAdminOptions(env: ServerEnvironment): {
+  readonly projectId: string;
+  readonly credential?: ReturnType<typeof cert>;
+} {
+  if (env.environmentClass === 'local') {
+    return { projectId: env.firebaseProjectId };
+  }
+  const raw = (process.env.FIREBASE_SERVICE_ACCOUNT ?? process.env.GOOGLE_CLOUD_KEYFILE_JSON ?? '').trim();
+  if (raw.startsWith('{')) {
+    return {
+      projectId: env.firebaseProjectId,
+      credential: cert(JSON.parse(raw) as Record<string, string>),
+    };
+  }
+  const filePath = (process.env.GOOGLE_APPLICATION_CREDENTIALS ?? '').trim();
+  if (filePath !== '') {
+    return {
+      projectId: env.firebaseProjectId,
+      credential: cert(filePath),
+    };
+  }
+  return { projectId: env.firebaseProjectId };
 }
 
 /** Re-exported so call sites do not import the admin SDK directly. */

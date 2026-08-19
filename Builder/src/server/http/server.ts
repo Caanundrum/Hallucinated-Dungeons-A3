@@ -29,6 +29,7 @@ import {
 } from '../../shared/contract.js';
 import { isLegalRoute, isSpaRoute } from '../../shared/routes.js';
 import type { ServerEnvironment } from '../config/environment.js';
+import { isHostedEnvironmentClass } from '../config/environment.js';
 import {
   commitFoundationCheck,
   readFoundationProjection,
@@ -46,7 +47,12 @@ import {
   mintGoogleEmulatorIdentity,
   mintQaFixtureSession,
   resolveSession,
+  issueHostedGoogleSession,
 } from '../identity/development-identity.js';
+import {
+  GoogleHostedIdentityError,
+  exchangeGoogleIdToken,
+} from '../identity/google-hosted.js';
 import {
   assertAdminEmail,
   buildAdminPanelSnapshot,
@@ -150,6 +156,7 @@ import {
   RulesCommandError,
 } from '../rules/engine/rules-commands.js';
 import { explainRule, RULE_EXPLANATION_IDS } from '../rules/engine/rules-explanations.js';
+import { COLLECTIONS } from '../persistence/firestore.js';
 
 /** Largest request body the server will buffer, in bytes. */
 const MAX_REQUEST_BODY_BYTES = 8 * 1024;
@@ -176,15 +183,24 @@ const CONTENT_TYPES: Record<string, string> = {
  * escaping rather than a substitute for it. The built client loads only
  * same-origin scripts and styles and uses a `data:` favicon.
  */
-const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
-  [
-    'content-security-policy',
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
-  ],
-  ['x-frame-options', 'DENY'],
-  ['referrer-policy', 'no-referrer'],
-  ['x-content-type-options', 'nosniff'],
-];
+function contentSecurityPolicy(env: ServerEnvironment): string {
+  if (isHostedEnvironmentClass(env.environmentClass)) {
+    return [
+      "default-src 'self'",
+      "script-src 'self' https://accounts.google.com/gsi/client",
+      "style-src 'self' https://accounts.google.com/gsi/style",
+      "img-src 'self' data: https://www.gstatic.com",
+      "font-src 'self'",
+      "connect-src 'self' https://accounts.google.com/gsi/",
+      "frame-src https://accounts.google.com/gsi/",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+    ].join('; ');
+  }
+  return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
+}
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]: 409,
@@ -290,6 +306,7 @@ function candidateIdentity(env: ServerEnvironment): CandidateIdentity {
     publicSurface: env.publicSurface,
     firebaseProjectId: env.firebaseProjectId,
     environmentSchemaVersion: env.environmentSchemaVersion,
+    hostedGoogleClientId: env.googleOAuthClientId,
   };
 }
 
@@ -308,15 +325,21 @@ function parseCookies(header: string | undefined): Map<string, string> {
   return cookies;
 }
 
-function applySecurityHeaders(response: ServerResponse): void {
-  for (const [name, value] of SECURITY_HEADERS) {
-    response.setHeader(name, value);
-  }
+function applySecurityHeadersFor(response: ServerResponse, env: ServerEnvironment): void {
+  response.setHeader('content-security-policy', contentSecurityPolicy(env));
+  response.setHeader('x-frame-options', 'DENY');
+  response.setHeader('referrer-policy', 'no-referrer');
+  response.setHeader('x-content-type-options', 'nosniff');
 }
 
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
+function writeJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+  env: ServerEnvironment,
+): void {
   const payload = JSON.stringify(body);
-  applySecurityHeaders(response);
+  applySecurityHeadersFor(response, env);
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(payload),
@@ -325,14 +348,15 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(payload);
 }
 
-function sendError(response: ServerResponse, code: ErrorCode): void {
+function writeError(response: ServerResponse, code: ErrorCode, env: ServerEnvironment): void {
   const body: ApiErrorBody = { error: code, message: ERROR_MESSAGES[code] };
-  sendJson(response, ERROR_STATUS[code], body);
+  writeJson(response, ERROR_STATUS[code], body, env);
 }
 
 /** Applies an in-memory sliding-window check; returns false when the response was already sent. */
-function allowUnderRateLimit(
+function allowUnderRateLimitFor(
   response: ServerResponse,
+  env: ServerEnvironment,
   options: { readonly key: string; readonly limit: number; readonly windowMs: number },
 ): boolean {
   const result = checkRateLimit(options);
@@ -340,7 +364,7 @@ function allowUnderRateLimit(
     if (result.retryAfterMs !== undefined) {
       response.setHeader('retry-after', String(Math.ceil(result.retryAfterMs / 1000)));
     }
-    sendError(response, ERROR_CODES.RATE_LIMITED);
+    writeError(response, ERROR_CODES.RATE_LIMITED, env);
     return false;
   }
   return true;
@@ -354,13 +378,21 @@ function allowUnderRateLimit(
  * next request on a keep-alive connection. Closing is the honest outcome: the
  * client learns immediately and can open a new connection.
  */
-function refuseOversizedBody(request: IncomingMessage, response: ServerResponse): void {
+function refuseOversizedBodyFor(
+  request: IncomingMessage,
+  response: ServerResponse,
+  env: ServerEnvironment,
+): void {
   response.setHeader('connection', 'close');
-  sendError(response, ERROR_CODES.PAYLOAD_TOO_LARGE);
+  writeError(response, ERROR_CODES.PAYLOAD_TOO_LARGE, env);
   request.destroy();
 }
 
-function sendNotFoundPage(response: ServerResponse, requestedPath: string): void {
+function writeNotFoundPage(
+  response: ServerResponse,
+  requestedPath: string,
+  env: ServerEnvironment,
+): void {
   const safePath = requestedPath.replace(/[<>&"]/g, '');
   const page = `<!doctype html>
 <html lang="en">
@@ -378,7 +410,7 @@ function sendNotFoundPage(response: ServerResponse, requestedPath: string): void
   </body>
 </html>
 `;
-  applySecurityHeaders(response);
+  applySecurityHeadersFor(response, env);
   response.writeHead(404, {
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(page),
@@ -444,15 +476,25 @@ function sessionTokenFrom(request: IncomingMessage): string | null {
   return parseCookies(request.headers.cookie).get(SESSION_COOKIE_NAME) ?? null;
 }
 
-function setSessionCookie(response: ServerResponse, token: string, expiresAt: string): void {
+function sessionCookieFlags(env: ServerEnvironment): string {
+  const secure = env.clientOrigin.startsWith('https:') ? '; Secure' : '';
+  return `Path=/; HttpOnly; SameSite=Strict${secure}`;
+}
+
+function writeSessionCookie(
+  response: ServerResponse,
+  token: string,
+  expiresAt: string,
+  env: ServerEnvironment,
+): void {
   response.setHeader('set-cookie', [
-    `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}`,
+    `${SESSION_COOKIE_NAME}=${token}; ${sessionCookieFlags(env)}; Expires=${new Date(expiresAt).toUTCString()}`,
   ]);
 }
 
-function clearSessionCookie(response: ServerResponse): void {
+function expireSessionCookie(response: ServerResponse, env: ServerEnvironment): void {
   response.setHeader('set-cookie', [
-    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`,
+    `${SESSION_COOKIE_NAME}=; ${sessionCookieFlags(env)}; Max-Age=0`,
   ]);
 }
 
@@ -471,10 +513,11 @@ async function emulatorReachable(hostPort: string, path: string): Promise<boolea
  * Serves one file from the built client bundle. Path traversal outside the
  * bundle directory is rejected before any filesystem access.
  */
-async function serveBundleAsset(
+async function serveBundleAssetFor(
   response: ServerResponse,
   bundleDir: string,
   requestedPath: string,
+  env: ServerEnvironment,
 ): Promise<boolean> {
   const relative = normalize(requestedPath).replace(/^(\.\.[/\\])+/, '');
   const absolute = resolve(join(bundleDir, relative));
@@ -488,7 +531,7 @@ async function serveBundleAsset(
       return false;
     }
     const contentType = CONTENT_TYPES[extname(absolute).toLowerCase()] ?? 'application/octet-stream';
-    applySecurityHeaders(response);
+    applySecurityHeadersFor(response, env);
     response.writeHead(200, {
       'content-type': contentType,
       'content-length': stats.size,
@@ -503,6 +546,38 @@ async function serveBundleAsset(
 
 export function createArenaServer(dependencies: ArenaServerDependencies): ArenaServer {
   const { env, firestore, auth } = dependencies;
+
+  function sendJson(response: ServerResponse, status: number, body: unknown): void {
+    writeJson(response, status, body, env);
+  }
+  function sendError(response: ServerResponse, code: ErrorCode): void {
+    writeError(response, code, env);
+  }
+  function setSessionCookie(response: ServerResponse, token: string, expiresAt: string): void {
+    writeSessionCookie(response, token, expiresAt, env);
+  }
+  function clearSessionCookie(response: ServerResponse): void {
+    expireSessionCookie(response, env);
+  }
+  function sendNotFoundPage(response: ServerResponse, requestedPath: string): void {
+    writeNotFoundPage(response, requestedPath, env);
+  }
+  function refuseOversizedBody(request: IncomingMessage, response: ServerResponse): void {
+    refuseOversizedBodyFor(request, response, env);
+  }
+  function allowUnderRateLimit(
+    response: ServerResponse,
+    options: { readonly key: string; readonly limit: number; readonly windowMs: number },
+  ): boolean {
+    return allowUnderRateLimitFor(response, env, options);
+  }
+  async function serveBundleAsset(
+    response: ServerResponse,
+    bundleDir: string,
+    requestedPath: string,
+  ): Promise<boolean> {
+    return serveBundleAssetFor(response, bundleDir, requestedPath, env);
+  }
 
   const server = createServer((request, response) => {
     handleRequest(request, response).catch((error: unknown) => {
@@ -557,7 +632,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
       const page = renderLegalPage(document);
-      applySecurityHeaders(response);
+      applySecurityHeadersFor(response, env);
       response.writeHead(200, {
         'content-type': 'text/html; charset=utf-8',
         'content-length': Buffer.byteLength(page),
@@ -614,17 +689,33 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     }
 
     if (path === '/api/health' && method === 'GET') {
-      const [firestoreEmulator, authEmulator] = await Promise.all([
-        emulatorReachable(
-          `${env.firestoreEmulator.host}:${env.firestoreEmulator.port}`,
-          '/',
-        ),
-        emulatorReachable(`${env.authEmulator.host}:${env.authEmulator.port}`, '/'),
-      ]);
+      let firestoreEmulator = false;
+      let authEmulator = false;
+      let hostedPersistence = false;
+      if (env.environmentClass === 'local' && env.firestoreEmulator && env.authEmulator) {
+        [firestoreEmulator, authEmulator] = await Promise.all([
+          emulatorReachable(
+            `${env.firestoreEmulator.host}:${env.firestoreEmulator.port}`,
+            '/',
+          ),
+          emulatorReachable(`${env.authEmulator.host}:${env.authEmulator.port}`, '/'),
+        ]);
+      } else {
+        try {
+          await firestore.collection(COLLECTIONS.arenaBaseline).limit(1).get();
+          hostedPersistence = true;
+        } catch {
+          hostedPersistence = false;
+        }
+      }
+      const ready =
+        env.environmentClass === 'local'
+          ? firestoreEmulator && authEmulator
+          : hostedPersistence;
       const body: HealthResponse = {
-        status: firestoreEmulator && authEmulator ? 'ready' : 'degraded',
+        status: ready ? 'ready' : 'degraded',
         candidate: candidateIdentity(env),
-        checks: { firestoreEmulator, authEmulator },
+        checks: { firestoreEmulator, authEmulator, hostedPersistence },
       };
       sendJson(response, body.status === 'ready' ? 200 : 503, body);
       return;
@@ -678,6 +769,48 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           error: ERROR_CODES.BAD_REQUEST,
           message: error instanceof Error ? error.message : 'Google emulator identity failed.',
         } satisfies ApiErrorBody);
+      }
+      return;
+    }
+
+    if (path === '/api/identity/google-session' && method === 'POST') {
+      if (!isHostedEnvironmentClass(env.environmentClass) || env.firebaseWebApiKey === null) {
+        sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return;
+      }
+      const googleIdToken =
+        typeof (body as { googleIdToken?: unknown }).googleIdToken === 'string'
+          ? (body as { googleIdToken: string }).googleIdToken
+          : '';
+      try {
+        const profile = await exchangeGoogleIdToken({
+          webApiKey: env.firebaseWebApiKey,
+          googleIdToken,
+          requestUri: env.clientOrigin,
+        });
+        const minted = await issueHostedGoogleSession({ env, firestore, profile });
+        setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
+        sendJson(response, 201, minted.identity);
+      } catch (error) {
+        if (error instanceof GoogleHostedIdentityError || error instanceof IdentityUnavailableError) {
+          sendJson(response, 400, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: error.message,
+          } satisfies ApiErrorBody);
+          return;
+        }
+        throw error;
       }
       return;
     }

@@ -56,14 +56,74 @@ test('an unrecognized HD_ variable is refused rather than ignored', () => {
   );
 });
 
-test('a non-local environment class is refused', () => {
+test('Launch Production class is refused until separately authorized', () => {
   expectRejection(
     validEnvironment({ HD_ENVIRONMENT_CLASS: 'launch' }),
-    /Local Execution Environment only/,
+    /Launch Production is not authorized/,
   );
   expectRejection(
     validEnvironment({ HD_ENVIRONMENT_CLASS: 'production' }),
     /HD_ENVIRONMENT_CLASS must be one of/,
+  );
+});
+
+test('Milestone class is refused without hosted credentials and public origin', () => {
+  expectRejection(
+    validEnvironment({ HD_ENVIRONMENT_CLASS: 'milestone' }),
+    /HD_PUBLIC_SURFACE=gold_master/,
+  );
+});
+
+function validMilestone(overrides = {}) {
+  return {
+    HD_ENV_SCHEMA_VERSION: '1',
+    HD_ENVIRONMENT_CLASS: 'milestone',
+    HD_RUNTIME_MODE: 'frozen_certification',
+    HD_CANDIDATE_ID: 'cand-milestone1',
+    HD_BLUEPRINT_VERSION: 'ALPHA_3_V1',
+    HD_FIREBASE_PROJECT_ID: 'hd-alpha3-milestone',
+    HD_SERVER_HOST: '0.0.0.0',
+    HD_SERVER_PORT: '8080',
+    HD_CLIENT_ORIGIN: 'https://hd-alpha3-milestone.web.app',
+    HD_SEED_VERSION: 'phase7-gold-master-v1',
+    HD_PUBLIC_SURFACE: 'gold_master',
+    HD_CLIENT_BUNDLE_DIR: '/app/dist/client',
+    HD_GOOGLE_OAUTH_CLIENT_ID: '1234567890-abc.apps.googleusercontent.com',
+    HD_FIREBASE_WEB_API_KEY: 'AIzaSyMilestoneTestKey',
+    FIREBASE_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"hd-alpha3-milestone"}',
+    ...overrides,
+  };
+}
+
+test('a complete Milestone environment is accepted and keeps lab routes stripped', () => {
+  const env = loadServerEnvironment(validMilestone());
+  assert.equal(env.environmentClass, 'milestone');
+  assert.equal(env.publicSurface, 'gold_master');
+  assert.equal(env.firestoreEmulator, null);
+  assert.equal(env.authEmulator, null);
+  assert.equal(env.googleOAuthClientId, '1234567890-abc.apps.googleusercontent.com');
+  assert.equal(env.clientOrigin, 'https://hd-alpha3-milestone.web.app');
+});
+
+test('Milestone refuses emulator hosts, local project id, and loopback origin', () => {
+  expectRejection(
+    validMilestone({ HD_FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' }),
+    /refuses emulator host variables/,
+  );
+  expectRejection(
+    validMilestone({ HD_FIREBASE_PROJECT_ID: 'hallucinated-dungeons-local' }),
+    /cannot bind to the Local Arena emulator project/,
+  );
+  expectRejection(
+    validMilestone({ HD_CLIENT_ORIGIN: 'http://127.0.0.1:8080' }),
+    /must be https/,
+  );
+});
+
+test('Local Arena refuses hosted Google variables', () => {
+  expectRejection(
+    validEnvironment({ HD_GOOGLE_OAUTH_CLIENT_ID: '123.apps.googleusercontent.com' }),
+    /refused in the Local Arena/,
   );
 });
 
