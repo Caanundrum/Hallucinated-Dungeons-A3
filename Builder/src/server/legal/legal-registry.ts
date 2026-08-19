@@ -115,12 +115,12 @@ const TERMS_OF_SERVICE: LegalDocument = {
 const PRIVACY_NOTICE: LegalDocument = {
   route: '/legal/privacy',
   title: 'Privacy Notice',
-  version: 'V2',
-  effectiveDate: '2026-08-17',
-  lastReviewedDate: '2026-08-17',
+  version: 'V2.1',
+  effectiveDate: '2026-08-19',
+  lastReviewedDate: '2026-08-19',
   materiality: 'material',
   supportedRegions: ['global'],
-  supersededVersion: 'V1',
+  supersededVersion: 'V2',
   reConsentRequired: true,
   contactPath: '/legal/content-and-safety#contact',
   sections: [
@@ -133,8 +133,16 @@ const PRIVACY_NOTICE: LegalDocument = {
       ],
     },
     {
+      id: 'google-sign-in',
+      heading: '2. Google Sign-In on hosted builds',
+      paragraphs: [
+        'When you choose Sign in with Google, Google processes your sign-in according to Google\u2019s Privacy Policy. Hallucinated Dungeons receives the Google account identifier and any profile information Google shares for authentication (such as your display name and email address when available). We use that information only to recognize your account, show your characters and campaigns, and operate the Alpha.',
+        'We do not sell this information, use it for advertising, or request Google permissions beyond what sign-in requires. You can revoke the app\u2019s access from your Google Account security settings at any time.',
+      ],
+    },
+    {
       id: 'how-we-use-it',
-      heading: '2. How we use it',
+      heading: '3. How we use it',
       paragraphs: [
         'Stored data is used to run the game you are testing: recognizing your account, showing your characters and campaigns back to you, and letting the team diagnose problems you report.',
         'We do not sell tester data, and we do not use it for advertising.',
@@ -142,7 +150,7 @@ const PRIVACY_NOTICE: LegalDocument = {
     },
     {
       id: 'retention',
-      heading: '3. Retention and deletion',
+      heading: '4. Retention and deletion',
       paragraphs: [
         'Alpha data is disposable by design and may be reset as the product changes. We will give notice before a reset that would remove your characters or campaigns where practical.',
         'You may ask for your account\u2019s data to be deleted using the contact path below.',
@@ -150,14 +158,14 @@ const PRIVACY_NOTICE: LegalDocument = {
     },
     {
       id: 'local-identities',
-      heading: '4. Local development identities',
+      heading: '5. Local development identities',
       paragraphs: [
         'A local development identity is created only inside the local, non-public testing environment and never inside Gold Master or Launch Production artifacts. It is not visible outside that environment and cannot be converted into a public account.',
       ],
     },
     {
       id: 'your-choices',
-      heading: '5. Your choices',
+      heading: '6. Your choices',
       paragraphs: [
         'You can ask what data is stored against your account, correct inaccurate profile information, and request deletion, subject to keeping the records needed to run an active campaign fairly for other players at the same table.',
       ],

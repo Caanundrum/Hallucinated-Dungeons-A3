@@ -29,7 +29,7 @@ import {
   type LegalAcceptanceProjection,
 } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
-import { primeHostedGoogleSignIn, triggerHostedGoogleSignIn } from '../hosted-google-sign-in.js';
+import { mountHostedGoogleSignInButton } from '../hosted-google-sign-in.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import {
@@ -79,7 +79,7 @@ export function mountAccountPage(host: PageHost): void {
   const mountToken = beginPageMount(container);
   const searchParams = new URLSearchParams(window.location.search);
   if (error === null && searchParams.get('auth_error') === 'google_signin_failed') {
-    error = 'Google Sign-In could not be completed. Please try again.';
+    error = 'We couldn\u2019t finish signing you in. Please try again.';
   }
 
   function render(): void {
@@ -95,7 +95,7 @@ export function mountAccountPage(host: PageHost): void {
           <p class="tagline">
             ${
               goldMasterSurface
-                ? 'Enter Hallucinated Dungeons with your Google account and continue into character creation, campaigns, and the table.'
+                ? 'Your Google account is your doorway into character creation, campaigns, and the table.'
                 : 'Local Arena testing can mint a development account. Hosted Gold Master artifacts use Google Sign-In only.'
             }
           </p>
@@ -130,14 +130,14 @@ export function mountAccountPage(host: PageHost): void {
             <p>
               ${
                 hostedGoogleClientId !== null
-                  ? 'A shared online table for creating characters, gathering a party, and playing together in the browser.'
+                  ? 'Hosted players enter with Google. One account carries your heroes and your place at the table.'
                   : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
               }
             </p>
             ${
               hostedGoogleClientId !== null
                 ? `<p class="record-meta">
-              Google account access is required on the hosted player surface. Use the gate below to continue.
+              Use the official Google button below to continue.
             </p>`
                 : `<label class="field">
               <span>Emulator email</span>
@@ -161,24 +161,22 @@ export function mountAccountPage(host: PageHost): void {
             <div class="account-gate-copy">
               <div class="account-gate-mark">${ACCOUNT_GATE_MOTIF}</div>
               <p class="account-gate-eyebrow">Invite-only alpha</p>
-              <h2 id="hosted-account-gate-heading">Begin your adventure</h2>
+              <h2 id="hosted-account-gate-heading">Step through</h2>
               <p class="account-gate-body">
-                Enter Hallucinated Dungeons with one account for character creation, campaigns, and the shared table.
-              </p>
-              <p class="account-gate-note">
-                Sign in continues in this window and returns you to the game when Google finishes.
+                One Google account for your heroes, your campaigns, and your seat at the table.
               </p>
             </div>
             <div class="account-gate-actions">
               ${
                 candidate === null
                   ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
-                  : `<button type="button" data-testid="account-google-hosted-cta" aria-disabled="${busy}">
-                       ${busy ? 'Opening Google…' : 'Continue with Google'}
-                     </button>
-                     <div class="visually-hidden" aria-hidden="true" data-testid="account-google-hosted-button"></div>`
+                  : `<div class="hosted-google-sign-in" data-testid="account-google-hosted-button"></div>`
               }
             </div>
+            <p class="account-gate-note record-meta">
+              Signing in with Google shares your account with Hallucinated Dungeons as described in our
+              <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.
+            </p>
           </section>`
               : ''
           }
@@ -435,29 +433,12 @@ export function mountAccountPage(host: PageHost): void {
     const hostedButtonHost = container.querySelector<HTMLElement>(
       '[data-testid="account-google-hosted-button"]',
     );
-    if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null && !busy) {
-      void primeHostedGoogleSignIn({ candidate, buttonHost: hostedButtonHost }).catch(() => {
-        error = 'Google Sign-In failed to load.';
+    if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null) {
+      void mountHostedGoogleSignInButton({ candidate, buttonHost: hostedButtonHost }).catch(() => {
+        error = 'Sign-in isn\u2019t available right now. Refresh and try again.';
         render();
       });
     }
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="account-google-hosted-cta"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          const host = container.querySelector<HTMLElement>('[data-testid="account-google-hosted-button"]');
-          if (host === null) {
-            return;
-          }
-          try {
-            await triggerHostedGoogleSignIn(host);
-          } catch {
-            error = 'Google Sign-In failed to load.';
-            render();
-          }
-        })();
-      });
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
       button.addEventListener('click', () => {
