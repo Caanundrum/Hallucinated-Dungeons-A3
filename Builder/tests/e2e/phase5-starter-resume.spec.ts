@@ -157,7 +157,7 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     const beforeRow = await token.getAttribute('data-anchor-row');
     expect(beforeCol).toBeTruthy();
     expect(beforeRow).toBeTruthy();
-    await page.getByTestId('claim-active-turn').click();
+    
     const targetCol = Number(beforeCol) + 1;
     const targetRow = Number(beforeRow);
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();

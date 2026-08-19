@@ -76,5 +76,5 @@ test('provider compliance registry covers AI, speech, and identity', () => {
 
 test('Director Address is a dock peer destination with nonmutation notice', () => {
   assert.equal(DOCK_TABS.includes('director_address'), true);
-  assert.match(DIRECTOR_ADDRESS_NOTICE, /never mutates/i);
+  assert.match(DIRECTOR_ADDRESS_NOTICE, /never moves pieces/i);
 });

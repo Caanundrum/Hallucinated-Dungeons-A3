@@ -12,7 +12,7 @@ import {
   ACTION_COMPOSER_STRUCTURE,
   DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
-  DOCK_TABS,
+  PLAYER_DOCK_TAB_ORDER,
   PARTY_CHAT_MODE_LABELS,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
@@ -39,8 +39,6 @@ import type {
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
-  claimTimingAuthority,
-  endTimingAuthority,
   fetchCampaignDetail,
   fetchCampaignMap,
   fetchChronicle,
@@ -61,10 +59,12 @@ import {
   submitTableCommand,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
+import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import type { PageHost } from './home.js';
 
 /** Distinct short tone per cue kind so table events are at least audibly distinguishable. */
@@ -87,7 +87,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   shell.setDocumentTitle('Campaign table');
 
   let campaignName = 'Campaign';
-  let activeTab: DockTab = 'chronicle';
+  let activeTab: DockTab = 'party_chat';
   let chatMode: PartyChatMode = 'table_talk';
   let chronicle: ChronicleFeedProjection | null = null;
   let partyChat: PartyChatFeedProjection | null = null;
@@ -108,11 +108,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   /** Bumped on player-driven presentation saves so an in-flight table load cannot clobber them. */
   let presentationWriteEpoch = 0;
   let seated = false;
+  let ownSeatId: string | null = null;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
   let draft = '';
   let directorDraft = '';
   let directorReply: string | null = null;
+  let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
   let lastNarration: string | null = null;
@@ -257,6 +259,47 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
+  function explorationMode(): boolean {
+    return encounter === null || encounter.status !== 'active';
+  }
+
+  function ownCombatant(): EncounterProjection['combatants'][number] | null {
+    if (encounter === null || ownSeatId === null) {
+      return null;
+    }
+    return encounter.combatants.find((combatant) => combatant.seatId === ownSeatId) ?? null;
+  }
+
+  function activeCombatant(): EncounterProjection['combatants'][number] | null {
+    if (encounter === null || encounter.activeCombatantId === null) {
+      return null;
+    }
+    return (
+      encounter.combatants.find(
+        (combatant) => combatant.combatantId === encounter!.activeCombatantId,
+      ) ?? null
+    );
+  }
+
+  function isOwnCombatTurn(): boolean {
+    const own = ownCombatant();
+    return (
+      encounter?.status === 'active' &&
+      own !== null &&
+      encounter.activeCombatantId === own.combatantId
+    );
+  }
+
+  function canMoveOnMap(): boolean {
+    if (!seated || mapBundle === null) {
+      return false;
+    }
+    if (explorationMode()) {
+      return true;
+    }
+    return isOwnCombatTurn();
+  }
+
   function holdsOwnAuthority(): boolean {
     return (
       timingAuthority !== null &&
@@ -267,45 +310,132 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function authorityMeta(): string {
+    if (explorationMode()) {
+      return 'Exploration — move freely until the DM calls for initiative.';
+    }
     if (timingAuthority === null) {
-      return 'No Active Turn Authority on this campaign.';
+      return encounter?.status === 'active'
+        ? 'Waiting for your turn in initiative order.'
+        : 'Waiting for initiative order.';
     }
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
-      return 'Another seat holds Active Turn Authority.';
+      return 'Another adventurer holds the active combat turn.';
+    }
+    if (isOwnCombatTurn()) {
+      return 'Initiative gave you the active combat turn.';
     }
     const label =
-      timingAuthority.opportunityClass === 'active_turn'
-        ? 'Active Turn'
-        : timingAuthority.opportunityClass === 'reaction'
-          ? 'Reaction'
-          : 'Decision Window';
-    return `You hold ${label} · expires ${timingAuthority.expiresAt}`;
+      timingAuthority.opportunityClass === 'reaction'
+        ? 'Reaction window'
+        : timingAuthority.opportunityClass === 'decision'
+          ? 'Decision window'
+          : 'Combat turn';
+    return `${label} credential active · expires ${timingAuthority.expiresAt}`;
   }
 
-  /** Visible prerequisite copy for disabled composer / training controls. */
+  function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
+    if (!seated) {
+      return {
+        tone: 'spectator',
+        title: 'You are watching this table',
+        detail: 'Seat a character on the campaign page to join the party.',
+      };
+    }
+    if (encounter !== null && encounter.status === 'active') {
+      const active = activeCombatant();
+      if (isOwnCombatTurn()) {
+        return {
+          tone: 'yours',
+          title: `It's your turn, ${ownCombatant()?.name ?? 'adventurer'}`,
+          detail: 'Describe what you do, move on the map if you need to, then end your turn.',
+        };
+      }
+      if (active !== null) {
+        return {
+          tone: 'waiting',
+          title: `${active.name}'s turn`,
+          detail: 'The DM is running the scene. Review your sheet, chat, or ask the DM while you wait.',
+        };
+      }
+    }
+    if (encounter !== null && encounter.status === 'setup') {
+      return {
+        tone: 'waiting',
+        title: 'Combat is forming',
+        detail: 'The DM will call for initiative when the fight begins.',
+      };
+    }
+    return {
+      tone: 'exploration',
+      title: 'Exploring freely',
+      detail: 'Move where you like until the DM calls for initiative. Chat and ask the DM anytime.',
+    };
+  }
+
+  function initiativeStrip(): string {
+    if (encounter === null || encounter.initiativeOrder.length === 0) {
+      return '';
+    }
+    const items = encounter.initiativeOrder
+      .map((combatantId) => {
+        const combatant =
+          encounter!.combatants.find((entry) => entry.combatantId === combatantId) ?? null;
+        const active = combatantId === encounter!.activeCombatantId;
+        return `<li class="${active ? 'initiative-active' : ''}" data-testid="initiative-entry-${escapeHtml(combatantId)}">
+          ${escapeHtml(combatant?.name ?? combatantId)}${active ? ' · now' : ''}
+        </li>`;
+      })
+      .join('');
+    return `
+      <ol class="initiative-order" data-testid="initiative-order" aria-label="Initiative order">
+        ${items}
+      </ol>`;
+  }
+
+  function characterSheetPanel(): string {
+    if (!seated || progression === null) {
+      return `<p class="record-meta" data-testid="table-character-sheet-empty">
+        Seat a character to keep your sheet open at the table.
+      </p>`;
+    }
+    return `<div data-testid="table-character-sheet">${renderCharacterSheet(progression.sheet)}</div>`;
+  }
+
+  function compactPresenceLine(): string {
+    if (presence === null || presence.devices.length === 0) {
+      return 'No one else is at the table yet.';
+    }
+    const accountId = getAccount()?.accountId ?? null;
+    const labels = presence.devices
+      .filter((device) => device.status === 'online' || device.status === 'grace')
+      .map((device) => {
+        const name = device.displayLabel.trim() || 'Player';
+        return device.accountId === accountId ? `${name} (you)` : name;
+      });
+    const unique = [...new Set(labels)];
+    return unique.length === 0 ? 'No one else is at the table yet.' : `At the table: ${unique.join(', ')}`;
+  }
+
+  /** Visible prerequisite copy for disabled training / developer controls. */
   function composerGateHint(): string {
     if (candidate === null) {
       return 'Arena candidate is still loading.';
     }
     if (!seated) {
-      return 'Seat a character you own on the campaign page, then claim Active Turn before mechanical actions.';
-    }
-    if (!holdsOwnAuthority()) {
-      return 'Claim Active Turn first. Table sync, moves, Interpret Action, natural-language intent, and training actions stay closed until you hold it.';
+      return 'Seat a character you own on the campaign page before using training controls.';
     }
     if (encounter?.status === 'active') {
-      const ownCombatant =
-        encounter.combatants.find((combatant) => combatant.seatId !== null) ?? null;
-      const ownTurn =
-        ownCombatant !== null && encounter.activeCombatantId === ownCombatant.combatantId;
-      if (!ownTurn) {
-        return 'You hold Active Turn, but training actions wait until it is your combatant’s turn — use Next turn.';
+      if (!isOwnCombatTurn()) {
+        return 'Initiative order is active. Training combat controls unlock on your turn.';
       }
-      if (ownCombatant?.actionEconomy.actionAvailable !== true) {
-        return 'Your turn is active, but your action is already spent — use Next turn or a still-available control.';
+      const own = ownCombatant();
+      if (own?.actionEconomy.actionAvailable !== true) {
+        return 'Your action is spent for this turn. End your turn or use a still-available control.';
       }
     }
-    return 'You hold Active Turn. Declare Action and training controls open when prerequisites are met.';
+    return explorationMode()
+      ? 'Exploration mode — move freely on the map. Training controls are optional.'
+      : 'Your combat turn is active. Training controls are available if you need them.';
   }
 
   function presentationMeta(): string {
@@ -486,11 +616,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           <form class="dock-composer" data-testid="director-address-composer">
             <label class="field">
-              <span>Private question to the Director</span>
-              <textarea data-testid="director-address-input" rows="3">${escapeHtml(directorDraft)}</textarea>
+              <span>Your message to the DM</span>
+              <textarea data-testid="director-address-input" rows="3" placeholder="Ask about the scene, an NPC, or what you want to try.">${escapeHtml(directorDraft)}</textarea>
             </label>
             <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null}">
-              ${busy ? 'Sending…' : 'Address the Director'}
+              ${busy ? 'Sending…' : 'Send to DM'}
             </button>
           </form>
         </div>`;
@@ -501,7 +631,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dock-pane" data-testid="party-chat-pane">
         ${
           messages.length === 0
-            ? '<p class="empty-state" data-testid="party-chat-empty">No Party Chat messages yet.</p>'
+            ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet. Say hello to your party.</p>'
             : `<ul class="record-list" data-testid="party-chat-list">
                 ${messages
                   .map(
@@ -519,8 +649,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </ul>`
         }
         <form class="dock-composer" data-testid="party-chat-composer">
-          <fieldset class="option-list compact">
-            <legend>Before send</legend>
+          <fieldset class="option-list compact chat-mode-fieldset">
+            <legend class="visually-hidden">Chat mode</legend>
             ${PARTY_CHAT_MODES.map(
               (mode) => `
               <label class="option${chatMode === mode ? ' selected' : ''}">
@@ -530,16 +660,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </label>`,
             ).join('')}
           </fieldset>
-          <p class="record-meta" data-testid="chat-send-clarity">
-            This text becomes ${escapeHtml(PARTY_CHAT_MODE_LABELS[chatMode])} for campaign members.
-            It cannot spend resources, open objects, or become a mechanical action.
-          </p>
           <label class="field">
             <span>Message</span>
-            <textarea data-testid="party-chat-input" rows="3">${escapeHtml(draft)}</textarea>
+            <textarea data-testid="party-chat-input" rows="3" placeholder="Talk with your party…">${escapeHtml(draft)}</textarea>
           </label>
           <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null}">
-            ${busy ? 'Sending…' : 'Send to Party Chat'}
+            ${busy ? 'Sending…' : 'Send'}
           </button>
           ${
             speechToTextEnabled
@@ -556,8 +682,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!seated) {
       return '<p class="record-meta">Seat a character to start the training encounter.</p>';
     }
-    const ownCombatant =
-      encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+    const seatedCombatant = ownCombatant();
     const availableSpells = [
       ...(progression?.sheet.spellcasting?.cantrips ?? []),
       ...(progression?.sheet.spellcasting?.spells ?? []),
@@ -583,25 +708,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     const ownTurn =
       encounter?.status === 'active' &&
-      encounter.activeCombatantId === ownCombatant?.combatantId;
-    const actionAvailable = ownTurn && ownCombatant?.actionEconomy.actionAvailable === true;
+      encounter.activeCombatantId === seatedCombatant?.combatantId;
+    const actionAvailable = ownTurn && seatedCombatant?.actionEconomy.actionAvailable === true;
     const deathSaveAvailable =
       ownTurn &&
-      ownCombatant?.currentHitPoints === 0 &&
-      ownCombatant.deathSaves.dead !== true &&
-      ownCombatant.deathSaves.stable !== true &&
-      ownCombatant.actionEconomy.deathSaveAvailable === true;
+      seatedCombatant?.currentHitPoints === 0 &&
+      seatedCombatant.deathSaves.dead !== true &&
+      seatedCombatant.deathSaves.stable !== true &&
+      seatedCombatant.actionEconomy.deathSaveAvailable === true;
     const longRestAvailable =
       ownTurn &&
-      ownCombatant?.deathSaves.dead !== true &&
-      (actionAvailable || ownCombatant?.currentHitPoints === 0);
+      seatedCombatant?.deathSaves.dead !== true &&
+      (actionAvailable || seatedCombatant?.currentHitPoints === 0);
     const openWindow = encounter?.decisionWindows.find(
       (window) =>
         window.state === 'open' &&
-        window.eligibleCombatantId === ownCombatant?.combatantId,
+        window.eligibleCombatantId === seatedCombatant?.combatantId,
     );
-    const authorityReady = holdsOwnAuthority();
-    const disable = busy || tableState === null || !authorityReady;
+    const disable = busy || tableState === null;
+    const combatDisabled = disable || (encounter?.status === 'active' && !ownTurn);
     return `
       <section class="rules-encounter" aria-labelledby="rules-encounter-heading" data-testid="rules-encounter">
         <div class="rules-heading-row">
@@ -683,23 +808,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" data-rules-command="encounter.next_turn" data-testid="next-encounter-turn"
             aria-disabled="${disable || encounter?.status !== 'active'}" aria-describedby="composer-gate-hint">Next turn</button>
           <button type="button" data-rules-command="combat.attack" data-testid="rules-attack"
-            aria-disabled="${disable || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
+            aria-disabled="${combatDisabled || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
           <button type="button" data-rules-command="combat.cast_spell" data-testid="rules-cast-spell"
-            aria-disabled="${disable || !actionAvailable || availableSpells.length === 0}" aria-describedby="composer-gate-hint">Cast spell</button>
+            aria-disabled="${combatDisabled || !actionAvailable || availableSpells.length === 0}" aria-describedby="composer-gate-hint">Cast spell</button>
           <button type="button" data-rules-command="combat.ready" data-testid="rules-ready"
-            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Ready opportunity attack</button>
+            aria-disabled="${combatDisabled || !actionAvailable}" aria-describedby="composer-gate-hint">Ready opportunity attack</button>
           <button type="button" data-rules-command="combat.reaction" data-testid="rules-reaction"
-            aria-disabled="${disable || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
+            aria-disabled="${combatDisabled || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
           <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
-            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
+            aria-disabled="${combatDisabled || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
-            aria-disabled="${disable || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
+            aria-disabled="${combatDisabled || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
           <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
-            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
+            aria-disabled="${combatDisabled || !actionAvailable || seatedCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
-            aria-disabled="${disable || !actionAvailable}">Short Rest</button>
+            aria-disabled="${combatDisabled || !actionAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
-            aria-disabled="${disable || !longRestAvailable}">Long Rest</button>
+            aria-disabled="${combatDisabled || !longRestAvailable}">Long Rest</button>
           <button type="button" data-rules-command="progression.award_xp" data-testid="rules-award-xp"
             aria-disabled="${disable}">Award 300 XP</button>
           <button type="button" data-rules-command="progression.level_up" data-testid="rules-level-up"
@@ -711,39 +836,83 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </section>`;
   }
 
+  function playerActionBar(): string {
+    const banner = turnBanner();
+    const showEndTurn = isOwnCombatTurn();
+    const canDescribeTurn = seated && (explorationMode() || isOwnCombatTurn());
+    const version = tableState?.stateVersion ?? 0;
+    const sequence = tableState?.lastEventSequence ?? 0;
+    return `
+      <p class="visually-hidden" data-testid="table-state-meta">
+        Table state version ${version} · last event sequence ${sequence}
+      </p>
+      <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
+        <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
+        <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+        ${initiativeStrip()}
+        <p class="table-turn-presence" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
+        ${
+          movePreviewNote === null
+            ? ''
+            : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
+        }
+      </section>
+      ${
+        canDescribeTurn
+          ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
+              <label class="field">
+                <span>What do you do?</span>
+                <textarea data-testid="player-action-input" rows="3"
+                  placeholder="Describe your action in your own words — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+              </label>
+              <div class="table-player-actions" data-testid="table-player-actions">
+                <button type="button" class="table-primary-action" data-testid="submit-player-action"
+                  aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
+                  ${busy ? 'Sending…' : 'Tell the DM'}
+                </button>
+                ${
+                  showEndTurn
+                    ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
+                        aria-disabled="${busy || candidate === null}">
+                        End turn
+                      </button>`
+                    : ''
+                }
+              </div>
+            </div>`
+          : `<div class="table-player-actions" data-testid="table-player-actions">
+              <p class="record-meta">Watch the scene, chat with the party, or ask the DM while others act.</p>
+            </div>`
+      }`;
+  }
+
   function actionComposerBody(): string {
+    return `
+      ${playerActionBar()}
+      <details class="table-character-sheet-panel" open data-testid="table-character-sheet-panel">
+        <summary>Your character sheet</summary>
+        ${characterSheetPanel()}
+      </details>
+      <details class="table-advanced-controls" data-testid="table-advanced-controls">
+        <summary>Training, combat tools, and developer controls</summary>
+        ${advancedControlsBody()}
+      </details>`;
+  }
+
+  function advancedControlsBody(): string {
     const version = tableState?.stateVersion ?? 0;
     const sequence = tableState?.lastEventSequence ?? 0;
     const ownAuthority = holdsOwnAuthority();
-    const syncDisabled = busy || candidate === null || !seated || tableState === null || !ownAuthority;
-    const interpretDisabled = busy || candidate === null || !seated || !ownAuthority;
+    const needsAuthority = !explorationMode();
+    const syncDisabled =
+      busy || candidate === null || !seated || tableState === null || (needsAuthority && !ownAuthority);
+    const interpretDisabled =
+      busy || candidate === null || !seated || (needsAuthority && !ownAuthority);
     const gateHint = composerGateHint();
     return `
-      <p data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
-      <p class="record-meta" data-testid="table-state-meta">
-        Table state version ${version} · last event sequence ${sequence}
-      </p>
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      <p class="record-meta" data-testid="table-event-meta">Last event sequence ${sequence}</p>
       <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
-      ${
-        seated
-          ? ''
-          : `<p class="record-meta" data-testid="table-sync-seat-hint">
-              Seat a character you own on the campaign page before claiming Active Turn.
-            </p>`
-      }
-      <div class="action-composer-controls action-composer-authority" data-testid="active-turn-controls">
-        <button type="button" data-testid="claim-active-turn"
-          aria-disabled="${busy || candidate === null || !seated}"
-          aria-describedby="composer-gate-hint">
-          ${busy ? 'Working…' : 'Claim Active Turn'}
-        </button>
-        <button type="button" data-testid="end-active-turn"
-          aria-disabled="${busy || candidate === null || !ownAuthority}"
-          aria-describedby="composer-gate-hint">
-          End Active Turn
-        </button>
-      </div>
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
         <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
         <label class="option compact">
@@ -789,21 +958,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </button>
       </div>
       <label class="field">
-        <span>Natural-language intent (Intent Intercept via Director gateway)</span>
-        <textarea data-testid="nl-intent-input" rows="2">${escapeHtml(nlIntentText)}</textarea>
+        <span>Describe your action</span>
+        <textarea data-testid="nl-intent-input" rows="2" placeholder="Example: I open the door carefully and listen.">${escapeHtml(nlIntentText)}</textarea>
       </label>
       <button type="button" data-testid="interpret-nl-intent"
         aria-disabled="${interpretDisabled}"
         aria-describedby="composer-gate-hint">
-        Interpret natural language
+        Plan from description
       </button>
-      <p class="record-meta" data-testid="move-target-meta">
-        ${
-          moveTarget === null
-            ? 'How to move: Claim Active Turn, click an adjacent known square on the map, then Commit move. Your token slides to the new square.'
-            : `Move target: column ${moveTarget.column}, row ${moveTarget.row}${movePreviewNote ? ` · ${escapeHtml(movePreviewNote)}` : ''}`
-        }
-      </p>
       ${
         intentDraft === null
           ? `<p class="record-meta" data-testid="interpret-action-notice">
@@ -814,7 +976,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               <p class="record-meta">State: ${escapeHtml(intentDraft.interceptState)} · draft ${escapeHtml(intentDraft.draftId)}</p>
               <div class="action-composer-controls">
                 <button type="button" data-testid="confirm-intent-intercept"
-                  aria-disabled="${busy || !ownAuthority}">Confirm Intent Intercept</button>
+                  aria-disabled="${busy || !ownAuthority}">Confirm action</button>
                 <button type="button" data-testid="cancel-intent-intercept"
                   aria-disabled="${busy}">Cancel draft</button>
               </div>
@@ -893,42 +1055,128 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   async function onSquareSelected(square: { column: number; row: number }): Promise<void> {
-    if (candidate === null || !seated) {
-      movePreviewNote = 'Seat a character before choosing a move target.';
+    if (candidate === null || !seated || mapBundle === null || ownSeatId === null) {
+      movePreviewNote = 'Seat a character before moving on the map.';
       moveTarget = square;
       render();
       return;
     }
+    if (busy) {
+      return;
+    }
+
+    const start = ownTokenAnchor(mapBundle, ownSeatId);
+    if (start === null) {
+      movePreviewNote = 'Your token is not on the map yet.';
+      moveTarget = square;
+      render();
+      return;
+    }
+    if (start.column === square.column && start.row === square.row) {
+      moveTarget = null;
+      movePreviewNote = null;
+      stageHandle?.setMoveTarget(null);
+      render();
+      return;
+    }
+
+    busy = true;
+    error = null;
     moveTarget = square;
     stageHandle?.setMoveTarget(square);
-    movePreviewNote = 'Checking path…';
+    movePreviewNote = 'Moving…';
     render();
+
     try {
+      if (!canMoveOnMap()) {
+        movePreviewNote =
+          encounter?.status === 'active'
+            ? 'Initiative is active — wait for your turn to move.'
+            : 'Seat a character before moving on the map.';
+        return;
+      }
+      if (tableState === null) {
+        movePreviewNote = 'Table state is still loading.';
+        return;
+      }
+
+      const candidatePath =
+        findWalkPathToTarget({
+          map: mapBundle,
+          start,
+          target: square,
+          actorSeatId: ownSeatId,
+        }) ?? [square];
+
       const preview = await previewTableMove({
         candidateId: candidate.candidateId,
         campaignId,
-        path: [square],
+        path: candidatePath,
       });
-      movePreviewNote = preview.legal
-        ? `Legal · ${preview.totalCostFeet} ft · ${preview.remainingBudgetFeet} ft remain — click Commit move`
-        : preview.rejectionMessage ?? 'Illegal path';
+      if (!preview.legal) {
+        movePreviewNote = preview.rejectionMessage ?? 'That square is not reachable.';
+        return;
+      }
+
+      const commitPath = preview.path.map((step) => ({
+        column: step.column,
+        row: step.row,
+      }));
+      const accepted = await submitTableCommand({
+        candidateId: candidate.candidateId,
+        campaignId,
+        requestId: crypto.randomUUID(),
+        commandType: 'table.move',
+        expectedStateVersion: tableState.stateVersion,
+        ...(explorationMode() || timingAuthority === null
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+        path: commitPath,
+      });
+      tableState = accepted.table;
+      mapBundle = await fetchCampaignMap(campaignId);
+      moveTarget = null;
+      movePreviewNote = null;
+      stageHandle?.setMoveTarget(null);
+      shell.announce(
+        commitPath.length <= 1
+          ? 'You moved to the selected square.'
+          : `You moved ${commitPath.length} squares.`,
+      );
     } catch (failure) {
       movePreviewNote =
-        failure instanceof ApiFailure ? failure.message : 'Move preview failed.';
+        failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
+      if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        try {
+          tableState = await fetchTableState(campaignId);
+          mapBundle = await fetchCampaignMap(campaignId);
+        } catch {
+          // Keep the move error visible.
+        }
+      }
+    } finally {
+      busy = false;
+      render();
     }
-    render();
   }
 
   async function submitRulesAction(
     commandType: string,
     fields: RulesCommandFields = {},
   ): Promise<void> {
+    const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
+    const endTurnCommand = commandType === 'encounter.next_turn';
+    if (candidate === null || busy || tableState === null) {
+      return;
+    }
+    if (endTurnCommand && !isOwnCombatTurn()) {
+      return;
+    }
     if (
-      candidate === null ||
-      busy ||
-      tableState === null ||
-      timingAuthority === null ||
-      !holdsOwnAuthority()
+      !setupCommand &&
+      !endTurnCommand &&
+      !holdsOwnAuthority() &&
+      encounter?.status === 'active'
     ) {
       return;
     }
@@ -942,13 +1190,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         requestId: crypto.randomUUID(),
         commandType,
         expectedStateVersion: tableState.stateVersion,
-        timingAuthorityId: timingAuthority.timingAuthorityId,
+        ...(timingAuthority === null || setupCommand
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         ...fields,
       });
       tableState = accepted.table;
       if (accepted.encounter !== undefined) encounter = accepted.encounter;
       if (accepted.progression !== undefined) progression = accepted.progression;
-      if (commandType === 'combat.ready' || commandType === 'combat.reaction') {
+      if (
+        commandType === 'initiative.roll' ||
+        commandType === 'encounter.next_turn' ||
+        commandType === 'combat.ready' ||
+        commandType === 'combat.reaction'
+      ) {
         timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
       }
       shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
@@ -1039,12 +1294,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         if (button.getAttribute('aria-disabled') === 'true') return;
         const commandType = button.dataset.rulesCommand;
         if (commandType === undefined) return;
-        const ownCombatant =
-          encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+        const seatedCombatant = ownCombatant();
         const window = encounter?.decisionWindows.find(
           (entry) =>
             entry.state === 'open' &&
-            entry.eligibleCombatantId === ownCombatant?.combatantId,
+            entry.eligibleCombatantId === seatedCombatant?.combatantId,
         );
         const fields: RulesCommandFields =
           commandType === 'combat.attack'
@@ -1061,9 +1315,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                         area: {
                           shape: 'cone',
                           origin: {
-                            column: moveTarget?.column ?? ownCombatant?.position.column ?? 1,
-                            row: moveTarget?.row ?? ownCombatant?.position.row ?? 1,
-                            elevationFeet: ownCombatant?.position.elevationFeet ?? 0,
+                            column: moveTarget?.column ?? seatedCombatant?.position.column ?? 1,
+                            row: moveTarget?.row ?? seatedCombatant?.position.row ?? 1,
+                            elevationFeet: seatedCombatant?.position.elevationFeet ?? 0,
                           },
                           sizeFeet: 15,
                           heightFeet: 10,
@@ -1096,9 +1350,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     : commandType === 'inventory.use_item'
                       ? {
                           itemId: 'healing-potion',
-                          ...(ownCombatant === null
+                          ...(seatedCombatant === null
                             ? {}
-                            : { targetCombatantId: ownCombatant.combatantId }),
+                            : { targetCombatantId: seatedCombatant.combatantId }),
                         }
                       : {};
         void submitRulesAction(commandType, fields);
@@ -1429,55 +1683,37 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     panels
-      .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy || !seated) return;
-          busy = true;
-          error = null;
-          render();
-          try {
-            const claimed = await claimTimingAuthority({
-              candidateId: candidate.candidateId,
-              campaignId,
-            });
-            timingAuthority = claimed.authority;
-            intentDraft = null;
-            shell.announce('Active Turn Authority claimed.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Active Turn could not be claimed.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+      .querySelector<HTMLTextAreaElement>('[data-testid="player-action-input"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLTextAreaElement) {
+          playerActionDraft = event.target.value;
+        }
       });
 
     panels
-      .querySelector<HTMLButtonElement>('[data-testid="end-active-turn"]')
+      .querySelector<HTMLButtonElement>('[data-testid="submit-player-action"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !holdsOwnAuthority() || timingAuthority === null) {
+          if (candidate === null || busy || playerActionDraft.trim().length === 0) {
             return;
           }
           busy = true;
           error = null;
           render();
           try {
-            await endTimingAuthority({
+            const answered = await postDirectorAddress({
               candidateId: candidate.candidateId,
               campaignId,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              body: playerActionDraft.trim(),
             });
-            timingAuthority = null;
-            intentDraft = null;
-            shell.announce('Active Turn ended.');
+            directorReply = answered.reply;
+            playerActionDraft = '';
+            shell.announce('The DM heard your action.');
           } catch (failure) {
             error =
-              failure instanceof ApiFailure ? failure.message : 'Active Turn could not be ended.';
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The DM could not respond right now.';
           } finally {
             busy = false;
             render();
@@ -1486,17 +1722,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     panels
+      .querySelector<HTMLButtonElement>('[data-testid="end-combat-turn"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('encounter.next_turn');
+      });
+
+    panels
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (
-            candidate === null ||
-            busy ||
-            !seated ||
-            tableState === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
-          ) {
+          if (candidate === null || busy || !seated || tableState === null) {
+            return;
+          }
+          if (!explorationMode() && !holdsOwnAuthority()) {
             return;
           }
           busy = true;
@@ -1509,7 +1747,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.sync',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
@@ -1545,8 +1785,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             !seated ||
             tableState === null ||
             moveTarget === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
+            !canMoveOnMap()
           ) {
             return;
           }
@@ -1560,7 +1799,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.move',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               path: [moveTarget],
             });
             tableState = accepted.table;
@@ -1586,8 +1827,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             !seated ||
             tableState === null ||
             mapBundle === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
+            !canMoveOnMap()
           ) {
             return;
           }
@@ -1609,7 +1849,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.open_door',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               edgeId: door.edgeId,
             });
             tableState = accepted.table;
@@ -1757,16 +1999,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function patchPresenceSection(): void {
-    const section = container.querySelector<HTMLElement>('[data-testid="presence-section"]');
-    if (section === null) {
-      return;
+    const turnPresence = container.querySelector('[data-testid="table-turn-presence"]');
+    if (turnPresence !== null) {
+      turnPresence.textContent = compactPresenceLine();
     }
-    const heading = section.querySelector('#presence-heading');
-    section.innerHTML = `
-      <h2 id="presence-heading">Table presence</h2>
-      ${presenceBody()}`;
-    if (heading === null) {
-      // Keep structure stable for a11y; no event rebind needed for presence list.
+    const host = container.querySelector('[data-testid="presence-section"] section');
+    if (host !== null) {
+      host.innerHTML = `<h2 id="presence-heading">Who is connected</h2>${presenceBody()}`;
     }
   }
 
@@ -1805,31 +2044,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     heading.innerHTML = `
       <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
-      <p class="tagline">
-        Tactical map stage, Communication Dock, and Action Composer. Party Chat stays social;
-        table sync goes through the command gateway. This client polls shared table projections
-        so a second local seat can recover the same state.
-      </p>
-      <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
       ${
         mapBundle === null
           ? ''
           : `<p class="scene-banner" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
       }
-      ${
-        mapBundle === null || mapBundle.notableFeatures.length === 0
-          ? ''
-          : `<ul class="record-list compact" data-testid="map-notable-features">
-              ${mapBundle.notableFeatures
-                .map(
-                  (feature) => `
-                <li data-testid="map-notable-feature">
-                  ${escapeHtml(feature.label)} · column ${feature.column}, row ${feature.row}
-                </li>`,
-                )
-                .join('')}
-            </ul>`
-      }
+      <p class="visually-hidden" data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
       ${
         error === null
           ? ''
@@ -1837,14 +2057,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }`;
 
     panels.innerHTML = `
-      <section class="panel" aria-labelledby="presence-heading" data-testid="presence-section">
-        <h2 id="presence-heading">Table presence</h2>
-        ${presenceBody()}
+      <section class="panel action-composer table-player-panel" aria-labelledby="action-composer-heading" data-testid="action-composer">
+        <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
+        ${actionComposerBody()}
       </section>
 
-      <section class="panel communication-dock" aria-label="Communication Dock" data-testid="communication-dock">
-        <div class="dock-tabs" role="tablist" aria-label="Dock destinations">
-          ${DOCK_TABS.map(
+      <section class="panel communication-dock" aria-label="At the table" data-testid="communication-dock">
+        <div class="dock-tabs" role="tablist" aria-label="Table conversations">
+          ${PLAYER_DOCK_TAB_ORDER.map(
             (tab) => `
             <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
               aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
@@ -1857,10 +2077,28 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </div>
       </section>
 
-      <section class="panel action-composer" aria-labelledby="action-composer-heading" data-testid="action-composer">
-        <h2 id="action-composer-heading">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
-        ${actionComposerBody()}
-      </section>
+      <details class="table-meta-panel" data-testid="presence-section">
+        <summary>Table details</summary>
+        <section aria-labelledby="presence-heading">
+          <h2 id="presence-heading">Who is connected</h2>
+          ${presenceBody()}
+        </section>
+        <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+        ${
+          mapBundle === null || mapBundle.notableFeatures.length === 0
+            ? ''
+            : `<ul class="record-list compact" data-testid="map-notable-features">
+                ${mapBundle.notableFeatures
+                  .map(
+                    (feature) => `
+                  <li data-testid="map-notable-feature">
+                    ${escapeHtml(feature.label)} · column ${feature.column}, row ${feature.row}
+                  </li>`,
+                  )
+                  .join('')}
+              </ul>`
+        }
+      </details>
 
       <p>
         <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Back to campaign</a>
@@ -2042,6 +2280,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const detail = await fetchCampaignDetail(campaignId);
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
+      ownSeatId = detail.ownSeat?.seatId ?? null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
       const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed] =
         await Promise.all([

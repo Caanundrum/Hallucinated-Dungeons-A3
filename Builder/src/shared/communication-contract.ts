@@ -12,11 +12,19 @@ export const DOCK_TABS = ['chronicle', 'party_chat', 'rules_desk', 'director_add
 export type DockTab = (typeof DOCK_TABS)[number];
 
 export const DOCK_TAB_LABELS: Record<DockTab, string> = {
-  chronicle: 'Chronicle',
-  party_chat: 'Party Chat',
-  rules_desk: 'Rules Desk',
-  director_address: 'Director Address',
+  chronicle: 'Story so far',
+  party_chat: 'Chat',
+  rules_desk: 'Rules',
+  director_address: 'Ask the DM',
 };
+
+/** Player-first tab order: social and help surfaces before the audit log. */
+export const PLAYER_DOCK_TAB_ORDER: readonly DockTab[] = [
+  'party_chat',
+  'director_address',
+  'rules_desk',
+  'chronicle',
+];
 
 export const PARTY_CHAT_MODES = ['table_talk', 'speak_as_character'] as const;
 export type PartyChatMode = (typeof PARTY_CHAT_MODES)[number];
@@ -80,20 +88,20 @@ export interface ActionComposerProjection {
 
 export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
-  heading: 'Declare Action',
+  heading: 'At the table',
   notice:
-    'This panel stays separate from Party Chat so a sentence typed as talk cannot become a command. Claim Active Turn Authority before committing table syncs, moves, or door opens. Interpret Action and natural-language intent open a structured Intent Intercept draft only while you hold that authority — confirmation still goes through the command gateway.',
-  tableSyncLabel: 'Commit table sync',
-  interpretActionLabel: 'Interpret Action',
+    'Move freely until the DM calls for initiative. On your turn, describe what you do in your own words — no menus required.',
+  tableSyncLabel: 'Sync table',
+  interpretActionLabel: 'Plan action',
   interpretActionNotice:
-    'Interpret Action proposes a structured Intent Intercept draft from your current move target (or a table sync). Natural-language intent uses the Director gateway with a Payload Manifest, still requires confirmation, and never auto-submits. Party Chat still cannot become a command.',
+    'Training-only: translate a plain-language description into a draft command you can confirm.',
 };
 
 export const RULES_DESK_NOTICE =
-  'The Rules Desk explains approved rules and visible modifiers. It cannot grant rulings, mutate state, or submit actions.';
+  'Look up how a rule works. This explains mechanics only — it does not change the game or make rulings for you.';
 
 export const DIRECTOR_ADDRESS_NOTICE =
-  'Director Address is a private, nonmechanical channel to the Game Director. It never mutates the table. Actionable wording may produce an Action Draft Suggestion you must open in Declare Action and confirm through Intent Intercept.';
+  'Ask the DM a question or describe what you want to happen in the story. Only you see this reply; the DM never moves pieces or rolls dice for you.';
 
 export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
 

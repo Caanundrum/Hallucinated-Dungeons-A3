@@ -5,6 +5,7 @@ import {
   ACTION_COMPOSER_STRUCTURE,
   DOCK_TABS,
   DOCK_TAB_LABELS,
+  PLAYER_DOCK_TAB_ORDER,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   isDockTab,
@@ -25,10 +26,16 @@ import { campaignRouteFromPath } from '../../dist/shared/routes.js';
 
 test('dock tabs are peer destinations including Director Address', () => {
   assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
-  assert.equal(DOCK_TAB_LABELS.chronicle, 'Chronicle');
-  assert.equal(DOCK_TAB_LABELS.party_chat, 'Party Chat');
-  assert.equal(DOCK_TAB_LABELS.rules_desk, 'Rules Desk');
-  assert.equal(DOCK_TAB_LABELS.director_address, 'Director Address');
+  assert.equal(DOCK_TAB_LABELS.chronicle, 'Story so far');
+  assert.equal(DOCK_TAB_LABELS.party_chat, 'Chat');
+  assert.equal(DOCK_TAB_LABELS.rules_desk, 'Rules');
+  assert.equal(DOCK_TAB_LABELS.director_address, 'Ask the DM');
+  assert.deepEqual([...PLAYER_DOCK_TAB_ORDER], [
+    'party_chat',
+    'director_address',
+    'rules_desk',
+    'chronicle',
+  ]);
   assert.equal(isDockTab('party_chat'), true);
   assert.equal(isDockTab('director_address'), true);
   assert.equal(isDockTab('action_composer'), false);
@@ -42,10 +49,10 @@ test('party chat modes stay Table Talk and Speak as Character only', () => {
 
 test('action composer enables table sync while keeping Interpret Action gated', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /separate from Party Chat/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Active Turn Authority|Timing Authority/i);
-  assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Commit table sync');
-  assert.match(RULES_DESK_NOTICE, /cannot grant rulings/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /initiative/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /describe what you do/i);
+  assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Sync table');
+  assert.match(RULES_DESK_NOTICE, /does not change the game/i);
 });
 
 test('settings defaults keep speech off until the player enables them', () => {

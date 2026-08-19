@@ -88,8 +88,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
 
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await page.getByTestId('begin-encounter').click();
     await expect(page.getByTestId('combatant-training-dummy')).toContainText('Training Dummy');
     await expect(page.getByTestId('combatant-practice-goblin')).toContainText('Practice Goblin');
@@ -147,10 +146,11 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createMage(page);
     const campaignId = await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('claim-active-turn').click();
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
+    await advanceToOwnAction(page);
     const candidate = await readCandidate(page);
     const stateText = await page.getByTestId('table-state-meta').innerText();
     const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
@@ -165,8 +165,9 @@ test.describe('Phase 3 deterministic rules encounter', () => {
           },
           body: JSON.stringify({
             requestId,
-            commandType: 'encounter.begin',
+            commandType: 'combat.attack',
             expectedStateVersion: stateVersion,
+            targetCombatantId: 'training-dummy',
           }),
         });
         return {
@@ -198,8 +199,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createMage(page);
     await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');

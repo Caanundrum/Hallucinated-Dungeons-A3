@@ -131,7 +131,7 @@ test.describe('Permanent smoke spine', () => {
     await expect(page.getByTestId('character-link')).toContainText('Smoke Spine Warden');
   });
 
-  test('tactical interaction: claim Active Turn, sync, and commit a legal move', async ({
+  test('tactical interaction: exploration sync and one-click move', async ({
     page,
   }) => {
     await openArena(page);
@@ -171,9 +171,9 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await expect(page.getByTestId('table-a11y-panel')).toBeVisible();
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
@@ -189,10 +189,6 @@ test.describe('Permanent smoke spine', () => {
     const start = mapBody.tokens[0]!.footprint.anchor;
     const target = { column: start.column + 1, row: start.row };
     await page.locator(`[data-square="${target.column},${target.row}"]`).click({ force: true });
-    await expect(page.getByTestId('move-target-meta')).toContainText(
-      `column ${target.column}, row ${target.row}`,
-    );
-    await page.getByTestId('commit-table-move').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
 
     await page.reload();
@@ -231,8 +227,7 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('create-seat').click();
 
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await page.getByTestId('begin-encounter').click();
     await expect(page.getByTestId('combatant-practice-goblin')).toBeVisible();
     await page.getByTestId('roll-initiative').click();

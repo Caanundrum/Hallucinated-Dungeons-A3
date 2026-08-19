@@ -86,12 +86,13 @@ test.describe('Phase 2e two-client sync and recovery', () => {
 
     await ownerPage.getByTestId('open-campaign-table').click();
     await guestPage.getByTestId('open-campaign-table').click();
+    await ownerPage.getByTestId('table-advanced-controls').locator('summary').click();
+    await guestPage.getByTestId('table-advanced-controls').locator('summary').click();
     await expect(ownerPage.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(guestPage.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(guestPage.getByTestId('refresh-table-projection')).toBeVisible();
 
-    await ownerPage.getByTestId('claim-active-turn').click();
-    await expect(ownerPage.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await expect(ownerPage.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await ownerPage.getByTestId('commit-table-sync').click();
     await expect(ownerPage.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
@@ -99,20 +100,12 @@ test.describe('Phase 2e two-client sync and recovery', () => {
     await expect(guestPage.getByTestId('table-state-meta')).toContainText('Table state version 1', {
       timeout: 8000,
     });
-    await expect(guestPage.getByTestId('timing-authority-meta')).toContainText(
-      'Another seat holds Active Turn',
-      { timeout: 8000 },
-    );
+    await expect(guestPage.getByTestId('timing-authority-meta')).toContainText('Exploration', {
+      timeout: 8000,
+    });
 
     const origin = new URL(ownerPage.url()).origin;
     const ownerCandidate = await readCandidate(ownerPage);
-    const authority = await ownerPage.request.get(`/api/campaigns/${campaignId}/timing-authority`, {
-      headers: { origin, 'x-hd-candidate': ownerCandidate.candidateId },
-    });
-    const authorityBody = (await authority.json()) as {
-      authority: { timingAuthorityId: string };
-    };
-    const timingAuthorityId = authorityBody.authority.timingAuthorityId;
 
     const detail = await ownerPage.request.get(`/api/campaigns/${campaignId}`, {
       headers: { origin, 'x-hd-candidate': ownerCandidate.candidateId },
@@ -145,7 +138,6 @@ test.describe('Phase 2e two-client sync and recovery', () => {
         requestId: randomUUID(),
         commandType: 'table.move',
         expectedStateVersion: 1,
-        timingAuthorityId,
         path: [legalTarget],
       },
     });

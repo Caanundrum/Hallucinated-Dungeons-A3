@@ -31,6 +31,7 @@ import {
   RULES_COMMAND_TYPES,
   acceptRulesCommand,
 } from '../rules/engine/rules-commands.js';
+import { loadEncounter } from '../rules/engine/encounter-runtime.js';
 import {
   buildAuthoritativeMapBundle,
   loadCampaignSeats,
@@ -43,7 +44,7 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
-import { requireTimingAuthority, TimingAuthorityError } from './timing-authority.js';
+import { requireTableCommandTimingAuthority, TimingAuthorityError } from './timing-authority.js';
 
 export { TimingAuthorityError };
 
@@ -384,6 +385,7 @@ export async function acceptTableCommand(options: {
 
   await assertCampaignMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
+  const encounter = await loadEncounter(firestore, campaignId);
 
   const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
   const idempotencyKey = `${campaignId}:${accountId}:${requestId}`;
@@ -421,14 +423,14 @@ export async function acceptTableCommand(options: {
     };
   }
 
-  await requireTimingAuthority({
+  await requireTableCommandTimingAuthority({
     firestore,
     accountId,
     campaignId,
     seatId: seat.seatId,
     timingAuthorityId,
     commandType,
-    consume: false,
+    encounter,
   });
   const mapContext = await loadMapBuildContext(firestore, campaignId);
 
