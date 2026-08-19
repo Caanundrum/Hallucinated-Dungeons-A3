@@ -2,12 +2,13 @@
  * Hosted player welcome: one full-screen entry point before sign-in.
  *
  * Milestone / Gold Master artifacts land here first. Signed-in players are
- * routed straight to the campaign list; unsigned players see a single CTA.
+ * routed straight to the campaign list; unsigned players see the official
+ * Google Sign-In button per Google Identity Services branding policy.
  */
 
 import { LEGAL_ROUTES } from '../../shared/routes.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
-import { primeHostedGoogleSignIn, triggerHostedGoogleSignIn } from '../hosted-google-sign-in.js';
+import { mountHostedGoogleSignInButton } from '../hosted-google-sign-in.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { navigate } from '../router.js';
@@ -41,12 +42,11 @@ export function mountWelcomePage(host: PageHost): void {
   shell.setPresentationMode('welcome');
   shell.setDocumentTitle('Welcome');
 
-  let busy = false;
   let error: string | null = null;
   const mountToken = beginPageMount(container);
   const searchParams = new URLSearchParams(window.location.search);
   if (error === null && searchParams.get('auth_error') === 'google_signin_failed') {
-    error = 'Google Sign-In could not be completed. Please try again.';
+    error = 'We couldn\u2019t finish signing you in. Please try again.';
   }
 
   function redirectSignedIn(): void {
@@ -75,8 +75,8 @@ export function mountWelcomePage(host: PageHost): void {
           <p class="welcome-eyebrow">Invite-only alpha</p>
           <h1 class="welcome-title" data-testid="welcome-heading">Hallucinated Dungeons</h1>
           <p class="welcome-lead">
-            A shared online table for creating characters, gathering a party, and playing
-            browser-based Dungeons &amp; Dragons together with a locked Game Director.
+            Your table awaits. Shape a hero, call your companions, and fall into a story
+            told together &mdash; wherever you are, right in the browser.
           </p>
           ${
             error === null
@@ -88,15 +88,15 @@ export function mountWelcomePage(host: PageHost): void {
               candidate === null
                 ? `<button type="button" data-testid="welcome-retry-candidate">Retry connection</button>`
                 : candidate.hostedGoogleClientId === null
-                  ? `<p class="welcome-note">Google Sign-In is not configured for this build yet.</p>`
-                  : `<button type="button" class="welcome-cta" data-testid="welcome-sign-in-cta" aria-disabled="${busy}">
-                       ${busy ? 'Opening Google…' : 'Begin your adventure'}
-                     </button>`
+                  ? `<p class="welcome-note">Sign-in isn\u2019t ready on this build yet.</p>`
+                  : `<div class="hosted-google-sign-in" data-testid="welcome-google-hosted-button"></div>`
             }
           </div>
-          <p class="welcome-note">Sign in continues in this window and returns you to your campaigns.</p>
+          <p class="welcome-note">
+            Signing in with Google shares your account with Hallucinated Dungeons as described in our
+            <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.
+          </p>
           <ul class="welcome-legal" data-testid="welcome-legal-links">${welcomeLegalLinks()}</ul>
-          <div class="visually-hidden" aria-hidden="true" data-testid="welcome-google-hosted-button"></div>
         </div>
       </div>`;
 
@@ -106,36 +106,10 @@ export function mountWelcomePage(host: PageHost): void {
         window.location.reload();
       });
 
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="welcome-sign-in-cta"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy) {
-            return;
-          }
-          const buttonHost = container.querySelector<HTMLElement>(
-            '[data-testid="welcome-google-hosted-button"]',
-          );
-          if (buttonHost === null) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            await triggerHostedGoogleSignIn(buttonHost);
-          } catch {
-            error = 'Google Sign-In failed to load.';
-            busy = false;
-            render();
-          }
-        })();
-      });
-
     const buttonHost = container.querySelector<HTMLElement>('[data-testid="welcome-google-hosted-button"]');
-    if (buttonHost !== null && candidate !== null && candidate.hostedGoogleClientId !== null && !busy) {
-      void primeHostedGoogleSignIn({ candidate, buttonHost }).catch(() => {
-        error = 'Google Sign-In failed to load.';
+    if (buttonHost !== null && candidate !== null && candidate.hostedGoogleClientId !== null) {
+      void mountHostedGoogleSignInButton({ candidate, buttonHost }).catch(() => {
+        error = 'Sign-in isn\u2019t available right now. Refresh and try again.';
         render();
       });
     }

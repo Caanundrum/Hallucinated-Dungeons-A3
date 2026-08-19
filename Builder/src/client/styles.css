@@ -670,12 +670,21 @@ button[aria-disabled="true"] {
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
+  justify-content: center;
 }
 
-.account-gate-actions [data-testid='account-google-hosted-cta'] {
-  min-width: 16rem;
-  min-height: 3rem;
-  padding-inline: var(--space-5);
+.hosted-google-sign-in {
+  display: flex;
+  justify-content: center;
+  min-height: 3.25rem;
+}
+
+.hosted-google-sign-in > div {
+  display: inline-flex;
+}
+
+.welcome-actions .hosted-google-sign-in {
+  width: 100%;
 }
 
 .welcome-screen {
@@ -781,13 +790,6 @@ button[aria-disabled="true"] {
   animation-delay: 760ms;
 }
 
-.welcome-cta {
-  min-width: 18rem;
-  min-height: 3.25rem;
-  padding-inline: var(--space-6);
-  font-size: 1rem;
-}
-
 .welcome-note {
   margin: 0 0 var(--space-4);
   color: var(--text-secondary);
@@ -799,6 +801,17 @@ button[aria-disabled="true"] {
 
 .welcome-error {
   margin-bottom: var(--space-4);
+}
+
+.welcome-note a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.welcome-note a:hover,
+.welcome-note a:focus-visible {
+  color: var(--text-primary);
 }
 
 .welcome-legal {

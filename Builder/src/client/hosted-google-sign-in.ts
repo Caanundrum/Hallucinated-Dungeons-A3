@@ -9,11 +9,21 @@ interface GoogleIdentityServices {
         ux_mode?: 'popup' | 'redirect' | string;
         login_uri?: string;
       }) => void;
-      prompt: () => void;
       renderButton?: (parent: HTMLElement, options: Record<string, string>) => void;
     };
   };
 }
+
+/** GIS button options aligned with Google Sign-In branding guidelines. */
+export const HOSTED_GOOGLE_BUTTON_OPTIONS = {
+  type: 'standard',
+  theme: 'filled_black',
+  size: 'large',
+  text: 'continue_with',
+  shape: 'pill',
+  width: '320',
+  logo_alignment: 'left',
+} as const;
 
 function googleIdentity(): GoogleIdentityServices | undefined {
   return (window as unknown as { google?: GoogleIdentityServices }).google;
@@ -48,22 +58,11 @@ export function loadGoogleIdentityServices(): Promise<void> {
   });
 }
 
-export function beginHostedGoogleRedirect(host: HTMLElement): void {
-  const api = googleIdentity();
-  if (api === undefined) {
-    throw new Error('Google Sign-In failed to load.');
-  }
-  const renderedButton =
-    host.querySelector<HTMLElement>('div[role="button"]') ??
-    host.querySelector<HTMLElement>('[aria-labelledby]');
-  if (renderedButton !== null) {
-    renderedButton.click();
-    return;
-  }
-  api.accounts.id.prompt();
-}
-
-export function primeHostedGoogleSignIn(options: {
+/**
+ * Renders the official Sign in with Google button. Players must click it
+ * directly — Google Identity Services does not allow programmatic initiation.
+ */
+export function mountHostedGoogleSignInButton(options: {
   readonly candidate: CandidateIdentity;
   readonly buttonHost: HTMLElement;
 }): Promise<void> {
@@ -82,19 +81,6 @@ export function primeHostedGoogleSignIn(options: {
       ux_mode: 'redirect',
       login_uri: hostedGoogleLoginUri(),
     });
-    api.accounts.id.renderButton?.(options.buttonHost, {
-      type: 'standard',
-      theme: 'outline',
-      size: 'large',
-      text: 'signin_with',
-      shape: 'pill',
-      width: '280',
-    });
-  });
-}
-
-export function triggerHostedGoogleSignIn(buttonHost: HTMLElement): Promise<void> {
-  return loadGoogleIdentityServices().then(() => {
-    beginHostedGoogleRedirect(buttonHost);
+    api.accounts.id.renderButton?.(options.buttonHost, { ...HOSTED_GOOGLE_BUTTON_OPTIONS });
   });
 }
