@@ -151,7 +151,7 @@ export function mountAccountPage(host: PageHost): void {
             <p>
               ${
                 hostedGoogleClientId !== null
-                  ? 'Invite-Only Alpha uses Google Sign-In only. There is no development login and no password on this site.'
+                  ? 'Invite-only alpha: sign in with Google to begin playing.'
                   : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
               }
             </p>
@@ -159,18 +159,13 @@ export function mountAccountPage(host: PageHost): void {
               hostedGoogleClientId !== null
                 ? `<div class="record-meta">
               <p class="record-meta">
-                Welcome, player. Sign in to join as Codex / Antigravity and start creating characters.
-              </p>
-              <p class="record-meta">
-                No passwords. One secure Google redirect, then you’re in the game.
+                Sign in to your Google account. Then you’ll be able to create characters and play in your private tables.
               </p>
               <div class="actions">
                 ${
                   candidate === null
                     ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
-                    : `<button type="button" data-testid="account-hosted-begin" aria-disabled="${busy}">
-                        ${busy ? 'Preparing…' : 'Begin your adventure'}
-                      </button>`
+                    : `<div data-testid="account-google-hosted-button"></div>`
                 }
               </div>
             </div>`
@@ -440,20 +435,18 @@ export function mountAccountPage(host: PageHost): void {
         })();
       });
 
-    const hostedBeginButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="account-hosted-begin"]',
+    const hostedButtonHost = container.querySelector<HTMLElement>(
+      '[data-testid="account-google-hosted-button"]',
     );
-    if (hostedBeginButton !== null && candidate !== null && hostedGoogleClientId !== null) {
-      let hostedApi: GoogleIdentityServices | undefined;
-      let hostedInitialized = false;
-
+    if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null && !busy) {
       void loadGoogleIdentityServices()
         .then(() => {
-          hostedApi = googleIdentity();
-          if (hostedApi === undefined || !isPageMountCurrent(container, mountToken)) {
+          const api = googleIdentity();
+          if (api === undefined || !isPageMountCurrent(container, mountToken)) {
             return;
           }
-          hostedApi.accounts.id.initialize({
+          hostedButtonHost.replaceChildren();
+          api.accounts.id.initialize({
             client_id: hostedGoogleClientId,
             ux_mode: 'redirect',
             callback: (response) => {
@@ -479,30 +472,18 @@ export function mountAccountPage(host: PageHost): void {
               })();
             },
           });
-          hostedInitialized = true;
-          render();
+          api.accounts.id.renderButton(hostedButtonHost, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'medium',
+            text: 'signin_with',
+            shape: 'rectangular',
+          });
         })
         .catch(() => {
           error = 'Google Sign-In failed to load.';
           render();
         });
-
-      hostedBeginButton.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy) {
-            return;
-          }
-          if (hostedApi === undefined || !hostedInitialized) {
-            error = 'Google Sign-In is still preparing. Try again in a moment.';
-            render();
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          hostedApi?.accounts.id.prompt();
-        })();
-      });
     }
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
