@@ -47,9 +47,9 @@ test('persistence collections reserve command, event, and projection stores', ()
 
 test('action composer stays separate from Party Chat and references Timing Authority', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /separate from Party Chat/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Timing Authority|Active Turn/i);
-  assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Commit table sync');
-  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /Intent Intercept|cannot become a command/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Chat/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /map/i);
+  assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Sync table');
+  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /confirm/i);
   assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
 });

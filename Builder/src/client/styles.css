@@ -1580,6 +1580,110 @@ html.hd-low-effects .map-square-fog,
   color: var(--amber-highlight);
 }
 
+.table-player-panel {
+  margin-bottom: var(--space-4);
+}
+
+.table-turn-banner {
+  border-radius: var(--radius-panel);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-3);
+  border: var(--border-weight) solid var(--structural-border);
+  background: var(--raised-surface);
+}
+
+.table-turn-banner-yours {
+  border-color: color-mix(in srgb, var(--amber-action) 45%, var(--structural-border));
+  background: color-mix(in srgb, var(--amber-action) 8%, var(--obsidian-surface));
+}
+
+.table-turn-banner-waiting {
+  border-color: color-mix(in srgb, var(--moonlit-blue) 35%, var(--structural-border));
+}
+
+.table-turn-title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.table-turn-detail,
+.table-turn-presence,
+.table-move-status {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.table-turn-presence {
+  margin-top: var(--space-2);
+}
+
+.table-move-status {
+  margin-top: var(--space-2);
+  color: var(--amber-highlight);
+}
+
+.table-player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.table-primary-action {
+  font: inherit;
+  font-weight: 700;
+  border-radius: var(--radius-control);
+  border: var(--border-weight) solid transparent;
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  background: var(--amber-action);
+  color: var(--abyss-bg);
+}
+
+.table-primary-action:hover {
+  background: var(--amber-highlight);
+}
+
+.table-secondary-action {
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius-control);
+  border: var(--border-weight) solid var(--structural-border);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.table-secondary-action:hover {
+  border-color: var(--amber-action);
+}
+
+.table-advanced-controls,
+.table-meta-panel {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-weight) dashed var(--structural-border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+}
+
+.table-advanced-controls summary,
+.table-meta-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-mode-fieldset {
+  border: 0;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+
 .action-composer-controls {
   display: flex;
   flex-wrap: wrap;
