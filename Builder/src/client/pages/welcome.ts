@@ -43,6 +43,7 @@ export function mountWelcomePage(host: PageHost): void {
   shell.setDocumentTitle('Welcome');
 
   let error: string | null = null;
+  let googleButtonMount = 0;
   const mountToken = beginPageMount(container);
   const searchParams = new URLSearchParams(window.location.search);
   if (error === null && searchParams.get('auth_error') === 'google_signin_failed') {
@@ -66,6 +67,8 @@ export function mountWelcomePage(host: PageHost): void {
       return;
     }
 
+    const googleMountToken = ++googleButtonMount;
+
     container.innerHTML = `
       <div class="welcome-screen" data-testid="welcome-screen">
         <div class="welcome-screen-inner">
@@ -75,27 +78,9 @@ export function mountWelcomePage(host: PageHost): void {
           <p class="welcome-eyebrow">Invite-only alpha</p>
           <h1 class="welcome-title" data-testid="welcome-heading">Hallucinated Dungeons</h1>
           <p class="welcome-lead">
-            Your table awaits. Shape a hero, call your companions, and fall into a story
-            told together &mdash; wherever you are, right in the browser.
+            Forge a hero, gather your party, and step into a living story told around a shared
+            table. Play together in the browser with friends &mdash; no download, no install.
           </p>
-          <section class="welcome-about" aria-labelledby="welcome-about-heading" data-testid="welcome-about">
-            <h2 id="welcome-about-heading" class="welcome-about-heading">About Hallucinated Dungeons</h2>
-            <p class="welcome-about-body">
-              Hallucinated Dungeons is an invite-only alpha for a browser-based tabletop
-              roleplaying game. Create heroes, gather a party, and play together around a
-              shared table with friends &mdash; no install required.
-            </p>
-            <ul class="welcome-about-list">
-              <li>Build and save characters in the Character Vault</li>
-              <li>Create campaigns and invite other players</li>
-              <li>Play sessions in the browser with a narrator who guides the story</li>
-            </ul>
-            <p class="welcome-about-links">
-              <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>
-              <span aria-hidden="true">&middot;</span>
-              <a href="/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
-            </p>
-          </section>
           ${
             error === null
               ? ''
@@ -110,9 +95,11 @@ export function mountWelcomePage(host: PageHost): void {
                   : `<div class="hosted-google-sign-in" data-testid="welcome-google-hosted-button"></div>`
             }
           </div>
-          <p class="welcome-note">
-            Signing in with Google shares your account with Hallucinated Dungeons as described in our
-            <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.
+          <p class="welcome-consent">
+            By continuing with Google, you agree to our
+            <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>
+            and
+            <a href="/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>.
           </p>
           <ul class="welcome-legal" data-testid="welcome-legal-links">${welcomeLegalLinks()}</ul>
         </div>
@@ -127,6 +114,9 @@ export function mountWelcomePage(host: PageHost): void {
     const buttonHost = container.querySelector<HTMLElement>('[data-testid="welcome-google-hosted-button"]');
     if (buttonHost !== null && candidate !== null && candidate.hostedGoogleClientId !== null) {
       void mountHostedGoogleSignInButton({ candidate, buttonHost }).catch(() => {
+        if (googleMountToken !== googleButtonMount) {
+          return;
+        }
         error = 'Sign-in isn\u2019t available right now. Refresh and try again.';
         render();
       });
