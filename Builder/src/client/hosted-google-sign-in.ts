@@ -9,19 +9,23 @@ interface GoogleIdentityServices {
         ux_mode?: 'popup' | 'redirect' | string;
         login_uri?: string;
       }) => void;
-      renderButton?: (parent: HTMLElement, options: Record<string, string>) => void;
+      renderButton?: (parent: HTMLElement, options: Record<string, string | number>) => void;
     };
   };
 }
 
-/** GIS button options aligned with Google Sign-In branding guidelines. */
+/**
+ * GIS button options from Google's configurator defaults.
+ * Do not CSS the rendered iframe — Google controls sizing inside it.
+ * @see https://developers.google.com/identity/gsi/web/reference/js-reference
+ */
 export const HOSTED_GOOGLE_BUTTON_OPTIONS = {
   type: 'standard',
   theme: 'outline',
   size: 'large',
   text: 'continue_with',
-  shape: 'pill',
-  width: '280',
+  shape: 'rectangular',
+  width: 320,
   logo_alignment: 'left',
 } as const;
 
