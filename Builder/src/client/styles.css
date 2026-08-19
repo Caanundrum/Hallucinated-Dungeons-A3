@@ -673,25 +673,12 @@ button[aria-disabled="true"] {
   justify-content: center;
 }
 
+/* GIS renders a self-contained iframe. Never set width/overflow on it — that
+   breaks the button and can show only an oversized G logo, which violates
+   Google's branding guidelines. */
 .hosted-google-sign-in {
   display: flex;
   justify-content: center;
-  width: min(17.5rem, 100%);
-  margin-inline: auto;
-  min-height: 2.75rem;
-  overflow: hidden;
-}
-
-.hosted-google-sign-in > div {
-  width: min(17.5rem, 100%);
-  max-width: 100%;
-}
-
-.hosted-google-sign-in iframe {
-  display: block;
-  width: min(17.5rem, 100%) !important;
-  max-width: 100%;
-  margin-inline: auto;
 }
 
 .welcome-screen {
