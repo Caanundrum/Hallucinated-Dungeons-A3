@@ -37,6 +37,8 @@ export interface ShellHandle {
   setDocumentTitle(pageTitle: string): void;
   /** Moves focus to the current page's main heading, for screen-reader users after navigation. */
   focusPageHeading(): void;
+  /** Hides app chrome for the hosted welcome entry screen. */
+  setPresentationMode(mode: 'app' | 'welcome'): void;
 }
 
 const LEGAL_LABELS: Record<string, string> = {
@@ -162,9 +164,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           accountBusy = true;
           renderAccountChip();
           try {
-            if (candidate.publicSurface === 'gold_master') {
-              navigate('/account');
-              announce('Open Account to sign in with Google.');
+            if (candidate.environmentClass === 'milestone') {
+              navigate('/');
+              announce('Begin your adventure from the welcome screen.');
               return;
             }
             const account = await signInAccount(candidate);
@@ -193,6 +195,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           renderAccountChip();
           try {
             await signOutAccount(candidate);
+            if (candidate.environmentClass === 'milestone') {
+              navigate('/', { replace: true });
+            }
             announce('Signed out.');
           } catch (failure) {
             announce(
@@ -221,6 +226,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
   return {
     mainElement,
     announce,
+    setPresentationMode(mode: 'app' | 'welcome'): void {
+      root.classList.toggle('shell-welcome-mode', mode === 'welcome');
+    },
     setActiveRoute(path: string): void {
       root.querySelectorAll<HTMLAnchorElement>('.primary-nav a[data-link]').forEach((link) => {
         const linkPath = new URL(link.href, window.location.href).pathname;

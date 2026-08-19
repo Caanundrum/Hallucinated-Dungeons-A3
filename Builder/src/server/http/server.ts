@@ -704,7 +704,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         if (error instanceof PayloadTooLargeError) {
           refuseOversizedBodyFor(request, response, env);
         } else {
-          writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+          writeRedirect(response, env, '/?auth_error=google_signin_failed');
         }
         return;
       }
@@ -712,7 +712,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       const csrfBody = form.get('g_csrf_token')?.trim() ?? '';
       const googleIdToken = form.get('credential')?.trim() ?? '';
       if (csrfCookie === '' || csrfBody === '' || csrfCookie !== csrfBody || googleIdToken === '') {
-        writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+        writeRedirect(response, env, '/?auth_error=google_signin_failed');
         return;
       }
       try {
@@ -723,10 +723,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
-        writeRedirect(response, env, '/characters');
+        writeRedirect(response, env, '/campaigns');
       } catch (error) {
         if (error instanceof GoogleHostedIdentityError || error instanceof IdentityUnavailableError) {
-          writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+          writeRedirect(response, env, '/?auth_error=google_signin_failed');
           return;
         }
         throw error;

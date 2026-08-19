@@ -30,6 +30,8 @@ import { mountDiagnosticsPage } from './pages/diagnostics.js';
 import { mountHomePage, type PageHost } from './pages/home.js';
 import { mountInvitePage } from './pages/invite.js';
 import { mountNotFoundPage } from './pages/not-found.js';
+import { mountWelcomePage } from './pages/welcome.js';
+import { isHostedPlayerSurface } from './player-surface.js';
 import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
 
@@ -77,13 +79,25 @@ async function start(): Promise<void> {
     const path = pathnameOf(locationKey);
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };
+    const hostedPlayerEntry = isHostedPlayerSurface(candidate);
+
+    if (hostedPlayerEntry && path === '/' && getAccount() !== null) {
+      navigate('/campaigns', { replace: true });
+      return;
+    }
+
+    shell.setPresentationMode(path === '/' && hostedPlayerEntry ? 'welcome' : 'app');
 
     const characterId = characterIdFromPath(path);
     const campaignRoute = campaignRouteFromPath(path);
     const inviteCode = inviteCodeFromPath(path);
 
     if (path === '/') {
-      mountHomePage(host);
+      if (hostedPlayerEntry) {
+        mountWelcomePage(host);
+      } else {
+        mountHomePage(host);
+      }
     } else if (path === '/account') {
       mountAccountPage(host);
     } else if (path === '/admin') {

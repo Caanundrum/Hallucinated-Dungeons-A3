@@ -29,64 +29,19 @@ import {
   type LegalAcceptanceProjection,
 } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
+import { primeHostedGoogleSignIn, triggerHostedGoogleSignIn } from '../hosted-google-sign-in.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import {
   applyPresentationPreferences,
   clearPresentationPreferences,
 } from '../presentation-preferences.js';
+import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
-
-interface GoogleIdentityServices {
-  readonly accounts: {
-    readonly id: {
-      initialize: (config: {
-        client_id: string;
-        callback?: (response: { credential: string }) => void;
-        ux_mode?: 'popup' | 'redirect' | string;
-        login_uri?: string;
-      }) => void;
-      prompt: () => void;
-      renderButton?: (parent: HTMLElement, options: Record<string, string>) => void;
-    };
-  };
-}
-
-function googleIdentity(): GoogleIdentityServices | undefined {
-  return (window as unknown as { google?: GoogleIdentityServices }).google;
-}
-
-function loadGoogleIdentityServices(): Promise<void> {
-  if (googleIdentity()?.accounts.id !== undefined) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-hd-gis]');
-    if (existing instanceof HTMLScriptElement) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Google Sign-In failed to load.')), {
-        once: true,
-      });
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.dataset.hdGis = 'true';
-    script.addEventListener('load', () => resolve(), { once: true });
-    script.addEventListener('error', () => reject(new Error('Google Sign-In failed to load.')), {
-      once: true,
-    });
-    document.head.appendChild(script);
-  });
-}
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}
-
-function hostedGoogleLoginUri(): string {
-  return `${window.location.origin}/auth/google-login`;
 }
 
 const ACCOUNT_GATE_MOTIF = `
@@ -97,19 +52,15 @@ const ACCOUNT_GATE_MOTIF = `
     <path d="M66 88 V56" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.6" />
   </svg>`;
 
-function beginHostedGoogleRedirect(api: GoogleIdentityServices, host: HTMLElement): void {
-  const renderedButton =
-    host.querySelector<HTMLElement>('div[role="button"]') ??
-    host.querySelector<HTMLElement>('[aria-labelledby]');
-  if (renderedButton !== null) {
-    renderedButton.click();
-    return;
-  }
-  api.accounts.id.prompt();
-}
-
 export function mountAccountPage(host: PageHost): void {
   const { container, shell, candidate } = host;
+
+  if (isHostedPlayerSurface(candidate) && getAccount() === null) {
+    navigate('/', { replace: true });
+    return;
+  }
+
+  shell.setPresentationMode('app');
   shell.setDocumentTitle('Account');
 
   let busy = false;
@@ -485,49 +436,27 @@ export function mountAccountPage(host: PageHost): void {
       '[data-testid="account-google-hosted-button"]',
     );
     if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null && !busy) {
-      void loadGoogleIdentityServices()
-        .then(() => {
-          const api = googleIdentity();
-          if (api === undefined || !isPageMountCurrent(container, mountToken)) {
-            return;
-          }
-          hostedButtonHost.replaceChildren();
-          api.accounts.id.initialize({
-            client_id: hostedGoogleClientId,
-            ux_mode: 'redirect',
-            login_uri: hostedGoogleLoginUri(),
-          });
-          api.accounts.id.renderButton?.(hostedButtonHost, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            text: 'signin_with',
-            shape: 'pill',
-            width: '280',
-          });
-        })
-        .catch(() => {
-          error = 'Google Sign-In failed to load.';
-          render();
-        });
+      void primeHostedGoogleSignIn({ candidate, buttonHost: hostedButtonHost }).catch(() => {
+        error = 'Google Sign-In failed to load.';
+        render();
+      });
     }
 
     container
       .querySelector<HTMLButtonElement>('[data-testid="account-google-hosted-cta"]')
       ?.addEventListener('click', () => {
-        void loadGoogleIdentityServices()
-          .then(() => {
-            const api = googleIdentity();
-            const host = container.querySelector<HTMLElement>('[data-testid="account-google-hosted-button"]');
-            if (api === undefined || host === null) {
-              throw new Error('Google Sign-In failed to load.');
-            }
-            beginHostedGoogleRedirect(api, host);
-          })
-          .catch(() => {
+        void (async () => {
+          const host = container.querySelector<HTMLElement>('[data-testid="account-google-hosted-button"]');
+          if (host === null) {
+            return;
+          }
+          try {
+            await triggerHostedGoogleSignIn(host);
+          } catch {
             error = 'Google Sign-In failed to load.';
             render();
-          });
+          }
+        })();
       });
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
@@ -760,6 +689,9 @@ export function mountAccountPage(host: PageHost): void {
             clearPresentationPreferences();
             deletionStatus = null;
             legalAcceptance = null;
+            if (candidate.environmentClass === 'milestone') {
+              navigate('/', { replace: true });
+            }
             shell.announce('Signed out.');
           } catch (failure) {
             error =

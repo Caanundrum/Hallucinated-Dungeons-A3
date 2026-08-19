@@ -11,6 +11,7 @@ import { ApiFailure, fetchCampaigns } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -35,9 +36,11 @@ export function mountCampaignsPage(host: PageHost): void {
       <div class="page">
         <h1 data-testid="campaigns-heading">Campaigns</h1>
         <p class="tagline">
-          Create a table, lock its Game Director configuration, invite another Local Arena
-          account, and seat a character you own. Hosting a campaign never grants ownership of
-          another player's character.
+          ${
+            candidate?.environmentClass === 'milestone'
+              ? 'Create a table, lock its Game Director configuration, invite other players, and seat a character you own.'
+              : 'Create a table, lock its Game Director configuration, invite another Local Arena account, and seat a character you own. Hosting a campaign never grants ownership of another player\'s character.'
+          }
         </p>
         ${
           error === null
@@ -84,6 +87,10 @@ export function mountCampaignsPage(host: PageHost): void {
       return;
     }
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Campaigns',
         body: 'Sign in with a Local Arena development account to create or join campaigns.',
