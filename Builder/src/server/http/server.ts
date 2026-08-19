@@ -290,6 +290,16 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'This campaign session is not suspended, so there is nothing to resume.',
 };
 
+const HOSTED_UPSTREAM_UNAVAILABLE_MESSAGE =
+  'The game server could not reach live data storage. Wait a moment, then retry. If this keeps happening, the hosted Firestore indexes may still be building.';
+
+function errorMessage(code: ErrorCode, env: ServerEnvironment): string {
+  if (code === ERROR_CODES.UPSTREAM_UNAVAILABLE && env.environmentClass === 'milestone') {
+    return HOSTED_UPSTREAM_UNAVAILABLE_MESSAGE;
+  }
+  return ERROR_MESSAGES[code];
+}
+
 export interface ArenaServerDependencies {
   readonly env: ServerEnvironment;
   readonly firestore: Firestore;
@@ -354,7 +364,7 @@ function writeJson(
 }
 
 function writeError(response: ServerResponse, code: ErrorCode, env: ServerEnvironment): void {
-  const body: ApiErrorBody = { error: code, message: ERROR_MESSAGES[code] };
+  const body: ApiErrorBody = { error: code, message: errorMessage(code, env) };
   writeJson(response, ERROR_STATUS[code], body, env);
 }
 
