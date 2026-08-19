@@ -676,15 +676,22 @@ button[aria-disabled="true"] {
 .hosted-google-sign-in {
   display: flex;
   justify-content: center;
-  min-height: 3.25rem;
+  width: min(17.5rem, 100%);
+  margin-inline: auto;
+  min-height: 2.75rem;
+  overflow: hidden;
 }
 
 .hosted-google-sign-in > div {
-  display: inline-flex;
+  width: min(17.5rem, 100%);
+  max-width: 100%;
 }
 
-.welcome-actions .hosted-google-sign-in {
-  width: 100%;
+.hosted-google-sign-in iframe {
+  display: block;
+  width: min(17.5rem, 100%) !important;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .welcome-screen {
@@ -692,7 +699,7 @@ button[aria-disabled="true"] {
   display: grid;
   place-items: center;
   min-height: 100vh;
-  padding: var(--space-7) var(--space-5);
+  padding: var(--space-6) var(--space-5) var(--space-5);
   background:
     radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--moonlit-blue) 18%, transparent), transparent 42%),
     radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--amber-action) 12%, transparent), transparent 38%),
@@ -707,9 +714,9 @@ button[aria-disabled="true"] {
 .welcome-logo-stage {
   display: grid;
   place-items: center;
-  width: 7.5rem;
-  height: 7.5rem;
-  margin: 0 auto var(--space-5);
+  width: 6.5rem;
+  height: 6.5rem;
+  margin: 0 auto var(--space-4);
   border-radius: 999px;
   color: var(--moonlit-blue);
   background: color-mix(in srgb, var(--moonlit-blue) 12%, var(--obsidian-surface));
@@ -761,7 +768,7 @@ button[aria-disabled="true"] {
 }
 
 .welcome-title {
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
   font-family: var(--font-heading);
   font-size: clamp(2rem, 5vw, 3rem);
   line-height: 1.05;
@@ -773,75 +780,44 @@ button[aria-disabled="true"] {
 
 .welcome-lead {
   margin: 0 auto var(--space-5);
-  max-width: 34rem;
+  max-width: 32rem;
   color: var(--text-secondary);
-  font-size: 1.05rem;
+  font-size: 1rem;
+  line-height: 1.55;
   opacity: 0;
   animation: welcome-rise var(--motion-emphasized) ease-out forwards;
   animation-delay: 640ms;
 }
 
-.welcome-about {
-  margin: 0 auto var(--space-6);
-  max-width: 36rem;
-  padding: var(--space-5);
-  text-align: left;
-  border: var(--border-weight) solid color-mix(in srgb, var(--moonlit-blue) 22%, var(--structural-border));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--raised-surface) 84%, transparent);
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
   opacity: 0;
   animation: welcome-rise var(--motion-emphasized) ease-out forwards;
-  animation-delay: 700ms;
+  animation-delay: 720ms;
 }
 
-.welcome-about-heading {
-  margin: 0 0 var(--space-3);
-  font-family: var(--font-heading);
-  font-size: 1.1rem;
-  letter-spacing: 0.02em;
+.welcome-consent {
+  margin: 0 auto var(--space-4);
+  max-width: 28rem;
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 780ms;
 }
 
-.welcome-about-body {
-  margin: 0 0 var(--space-3);
-  color: var(--text-secondary);
-  font-size: 0.98rem;
-}
-
-.welcome-about-list {
-  margin: 0 0 var(--space-4);
-  padding-left: 1.2rem;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-.welcome-about-list li + li {
-  margin-top: var(--space-2);
-}
-
-.welcome-about-links {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.welcome-about-links a {
+.welcome-consent a {
   color: var(--text-secondary);
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
 
-.welcome-about-links a:hover,
-.welcome-about-links a:focus-visible {
+.welcome-consent a:hover,
+.welcome-consent a:focus-visible {
   color: var(--text-primary);
-}
-
-.welcome-actions {
-  display: flex;
-  justify-content: center;
-  margin-bottom: var(--space-4);
-  opacity: 0;
-  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
-  animation-delay: 760ms;
 }
 
 .welcome-note {
@@ -855,17 +831,6 @@ button[aria-disabled="true"] {
 
 .welcome-error {
   margin-bottom: var(--space-4);
-}
-
-.welcome-note a {
-  color: var(--text-secondary);
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.welcome-note a:hover,
-.welcome-note a:focus-visible {
-  color: var(--text-primary);
 }
 
 .welcome-legal {
@@ -946,8 +911,8 @@ button[aria-disabled="true"] {
   .welcome-eyebrow,
   .welcome-title,
   .welcome-lead,
-  .welcome-about,
   .welcome-actions,
+  .welcome-consent,
   .welcome-note,
   .welcome-legal {
     animation: none;

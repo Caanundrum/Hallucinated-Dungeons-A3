@@ -17,13 +17,15 @@ interface GoogleIdentityServices {
 /** GIS button options aligned with Google Sign-In branding guidelines. */
 export const HOSTED_GOOGLE_BUTTON_OPTIONS = {
   type: 'standard',
-  theme: 'filled_black',
+  theme: 'outline',
   size: 'large',
   text: 'continue_with',
   shape: 'pill',
-  width: '320',
+  width: '280',
   logo_alignment: 'left',
 } as const;
+
+let configuredClientId: string | null = null;
 
 function googleIdentity(): GoogleIdentityServices | undefined {
   return (window as unknown as { google?: GoogleIdentityServices }).google;
@@ -58,6 +60,22 @@ export function loadGoogleIdentityServices(): Promise<void> {
   });
 }
 
+function ensureHostedGoogleInitialized(clientId: string): void {
+  const api = googleIdentity();
+  if (api === undefined) {
+    throw new Error('Google Sign-In failed to load.');
+  }
+  if (configuredClientId === clientId) {
+    return;
+  }
+  api.accounts.id.initialize({
+    client_id: clientId,
+    ux_mode: 'redirect',
+    login_uri: hostedGoogleLoginUri(),
+  });
+  configuredClientId = clientId;
+}
+
 /**
  * Renders the official Sign in with Google button. Players must click it
  * directly — Google Identity Services does not allow programmatic initiation.
@@ -71,16 +89,10 @@ export function mountHostedGoogleSignInButton(options: {
     return Promise.reject(new Error('Google Sign-In is not configured for this build.'));
   }
   return loadGoogleIdentityServices().then(() => {
-    const api = googleIdentity();
-    if (api === undefined) {
-      throw new Error('Google Sign-In failed to load.');
-    }
+    ensureHostedGoogleInitialized(clientId);
     options.buttonHost.replaceChildren();
-    api.accounts.id.initialize({
-      client_id: clientId,
-      ux_mode: 'redirect',
-      login_uri: hostedGoogleLoginUri(),
+    googleIdentity()?.accounts.id.renderButton?.(options.buttonHost, {
+      ...HOSTED_GOOGLE_BUTTON_OPTIONS,
     });
-    api.accounts.id.renderButton?.(options.buttonHost, { ...HOSTED_GOOGLE_BUTTON_OPTIONS });
   });
 }
