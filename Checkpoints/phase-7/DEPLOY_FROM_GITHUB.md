@@ -69,6 +69,13 @@ Copy that exact URL.
 
 Hard-refresh the new URL. Sign in with Google yourself first.
 
+If the page is a black screen with only **Skip to main content**, the HTML
+loaded and the CSS/JS did not. That happens when the browser sends
+`Origin: https://…hosted.app` and the server still thinks the only allowed
+origin is the Cloud Run `Host`. Merge the origin-guard fix to `main` and wait
+for the next green App Hosting rollout, then hard-refresh. Do not switch the
+live branch.
+
 ## After that
 
 A merge to `main` starts a new App Hosting rollout. You do not use

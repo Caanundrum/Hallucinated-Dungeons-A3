@@ -33,6 +33,7 @@ import { isHostedEnvironmentClass } from '../config/environment.js';
 import {
   corsAllowOrigin,
   isAllowedBrowserOrigin,
+  type OriginGuardOptions,
 } from './origin-guard.js';
 import {
   commitFoundationCheck,
@@ -453,37 +454,48 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 /**
- * Rejects any request that did not come from the single declared client
- * origin. Mutating requests must carry a matching `Origin` header, which
- * combined with the `SameSite=Strict` session cookie closes the ordinary
- * cross-site submission path.
+ * Rejects mutating requests that did not come from an allowed browser origin.
+ * Combined with the `SameSite=Strict` session cookie, that closes the ordinary
+ * cross-site submission path. Hosted CSS/JS GETs also carry Origin because
+ * Vite emits `crossorigin`; those must match the public App Hosting URL, not
+ * only Node's internal `Host`.
  */
 function headerOrigin(request: IncomingMessage): string | undefined {
   const value = request.headers.origin;
   return typeof value === 'string' ? value : undefined;
 }
 
-function originIsAllowed(request: IncomingMessage, env: ServerEnvironment): boolean {
-  return isAllowedBrowserOrigin({
+function headerFirst(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+  return undefined;
+}
+
+function requestOriginContext(
+  request: IncomingMessage,
+  env: ServerEnvironment,
+  path: string,
+): OriginGuardOptions {
+  return {
     origin: headerOrigin(request),
     method: request.method ?? 'GET',
     clientOrigin: env.clientOrigin,
-    hostHeader: request.headers.host,
+    hostHeader: headerFirst(request.headers.host),
+    forwardedHostHeader: headerFirst(request.headers['x-forwarded-host']),
+    cloudRunService: process.env.K_SERVICE,
+    firebaseProjectId: env.firebaseProjectId,
     hosted: isHostedEnvironmentClass(env.environmentClass),
-  });
+    staticResource: !path.startsWith('/api/'),
+  };
 }
 
-function applyCorsHeaders(request: IncomingMessage, response: ServerResponse, env: ServerEnvironment): void {
+function applyCorsHeaders(response: ServerResponse, originContext: OriginGuardOptions): void {
   response.setHeader('vary', 'Origin');
-  response.setHeader(
-    'access-control-allow-origin',
-    corsAllowOrigin({
-      origin: headerOrigin(request),
-      clientOrigin: env.clientOrigin,
-      hostHeader: request.headers.host,
-      hosted: isHostedEnvironmentClass(env.environmentClass),
-    }),
-  );
+  response.setHeader('access-control-allow-origin', corsAllowOrigin(originContext));
   response.setHeader('access-control-allow-credentials', 'true');
   response.setHeader('access-control-allow-headers', `content-type, ${CANDIDATE_HEADER}`);
   response.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
@@ -613,10 +625,11 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     const url = new URL(request.url ?? '/', `http://${env.serverHost}:${env.serverPort}`);
     const path = url.pathname;
 
-    applyCorsHeaders(request, response, env);
+    const originContext = requestOriginContext(request, env, path);
+    applyCorsHeaders(response, originContext);
 
     if (method === 'OPTIONS') {
-      if (!originIsAllowed(request, env)) {
+      if (!isAllowedBrowserOrigin(originContext)) {
         sendError(response, ERROR_CODES.FORBIDDEN_ORIGIN);
         return;
       }
@@ -625,7 +638,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
-    if (!originIsAllowed(request, env)) {
+    if (!isAllowedBrowserOrigin(originContext)) {
       sendError(response, ERROR_CODES.FORBIDDEN_ORIGIN);
       return;
     }
