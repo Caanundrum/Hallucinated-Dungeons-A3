@@ -154,15 +154,36 @@ Use those printed values, not these examples.
 
 ### STEP C — Who is allowed to sign in
 
+Google moved this page. It is no longer under Credentials.
+
 1. Open this page:
 
-   https://console.cloud.google.com/apis/credentials/consent?project=hd-a3-staging
+   https://console.cloud.google.com/auth/audience?project=hd-a3-staging
 
-2. Find **Test users**.
-3. Add your Gmail.
-4. Add the Codex Gmail.
-5. Add the Antigravity Gmail.
-6. Save.
+2. Look at the top bar. The project must say `hd-a3-staging`. If it shows a
+   different project, click the project name and switch.
+3. On the left, open **Google Auth platform**, then click **Audience**.
+   Do not stay on Credentials. That page is STEP B only.
+4. Look at **Publishing status**.
+
+   **If it says Testing**
+
+   1. Scroll to **Test users**.
+   2. Click **Add users**.
+   3. Paste your Gmail. Click Add.
+   4. Repeat for the Codex Gmail and the Antigravity Gmail.
+   5. Save.
+
+   **If it says In production**
+
+   There is no Test users list. Skip this step. Any Google account can be
+   asked to sign in. You still send Codex and Antigravity their own Gmails.
+
+   **If it says Get started / not configured**
+
+   Click **Get started**, choose **External**, finish the short form, then
+   come back to Audience and add Test users as above. Do not click Publish
+   app unless you already know you want In production.
 
 ## Step 6. Finish in the same PowerShell window
 
