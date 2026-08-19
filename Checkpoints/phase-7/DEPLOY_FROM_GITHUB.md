@@ -142,6 +142,12 @@ Console and Firebase:
    - Authorized JavaScript origins include the full `https://…hosted.app` URL.
    - Authorized redirect URIs include
      `https://…hosted.app/auth/google-login` (exact path, HTTPS).
+   - If the welcome page shows a **giant Google “G”** instead of a white
+     “Continue with Google” button, open DevTools → Console. A
+     `[GSI_LOGGER]: The given origin is not allowed for the given client ID`
+     message means this origin is missing from **Authorized JavaScript origins**.
+     Add the exact `https://…hosted.app` URL (no trailing slash) and wait a few
+     minutes for Google to propagate the change.
 
 3. **Firebase Auth → Settings → Authorized domains**
    - The `*.hosted.app` host is listed (host only, no path).

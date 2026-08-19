@@ -193,7 +193,9 @@ function contentSecurityPolicy(env: ServerEnvironment): string {
     return [
       "default-src 'self'",
       "script-src 'self' https://accounts.google.com/gsi/client",
-      "style-src 'self' https://accounts.google.com/gsi/style",
+      // GIS applies inline style attributes when sizing the button (e.g. width).
+      // Without 'unsafe-inline', the iframe collapses to 0×0 and only the fallback G shows.
+      "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
       "img-src 'self' data: https://www.gstatic.com",
       "font-src 'self'",
       "connect-src 'self' https://accounts.google.com/gsi/",
