@@ -145,10 +145,8 @@ Write-Host ""
 
 $finishOrigin = (Read-Host "Come back here. Paste the player URL, then press Enter. Or press Enter now to stop").Trim().TrimEnd('/')
 if (-not $finishOrigin) {
-  Write-Host ""
-  Write-Host "Stopped before the Google sign-in update. Run this script again later and paste the player URL when asked."
-  Write-Host "Player URL: $serviceUrl"
-  return
+  $finishOrigin = $serviceUrl.Trim().TrimEnd('/')
+  Write-Host "Using the Cloud Run URL: $finishOrigin"
 }
 
 Publish-MilestoneCloudRun -Origin $finishOrigin

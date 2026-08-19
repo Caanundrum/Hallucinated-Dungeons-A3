@@ -31,6 +31,10 @@ import { isLegalRoute, isSpaRoute } from '../../shared/routes.js';
 import type { ServerEnvironment } from '../config/environment.js';
 import { isHostedEnvironmentClass } from '../config/environment.js';
 import {
+  corsAllowOrigin,
+  isAllowedBrowserOrigin,
+} from './origin-guard.js';
+import {
   commitFoundationCheck,
   readFoundationProjection,
 } from '../foundation/foundation-checks.js';
@@ -454,19 +458,32 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
  * combined with the `SameSite=Strict` session cookie closes the ordinary
  * cross-site submission path.
  */
-function originIsAllowed(request: IncomingMessage, env: ServerEnvironment): boolean {
-  const origin = request.headers.origin;
-  const method = (request.method ?? 'GET').toUpperCase();
-
-  if (MUTATING_METHODS.has(method)) {
-    return origin === env.clientOrigin;
-  }
-  return origin === undefined || origin === env.clientOrigin;
+function headerOrigin(request: IncomingMessage): string | undefined {
+  const value = request.headers.origin;
+  return typeof value === 'string' ? value : undefined;
 }
 
-function applyCorsHeaders(response: ServerResponse, env: ServerEnvironment): void {
+function originIsAllowed(request: IncomingMessage, env: ServerEnvironment): boolean {
+  return isAllowedBrowserOrigin({
+    origin: headerOrigin(request),
+    method: request.method ?? 'GET',
+    clientOrigin: env.clientOrigin,
+    hostHeader: request.headers.host,
+    hosted: isHostedEnvironmentClass(env.environmentClass),
+  });
+}
+
+function applyCorsHeaders(request: IncomingMessage, response: ServerResponse, env: ServerEnvironment): void {
   response.setHeader('vary', 'Origin');
-  response.setHeader('access-control-allow-origin', env.clientOrigin);
+  response.setHeader(
+    'access-control-allow-origin',
+    corsAllowOrigin({
+      origin: headerOrigin(request),
+      clientOrigin: env.clientOrigin,
+      hostHeader: request.headers.host,
+      hosted: isHostedEnvironmentClass(env.environmentClass),
+    }),
+  );
   response.setHeader('access-control-allow-credentials', 'true');
   response.setHeader('access-control-allow-headers', `content-type, ${CANDIDATE_HEADER}`);
   response.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
@@ -596,10 +613,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     const url = new URL(request.url ?? '/', `http://${env.serverHost}:${env.serverPort}`);
     const path = url.pathname;
 
-    applyCorsHeaders(response, env);
+    applyCorsHeaders(request, response, env);
 
     if (method === 'OPTIONS') {
-      if (request.headers.origin !== env.clientOrigin) {
+      if (!originIsAllowed(request, env)) {
         sendError(response, ERROR_CODES.FORBIDDEN_ORIGIN);
         return;
       }
@@ -797,7 +814,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const profile = await exchangeGoogleIdToken({
           webApiKey: env.firebaseWebApiKey,
           googleIdToken,
-          requestUri: env.clientOrigin,
+          requestUri: headerOrigin(request) ?? env.clientOrigin,
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);

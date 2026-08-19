@@ -231,6 +231,12 @@ Use the `Set-ExecutionPolicy` line in Step 2, then run Step 4 again.
 `deploy.secrets.ps1` is missing, in the wrong folder, or still has the
 placeholder text. Fix Step 1, then run Step 4 again.
 
+**The page only says Skip to main content**
+The HTML loaded, but CSS and JS were blocked because the first publish still
+had a placeholder origin. Pull this update and run `.\tools\milestone\deploy.ps1`
+again from `Builder`. After it prints the Cloud Run URL, press Enter; the
+script now publishes that URL automatically.
+
 **failed to start and listen on PORT=8080**
 Pull the latest repo, then from the `Builder` folder run `.\tools\milestone\deploy.ps1` again. The container now starts Node directly so a Windows line-ending in a shell script cannot block the port.
 
