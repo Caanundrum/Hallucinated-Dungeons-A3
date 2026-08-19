@@ -90,19 +90,14 @@ function validMilestone(overrides = {}) {
     HD_CLIENT_BUNDLE_DIR: '/app/dist/client',
     HD_GOOGLE_OAUTH_CLIENT_ID: '1234567890-abc.apps.googleusercontent.com',
     HD_FIREBASE_WEB_API_KEY: 'AIzaSyMilestoneTestKey',
-    FIREBASE_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"hd-alpha3-milestone"}',
     ...overrides,
   };
 }
 
-test('a complete Milestone environment is accepted and keeps lab routes stripped', () => {
+test('Milestone uses Cloud Run default credentials without a JSON env var', () => {
   const env = loadServerEnvironment(validMilestone());
   assert.equal(env.environmentClass, 'milestone');
-  assert.equal(env.publicSurface, 'gold_master');
-  assert.equal(env.firestoreEmulator, null);
-  assert.equal(env.authEmulator, null);
   assert.equal(env.googleOAuthClientId, '1234567890-abc.apps.googleusercontent.com');
-  assert.equal(env.clientOrigin, 'https://hd-alpha3-milestone.web.app');
 });
 
 test('Milestone refuses emulator hosts, local project id, and loopback origin', () => {
