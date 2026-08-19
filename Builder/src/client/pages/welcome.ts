@@ -76,7 +76,7 @@ export function mountWelcomePage(host: PageHost): void {
           <h1 class="welcome-title" data-testid="welcome-heading">Hallucinated Dungeons</h1>
           <p class="welcome-lead">
             A shared online table for creating characters, gathering a party, and playing
-            browser-based Dungeons &amp; Dragons together with a locked Game Director.
+            together in the browser with a locked Game Director.
           </p>
           ${
             error === null

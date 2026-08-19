@@ -130,7 +130,7 @@ export function mountAccountPage(host: PageHost): void {
             <p>
               ${
                 hostedGoogleClientId !== null
-                  ? 'A shared online table for creating characters, gathering a party, and playing browser-based Dungeons & Dragons together.'
+                  ? 'A shared online table for creating characters, gathering a party, and playing together in the browser.'
                   : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
               }
             </p>
