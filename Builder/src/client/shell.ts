@@ -166,7 +166,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           try {
             if (candidate.environmentClass === 'milestone') {
               navigate('/');
-              announce('Begin your adventure from the welcome screen.');
+              announce('Sign in from the welcome screen to enter.');
               return;
             }
             const account = await signInAccount(candidate);

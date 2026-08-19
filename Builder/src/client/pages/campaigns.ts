@@ -38,7 +38,7 @@ export function mountCampaignsPage(host: PageHost): void {
         <p class="tagline">
           ${
             candidate?.environmentClass === 'milestone'
-              ? 'Create a table, lock its Game Director configuration, invite other players, and seat a character you own.'
+              ? 'Start a table, invite friends, choose who narrates your world, and bring your hero to the session.'
               : 'Create a table, lock its Game Director configuration, invite another Local Arena account, and seat a character you own. Hosting a campaign never grants ownership of another player\'s character.'
           }
         </p>

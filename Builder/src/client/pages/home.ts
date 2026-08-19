@@ -86,9 +86,9 @@ export function mountHomePage(host: PageHost): void {
         <p>
           ${
             candidate?.environmentClass === 'milestone'
-              ? 'This Invite-Only Alpha uses Google Sign-In as the only player identity. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality. Codex and Antigravity testers sign in as players — they do not receive the source repository.'
+              ? 'This invite-only Alpha opens with Google Sign-In. Forge heroes in the Character Vault, gather a party, and choose who narrates your world when you create a campaign.'
               : candidate?.publicSurface === 'gold_master'
-              ? 'This Gold Master artifact uses Google Sign-In as the only player-facing identity. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality.'
+              ? 'Sign in with Google, shape a hero in the Character Vault, and gather a party around a narrator you choose when you create a campaign.'
               : 'This Local Arena build may mint a development account for testing. Hosted Gold Master artifacts use Google Sign-In only and strip development identities, QA fixtures, and the QA harness. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality.'
           }
         </p>

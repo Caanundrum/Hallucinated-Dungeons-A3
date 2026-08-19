@@ -86,9 +86,15 @@ test('Gold Master package names stripped capabilities and does not claim a deplo
   assert.equal(goldPack.localArenaStillExposesStrippedCapabilities, false);
 });
 
-test('legal Gold Master documents are V2 and name Google hosted identity', () => {
+test('legal Gold Master documents are current and name Google hosted identity', () => {
   const documents = listLegalDocuments();
-  assert.ok(documents.every((document) => document.version === 'V2'));
+  assert.ok(
+    documents.every(
+      (document) =>
+        document.version === 'V2' ||
+        (document.route === '/legal/privacy' && document.version === 'V2.1'),
+    ),
+  );
   assert.ok(documents.every((document) => document.reConsentRequired === true));
   const terms = documents.find((document) => document.route === '/legal/terms');
   assert.match(terms.sections.map((section) => section.paragraphs.join(' ')).join(' '), /Google Sign-In only/);
@@ -96,6 +102,10 @@ test('legal Gold Master documents are V2 and name Google hosted identity', () =>
   assert.match(
     privacy.sections.map((section) => section.paragraphs.join(' ')).join(' '),
     /Gold Master and Launch Production/,
+  );
+  assert.match(
+    privacy.sections.map((section) => section.paragraphs.join(' ')).join(' '),
+    /When you choose Sign in with Google/,
   );
   const safety = documents.find((document) => document.route === '/legal/content-and-safety');
   assert.match(

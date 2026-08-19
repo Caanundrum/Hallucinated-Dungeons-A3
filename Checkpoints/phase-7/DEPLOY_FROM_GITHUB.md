@@ -123,3 +123,43 @@ Common causes:
 - Runtime is not Node 22
 - The two Google Sign-In variables are missing
 - The Firebase GitHub app cannot read the repo
+
+## Step 6. Google Sign-In policy checklist (required)
+
+Google can restrict or disable OAuth clients that break branding or consent
+rules. Before inviting testers, confirm all of the following in Google Cloud
+Console and Firebase:
+
+1. **OAuth consent screen**
+   - App name matches the player-facing product name (Hallucinated Dungeons).
+   - User support email and developer contact are current.
+   - Privacy policy URL points to your hosted
+     `https://…hosted.app/legal/privacy` (must be publicly reachable).
+   - Scopes are limited to sign-in only (openid, email, profile). Do not add
+     extra scopes unless the product truly needs them.
+
+2. **Credentials → OAuth Web client**
+   - Authorized JavaScript origins include the full `https://…hosted.app` URL.
+   - Authorized redirect URIs include
+     `https://…hosted.app/auth/google-login` (exact path, HTTPS).
+
+3. **Firebase Auth → Settings → Authorized domains**
+   - The `*.hosted.app` host is listed (host only, no path).
+
+4. **Player UI uses the official button**
+   - The welcome screen renders Google Identity Services `renderButton` visibly.
+   - Players click that button directly. Do not hide it behind a custom CTA or
+     programmatically trigger `.click()` on it — Google prohibits that pattern.
+
+5. **Disclosure near sign-in**
+   - The welcome screen links to `/legal/privacy` beside the Google button so
+     players know their Google account is shared with the app.
+
+6. **Brand assets**
+   - Do not alter the Google “G” logo colors or use it alone without the
+     approved “Continue with Google” / “Sign in with Google” treatment.
+   - Use GIS button theming (`theme`, `size`, `text`, `shape`) rather than a
+     fully custom button.
+
+Reference: [Sign in with Google branding guidelines](https://developers.google.com/identity/branding-guidelines)
+and [Google Identity Services web guide](https://developers.google.com/identity/gsi/web/guides/overview).
