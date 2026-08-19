@@ -210,6 +210,9 @@ Use the `Set-ExecutionPolicy` line in Step 2, then run Step 4 again.
 `deploy.secrets.ps1` is missing, in the wrong folder, or still has the
 placeholder text. Fix Step 1, then run Step 4 again.
 
+**failed to start and listen on PORT=8080**
+Pull the latest repo, then from the `Builder` folder run `.\tools\milestone\deploy.ps1` again. The container now starts Node directly so a Windows line-ending in a shell script cannot block the port.
+
 **The string is missing the terminator**
 You still have the old `deploy.ps1`. From the folder that contains `Builder`, run:
 

@@ -74,6 +74,12 @@ function Publish-MilestoneCloudRun {
   )
 
   $envVars = @(
+    'HD_ENV_SCHEMA_VERSION=1',
+    'HD_ENVIRONMENT_CLASS=milestone',
+    'HD_RUNTIME_MODE=frozen_certification',
+    'HD_PUBLIC_SURFACE=gold_master',
+    'HD_SERVER_HOST=0.0.0.0',
+    'HD_CLIENT_BUNDLE_DIR=/app/dist/client',
     "HD_CANDIDATE_ID=$CandidateId",
     "HD_BLUEPRINT_VERSION=$BlueprintVersion",
     "HD_FIREBASE_PROJECT_ID=$ProjectId",
@@ -90,6 +96,10 @@ function Publish-MilestoneCloudRun {
     --project $ProjectId `
     --source . `
     --region $Region `
+    --port 8080 `
+    --command=node `
+    --args=dist/server/index.js `
+    --timeout 300 `
     --allow-unauthenticated `
     --set-env-vars $envVars
   if ($LASTEXITCODE -ne 0) {

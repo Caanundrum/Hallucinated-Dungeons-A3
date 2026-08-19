@@ -70,7 +70,7 @@ test('Launch Production class is refused until separately authorized', () => {
 test('Milestone class is refused without hosted credentials and public origin', () => {
   expectRejection(
     validEnvironment({ HD_ENVIRONMENT_CLASS: 'milestone' }),
-    /HD_PUBLIC_SURFACE=gold_master/,
+    /refuses emulator host variables/,
   );
 });
 
@@ -100,7 +100,26 @@ test('Milestone uses Cloud Run default credentials without a JSON env var', () =
   assert.equal(env.googleOAuthClientId, '1234567890-abc.apps.googleusercontent.com');
 });
 
-test('Milestone refuses emulator hosts, local project id, and loopback origin', () => {
+test('Cloud Run PORT and K_SERVICE fill hosted Milestone defaults', () => {
+  const env = loadServerEnvironment({
+    K_SERVICE: 'hd-a3-staging',
+    PORT: '8080',
+    HD_CANDIDATE_ID: 'cand-milestone1',
+    HD_BLUEPRINT_VERSION: 'ALPHA_3_V1',
+    HD_FIREBASE_PROJECT_ID: 'hd-alpha3-milestone',
+    HD_CLIENT_ORIGIN: 'https://hd-alpha3-milestone.web.app',
+    HD_SEED_VERSION: 'phase7-gold-master-v1',
+    HD_GOOGLE_OAUTH_CLIENT_ID: '1234567890-abc.apps.googleusercontent.com',
+    HD_FIREBASE_WEB_API_KEY: 'AIzaSyMilestoneTestKey',
+  });
+  assert.equal(env.environmentClass, 'milestone');
+  assert.equal(env.publicSurface, 'gold_master');
+  assert.equal(env.serverHost, '0.0.0.0');
+  assert.equal(env.serverPort, 8080);
+  assert.equal(env.clientBundleDir, '/app/dist/client');
+});
+
+test('Milestone refuses emulator hosts, local project id, loopback origin, and local_arena surface', () => {
   expectRejection(
     validMilestone({ HD_FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' }),
     /refuses emulator host variables/,
@@ -112,6 +131,10 @@ test('Milestone refuses emulator hosts, local project id, and loopback origin', 
   expectRejection(
     validMilestone({ HD_CLIENT_ORIGIN: 'http://127.0.0.1:8080' }),
     /must be https/,
+  );
+  expectRejection(
+    validMilestone({ HD_PUBLIC_SURFACE: 'local_arena' }),
+    /HD_PUBLIC_SURFACE=gold_master/,
   );
 });
 
