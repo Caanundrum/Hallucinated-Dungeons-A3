@@ -89,6 +89,25 @@ function hostedGoogleLoginUri(): string {
   return `${window.location.origin}/auth/google-login`;
 }
 
+const ACCOUNT_GATE_MOTIF = `
+  <svg class="account-gate-motif" width="72" height="72" viewBox="0 0 96 96" fill="none" aria-hidden="true" focusable="false">
+    <path d="M20 88 V48 A28 28 0 0 1 76 48 V88" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+    <path d="M12 88 H84" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+    <path d="M30 88 V56" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.6" />
+    <path d="M66 88 V56" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.6" />
+  </svg>`;
+
+function beginHostedGoogleRedirect(api: GoogleIdentityServices, host: HTMLElement): void {
+  const renderedButton =
+    host.querySelector<HTMLElement>('div[role="button"]') ??
+    host.querySelector<HTMLElement>('[aria-labelledby]');
+  if (renderedButton !== null) {
+    renderedButton.click();
+    return;
+  }
+  api.accounts.id.prompt();
+}
+
 export function mountAccountPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Account');
@@ -166,18 +185,9 @@ export function mountAccountPage(host: PageHost): void {
             </p>
             ${
               hostedGoogleClientId !== null
-                ? `<div class="record-meta">
-              <p class="record-meta">
-                Sign in to begin your adventure.
-              </p>
-              <div class="actions">
-                ${
-                  candidate === null
-                    ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
-                    : `<div data-testid="account-google-hosted-button"></div>`
-                }
-              </div>
-            </div>`
+                ? `<p class="record-meta">
+              Google account access is required on the hosted player surface. Use the gate below to continue.
+            </p>`
                 : `<label class="field">
               <span>Emulator email</span>
               <input type="email" data-testid="account-google-email" value="${escapeHtml(googleEmail)}" />
@@ -194,6 +204,33 @@ export function mountAccountPage(host: PageHost): void {
             </div>`
             }
           </section>
+          ${
+            hostedGoogleClientId !== null
+              ? `<section class="account-gate panel" aria-labelledby="hosted-account-gate-heading">
+            <div class="account-gate-copy">
+              <div class="account-gate-mark">${ACCOUNT_GATE_MOTIF}</div>
+              <p class="account-gate-eyebrow">Invite-only alpha</p>
+              <h2 id="hosted-account-gate-heading">Begin your adventure</h2>
+              <p class="account-gate-body">
+                Enter Hallucinated Dungeons with one account for character creation, campaigns, and the shared table.
+              </p>
+              <p class="account-gate-note">
+                Sign in continues in this window and returns you to the game when Google finishes.
+              </p>
+            </div>
+            <div class="account-gate-actions">
+              ${
+                candidate === null
+                  ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
+                  : `<button type="button" data-testid="account-google-hosted-cta" aria-disabled="${busy}">
+                       ${busy ? 'Opening Google…' : 'Continue with Google'}
+                     </button>
+                     <div class="visually-hidden" aria-hidden="true" data-testid="account-google-hosted-button"></div>`
+              }
+            </div>
+          </section>`
+              : ''
+          }
         </div>`;
     } else {
       container.innerHTML = `
@@ -463,8 +500,8 @@ export function mountAccountPage(host: PageHost): void {
           api.accounts.id.renderButton?.(hostedButtonHost, {
             type: 'standard',
             theme: 'outline',
-            size: 'medium',
-            text: 'continue_with',
+            size: 'large',
+            text: 'signin_with',
             shape: 'pill',
             width: '280',
           });
@@ -474,6 +511,24 @@ export function mountAccountPage(host: PageHost): void {
           render();
         });
     }
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="account-google-hosted-cta"]')
+      ?.addEventListener('click', () => {
+        void loadGoogleIdentityServices()
+          .then(() => {
+            const api = googleIdentity();
+            const host = container.querySelector<HTMLElement>('[data-testid="account-google-hosted-button"]');
+            if (api === undefined || host === null) {
+              throw new Error('Google Sign-In failed to load.');
+            }
+            beginHostedGoogleRedirect(api, host);
+          })
+          .catch(() => {
+            error = 'Google Sign-In failed to load.';
+            render();
+          });
+      });
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
       button.addEventListener('click', () => {
