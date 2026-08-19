@@ -101,6 +101,21 @@ h3 {
   flex-direction: column;
 }
 
+.shell-welcome-mode .shell-header,
+.shell-welcome-mode .shell-footer {
+  display: none;
+}
+
+.shell-welcome-mode .shell-main {
+  flex: 1;
+  display: flex;
+  min-height: 100vh;
+}
+
+.shell-welcome-mode .shell-main > .welcome-screen {
+  flex: 1;
+}
+
 .shell-header {
   border-bottom: var(--border-weight) solid var(--structural-border);
   background: var(--obsidian-surface);
@@ -661,6 +676,217 @@ button[aria-disabled="true"] {
   min-width: 16rem;
   min-height: 3rem;
   padding-inline: var(--space-5);
+}
+
+.welcome-screen {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--space-7) var(--space-5);
+  background:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--moonlit-blue) 18%, transparent), transparent 42%),
+    radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--amber-action) 12%, transparent), transparent 38%),
+    linear-gradient(180deg, #05060a 0%, var(--abyss-bg) 55%, var(--obsidian-surface) 100%);
+}
+
+.welcome-screen-inner {
+  width: min(40rem, 100%);
+  text-align: center;
+}
+
+.welcome-logo-stage {
+  display: grid;
+  place-items: center;
+  width: 7.5rem;
+  height: 7.5rem;
+  margin: 0 auto var(--space-5);
+  border-radius: 999px;
+  color: var(--moonlit-blue);
+  background: color-mix(in srgb, var(--moonlit-blue) 12%, var(--obsidian-surface));
+  border: var(--border-weight) solid color-mix(in srgb, var(--moonlit-blue) 34%, var(--structural-border));
+  box-shadow: 0 0 48px color-mix(in srgb, var(--moonlit-blue) 18%, transparent);
+  animation: welcome-logo-shell var(--motion-cinematic) ease-out forwards;
+}
+
+.welcome-logo-mark {
+  transform-origin: center;
+  animation: welcome-logo-form var(--motion-cinematic) ease-out forwards;
+}
+
+.welcome-logo-arch {
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
+  animation: welcome-logo-draw var(--motion-emphasized) ease-out forwards;
+  animation-delay: 120ms;
+}
+
+.welcome-logo-base,
+.welcome-logo-pillar {
+  opacity: 0;
+  animation: welcome-logo-fade var(--motion-ordinary) ease-out forwards;
+}
+
+.welcome-logo-base {
+  animation-delay: 260ms;
+}
+
+.welcome-logo-pillar-left {
+  animation-delay: 340ms;
+}
+
+.welcome-logo-pillar-right {
+  animation-delay: 420ms;
+}
+
+.welcome-eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--amber-highlight);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 420ms;
+}
+
+.welcome-title {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 520ms;
+}
+
+.welcome-lead {
+  margin: 0 auto var(--space-6);
+  max-width: 34rem;
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 640ms;
+}
+
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 760ms;
+}
+
+.welcome-cta {
+  min-width: 18rem;
+  min-height: 3.25rem;
+  padding-inline: var(--space-6);
+  font-size: 1rem;
+}
+
+.welcome-note {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 860ms;
+}
+
+.welcome-error {
+  margin-bottom: var(--space-4);
+}
+
+.welcome-legal {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  animation: welcome-rise var(--motion-emphasized) ease-out forwards;
+  animation-delay: 960ms;
+}
+
+.welcome-legal a {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.welcome-legal a:hover,
+.welcome-legal a:focus-visible {
+  color: var(--text-primary);
+}
+
+@keyframes welcome-logo-shell {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes welcome-logo-form {
+  from {
+    opacity: 0;
+    transform: scale(0.7) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes welcome-logo-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes welcome-logo-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes welcome-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-logo-stage,
+  .welcome-logo-mark,
+  .welcome-logo-arch,
+  .welcome-logo-base,
+  .welcome-logo-pillar,
+  .welcome-eyebrow,
+  .welcome-title,
+  .welcome-lead,
+  .welcome-actions,
+  .welcome-note,
+  .welcome-legal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes intro-rise {
