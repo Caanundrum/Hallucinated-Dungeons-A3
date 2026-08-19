@@ -314,7 +314,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return 'Exploration — move freely until the DM calls for initiative.';
     }
     if (timingAuthority === null) {
-      return 'Waiting for initiative order.';
+      return encounter?.status === 'active'
+        ? 'Waiting for your turn in initiative order.'
+        : 'Waiting for initiative order.';
     }
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
       return 'Another adventurer holds the active combat turn.';
