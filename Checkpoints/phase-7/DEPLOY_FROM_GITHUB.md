@@ -69,6 +69,23 @@ Copy that exact URL.
 
 Hard-refresh the new URL. Sign in with Google yourself first.
 
+## Step 5. Deploy Firestore indexes (one time)
+
+The Character Vault and other server queries need composite indexes on live
+Firestore. Local certification uses the emulator, which auto-creates them;
+hosted staging does not.
+
+From the `Builder` folder on a machine with Firebase CLI logged into
+`hd-a3-staging`:
+
+```
+firebase deploy --only firestore:indexes --project hd-a3-staging
+```
+
+Wait until Firebase Console → Firestore → Indexes shows the new indexes as
+**Enabled** (can take several minutes). Until then, Character Vault may show
+a storage error after sign-in even though Google login succeeded.
+
 If the page is a black screen with only **Skip to main content**, the HTML
 loaded and the CSS/JS did not. That happens when the browser sends
 `Origin: https://…hosted.app` and the server still thinks the only allowed

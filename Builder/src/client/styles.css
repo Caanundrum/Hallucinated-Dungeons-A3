@@ -587,6 +587,82 @@ button[aria-disabled="true"] {
   animation-delay: var(--motion-emphasized);
 }
 
+.account-gate {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--moonlit-blue) 16%, transparent), transparent 50%),
+    linear-gradient(180deg, color-mix(in srgb, var(--raised-surface) 92%, var(--obsidian-surface)), var(--obsidian-surface));
+  border-color: color-mix(in srgb, var(--moonlit-blue) 30%, var(--structural-border));
+}
+
+.account-gate::after {
+  content: '';
+  position: absolute;
+  inset: auto -10% -30% auto;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber-action) 14%, transparent);
+  filter: blur(28px);
+  pointer-events: none;
+}
+
+.account-gate-copy,
+.account-gate-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.account-gate-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-bottom: var(--space-4);
+  border-radius: 999px;
+  color: var(--moonlit-blue);
+  background: color-mix(in srgb, var(--moonlit-blue) 14%, var(--obsidian-surface));
+  border: var(--border-weight) solid color-mix(in srgb, var(--moonlit-blue) 32%, var(--structural-border));
+}
+
+.account-gate-motif {
+  margin: 0;
+}
+
+.account-gate-eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--amber-highlight);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.account-gate .account-gate-body {
+  color: var(--text-primary);
+  font-size: 1.02rem;
+  max-width: 34rem;
+}
+
+.account-gate .account-gate-note {
+  margin-bottom: var(--space-5);
+}
+
+.account-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.account-gate-actions [data-testid='account-google-hosted-cta'] {
+  min-width: 16rem;
+  min-height: 3rem;
+  padding-inline: var(--space-5);
+}
+
 @keyframes intro-rise {
   to {
     opacity: 1;
