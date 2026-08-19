@@ -210,6 +210,22 @@ Use the `Set-ExecutionPolicy` line in Step 2, then run Step 4 again.
 `deploy.secrets.ps1` is missing, in the wrong folder, or still has the
 placeholder text. Fix Step 1, then run Step 4 again.
 
+**The string is missing the terminator**
+You still have the old `deploy.ps1`. From the folder that contains `Builder`, run:
+
+```
+git pull
+```
+
+If Git says your local `deploy.ps1` has changes, run this first (your keys stay in `deploy.secrets.ps1`):
+
+```
+git checkout -- Builder/tools/milestone/deploy.ps1
+git pull
+```
+
+Then go back to the `Builder` folder and run `.\tools\milestone\deploy.ps1` again.
+
 **JSON / comma / dict error**
 You are not using this script, or an old command is still in the window.
 Run only `.\tools\milestone\deploy.ps1`. Do not paste a JSON key.
