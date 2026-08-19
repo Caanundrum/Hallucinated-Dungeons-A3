@@ -78,6 +78,24 @@ export function mountWelcomePage(host: PageHost): void {
             Your table awaits. Shape a hero, call your companions, and fall into a story
             told together &mdash; wherever you are, right in the browser.
           </p>
+          <section class="welcome-about" aria-labelledby="welcome-about-heading" data-testid="welcome-about">
+            <h2 id="welcome-about-heading" class="welcome-about-heading">About Hallucinated Dungeons</h2>
+            <p class="welcome-about-body">
+              Hallucinated Dungeons is an invite-only alpha for a browser-based tabletop
+              roleplaying game. Create heroes, gather a party, and play together around a
+              shared table with friends &mdash; no install required.
+            </p>
+            <ul class="welcome-about-list">
+              <li>Build and save characters in the Character Vault</li>
+              <li>Create campaigns and invite other players</li>
+              <li>Play sessions in the browser with a narrator who guides the story</li>
+            </ul>
+            <p class="welcome-about-links">
+              <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>
+              <span aria-hidden="true">&middot;</span>
+              <a href="/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+            </p>
+          </section>
           ${
             error === null
               ? ''

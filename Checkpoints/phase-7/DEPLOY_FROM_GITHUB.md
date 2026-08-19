@@ -163,3 +163,56 @@ Console and Firebase:
 
 Reference: [Sign in with Google branding guidelines](https://developers.google.com/identity/branding-guidelines)
 and [Google Identity Services web guide](https://developers.google.com/identity/gsi/web/guides/overview).
+
+## Step 7. OAuth brand verification (when Google rejects hosted.app)
+
+Google Auth Platform **Branding** verification requires a homepage and privacy
+policy on a **domain you can verify in Google Search Console**. The default App
+Hosting URL (`*.hosted.app`) is Firebase's domain — you cannot register it as
+yours, so verification fails with:
+
+- "The website of your home page URL is not registered to you"
+- "Your home page does not explain the purpose of your app"
+- App name mismatch (e.g. `HD-A3-Staging` vs `Hallucinated Dungeons`)
+
+### Fix A — Console-only (do this first)
+
+1. Open **Google Auth Platform → Branding**:
+   `https://console.cloud.google.com/auth/branding?project=hd-a3-staging`
+2. Set **App name** to `Hallucinated Dungeons` (not the Firebase project id).
+3. Set **User support email** to an address you monitor.
+4. Under **App domain**, use the same host for all three links once you have a
+   verified domain (see Fix B). Until then, keep hosted URLs for alpha testing
+   but expect brand verification to stay blocked.
+
+### Fix B — Custom domain (required to pass verification)
+
+1. Firebase Console → **App Hosting** → **hd-a3-player** → **Domains** → add a
+   custom domain you own (for example `play.yourdomain.com`).
+2. Add the DNS records Firebase shows (TXT for ownership, then A/AAAA or CNAME).
+3. **Google Search Console** → add a property for that domain → verify ownership
+   using the same Google account that owns the Cloud project.
+4. Back in **Google Auth Platform → Branding → Authorized domains**, add your
+   top-level domain (e.g. `yourdomain.com`).
+5. Update **App domain** URLs to the custom domain:
+   - Home: `https://play.yourdomain.com/`
+   - Privacy: `https://play.yourdomain.com/legal/privacy`
+   - Terms: `https://play.yourdomain.com/legal/terms`
+6. Update **OAuth Web client** (Credentials): JavaScript origins and redirect
+   URI (`/auth/google-login`) to the custom domain.
+7. Firebase **Authentication → Settings → Authorized domains**: add the custom
+   host.
+8. App Hosting **Environment**: set `HD_CLIENT_ORIGIN` to the custom `https://…`
+   URL if used.
+9. Click **Verify branding** / **Publish branding**, then resubmit.
+
+The welcome page includes an **About Hallucinated Dungeons** section so the
+homepage explains the app's purpose (Google requires more than a sign-in gate).
+
+### Fix C — Alpha without full verification
+
+If the app stays in **Testing** mode with **External** audience and only
+**Test users** you list, basic sign-in scopes (`openid`, `email`, `profile`)
+often work without passing brand verification. Verification is still required
+before publishing to production or showing a custom app name/logo on the consent
+screen.
