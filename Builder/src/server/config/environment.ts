@@ -103,8 +103,6 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 /** Project identifier the Local Arena is permitted to bind to. */
 export const LOCAL_PROJECT_ID = 'hallucinated-dungeons-local';
 
-const HOSTED_CREDENTIAL_VARIABLES = PROHIBITED_LOCAL_CREDENTIAL_VARIABLES;
-
 export function isHostedEnvironmentClass(value: EnvironmentClass): boolean {
   return value === 'milestone' || value === 'launch';
 }
@@ -253,10 +251,6 @@ export function loadServerEnvironment(env: NodeJS.ProcessEnv = process.env): Ser
   });
 }
 
-function hostedCredentialPresent(env: NodeJS.ProcessEnv): boolean {
-  return HOSTED_CREDENTIAL_VARIABLES.some((name) => (env[name] ?? '').trim() !== '');
-}
-
 function loadLocalEnvironment(options: {
   readonly env: NodeJS.ProcessEnv;
   readonly schemaVersion: string;
@@ -346,11 +340,6 @@ function loadMilestoneEnvironment(options: {
   if ((env.HD_FIRESTORE_EMULATOR_HOST ?? '').trim() !== '' || (env.HD_AUTH_EMULATOR_HOST ?? '').trim() !== '') {
     throw new EnvironmentError(
       'Milestone hosting refuses emulator host variables. Live Firestore and Auth are required.',
-    );
-  }
-  if (!hostedCredentialPresent(env)) {
-    throw new EnvironmentError(
-      `Milestone hosting requires a Firebase Admin credential (${HOSTED_CREDENTIAL_VARIABLES.join(', ')}).`,
     );
   }
 

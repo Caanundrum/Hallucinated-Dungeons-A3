@@ -25,8 +25,9 @@ In that project:
 3. Create a Web app and copy the Web API key.
 4. Create an OAuth 2.0 Web client (Google Cloud Console → APIs & Services →
    Credentials) whose authorized JavaScript origins include the player URL.
-5. Grant the Cloud Run service account permission to use Firebase Admin
-   (Firestore + Auth).
+5. Cloud Run in the **same Google Cloud project** uses the default runtime
+   service account (no JSON key file in the deploy command). Grant that
+   account **Firebase Admin** in IAM if Firestore/Auth calls fail after deploy.
 6. Create two or three Google accounts for Codex / Antigravity testers.
 
 ## Cloud Run environment
@@ -40,27 +41,29 @@ In that project:
 | `HD_SEED_VERSION` | seed label |
 | `HD_GOOGLE_OAUTH_CLIENT_ID` | Web client id (`…apps.googleusercontent.com`) |
 | `HD_FIREBASE_WEB_API_KEY` | Firebase Web API key |
-| `FIREBASE_SERVICE_ACCOUNT` | service account JSON (secret) |
+
+Do **not** pass a service-account JSON through `--set-env-vars`. Cloud Run
+authenticates to Firestore/Auth with the project's default service account.
 
 `HD_ENVIRONMENT_CLASS` is forced to `milestone` and `HD_PUBLIC_SURFACE` to
 `gold_master` by the container entrypoint. Launch Production (`launch`) remains
 refused.
 
-## Deploy (after credentials exist)
+## Deploy (PowerShell, from `Builder`)
 
-From `Builder/`:
+`firebase deploy` cannot host this app (it is a Node server, not static
+Hosting or Cloud Functions). Use Cloud Run in the same Firebase/Google project:
 
-```sh
-gcloud run deploy hd-milestone \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars HD_CANDIDATE_ID=…,HD_BLUEPRINT_VERSION=ALPHA_3_V1,HD_FIREBASE_PROJECT_ID=…,HD_CLIENT_ORIGIN=https://…,HD_SEED_VERSION=…,HD_GOOGLE_OAUTH_CLIENT_ID=…,HD_FIREBASE_WEB_API_KEY=… \
-  --set-secrets FIREBASE_SERVICE_ACCOUNT=firebase-service-account:latest
+```powershell
+gcloud run deploy hd-a3-staging `
+  --source . `
+  --region us-central1 `
+  --allow-unauthenticated `
+  --set-env-vars "HD_CANDIDATE_ID=cand-fd5997306889,HD_BLUEPRINT_VERSION=ALPHA_3_V1,HD_FIREBASE_PROJECT_ID=hd-a3-staging,HD_CLIENT_ORIGIN=https://placeholder.invalid,HD_SEED_VERSION=phase7-gold-master-v1,HD_GOOGLE_OAUTH_CLIENT_ID=YOUR_CLIENT_ID,HD_FIREBASE_WEB_API_KEY=YOUR_API_KEY"
 ```
 
-Then give testers only the HTTPS URL, Google test-account email/password, and
-the player brief. Do not add them to GitHub.
+Copy the Service URL, add it to Firebase authorized domains and the OAuth
+JavaScript origin, then redeploy with `HD_CLIENT_ORIGIN` set to that URL.
 
 ## Honest bounds
 
