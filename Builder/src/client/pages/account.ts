@@ -42,8 +42,10 @@ interface GoogleIdentityServices {
       initialize: (config: {
         client_id: string;
         callback: (response: { credential: string }) => void;
+        ux_mode?: 'popup' | 'redirect' | string;
       }) => void;
-      renderButton: (parent: HTMLElement, options: Record<string, string>) => void;
+      prompt: () => void;
+      renderButton?: (parent: HTMLElement, options: Record<string, string>) => void;
     };
   };
 }
@@ -155,12 +157,22 @@ export function mountAccountPage(host: PageHost): void {
             </p>
             ${
               hostedGoogleClientId !== null
-                ? `<div class="actions">
-              ${
-                candidate === null
-                  ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
-                  : `<div data-testid="account-google-hosted-button"></div>`
-              }
+                ? `<div class="record-meta">
+              <p class="record-meta">
+                Welcome, player. Sign in to join as Codex / Antigravity and start creating characters.
+              </p>
+              <p class="record-meta">
+                No passwords. One secure Google redirect, then you’re in the game.
+              </p>
+              <div class="actions">
+                ${
+                  candidate === null
+                    ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
+                    : `<button type="button" data-testid="account-hosted-begin" aria-disabled="${busy}">
+                        ${busy ? 'Preparing…' : 'Begin your adventure'}
+                      </button>`
+                }
+              </div>
             </div>`
                 : `<label class="field">
               <span>Emulator email</span>
@@ -428,19 +440,22 @@ export function mountAccountPage(host: PageHost): void {
         })();
       });
 
-    const hostedButtonHost = container.querySelector<HTMLElement>(
-      '[data-testid="account-google-hosted-button"]',
+    const hostedBeginButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="account-hosted-begin"]',
     );
-    if (hostedButtonHost !== null && candidate !== null && hostedGoogleClientId !== null && !busy) {
+    if (hostedBeginButton !== null && candidate !== null && hostedGoogleClientId !== null) {
+      let hostedApi: GoogleIdentityServices | undefined;
+      let hostedInitialized = false;
+
       void loadGoogleIdentityServices()
         .then(() => {
-          const api = googleIdentity();
-          if (api === undefined || !isPageMountCurrent(container, mountToken)) {
+          hostedApi = googleIdentity();
+          if (hostedApi === undefined || !isPageMountCurrent(container, mountToken)) {
             return;
           }
-          hostedButtonHost.replaceChildren();
-          api.accounts.id.initialize({
+          hostedApi.accounts.id.initialize({
             client_id: hostedGoogleClientId,
+            ux_mode: 'redirect',
             callback: (response) => {
               void (async () => {
                 if (busy) {
@@ -464,18 +479,30 @@ export function mountAccountPage(host: PageHost): void {
               })();
             },
           });
-          api.accounts.id.renderButton(hostedButtonHost, {
-            type: 'standard',
-            theme: 'filled_black',
-            size: 'large',
-            text: 'signin_with',
-            shape: 'rectangular',
-          });
+          hostedInitialized = true;
+          render();
         })
         .catch(() => {
           error = 'Google Sign-In failed to load.';
           render();
         });
+
+      hostedBeginButton.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          if (hostedApi === undefined || !hostedInitialized) {
+            error = 'Google Sign-In is still preparing. Try again in a moment.';
+            render();
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          hostedApi?.accounts.id.prompt();
+        })();
+      });
     }
 
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
