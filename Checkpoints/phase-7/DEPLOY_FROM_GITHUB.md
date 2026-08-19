@@ -79,26 +79,15 @@ signs in cleanly.
 
 ## If you see "failed to start and listen on PORT=8080"
 
-That screenshot means App Hosting built the **old `main` commit** (`#26`,
-PowerShell deploy). That commit has no `apphosting.yaml` and no `npm start`,
-so the container never opens port 8080.
+That was the old `main` commit (`#26`). Current `main` includes App Hosting
+start (`npm start`, `apphosting.yaml`, and Cloud Run `PORT`).
 
-Do not click **Create rollout** again until the live branch has the App
-Hosting files.
-
-1. App Hosting → **hd-a3-player** → **Settings** (gear) → deployment /
-   GitHub.
-2. Set **Live branch** to `cursor/milestone-windows-deploy-sheet-96d1`
-   (or merge that work into `main` first, then keep live branch `main`).
-3. Settings → **Environment**: add `HD_GOOGLE_OAUTH_CLIENT_ID` and
-   `HD_FIREBASE_WEB_API_KEY` if they are not already there.
-4. Go back to the backend page and click **Create rollout**.
-5. Wait. Success shows a green rollout and the
-   `*.hosted.app` link works.
-
-Keep testers on
-`https://hd-a3-staging-in4per6l4a-uc.a.run.app` until the hosted.app URL
-loads the real shell.
+1. App Hosting → **hd-a3-player** → Settings → **Environment**: add
+   `HD_GOOGLE_OAUTH_CLIENT_ID` and `HD_FIREBASE_WEB_API_KEY` if missing.
+2. Click **Create rollout** (or wait; a push to `main` starts one).
+3. Wait for a green rollout. Keep testers on
+   `https://hd-a3-staging-in4per6l4a-uc.a.run.app` until `*.hosted.app`
+   shows the real shell.
 
 ## If the first GitHub build fails for another reason
 
