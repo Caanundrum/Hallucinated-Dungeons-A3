@@ -98,31 +98,18 @@ test.describe('Phase 6 chaos and recovery', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
     await page.reload();
     await dismissIntroIfPresent(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
-    // Seat / authority path recovers without crash: either still holding turn or can re-claim.
-    const authorityText = (await page.getByTestId('timing-authority-meta').innerText()).trim();
-    if (/You hold Active Turn/i.test(authorityText)) {
-      await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'false');
-    } else {
-      await expect(page.getByTestId('claim-active-turn')).toHaveAttribute('aria-disabled', 'false');
-      await page.getByTestId('claim-active-turn').click();
-      await expect(page.getByTestId('timing-authority-meta')).toContainText(/Active Turn/i);
-    }
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'false');
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);
-    const timingAuthorityId = await claimActiveTurnViaApi(
-      page,
-      campaignId,
-      candidate.candidateId,
-    );
 
     const requestId = randomUUID();
     const first = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
@@ -135,7 +122,6 @@ test.describe('Phase 6 chaos and recovery', () => {
         requestId,
         commandType: 'table.sync',
         expectedStateVersion: 1,
-        timingAuthorityId,
       },
     });
     expect(first.status()).toBe(201);
@@ -179,7 +165,6 @@ test.describe('Phase 6 chaos and recovery', () => {
         requestId: randomUUID(),
         commandType: 'table.sync',
         expectedStateVersion: 2,
-        timingAuthorityId,
       },
       failOnStatusCode: false,
     });

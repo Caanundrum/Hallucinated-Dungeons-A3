@@ -88,13 +88,13 @@ export interface ActionComposerProjection {
 
 export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
-  heading: 'Your turn',
+  heading: 'At the table',
   notice:
-    'Click a square on the map to walk there. Use Chat to talk with your party, Ask the DM for story help, or Rules for mechanics questions.',
+    'Move freely until the DM calls for initiative. On your turn, describe what you do in your own words — no menus required.',
   tableSyncLabel: 'Sync table',
   interpretActionLabel: 'Plan action',
   interpretActionNotice:
-    'Describe what you want to do in plain language. The table will suggest a safe draft you can confirm before anything changes.',
+    'Training-only: translate a plain-language description into a draft command you can confirm.',
 };
 
 export const RULES_DESK_NOTICE =

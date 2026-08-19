@@ -49,8 +49,8 @@ test('party chat modes stay Table Talk and Speak as Character only', () => {
 
 test('action composer enables table sync while keeping Interpret Action gated', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Click a square on the map/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Chat|Ask the DM|Rules/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /initiative/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /describe what you do/i);
   assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Sync table');
   assert.match(RULES_DESK_NOTICE, /does not change the game/i);
 });

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { enterAccountFromShell, readCandidate } from './arena-page.js';
 
 /**
- * Phase 2 chunk 2d: Timing Authority + Action Composer Intent Intercept.
+ * Phase 2 chunk 2d: exploration movement and initiative-driven combat turns.
  */
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
@@ -56,8 +56,31 @@ async function seatOwnCharacter(page: Page): Promise<void> {
   await expect(page.getByTestId('own-seat')).toBeVisible();
 }
 
-test.describe('Phase 2d Timing Authority', () => {
-  test('claim unlocks commands; end turn revokes; Party Chat never mutates table', async ({
+async function openAdvancedControls(page: Page): Promise<void> {
+  const details = page.getByTestId('table-advanced-controls');
+  if ((await details.getAttribute('open')) === null) {
+    await details.locator('summary').click();
+  }
+}
+
+async function advanceToOwnCombatTurn(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const title = await page.getByTestId('table-turn-title').innerText();
+    if (/It'?s your turn/i.test(title)) {
+      return;
+    }
+    await openAdvancedControls(page);
+    const next = page.getByTestId('next-encounter-turn');
+    if ((await next.getAttribute('aria-disabled')) !== 'false') {
+      return;
+    }
+    await next.click();
+  }
+  await expect(page.getByTestId('table-turn-title')).toContainText(/It'?s your turn/i);
+}
+
+test.describe('Phase 2d exploration and initiative turns', () => {
+  test('exploration sync needs no claim; initiative issues combat turn authority; chat stays social', async ({
     page,
   }) => {
     await signIn(page);
@@ -66,9 +89,10 @@ test.describe('Phase 2d Timing Authority', () => {
     await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
 
-    await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'true');
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('You hold Active Turn');
+    await expect(page.getByTestId('table-turn-title')).toContainText('Exploring freely');
+    await expect(page.getByTestId('table-character-sheet-panel')).toBeVisible();
+    await openAdvancedControls(page);
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'false');
 
     await page.getByTestId('dock-tab-party_chat').click();
@@ -77,17 +101,31 @@ test.describe('Phase 2d Timing Authority', () => {
     await expect(page.getByTestId('party-chat-message').first()).toContainText(
       'Still talking, not commanding.',
     );
+    await openAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
-    await page.getByTestId('end-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('No Active Turn');
-    await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'true');
+    await openAdvancedControls(page);
+    await page.getByTestId('begin-encounter').click();
+    await openAdvancedControls(page);
+    await expect(page.getByTestId('combatant-training-dummy')).toBeVisible();
+    await openAdvancedControls(page);
+    await expect(page.getByTestId('roll-initiative')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText('active');
+    await expect(page.getByTestId('initiative-order')).toBeVisible();
+    await advanceToOwnCombatTurn(page);
+    await openAdvancedControls(page);
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Initiative gave you');
+    await expect(page.getByTestId('table-turn-title')).toContainText(/It'?s your turn/i);
+    await expect(page.getByTestId('end-combat-turn')).toBeVisible();
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);
+    const stateText = await page.getByTestId('table-state-meta').innerText();
+    const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
     const rejected = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
       headers: {
         origin,
@@ -97,7 +135,7 @@ test.describe('Phase 2d Timing Authority', () => {
       data: {
         requestId: randomUUID(),
         commandType: 'table.sync',
-        expectedStateVersion: 1,
+        expectedStateVersion: stateVersion,
         timingAuthorityId: 'revoked-or-missing',
       },
     });

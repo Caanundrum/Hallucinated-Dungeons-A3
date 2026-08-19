@@ -113,8 +113,9 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     await page.getByTestId('director-address-send').click();
     await expect(page.getByTestId('director-address-reply')).toContainText(/without changing state|Veyra/i);
 
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText('Active Turn');
+    
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await page.getByTestId('nl-intent-input').fill('I move carefully toward the pillar.');
     await page.getByTestId('interpret-nl-intent').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
@@ -188,7 +189,8 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
       { timeout: 15_000 },
     );
 
-    await ownerPage.getByTestId('claim-active-turn').click();
+    
+    await ownerPage.getByTestId('table-advanced-controls').locator('summary').click();
     await ownerPage.getByTestId('commit-table-sync').click();
     await expect(ownerPage.getByTestId('table-state-meta')).toContainText('Table state version 1');
     await expect(guestA.getByTestId('table-state-meta')).toContainText('Table state version 1', {

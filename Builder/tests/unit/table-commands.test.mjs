@@ -45,11 +45,11 @@ test('persistence collections reserve command, event, and projection stores', ()
   assert.equal(COLLECTIONS.timingAuthorities, 'timingAuthorities');
 });
 
-test('action composer stays separate from Party Chat and references Timing Authority', () => {
+test('action composer stays separate from Party Chat and references initiative-driven play', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Chat/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /map/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /initiative/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /describe what you do/i);
   assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Sync table');
-  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /confirm/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /confirm|Training/i);
   assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
 });

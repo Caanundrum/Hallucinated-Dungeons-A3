@@ -39,8 +39,6 @@ import type {
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
-  claimTimingAuthority,
-  endTimingAuthority,
   fetchCampaignDetail,
   fetchCampaignMap,
   fetchChronicle,
@@ -61,6 +59,7 @@ import {
   submitTableCommand,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
@@ -115,6 +114,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let draft = '';
   let directorDraft = '';
   let directorReply: string | null = null;
+  let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
   let lastNarration: string | null = null;
@@ -259,6 +259,47 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
+  function explorationMode(): boolean {
+    return encounter === null || encounter.status !== 'active';
+  }
+
+  function ownCombatant(): EncounterProjection['combatants'][number] | null {
+    if (encounter === null || ownSeatId === null) {
+      return null;
+    }
+    return encounter.combatants.find((combatant) => combatant.seatId === ownSeatId) ?? null;
+  }
+
+  function activeCombatant(): EncounterProjection['combatants'][number] | null {
+    if (encounter === null || encounter.activeCombatantId === null) {
+      return null;
+    }
+    return (
+      encounter.combatants.find(
+        (combatant) => combatant.combatantId === encounter!.activeCombatantId,
+      ) ?? null
+    );
+  }
+
+  function isOwnCombatTurn(): boolean {
+    const own = ownCombatant();
+    return (
+      encounter?.status === 'active' &&
+      own !== null &&
+      encounter.activeCombatantId === own.combatantId
+    );
+  }
+
+  function canMoveOnMap(): boolean {
+    if (!seated || mapBundle === null) {
+      return false;
+    }
+    if (explorationMode()) {
+      return true;
+    }
+    return isOwnCombatTurn();
+  }
+
   function holdsOwnAuthority(): boolean {
     return (
       timingAuthority !== null &&
@@ -269,70 +310,93 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function authorityMeta(): string {
+    if (explorationMode()) {
+      return 'Exploration — move freely until the DM calls for initiative.';
+    }
     if (timingAuthority === null) {
-      return 'No Active Turn Authority on this campaign.';
+      return 'Waiting for initiative order.';
     }
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
-      return 'Another seat holds Active Turn Authority.';
+      return 'Another adventurer holds the active combat turn.';
+    }
+    if (isOwnCombatTurn()) {
+      return 'Initiative gave you the active combat turn.';
     }
     const label =
-      timingAuthority.opportunityClass === 'active_turn'
-        ? 'Active Turn'
-        : timingAuthority.opportunityClass === 'reaction'
-          ? 'Reaction'
-          : 'Decision Window';
-    return `You hold ${label} · expires ${timingAuthority.expiresAt}`;
+      timingAuthority.opportunityClass === 'reaction'
+        ? 'Reaction window'
+        : timingAuthority.opportunityClass === 'decision'
+          ? 'Decision window'
+          : 'Combat turn';
+    return `${label} credential active · expires ${timingAuthority.expiresAt}`;
   }
 
-  function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' } {
+  function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
     if (!seated) {
       return {
         tone: 'spectator',
         title: 'You are watching this table',
-        detail: 'Seat a character on the campaign page to move and act.',
-      };
-    }
-    if (timingAuthority?.timingAuthorityId === 'held-by-other') {
-      return {
-        tone: 'waiting',
-        title: 'Waiting for another player',
-        detail: 'They have the active turn right now.',
+        detail: 'Seat a character on the campaign page to join the party.',
       };
     }
     if (encounter !== null && encounter.status === 'active') {
-      const ownCombatant =
-        encounter.combatants.find((combatant) => combatant.seatId !== null) ?? null;
-      const activeCombatant =
-        encounter.combatants.find(
-          (combatant) => combatant.combatantId === encounter!.activeCombatantId,
-        ) ?? null;
-      if (ownCombatant !== null && activeCombatant !== null && !holdsOwnAuthority()) {
-        return {
-          tone: 'waiting',
-          title: `Combat — ${activeCombatant.name}'s turn`,
-          detail: 'You can still chat or ask the DM while you wait.',
-        };
-      }
-      if (ownCombatant !== null && activeCombatant?.combatantId === ownCombatant.combatantId) {
+      const active = activeCombatant();
+      if (isOwnCombatTurn()) {
         return {
           tone: 'yours',
-          title: 'Your combat turn',
-          detail: 'Click the map to move, then choose an action below if you need one.',
+          title: `It's your turn, ${ownCombatant()?.name ?? 'adventurer'}`,
+          detail: 'Describe what you do, move on the map if you need to, then end your turn.',
+        };
+      }
+      if (active !== null) {
+        return {
+          tone: 'waiting',
+          title: `${active.name}'s turn`,
+          detail: 'The DM is running the scene. Review your sheet, chat, or ask the DM while you wait.',
         };
       }
     }
-    if (holdsOwnAuthority()) {
+    if (encounter !== null && encounter.status === 'setup') {
       return {
-        tone: 'yours',
-        title: 'Your turn',
-        detail: 'Click a square on the map to walk there.',
+        tone: 'waiting',
+        title: 'Combat is forming',
+        detail: 'The DM will call for initiative when the fight begins.',
       };
     }
     return {
-      tone: 'waiting',
-      title: 'Ready when you are',
-      detail: 'Click the map to move, or take your turn below.',
+      tone: 'exploration',
+      title: 'Exploring freely',
+      detail: 'Move where you like until the DM calls for initiative. Chat and ask the DM anytime.',
     };
+  }
+
+  function initiativeStrip(): string {
+    if (encounter === null || encounter.initiativeOrder.length === 0) {
+      return '';
+    }
+    const items = encounter.initiativeOrder
+      .map((combatantId) => {
+        const combatant =
+          encounter!.combatants.find((entry) => entry.combatantId === combatantId) ?? null;
+        const active = combatantId === encounter!.activeCombatantId;
+        return `<li class="${active ? 'initiative-active' : ''}" data-testid="initiative-entry-${escapeHtml(combatantId)}">
+          ${escapeHtml(combatant?.name ?? combatantId)}${active ? ' · now' : ''}
+        </li>`;
+      })
+      .join('');
+    return `
+      <ol class="initiative-order" data-testid="initiative-order" aria-label="Initiative order">
+        ${items}
+      </ol>`;
+  }
+
+  function characterSheetPanel(): string {
+    if (!seated || progression === null) {
+      return `<p class="record-meta" data-testid="table-character-sheet-empty">
+        Seat a character to keep your sheet open at the table.
+      </p>`;
+    }
+    return `<div data-testid="table-character-sheet">${renderCharacterSheet(progression.sheet)}</div>`;
   }
 
   function compactPresenceLine(): string {
@@ -350,46 +414,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return unique.length === 0 ? 'No one else is at the table yet.' : `At the table: ${unique.join(', ')}`;
   }
 
-  async function ensureOwnAuthority(): Promise<boolean> {
-    if (holdsOwnAuthority()) {
-      return true;
-    }
-    if (candidate === null || !seated || timingAuthority?.timingAuthorityId === 'held-by-other') {
-      return false;
-    }
-    const claimed = await claimTimingAuthority({
-      candidateId: candidate.candidateId,
-      campaignId,
-    });
-    timingAuthority = claimed.authority;
-    intentDraft = null;
-    return holdsOwnAuthority();
-  }
-
-  /** Visible prerequisite copy for disabled composer / training controls. */
+  /** Visible prerequisite copy for disabled training / developer controls. */
   function composerGateHint(): string {
     if (candidate === null) {
       return 'Arena candidate is still loading.';
     }
     if (!seated) {
-      return 'Seat a character you own on the campaign page, then claim Active Turn before mechanical actions.';
-    }
-    if (!holdsOwnAuthority()) {
-      return 'Claim Active Turn first. Table sync, moves, Interpret Action, natural-language intent, and training actions stay closed until you hold it.';
+      return 'Seat a character you own on the campaign page before using training controls.';
     }
     if (encounter?.status === 'active') {
-      const ownCombatant =
-        encounter.combatants.find((combatant) => combatant.seatId !== null) ?? null;
-      const ownTurn =
-        ownCombatant !== null && encounter.activeCombatantId === ownCombatant.combatantId;
-      if (!ownTurn) {
-        return 'You hold Active Turn, but training actions wait until it is your combatant’s turn — use Next turn.';
+      if (!isOwnCombatTurn()) {
+        return 'Initiative order is active. Training combat controls unlock on your turn.';
       }
-      if (ownCombatant?.actionEconomy.actionAvailable !== true) {
-        return 'Your turn is active, but your action is already spent — use Next turn or a still-available control.';
+      const own = ownCombatant();
+      if (own?.actionEconomy.actionAvailable !== true) {
+        return 'Your action is spent for this turn. End your turn or use a still-available control.';
       }
     }
-    return 'You hold Active Turn. Declare Action and training controls open when prerequisites are met.';
+    return explorationMode()
+      ? 'Exploration mode — move freely on the map. Training controls are optional.'
+      : 'Your combat turn is active. Training controls are available if you need them.';
   }
 
   function presentationMeta(): string {
@@ -636,8 +680,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!seated) {
       return '<p class="record-meta">Seat a character to start the training encounter.</p>';
     }
-    const ownCombatant =
-      encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+    const seatedCombatant = ownCombatant();
     const availableSpells = [
       ...(progression?.sheet.spellcasting?.cantrips ?? []),
       ...(progression?.sheet.spellcasting?.spells ?? []),
@@ -663,25 +706,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     const ownTurn =
       encounter?.status === 'active' &&
-      encounter.activeCombatantId === ownCombatant?.combatantId;
-    const actionAvailable = ownTurn && ownCombatant?.actionEconomy.actionAvailable === true;
+      encounter.activeCombatantId === seatedCombatant?.combatantId;
+    const actionAvailable = ownTurn && seatedCombatant?.actionEconomy.actionAvailable === true;
     const deathSaveAvailable =
       ownTurn &&
-      ownCombatant?.currentHitPoints === 0 &&
-      ownCombatant.deathSaves.dead !== true &&
-      ownCombatant.deathSaves.stable !== true &&
-      ownCombatant.actionEconomy.deathSaveAvailable === true;
+      seatedCombatant?.currentHitPoints === 0 &&
+      seatedCombatant.deathSaves.dead !== true &&
+      seatedCombatant.deathSaves.stable !== true &&
+      seatedCombatant.actionEconomy.deathSaveAvailable === true;
     const longRestAvailable =
       ownTurn &&
-      ownCombatant?.deathSaves.dead !== true &&
-      (actionAvailable || ownCombatant?.currentHitPoints === 0);
+      seatedCombatant?.deathSaves.dead !== true &&
+      (actionAvailable || seatedCombatant?.currentHitPoints === 0);
     const openWindow = encounter?.decisionWindows.find(
       (window) =>
         window.state === 'open' &&
-        window.eligibleCombatantId === ownCombatant?.combatantId,
+        window.eligibleCombatantId === seatedCombatant?.combatantId,
     );
-    const authorityReady = holdsOwnAuthority();
-    const disable = busy || tableState === null || !authorityReady;
+    const disable = busy || tableState === null;
+    const combatDisabled = disable || (encounter?.status === 'active' && !ownTurn);
     return `
       <section class="rules-encounter" aria-labelledby="rules-encounter-heading" data-testid="rules-encounter">
         <div class="rules-heading-row">
@@ -763,23 +806,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" data-rules-command="encounter.next_turn" data-testid="next-encounter-turn"
             aria-disabled="${disable || encounter?.status !== 'active'}" aria-describedby="composer-gate-hint">Next turn</button>
           <button type="button" data-rules-command="combat.attack" data-testid="rules-attack"
-            aria-disabled="${disable || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
+            aria-disabled="${combatDisabled || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
           <button type="button" data-rules-command="combat.cast_spell" data-testid="rules-cast-spell"
-            aria-disabled="${disable || !actionAvailable || availableSpells.length === 0}" aria-describedby="composer-gate-hint">Cast spell</button>
+            aria-disabled="${combatDisabled || !actionAvailable || availableSpells.length === 0}" aria-describedby="composer-gate-hint">Cast spell</button>
           <button type="button" data-rules-command="combat.ready" data-testid="rules-ready"
-            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Ready opportunity attack</button>
+            aria-disabled="${combatDisabled || !actionAvailable}" aria-describedby="composer-gate-hint">Ready opportunity attack</button>
           <button type="button" data-rules-command="combat.reaction" data-testid="rules-reaction"
-            aria-disabled="${disable || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
+            aria-disabled="${combatDisabled || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
           <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
-            aria-disabled="${disable || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
+            aria-disabled="${combatDisabled || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
-            aria-disabled="${disable || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
+            aria-disabled="${combatDisabled || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
           <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
-            aria-disabled="${disable || !actionAvailable || ownCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
+            aria-disabled="${combatDisabled || !actionAvailable || seatedCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
-            aria-disabled="${disable || !actionAvailable}">Short Rest</button>
+            aria-disabled="${combatDisabled || !actionAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
-            aria-disabled="${disable || !longRestAvailable}">Long Rest</button>
+            aria-disabled="${combatDisabled || !longRestAvailable}">Long Rest</button>
           <button type="button" data-rules-command="progression.award_xp" data-testid="rules-award-xp"
             aria-disabled="${disable}">Award 300 XP</button>
           <button type="button" data-rules-command="progression.level_up" data-testid="rules-level-up"
@@ -793,11 +836,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function playerActionBar(): string {
     const banner = turnBanner();
-    const ownAuthority = holdsOwnAuthority();
+    const showEndTurn = isOwnCombatTurn();
+    const canDescribeTurn = seated && (explorationMode() || isOwnCombatTurn());
+    const version = tableState?.stateVersion ?? 0;
+    const sequence = tableState?.lastEventSequence ?? 0;
     return `
+      <p class="visually-hidden" data-testid="table-state-meta">
+        Table state version ${version} · last event sequence ${sequence}
+      </p>
       <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
         <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
         <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+        ${initiativeStrip()}
         <p class="table-turn-presence" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
         ${
           movePreviewNote === null
@@ -805,38 +855,61 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
         }
       </section>
-      <div class="table-player-actions" data-testid="table-player-actions">
-        ${
-          seated && !ownAuthority && timingAuthority?.timingAuthorityId !== 'held-by-other'
-            ? `<button type="button" class="table-primary-action" data-testid="claim-active-turn"
-                aria-disabled="${busy || candidate === null}">
-                ${busy ? 'Working…' : 'Take your turn'}
-              </button>`
-            : ''
-        }
-        ${
-          ownAuthority
-            ? `<button type="button" class="table-secondary-action" data-testid="end-active-turn"
-                aria-disabled="${busy || candidate === null}">
-                End turn
-              </button>`
-            : ''
-        }
-      </div>`;
+      ${
+        canDescribeTurn
+          ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
+              <label class="field">
+                <span>What do you do?</span>
+                <textarea data-testid="player-action-input" rows="3"
+                  placeholder="Describe your action in your own words — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+              </label>
+              <div class="table-player-actions" data-testid="table-player-actions">
+                <button type="button" class="table-primary-action" data-testid="submit-player-action"
+                  aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
+                  ${busy ? 'Sending…' : 'Tell the DM'}
+                </button>
+                ${
+                  showEndTurn
+                    ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
+                        aria-disabled="${busy || candidate === null}">
+                        End turn
+                      </button>`
+                    : ''
+                }
+              </div>
+            </div>`
+          : `<div class="table-player-actions" data-testid="table-player-actions">
+              <p class="record-meta">Watch the scene, chat with the party, or ask the DM while others act.</p>
+            </div>`
+      }`;
+  }
+
+  function actionComposerBody(): string {
+    return `
+      ${playerActionBar()}
+      <details class="table-character-sheet-panel" open data-testid="table-character-sheet-panel">
+        <summary>Your character sheet</summary>
+        ${characterSheetPanel()}
+      </details>
+      <details class="table-advanced-controls" data-testid="table-advanced-controls">
+        <summary>Training, combat tools, and developer controls</summary>
+        ${advancedControlsBody()}
+      </details>`;
   }
 
   function advancedControlsBody(): string {
     const version = tableState?.stateVersion ?? 0;
     const sequence = tableState?.lastEventSequence ?? 0;
     const ownAuthority = holdsOwnAuthority();
-    const syncDisabled = busy || candidate === null || !seated || tableState === null || !ownAuthority;
-    const interpretDisabled = busy || candidate === null || !seated || !ownAuthority;
+    const needsAuthority = !explorationMode();
+    const syncDisabled =
+      busy || candidate === null || !seated || tableState === null || (needsAuthority && !ownAuthority);
+    const interpretDisabled =
+      busy || candidate === null || !seated || (needsAuthority && !ownAuthority);
     const gateHint = composerGateHint();
     return `
-      <p class="record-meta" data-testid="table-state-meta">
-        Table state version ${version} · last event sequence ${sequence}
-      </p>
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      <p class="record-meta" data-testid="table-event-meta">Last event sequence ${sequence}</p>
       <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
         <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
@@ -907,15 +980,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </div>
             </div>`
       }`;
-  }
-
-  function actionComposerBody(): string {
-    return `
-      ${playerActionBar()}
-      <details class="table-advanced-controls" data-testid="table-advanced-controls">
-        <summary>Training, combat tools, and developer controls</summary>
-        ${advancedControlsBody()}
-      </details>`;
   }
 
   function ensurePageShell(): void {
@@ -1022,11 +1086,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     render();
 
     try {
-      if (!(await ensureOwnAuthority())) {
-        movePreviewNote = 'Another player holds the turn, or you need to seat a character first.';
+      if (!canMoveOnMap()) {
+        movePreviewNote =
+          encounter?.status === 'active'
+            ? 'Initiative is active — wait for your turn to move.'
+            : 'Seat a character before moving on the map.';
         return;
       }
-      if (tableState === null || timingAuthority === null) {
+      if (tableState === null) {
         movePreviewNote = 'Table state is still loading.';
         return;
       }
@@ -1059,7 +1126,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         requestId: crypto.randomUUID(),
         commandType: 'table.move',
         expectedStateVersion: tableState.stateVersion,
-        timingAuthorityId: timingAuthority.timingAuthorityId,
+        ...(explorationMode() || timingAuthority === null
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         path: commitPath,
       });
       tableState = accepted.table;
@@ -1093,12 +1162,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     commandType: string,
     fields: RulesCommandFields = {},
   ): Promise<void> {
+    const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
+    const endTurnCommand = commandType === 'encounter.next_turn';
+    if (candidate === null || busy || tableState === null) {
+      return;
+    }
+    if (endTurnCommand && !isOwnCombatTurn()) {
+      return;
+    }
     if (
-      candidate === null ||
-      busy ||
-      tableState === null ||
-      timingAuthority === null ||
-      !holdsOwnAuthority()
+      !setupCommand &&
+      !endTurnCommand &&
+      !holdsOwnAuthority() &&
+      encounter?.status === 'active'
     ) {
       return;
     }
@@ -1112,13 +1188,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         requestId: crypto.randomUUID(),
         commandType,
         expectedStateVersion: tableState.stateVersion,
-        timingAuthorityId: timingAuthority.timingAuthorityId,
+        ...(timingAuthority === null || setupCommand
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         ...fields,
       });
       tableState = accepted.table;
       if (accepted.encounter !== undefined) encounter = accepted.encounter;
       if (accepted.progression !== undefined) progression = accepted.progression;
-      if (commandType === 'combat.ready' || commandType === 'combat.reaction') {
+      if (
+        commandType === 'initiative.roll' ||
+        commandType === 'encounter.next_turn' ||
+        commandType === 'combat.ready' ||
+        commandType === 'combat.reaction'
+      ) {
         timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
       }
       shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
@@ -1209,12 +1292,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         if (button.getAttribute('aria-disabled') === 'true') return;
         const commandType = button.dataset.rulesCommand;
         if (commandType === undefined) return;
-        const ownCombatant =
-          encounter?.combatants.find((combatant) => combatant.seatId !== null) ?? null;
+        const seatedCombatant = ownCombatant();
         const window = encounter?.decisionWindows.find(
           (entry) =>
             entry.state === 'open' &&
-            entry.eligibleCombatantId === ownCombatant?.combatantId,
+            entry.eligibleCombatantId === seatedCombatant?.combatantId,
         );
         const fields: RulesCommandFields =
           commandType === 'combat.attack'
@@ -1231,9 +1313,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                         area: {
                           shape: 'cone',
                           origin: {
-                            column: moveTarget?.column ?? ownCombatant?.position.column ?? 1,
-                            row: moveTarget?.row ?? ownCombatant?.position.row ?? 1,
-                            elevationFeet: ownCombatant?.position.elevationFeet ?? 0,
+                            column: moveTarget?.column ?? seatedCombatant?.position.column ?? 1,
+                            row: moveTarget?.row ?? seatedCombatant?.position.row ?? 1,
+                            elevationFeet: seatedCombatant?.position.elevationFeet ?? 0,
                           },
                           sizeFeet: 15,
                           heightFeet: 10,
@@ -1266,9 +1348,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     : commandType === 'inventory.use_item'
                       ? {
                           itemId: 'healing-potion',
-                          ...(ownCombatant === null
+                          ...(seatedCombatant === null
                             ? {}
-                            : { targetCombatantId: ownCombatant.combatantId }),
+                            : { targetCombatantId: seatedCombatant.combatantId }),
                         }
                       : {};
         void submitRulesAction(commandType, fields);
@@ -1599,55 +1681,37 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     panels
-      .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy || !seated) return;
-          busy = true;
-          error = null;
-          render();
-          try {
-            const claimed = await claimTimingAuthority({
-              candidateId: candidate.candidateId,
-              campaignId,
-            });
-            timingAuthority = claimed.authority;
-            intentDraft = null;
-            shell.announce('Active Turn Authority claimed.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Active Turn could not be claimed.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+      .querySelector<HTMLTextAreaElement>('[data-testid="player-action-input"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLTextAreaElement) {
+          playerActionDraft = event.target.value;
+        }
       });
 
     panels
-      .querySelector<HTMLButtonElement>('[data-testid="end-active-turn"]')
+      .querySelector<HTMLButtonElement>('[data-testid="submit-player-action"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !holdsOwnAuthority() || timingAuthority === null) {
+          if (candidate === null || busy || playerActionDraft.trim().length === 0) {
             return;
           }
           busy = true;
           error = null;
           render();
           try {
-            await endTimingAuthority({
+            const answered = await postDirectorAddress({
               candidateId: candidate.candidateId,
               campaignId,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              body: playerActionDraft.trim(),
             });
-            timingAuthority = null;
-            intentDraft = null;
-            shell.announce('Active Turn ended.');
+            directorReply = answered.reply;
+            playerActionDraft = '';
+            shell.announce('The DM heard your action.');
           } catch (failure) {
             error =
-              failure instanceof ApiFailure ? failure.message : 'Active Turn could not be ended.';
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The DM could not respond right now.';
           } finally {
             busy = false;
             render();
@@ -1656,17 +1720,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     panels
+      .querySelector<HTMLButtonElement>('[data-testid="end-combat-turn"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('encounter.next_turn');
+      });
+
+    panels
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (
-            candidate === null ||
-            busy ||
-            !seated ||
-            tableState === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
-          ) {
+          if (candidate === null || busy || !seated || tableState === null) {
+            return;
+          }
+          if (!explorationMode() && !holdsOwnAuthority()) {
             return;
           }
           busy = true;
@@ -1679,7 +1745,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.sync',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
@@ -1715,8 +1783,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             !seated ||
             tableState === null ||
             moveTarget === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
+            !canMoveOnMap()
           ) {
             return;
           }
@@ -1730,7 +1797,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.move',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               path: [moveTarget],
             });
             tableState = accepted.table;
@@ -1756,8 +1825,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             !seated ||
             tableState === null ||
             mapBundle === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
+            !canMoveOnMap()
           ) {
             return;
           }
@@ -1779,7 +1847,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               requestId: crypto.randomUUID(),
               commandType: 'table.open_door',
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               edgeId: door.edgeId,
             });
             tableState = accepted.table;

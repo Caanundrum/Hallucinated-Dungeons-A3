@@ -12,8 +12,8 @@ import { enterAccountFromShell } from './arena-page.js';
  */
 
 const TABLE_PRIMARY_CONTROLS = [
-  'claim-active-turn',
-  'end-active-turn',
+  'submit-player-action',
+  'table-character-sheet-panel',
   'refresh-table-projection',
   'commit-table-sync',
   'commit-table-move',
@@ -101,7 +101,8 @@ test.describe('Phase 6 core-loop a11y (automated WCAG)', () => {
     await createEmberferryCampaign(page, 'Phase6 A11y Table');
     await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('claim-active-turn')).toBeVisible();
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await expect(page.getByTestId('player-action-input')).toBeVisible();
 
     await page.getByTestId('table-reduced-motion').check();
     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);
@@ -113,8 +114,8 @@ test.describe('Phase 6 core-loop a11y (automated WCAG)', () => {
     await page.evaluate(() => {
       document.documentElement.style.zoom = '2';
     });
-    await expect(page.getByTestId('claim-active-turn')).toBeVisible();
-    await expect(page.getByTestId('claim-active-turn')).toHaveAttribute('aria-disabled', 'false');
+    await expect(page.getByTestId('submit-player-action')).toBeVisible();
+    await expect(page.getByTestId('submit-player-action')).toHaveAttribute('aria-disabled', 'true');
 
     for (const testId of TABLE_PRIMARY_CONTROLS) {
       const control = page.getByTestId(testId);

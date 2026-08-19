@@ -36,8 +36,8 @@ test('timing authority failure codes and collection are reserved', () => {
 
 test('action composer unlocks Interpret Action via Timing Authority copy', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Your turn|map/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /confirm/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /plain language/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /initiative|describe what you do/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /confirm|Training/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.interpretActionNotice, /plain-language|plain language/i);
   assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
 });

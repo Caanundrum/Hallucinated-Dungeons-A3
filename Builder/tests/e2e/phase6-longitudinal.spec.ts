@@ -100,19 +100,17 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
     expect(beforeCol).toBeTruthy();
     expect(beforeRow).toBeTruthy();
 
-    await page.getByTestId('claim-active-turn').click();
-    await expect(page.getByTestId('timing-authority-meta')).toContainText(/Active Turn/i);
+    
     const targetCol = Number(beforeCol) + 1;
     const targetRow = Number(beforeRow);
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
-    await expect(page.getByTestId('move-target-meta')).toContainText(/Legal|Move target/i);
-    await page.getByTestId('commit-table-move').click();
     await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), {
       timeout: 10_000,
     });
     await expect(token).toHaveAttribute('data-anchor-row', String(targetRow));
 
     // Optional training encounter when controls are enabled without flake risk.
+    await page.getByTestId('table-advanced-controls').locator('summary').click();
     const beginEncounter = page.getByTestId('begin-encounter');
     if (
       (await beginEncounter.isVisible().catch(() => false)) &&

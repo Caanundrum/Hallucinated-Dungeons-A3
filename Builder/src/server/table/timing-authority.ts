@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { Firestore, Timestamp } from 'firebase-admin/firestore';
+import type { Firestore, Timestamp, Transaction } from 'firebase-admin/firestore';
 
 import {
   ACTIVE_TURN_PERMITTED_COMMANDS,
@@ -18,7 +18,11 @@ import {
   type TimingOpportunityClass,
 } from '../../shared/timing-authority-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
+import type { EncounterProjection } from '../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+
+/** Table commands allowed without Timing Authority outside active combat. */
+export const EXPLORATION_TABLE_COMMANDS = ['table.move', 'table.open_door', 'table.sync'] as const;
 
 export class TimingAuthorityError extends Error {
   readonly code: string;
@@ -125,6 +129,94 @@ function refreshExpired(stored: StoredTimingAuthority, now: Date): StoredTimingA
     return { ...stored, state: 'expired' };
   }
   return stored;
+}
+
+function isActiveCombat(encounter: EncounterProjection | null): encounter is EncounterProjection {
+  return encounter !== null && encounter.status === 'active';
+}
+
+/** Marks issued Active Turn credentials superseded inside an open transaction. */
+export async function supersedeIssuedActiveTurnAuthorities(options: {
+  readonly transaction: Transaction;
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly now: Date;
+}): Promise<void> {
+  const { transaction, firestore, campaignId, now } = options;
+  const existingQuery = firestore
+    .collection(COLLECTIONS.timingAuthorities)
+    .where('campaignId', '==', campaignId)
+    .limit(20);
+  const existing = await transaction.get(existingQuery);
+  for (const doc of existing.docs) {
+    const prior = refreshExpired(doc.data() as StoredTimingAuthority, now);
+    if (prior.state === 'issued' && prior.opportunityClass === 'active_turn') {
+      transaction.update(doc.ref, { state: 'superseded' });
+    } else if (prior.state === 'expired' && (doc.data() as StoredTimingAuthority).state === 'issued') {
+      transaction.update(doc.ref, { state: 'expired' });
+    }
+  }
+}
+
+/** Issues Active Turn Authority to the active party combatant during initiative. */
+export function writeCombatTurnAuthority(options: {
+  readonly transaction: Transaction;
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly seatId: string;
+  readonly characterId: string;
+  readonly accountId: string;
+  readonly encounterId: string;
+  readonly projectionVersion: number;
+  readonly issuedAt: Date;
+}): string {
+  const timingAuthorityId = randomUUID();
+  const expiresAt = new Date(options.issuedAt.getTime() + ACTIVE_TURN_TTL_MS);
+  const record: StoredTimingAuthority = {
+    timingAuthorityId,
+    schemaVersion: TIMING_AUTHORITY_SCHEMA_VERSION,
+    opportunityClass: 'active_turn',
+    campaignId: options.campaignId,
+    seatId: options.seatId,
+    characterId: options.characterId,
+    accountId: options.accountId,
+    permittedCommandTypes: [...ACTIVE_TURN_PERMITTED_COMMANDS],
+    projectionVersionAtIssue: options.projectionVersion,
+    issuedAt: options.issuedAt,
+    expiresAt,
+    state: 'issued',
+    singleUse: false,
+    encounterId: options.encounterId,
+    resolutionFrameId: `frame:${timingAuthorityId}`,
+  };
+  options.transaction.set(
+    options.firestore.collection(COLLECTIONS.timingAuthorities).doc(timingAuthorityId),
+    record,
+  );
+  return timingAuthorityId;
+}
+
+/**
+ * Validates Timing Authority for table commands.
+ * Exploration movement and doors do not require a credential until combat is active.
+ */
+export async function requireTableCommandTimingAuthority(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+  readonly seatId: string;
+  readonly timingAuthorityId: string | undefined;
+  readonly commandType: string;
+  readonly encounter: EncounterProjection | null;
+}): Promise<void> {
+  const { encounter, commandType, ...authorityOptions } = options;
+  if (
+    !isActiveCombat(encounter) &&
+    (EXPLORATION_TABLE_COMMANDS as readonly string[]).includes(commandType)
+  ) {
+    return;
+  }
+  await requireTimingAuthority({ ...authorityOptions, commandType, consume: false });
 }
 
 /** Returns the current viewer-safe Active Turn authority for this campaign, if any. */

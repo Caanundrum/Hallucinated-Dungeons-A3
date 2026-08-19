@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 
-import type { Firestore, Timestamp } from 'firebase-admin/firestore';
+import type { Firestore, Timestamp, Transaction } from 'firebase-admin/firestore';
 
 import type { Ability } from '../../../shared/character-contract.js';
 import {
@@ -25,7 +25,11 @@ import type {
   RulesCommandFields,
 } from '../../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../../persistence/firestore.js';
-import { requireTimingAuthority } from '../../table/timing-authority.js';
+import {
+  requireTimingAuthority,
+  supersedeIssuedActiveTurnAuthorities,
+  writeCombatTurnAuthority,
+} from '../../table/timing-authority.js';
 import {
   applyDamage,
   applyHealing,
@@ -446,6 +450,112 @@ function requireActiveActor(encounter: EncounterProjection, seatId: string): Com
     throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'This combatant cannot take that action at 0 Hit Points.');
   }
   return actor;
+}
+
+function requireActiveCombatantForEndTurn(
+  encounter: EncounterProjection | null,
+  seatId: string,
+): void {
+  const current = requireEncounter(encounter);
+  if (current.status !== 'active') {
+    throw new RulesCommandError(
+      ERROR_CODES.BAD_REQUEST,
+      'No active initiative order can advance.',
+    );
+  }
+  const active =
+    current.combatants.find((combatant) => combatant.combatantId === current.activeCombatantId) ??
+    null;
+  if (active === null) {
+    throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No active combatant is set.');
+  }
+  if (active.side === 'foe') {
+    return;
+  }
+  if (active.seatId !== seatId) {
+    throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'It is not your turn.');
+  }
+}
+
+const RULES_SETUP_COMMANDS = new Set<RulesCommandType>(['encounter.begin', 'initiative.roll']);
+
+async function requireRulesCommandTimingAuthority(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+  readonly seatId: string;
+  readonly timingAuthorityId: string | undefined;
+  readonly commandType: RulesCommandType;
+  readonly encounter: EncounterProjection | null;
+}): Promise<void> {
+  const { commandType, encounter, seatId, ...authorityOptions } = options;
+  if (RULES_SETUP_COMMANDS.has(commandType)) {
+    return;
+  }
+  if (commandType === 'encounter.next_turn') {
+    requireActiveCombatantForEndTurn(encounter, seatId);
+    const active =
+      encounter?.combatants.find(
+        (combatant) => combatant.combatantId === encounter.activeCombatantId,
+      ) ?? null;
+    if (active?.side === 'foe') {
+      return;
+    }
+  }
+  await requireTimingAuthority({
+    ...authorityOptions,
+    seatId,
+    commandType,
+    consume: false,
+  });
+}
+
+async function issueAuthorityForActivePartyCombatant(options: {
+  readonly transaction: Transaction;
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly encounter: EncounterProjection;
+  readonly projectionVersion: number;
+  readonly committedAt: Date;
+}): Promise<void> {
+  const { transaction, firestore, campaignId, encounter, projectionVersion, committedAt } =
+    options;
+  const active =
+    encounter.combatants.find(
+      (combatant) => combatant.combatantId === encounter.activeCombatantId,
+    ) ?? null;
+  if (
+    active === null ||
+    active.side !== 'party' ||
+    active.seatId === null ||
+    active.characterId === null
+  ) {
+    return;
+  }
+  const seatSnap = await transaction.get(
+    firestore.collection(COLLECTIONS.campaignSeats).doc(active.seatId),
+  );
+  if (!seatSnap.exists) {
+    return;
+  }
+  const seat = seatSnap.data() as { ownerAccountId: string; characterId: string };
+  await supersedeIssuedActiveTurnAuthorities({
+    transaction,
+    firestore,
+    campaignId,
+    now: committedAt,
+  });
+  writeCombatTurnAuthority({
+    transaction,
+    firestore,
+    campaignId,
+    seatId: active.seatId,
+    characterId: seat.characterId,
+    accountId: seat.ownerAccountId,
+    encounterId: encounter.encounterId,
+    projectionVersion,
+    issuedAt: committedAt,
+  });
 }
 
 function replaceCombatants(
@@ -1238,14 +1348,14 @@ export async function acceptRulesCommand(options: {
     };
   }
 
-  await requireTimingAuthority({
+  await requireRulesCommandTimingAuthority({
     firestore,
     accountId,
     campaignId,
     seatId: seat.seatId,
     timingAuthorityId,
     commandType,
-    consume: false,
+    encounter: await loadEncounter(firestore, campaignId),
   });
 
   const diceSeed = randomInt(0, 0x1_0000_0000);
@@ -1370,6 +1480,20 @@ export async function acceptRulesCommand(options: {
           resolutionFrameId: mutation.reactionAuthority.decisionWindowId,
         },
       );
+    }
+    if (
+      nextEncounter !== null &&
+      nextEncounter.status === 'active' &&
+      (commandType === 'initiative.roll' || commandType === 'encounter.next_turn')
+    ) {
+      await issueAuthorityForActivePartyCombatant({
+        transaction,
+        firestore,
+        campaignId,
+        encounter: nextEncounter,
+        projectionVersion: nextVersion,
+        committedAt,
+      });
     }
     if (commandType === 'combat.reaction' && timingAuthorityId !== undefined) {
       transaction.update(

@@ -1601,6 +1601,47 @@ html.hd-low-effects .map-square-fog,
   border-color: color-mix(in srgb, var(--moonlit-blue) 35%, var(--structural-border));
 }
 
+.table-turn-banner-exploration {
+  border-color: color-mix(in srgb, var(--moss-green, #6b8f71) 35%, var(--structural-border));
+}
+
+.initiative-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.initiative-order li {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.initiative-order li.initiative-active {
+  color: var(--amber-highlight);
+  font-weight: 700;
+}
+
+.table-player-turn-composer {
+  margin-top: var(--space-3);
+}
+
+.table-character-sheet-panel {
+  margin: var(--space-4) 0;
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3) var(--space-4);
+  background: var(--obsidian-surface);
+}
+
+.table-character-sheet-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
 .table-turn-title {
   margin: 0 0 var(--space-1);
   font-family: var(--font-heading);
