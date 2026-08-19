@@ -358,6 +358,21 @@ function writeError(response: ServerResponse, code: ErrorCode, env: ServerEnviro
   writeJson(response, ERROR_STATUS[code], body, env);
 }
 
+function writeRedirect(
+  response: ServerResponse,
+  env: ServerEnvironment,
+  location: string,
+  statusCode = 303,
+): void {
+  applySecurityHeadersFor(response, env);
+  response.writeHead(statusCode, {
+    location,
+    'cache-control': 'no-store',
+    'content-length': '0',
+  });
+  response.end();
+}
+
 /** Applies an in-memory sliding-window check; returns false when the response was already sent. */
 function allowUnderRateLimitFor(
   response: ServerResponse,
@@ -451,6 +466,25 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     return undefined;
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+}
+
+async function readFormBody(request: IncomingMessage): Promise<URLSearchParams> {
+  const declaredLength = Number(request.headers['content-length'] ?? '0');
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    throw new PayloadTooLargeError();
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    total += buffer.length;
+    if (total > MAX_REQUEST_BODY_BYTES) {
+      throw new PayloadTooLargeError();
+    }
+    chunks.push(buffer);
+  }
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
 /**
@@ -624,6 +658,11 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     const method = (request.method ?? 'GET').toUpperCase();
     const url = new URL(request.url ?? '/', `http://${env.serverHost}:${env.serverPort}`);
     const path = url.pathname;
+    const allowHostedGoogleRedirectPost =
+      path === '/auth/google-login' &&
+      method === 'POST' &&
+      isHostedEnvironmentClass(env.environmentClass) &&
+      env.firebaseWebApiKey !== null;
 
     const originContext = requestOriginContext(request, env, path);
     applyCorsHeaders(response, originContext);
@@ -638,8 +677,50 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
-    if (!isAllowedBrowserOrigin(originContext)) {
+    if (!allowHostedGoogleRedirectPost && !isAllowedBrowserOrigin(originContext)) {
       sendError(response, ERROR_CODES.FORBIDDEN_ORIGIN);
+      return;
+    }
+
+    if (path === '/auth/google-login' && method === 'POST') {
+      if (!isHostedEnvironmentClass(env.environmentClass) || env.firebaseWebApiKey === null) {
+        sendError(response, ERROR_CODES.IDENTITY_ROUTE_UNAVAILABLE);
+        return;
+      }
+      let form: URLSearchParams;
+      try {
+        form = await readFormBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBodyFor(request, response, env);
+        } else {
+          writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+        }
+        return;
+      }
+      const csrfCookie = parseCookies(request.headers.cookie).get('g_csrf_token') ?? '';
+      const csrfBody = form.get('g_csrf_token')?.trim() ?? '';
+      const googleIdToken = form.get('credential')?.trim() ?? '';
+      if (csrfCookie === '' || csrfBody === '' || csrfCookie !== csrfBody || googleIdToken === '') {
+        writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+        return;
+      }
+      try {
+        const profile = await exchangeGoogleIdToken({
+          webApiKey: env.firebaseWebApiKey,
+          googleIdToken,
+          requestUri: env.clientOrigin,
+        });
+        const minted = await issueHostedGoogleSession({ env, firestore, profile });
+        setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
+        writeRedirect(response, env, '/characters');
+      } catch (error) {
+        if (error instanceof GoogleHostedIdentityError || error instanceof IdentityUnavailableError) {
+          writeRedirect(response, env, '/account?auth_error=google_signin_failed');
+          return;
+        }
+        throw error;
+      }
       return;
     }
 

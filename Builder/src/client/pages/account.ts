@@ -14,7 +14,7 @@ import {
   isNarrationDensity,
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
-import { getAccount, signInAccount, signInGoogleEmulator, signInHostedGoogle, signOutAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   acceptLegalDocument,
@@ -41,8 +41,9 @@ interface GoogleIdentityServices {
     readonly id: {
       initialize: (config: {
         client_id: string;
-        callback: (response: { credential: string }) => void;
+        callback?: (response: { credential: string }) => void;
         ux_mode?: 'popup' | 'redirect' | string;
+        login_uri?: string;
       }) => void;
       prompt: () => void;
       renderButton?: (parent: HTMLElement, options: Record<string, string>) => void;
@@ -84,6 +85,10 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+function hostedGoogleLoginUri(): string {
+  return `${window.location.origin}/auth/google-login`;
+}
+
 export function mountAccountPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Account');
@@ -102,6 +107,10 @@ export function mountAccountPage(host: PageHost): void {
   const goldMasterSurface = candidate?.publicSurface === 'gold_master';
   const hostedGoogleClientId = candidate?.hostedGoogleClientId ?? null;
   const mountToken = beginPageMount(container);
+  const searchParams = new URLSearchParams(window.location.search);
+  if (error === null && searchParams.get('auth_error') === 'google_signin_failed') {
+    error = 'Google Sign-In could not be completed. Please try again.';
+  }
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
@@ -116,7 +125,7 @@ export function mountAccountPage(host: PageHost): void {
           <p class="tagline">
             ${
               goldMasterSurface
-                ? 'Hosted player identity uses Google Sign-In only. This Gold Master artifact does not mint Local Arena development identities.'
+                ? 'Enter Hallucinated Dungeons with your Google account and continue into character creation, campaigns, and the table.'
                 : 'Local Arena testing can mint a development account. Hosted Gold Master artifacts use Google Sign-In only.'
             }
           </p>
@@ -151,7 +160,7 @@ export function mountAccountPage(host: PageHost): void {
             <p>
               ${
                 hostedGoogleClientId !== null
-                  ? 'Invite-only alpha: sign in with Google to begin playing.'
+                  ? 'A shared online table for creating characters, gathering a party, and playing browser-based Dungeons & Dragons together.'
                   : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
               }
             </p>
@@ -159,7 +168,7 @@ export function mountAccountPage(host: PageHost): void {
               hostedGoogleClientId !== null
                 ? `<div class="record-meta">
               <p class="record-meta">
-                Sign in to your Google account. Then you’ll be able to create characters and play in your private tables.
+                Sign in to begin your adventure.
               </p>
               <div class="actions">
                 ${
@@ -449,35 +458,15 @@ export function mountAccountPage(host: PageHost): void {
           api.accounts.id.initialize({
             client_id: hostedGoogleClientId,
             ux_mode: 'redirect',
-            callback: (response) => {
-              void (async () => {
-                if (busy) {
-                  return;
-                }
-                busy = true;
-                error = null;
-                render();
-                try {
-                  const next = await signInHostedGoogle(candidate, response.credential);
-                  shell.announce(`Signed in as ${next.displayLabel}.`);
-                } catch (failure) {
-                  error =
-                    failure instanceof ApiFailure
-                      ? failure.message
-                      : 'Google Sign-In failed.';
-                } finally {
-                  busy = false;
-                  render();
-                }
-              })();
-            },
+            login_uri: hostedGoogleLoginUri(),
           });
-          api.accounts.id.renderButton(hostedButtonHost, {
+          api.accounts.id.renderButton?.(hostedButtonHost, {
             type: 'standard',
             theme: 'outline',
             size: 'medium',
-            text: 'signin_with',
-            shape: 'rectangular',
+            text: 'continue_with',
+            shape: 'pill',
+            width: '280',
           });
         })
         .catch(() => {
