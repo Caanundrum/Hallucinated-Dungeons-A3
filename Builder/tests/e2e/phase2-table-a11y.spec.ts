@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import {enterAccountFromShell} from './arena-page.js';
 
 /**
  * Phase 2 table accessibility / presentation preferences.

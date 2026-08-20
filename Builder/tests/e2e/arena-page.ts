@@ -78,6 +78,15 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
   await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
 }
 
+/** Opens training / developer controls on the campaign table dashboard. */
+export async function openTableAdvancedControls(page: Page): Promise<void> {
+  await page.getByTestId('table-info-tab-tools').click();
+  const details = page.getByTestId('table-advanced-controls');
+  if ((await details.getAttribute('open')) === null) {
+    await details.locator('summary').click();
+  }
+}
+
 /** Reads the notes currently rendered from the server projection. */
 export async function renderedNotes(page: Page): Promise<string[]> {
   return page.getByTestId('record-note').allInnerTexts();

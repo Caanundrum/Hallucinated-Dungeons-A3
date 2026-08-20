@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 5 starter campaign, memory, session resume, and long-play settings.

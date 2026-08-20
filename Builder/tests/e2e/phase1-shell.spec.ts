@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { SERVER_ORIGIN } from './arena-page.js';
+import {SERVER_ORIGIN} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1b actual-page journey: the hosted shell, navigation, the

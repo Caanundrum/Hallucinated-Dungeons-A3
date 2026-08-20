@@ -1,15 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import {
-  collectRequestHosts,
-  enterArena,
-  LOOPBACK_HOSTS,
-  openArena,
-  projectionVersion,
-  readCandidate,
-  recordCheck,
-  renderedNotes,
-} from './arena-page.js';
+import {collectRequestHosts, enterArena, LOOPBACK_HOSTS, openArena, projectionVersion, readCandidate, recordCheck, renderedNotes} from './arena-page.js';
 
 /**
  * Phase 0 actual-page journey and adversarial coverage.

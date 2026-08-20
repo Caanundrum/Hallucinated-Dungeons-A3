@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 2 chunk 2b: map schemas projected by the server and rendered by a

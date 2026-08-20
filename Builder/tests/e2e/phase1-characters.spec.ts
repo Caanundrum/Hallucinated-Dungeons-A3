@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterArena } from './arena-page.js';
+import {enterArena} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1c actual-page journey: Character Vault, custom and

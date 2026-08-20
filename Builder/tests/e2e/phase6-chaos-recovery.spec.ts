@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 6 chaos / interruption recovery for table commands and AI surfaces.
@@ -98,14 +98,14 @@ test.describe('Phase 6 chaos and recovery', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
     await page.reload();
     await dismissIntroIfPresent(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'false');
 
     const origin = new URL(page.url()).origin;
