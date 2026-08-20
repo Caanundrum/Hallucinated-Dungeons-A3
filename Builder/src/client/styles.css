@@ -368,7 +368,7 @@ a.account-chip-label:focus-visible {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .table-dashboard .table-stage-frame {
@@ -381,7 +381,7 @@ a.account-chip-label:focus-visible {
 .table-action-bar {
   flex-shrink: 0;
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
 }
 
 .table-action-bar-inner {
@@ -391,25 +391,84 @@ a.account-chip-label:focus-visible {
   align-items: start;
 }
 
-.table-dashboard .table-turn-banner {
-  margin-bottom: 0;
-  padding: var(--space-3);
+.table-action-bar-inner.table-action-bar-compact {
+  grid-template-columns: minmax(120px, 24%) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
 }
 
-.table-player-turn-composer {
+.table-dashboard .table-turn-banner {
+  margin-bottom: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+}
+
+.table-dashboard .table-turn-title {
+  font-size: 0.92rem;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.table-dashboard .table-turn-detail {
+  font-size: 0.78rem;
+  margin: var(--space-1) 0 0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.table-dashboard .initiative-order {
+  margin: var(--space-1) 0 0;
+  gap: var(--space-1) var(--space-2);
+}
+
+.table-dashboard .initiative-order li {
+  font-size: 0.76rem;
+}
+
+.table-dashboard .table-move-status {
+  margin-top: var(--space-1);
+  font-size: 0.78rem;
+}
+
+.table-action-bar .table-player-turn-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  align-items: end;
+  gap: var(--space-2);
+  align-items: center;
   margin-top: 0;
 }
 
-.table-action-field {
+.table-action-bar .table-action-field {
   margin: 0;
 }
 
-.table-player-actions-compact {
-  align-self: center;
+.table-action-bar .table-action-field textarea {
+  min-height: 2.15rem;
+  max-height: 2.15rem;
+  resize: none;
+  padding: var(--space-2);
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.table-action-bar .table-primary-action,
+.table-action-bar .table-secondary-action {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.table-action-bar .table-player-actions {
+  gap: var(--space-2);
+}
+
+.table-action-bar .table-player-actions-compact p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.3;
 }
 
 .table-dashboard-footer {

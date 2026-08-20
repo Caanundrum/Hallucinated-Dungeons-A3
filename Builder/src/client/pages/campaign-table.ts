@@ -1006,12 +1006,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <p class="visually-hidden" data-testid="table-state-meta">
         Table state version ${version} · last event sequence ${sequence}
       </p>
-      <div class="table-action-bar-inner">
+      <div class="table-action-bar-inner table-action-bar-compact">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
           ${initiativeStrip()}
-          <p class="table-turn-presence" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
+          <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
           ${
             movePreviewNote === null
               ? ''
@@ -1022,9 +1022,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
                 <label class="field table-action-field">
-                  <span>What do you do?</span>
-                  <textarea data-testid="player-action-input" rows="2"
-                    placeholder="Describe your action in your own words — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+                  <span class="visually-hidden">What do you do?</span>
+                  <textarea data-testid="player-action-input" rows="1"
+                    placeholder="What do you do? Describe your action — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
                 </label>
                 <div class="table-player-actions" data-testid="table-player-actions">
                   <button type="button" class="table-primary-action" data-testid="submit-player-action"
@@ -1042,7 +1042,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 </div>
               </div>`
             : `<div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
-                <p class="record-meta">Watch the scene, chat with the party, or ask the DM while others act.</p>
+                <p class="record-meta">Watch the scene or use chat while others act.</p>
               </div>`
         }
       </div>`;
