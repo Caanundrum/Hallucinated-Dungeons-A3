@@ -82,7 +82,7 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
 export async function openTableAdvancedControls(page: Page): Promise<void> {
   await page.getByTestId('table-info-tab-tools').click();
   const details = page.getByTestId('table-advanced-controls');
-  if (!(await details.getAttribute('open'))) {
+  if ((await details.getAttribute('open')) === null) {
     await details.locator('summary').click();
   }
 }

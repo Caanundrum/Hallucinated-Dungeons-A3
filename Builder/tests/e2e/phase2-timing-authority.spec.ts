@@ -59,7 +59,7 @@ async function seatOwnCharacter(page: Page): Promise<void> {
 async function openAdvancedControls(page: Page): Promise<void> {
   await page.getByTestId('table-info-tab-tools').click();
   const details = page.getByTestId('table-advanced-controls');
-  if (!(await details.getAttribute('open'))) {
+  if ((await details.getAttribute('open')) === null) {
     await details.locator('summary').click();
   }
 }
