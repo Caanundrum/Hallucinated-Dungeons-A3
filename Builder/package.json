@@ -32,6 +32,7 @@
     "scan:architecture": "node tools/certification/architecture-conformance.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.18.0",
     "firebase-admin": "^13.0.2",
     "pixi.js": "^8.19.0"
   },

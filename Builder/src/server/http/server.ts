@@ -1957,6 +1957,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               campaignId,
               accountId,
               text,
+              environmentClass: env.environmentClass,
+              firebaseProjectId: env.firebaseProjectId,
             });
             sendJson(response, 201, answered);
           } catch (error) {
@@ -2021,6 +2023,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             accountId,
             text,
             moveTarget,
+            environmentClass: env.environmentClass,
+            firebaseProjectId: env.firebaseProjectId,
           });
           sendJson(response, 201, interpreted);
         } catch (error) {
@@ -2072,6 +2076,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             campaignId,
             accountId,
             mechanicsSummary,
+            environmentClass: env.environmentClass,
+            firebaseProjectId: env.firebaseProjectId,
           });
           sendJson(response, 201, narration);
         } catch (error) {
