@@ -4,8 +4,8 @@
  * Production boundary: every Director call builds a Payload Manifest, injects
  * locked Veyra/Garrick personality, omits Party Chat OOC by default, and
  * refuses work when the campaign AI kill switch is enabled. Live LLM providers
- * plug into this same gateway in Milestone; Local Arena certifies the boundary
- * with a deterministic simulator.
+ * plug into this same gateway in Milestone via Gemini on Agent Platform;
+ * Local Arena certifies the boundary with a deterministic simulator.
  */
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -16,7 +16,16 @@ import type {
   DirectorIdentity,
   DirectorPersonality,
 } from '../../shared/campaign-contract.js';
-import { DIRECTOR_IDENTITY_LABELS, DIRECTOR_PERSONALITY_LABELS } from '../../shared/campaign-contract.js';
+import {
+  DIRECTOR_IDENTITY_LABELS,
+  DIRECTOR_PERSONALITY_LABELS,
+  DIRECTOR_PERSONALITY_SUMMARIES,
+} from '../../shared/campaign-contract.js';
+import type { EnvironmentClass } from '../../shared/contract.js';
+import {
+  createGeminiDirectorClient,
+  type DirectorLlmClient,
+} from './gemini-director.js';
 import type {
   AiChannelClass,
   AiPayloadManifest,
@@ -52,7 +61,18 @@ export const PROVIDER_COMPLIANCE_REGISTRY: readonly ProviderComplianceEntry[] = 
     localArena: 'deterministic_simulator',
     milestone: 'configured_provider',
     ageRegionGate: 'none',
-    notes: 'Certification path for Intent Intercept, Address, and narration without live LLM quotas.',
+    notes:
+      'Local Arena Director path. Hosted Milestone falls back to this simulator if Gemini is unavailable.',
+  },
+  {
+    providerId: 'gemini_agent_platform',
+    displayName: 'Gemini (Agent Platform)',
+    category: 'ai_text',
+    localArena: 'deterministic_simulator',
+    milestone: 'configured_provider',
+    ageRegionGate: 'none',
+    notes:
+      'Invite-Only Alpha Director prose via gemini-3.7-flash on Gemini Enterprise Agent Platform in the Firebase project. Never called from Local Arena.',
   },
   {
     providerId: 'browser_speech_synthesis',
@@ -174,6 +194,64 @@ function composeNarrationBody(
   return { body: `${mechanicsSummary}${humorLine(personality)}`, humorApplied: true };
 }
 
+export interface DirectorLiveOptions {
+  readonly environmentClass?: EnvironmentClass;
+  readonly firebaseProjectId?: string;
+  /** Test override. Ignored unless environmentClass is milestone. */
+  readonly llm?: DirectorLlmClient;
+}
+
+function liveGeminiEnabled(options: DirectorLiveOptions): boolean {
+  return options.environmentClass === 'milestone';
+}
+
+async function resolveLiveLlm(options: DirectorLiveOptions): Promise<DirectorLlmClient | null> {
+  if (!liveGeminiEnabled(options)) {
+    return null;
+  }
+  if (options.llm !== undefined) {
+    return options.llm;
+  }
+  const projectId = (options.firebaseProjectId ?? '').trim();
+  if (projectId.length === 0) {
+    return null;
+  }
+  return createGeminiDirectorClient({ projectId });
+}
+
+function directorVoiceBlock(
+  identity: DirectorIdentity,
+  personality: DirectorPersonality,
+): string {
+  const name = DIRECTOR_IDENTITY_LABELS[identity];
+  const label = DIRECTOR_PERSONALITY_LABELS[personality];
+  return `You are ${name}, the Game Director. Personality: ${label} — ${DIRECTOR_PERSONALITY_SUMMARIES[personality]}.`;
+}
+
+const DIRECTOR_SAFETY_RULES = [
+  'You never change table state, move tokens, open doors, roll dice, or invent mechanical outcomes.',
+  'You never invent hidden facts, secret NPC motives, or information the speaking player cannot see.',
+  'Party Chat, Rules Desk, and out-of-character table talk are not available to you.',
+  'If the player describes a consequential action, tell them you heard it and that they must confirm it as a declared action. Do not treat the message as a completed command.',
+].join(' ');
+
+async function tryLiveProse(
+  options: DirectorLiveOptions,
+  input: { readonly systemInstruction: string; readonly userPrompt: string },
+): Promise<string | null> {
+  const llm = await resolveLiveLlm(options);
+  if (llm === null) {
+    return null;
+  }
+  try {
+    return await llm.generateText(input);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'unknown Gemini failure';
+    process.stderr.write(`[director-gateway] Gemini unavailable; using simulator. ${detail}\n`);
+    return null;
+  }
+}
+
 async function requireAiEnabled(firestore: Firestore): Promise<void> {
   if (await getAiKillSwitch(firestore)) {
     throw new AiDirectorUnavailableError(
@@ -214,7 +292,7 @@ export async function interpretNaturalLanguageIntent(options: {
   readonly accountId: string;
   readonly text: string;
   readonly moveTarget?: { column: number; row: number } | null;
-}): Promise<IntentInterpretResponse> {
+} & DirectorLiveOptions): Promise<IntentInterpretResponse> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
   const text = options.text.trim().toLowerCase();
@@ -237,6 +315,14 @@ export async function interpretNaturalLanguageIntent(options: {
     proposedCommandType = 'table.sync';
   }
 
+  const liveSummary = await tryLiveProse(options, {
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent Intercept summary for the player in one or two sentences. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action.`,
+    userPrompt: `Player said: ${options.text.trim()}\nDeterministic summary: ${summary}`,
+  });
+  if (liveSummary !== null) {
+    summary = liveSummary;
+  }
+
   const createdAt = new Date().toISOString();
   const manifest = buildManifest({
     role: 'intent_interpreter',
@@ -252,7 +338,9 @@ export async function interpretNaturalLanguageIntent(options: {
   return {
     draftId: randomUUID(),
     campaignId: options.campaignId,
-    summary: `${summary} (${DIRECTOR_IDENTITY_LABELS[director.identity]} · ${DIRECTOR_PERSONALITY_LABELS[director.personality]})`,
+    summary: liveSummary === null
+      ? `${summary} (${DIRECTOR_IDENTITY_LABELS[director.identity]} · ${DIRECTOR_PERSONALITY_LABELS[director.personality]})`
+      : summary,
     proposedCommandType,
     ...(path !== undefined ? { path } : {}),
     interceptState: 'awaiting_confirmation',
@@ -267,7 +355,7 @@ export async function answerDirectorAddress(options: {
   readonly campaignId: string;
   readonly accountId: string;
   readonly text: string;
-}): Promise<DirectorAddressResponse> {
+} & DirectorLiveOptions): Promise<DirectorAddressResponse> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
   const text = options.text.trim();
@@ -285,14 +373,18 @@ export async function answerDirectorAddress(options: {
     directorPersonality: director.personality,
   });
 
-  const body = actionable
+  const simulatorBody = actionable
     ? `${DIRECTOR_IDENTITY_LABELS[director.identity]} hears you, but will not change the table from Director Address. An Action Draft Suggestion is available — open it in Declare Action and confirm Intent Intercept if you mean to act.`
     : `${DIRECTOR_IDENTITY_LABELS[director.identity]} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers without changing state: the table remains as you left it. Ask Rules Desk for mechanics; use Declare Action for consequential intent.`;
+  const liveBody = await tryLiveProse(options, {
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Answer in 2 to 5 sentences, in character. Never say you moved a piece or resolved a roll.`,
+    userPrompt: `The player says: ${text}`,
+  });
 
   return {
     responseId: randomUUID(),
     campaignId: options.campaignId,
-    body,
+    body: liveBody ?? simulatorBody,
     mutatesState: false,
     actionDraftSuggestion: actionable
       ? {
@@ -311,7 +403,7 @@ export async function narrateVisibleBeat(options: {
   readonly campaignId: string;
   readonly accountId: string;
   readonly mechanicsSummary: string;
-}): Promise<DirectorNarrationProjection> {
+} & DirectorLiveOptions): Promise<DirectorNarrationProjection> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
   const playerSettings = await readPlayerSettings({
@@ -320,11 +412,17 @@ export async function narrateVisibleBeat(options: {
   });
   const narrationDensity = playerSettings.reserved.narrationDensity;
   const createdAt = new Date().toISOString();
-  const { body, humorApplied } = composeNarrationBody(
+  const simulated = composeNarrationBody(
     options.mechanicsSummary,
     director.personality,
     narrationDensity,
   );
+  const liveBody = await tryLiveProse(options, {
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The mechanics summary is authoritative. Restate it, then add flavor matching narration density "${narrationDensity}". Do not add damage, conditions, or new events.`,
+    userPrompt: `Mechanics summary: ${options.mechanicsSummary}`,
+  });
+  const body = liveBody ?? simulated.body;
+  const humorApplied = liveBody === null ? simulated.humorApplied : narrationDensity !== 'concise';
   const manifest = buildManifest({
     role: 'narrator',
     campaignId: options.campaignId,
@@ -342,7 +440,7 @@ export async function narrateVisibleBeat(options: {
     body,
     mechanicsFirstSummary: options.mechanicsSummary,
     humorApplied,
-    fallbackUsed: false,
+    fallbackUsed: liveGeminiEnabled(options) && liveBody === null,
     narrationDensity,
     directorIdentity: director.identity,
     directorPersonality: director.personality,
@@ -351,3 +449,4 @@ export async function narrateVisibleBeat(options: {
     createdAt,
   };
 }
+

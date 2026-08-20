@@ -87,7 +87,9 @@ export function buildGoldMasterPackage(env: ServerEnvironment): GoldMasterPackag
       env.environmentClass === 'milestone'
         ? 'Google Sign-In uses live Google OAuth. Development identities, QA fixtures, and the QA harness are stripped.'
         : 'Google Sign-In on this host uses the Auth emulator. It is not a live OAuth popup against a public Google Cloud project.',
-      'The Local Arena Director remains a deterministic simulator. Hosted LLM providers stay registered pending credentials.',
+      env.environmentClass === 'milestone'
+        ? 'Hosted Invite-Only Alpha uses Gemini 3.7 Flash on Agent Platform for Director Address and narration when the AI kill switch is off. Local Arena remains a deterministic simulator.'
+        : 'The Local Arena Director remains a deterministic simulator. Hosted Gemini is not called from this process.',
       'Age/region eligibility collection is inactive because no selected provider currently requires it.',
     ],
   };

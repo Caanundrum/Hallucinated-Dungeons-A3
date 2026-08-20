@@ -56,3 +56,11 @@ env:
     value: phase7-gold-master-v1
     availability:
       - RUNTIME
+  - variable: GOOGLE_CLOUD_LOCATION
+    value: global
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GENAI_USE_ENTERPRISE
+    value: "true"
+    availability:
+      - RUNTIME

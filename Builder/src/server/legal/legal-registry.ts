@@ -229,7 +229,7 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
   title: 'Content and Safety Notice',
   version: 'V2',
   effectiveDate: '2026-08-17',
-  lastReviewedDate: '2026-08-17',
+  lastReviewedDate: '2026-08-20',
   materiality: 'material',
   supportedRegions: ['global'],
   supersededVersion: 'V1',
@@ -247,7 +247,7 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
       id: 'ai-narration',
       heading: '2. AI-assisted narration',
       paragraphs: [
-        'An AI Game Director narrates scenes and portrays non-player characters. In the Local Arena the Director is a deterministic simulator behind the same production gateway. Hosted builds use only providers listed in the server provider registry; live LLM credentials are not present in this Local Arena candidate.',
+        'An AI Game Director narrates scenes and portrays non-player characters. In the Local Arena the Director is a deterministic simulator behind the same production gateway. On hosted Invite-Only Alpha the same gateway may call Gemini through Gemini Enterprise Agent Platform in this Firebase project. Live Gemini is never called from Local Arena.',
         'The Director cannot mutate table state, invent hidden facts, or act as a second rules engine. Party Chat remains a social surface, not a command path.',
       ],
     },
