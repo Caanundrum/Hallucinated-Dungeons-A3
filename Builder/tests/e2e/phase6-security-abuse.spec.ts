@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 6 security / privacy hardening:

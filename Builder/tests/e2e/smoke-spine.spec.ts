@@ -1,13 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import {
-  enterArena,
-  openArena,
-  projectionVersion,
-  readCandidate,
-  recordCheck,
-  renderedNotes,
-} from './arena-page.js';
+import {enterArena, openArena, openTableAdvancedControls, projectionVersion, readCandidate, recordCheck, renderedNotes} from './arena-page.js';
 
 /**
  * The permanent smoke spine.
@@ -171,7 +164,7 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-a11y-panel')).toBeVisible();
     await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await page.getByTestId('commit-table-sync').click();
@@ -227,7 +220,7 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('create-seat').click();
 
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
     await expect(page.getByTestId('combatant-practice-goblin')).toBeVisible();
     await page.getByTestId('roll-initiative').click();

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 4: presence, Google emulator admin, Director Address, NL Intent Intercept,
@@ -114,7 +114,7 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     await expect(page.getByTestId('director-address-reply')).toContainText(/without changing state|Veyra/i);
 
     
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await page.getByTestId('nl-intent-input').fill('I move carefully toward the pillar.');
     await page.getByTestId('interpret-nl-intent').click();
@@ -190,7 +190,7 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     );
 
     
-    await ownerPage.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(ownerPage);
     await ownerPage.getByTestId('commit-table-sync').click();
     await expect(ownerPage.getByTestId('table-state-meta')).toContainText('Table state version 1');
     await expect(guestA.getByTestId('table-state-meta')).toContainText('Table state version 1', {

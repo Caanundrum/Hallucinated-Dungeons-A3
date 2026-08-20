@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 2 chunk 2a + 2d: command gateway gated by Timing Authority.
@@ -89,7 +89,7 @@ test.describe('Phase 2a table command gateway', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('communication-dock')).toBeVisible();
     await expect(page.getByTestId('action-composer')).toBeVisible();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'false');
@@ -103,7 +103,7 @@ test.describe('Phase 2a table command gateway', () => {
     );
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
 
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 

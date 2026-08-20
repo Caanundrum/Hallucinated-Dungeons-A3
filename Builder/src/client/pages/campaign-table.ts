@@ -7,6 +7,7 @@
  */
 
 import type { TableStateProjection } from '../../shared/command-contract.js';
+import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
 import type { ChronicleFeedProjection, PartyChatFeedProjection } from '../../shared/communication-contract.js';
 import {
   ACTION_COMPOSER_STRUCTURE,
@@ -40,6 +41,7 @@ import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   fetchCampaignDetail,
+  fetchCampaignMemory,
   fetchCampaignMap,
   fetchChronicle,
   fetchPartyChat,
@@ -87,7 +89,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   shell.setDocumentTitle('Campaign table');
 
   let campaignName = 'Campaign';
+  type InfoTab = 'character' | 'notes' | 'people' | 'tools';
+  let activeInfoTab: InfoTab = 'character';
   let activeTab: DockTab = 'party_chat';
+  let memory: CampaignMemoryProjection | null = null;
+  let tableNotes = '';
   let chatMode: PartyChatMode = 'table_talk';
   let chronicle: ChronicleFeedProjection | null = null;
   let partyChat: PartyChatFeedProjection | null = null;
@@ -399,6 +405,160 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
     }
     return `<div data-testid="table-character-sheet">${renderCharacterSheet(progression.sheet)}</div>`;
+  }
+
+  function tableNotesStorageKey(): string {
+    return `hd-table-notes:${campaignId}`;
+  }
+
+  function loadTableNotesFromStorage(): string {
+    try {
+      return localStorage.getItem(tableNotesStorageKey()) ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  function saveTableNotesToStorage(value: string): void {
+    try {
+      localStorage.setItem(tableNotesStorageKey(), value);
+    } catch {
+      // Private notes are best-effort local storage only.
+    }
+  }
+
+  const INFO_TAB_LABELS: Record<InfoTab, string> = {
+    character: 'Character',
+    notes: 'Notes',
+    people: 'People',
+    tools: 'Tools',
+  };
+
+  function peoplePanelBody(): string {
+    if (memory === null) {
+      return '<p class="record-meta" data-testid="table-people-loading">Campaign memory is loading…</p>';
+    }
+    const currentChapter =
+      memory.chapters.find((chapter) => chapter.chapterId === memory!.currentChapterId) ?? null;
+    return `
+      <p class="record-meta" data-testid="table-people-time">${escapeHtml(memory.campaignTime.label)}</p>
+      ${
+        currentChapter === null
+          ? '<p class="empty-state">No current chapter yet.</p>'
+          : `<p data-testid="table-current-chapter">
+               <strong>${escapeHtml(currentChapter.sessionLabel)}: ${escapeHtml(currentChapter.title)}</strong><br />
+               ${escapeHtml(currentChapter.planSummary)}
+             </p>`
+      }
+      ${
+        memory.npcs.length === 0
+          ? '<p class="empty-state" data-testid="table-npc-empty">No NPCs recorded yet.</p>'
+          : `<h3 class="preview-subheading">NPCs encountered</h3>
+             <ul class="record-list compact" data-testid="npc-list">
+               ${memory.npcs
+                 .map(
+                   (npc) => `
+                 <li data-testid="npc-item">
+                   <span class="record-note">${escapeHtml(npc.name)} — ${escapeHtml(npc.role)}</span>
+                   <span class="record-meta">${escapeHtml(npc.knowledge)}</span>
+                 </li>`,
+                 )
+                 .join('')}
+             </ul>`
+      }
+      ${
+        memory.quests.length === 0
+          ? ''
+          : `<h3 class="preview-subheading">Quests</h3>
+             <ul class="record-list compact" data-testid="quest-list">
+               ${memory.quests
+                 .map(
+                   (quest) => `
+                 <li data-testid="quest-item">
+                   <span class="record-note">${escapeHtml(quest.title)}</span>
+                   <span class="record-meta">${escapeHtml(quest.status)} · ${escapeHtml(quest.summary)}</span>
+                 </li>`,
+                 )
+                 .join('')}
+             </ul>`
+      }
+      ${
+        memory.openThreads.length === 0
+          ? ''
+          : `<h3 class="preview-subheading">Open threads</h3>
+             <ul class="record-list compact" data-testid="open-thread-list">
+               ${memory.openThreads
+                 .map(
+                   (thread) => `
+                 <li data-testid="open-thread-item"><span class="record-note">${escapeHtml(thread.summary)}</span></li>`,
+                 )
+                 .join('')}
+             </ul>`
+      }`;
+  }
+
+  function notesPanelBody(): string {
+    return `
+      <p class="record-meta">Private scratch notes — saved on this device only.</p>
+      <label class="field">
+        <span class="visually-hidden">Table notes</span>
+        <textarea data-testid="table-notes-input" rows="12"
+          placeholder="Track clues, NPC impressions, loot, plans…">${escapeHtml(tableNotes)}</textarea>
+      </label>`;
+  }
+
+  function infoTabBody(): string {
+    switch (activeInfoTab) {
+      case 'character':
+        return `
+          <section class="table-info-pane" data-testid="table-character-sheet-panel">
+            ${characterSheetPanel()}
+          </section>`;
+      case 'notes':
+        return `<section class="table-info-pane" data-testid="table-notes-panel">${notesPanelBody()}</section>`;
+      case 'people':
+        return `<section class="table-info-pane" data-testid="table-people-panel">${peoplePanelBody()}</section>`;
+      case 'tools':
+        return `
+          <section class="table-info-pane" data-testid="table-tools-panel">
+            <details class="table-advanced-controls" data-testid="table-advanced-controls">
+              <summary>Training, combat tools, and developer controls</summary>
+              ${advancedControlsBody()}
+            </details>
+          </section>`;
+    }
+  }
+
+  function infoRailBody(): string {
+    return `
+      <div class="info-rail-tabs" role="tablist" aria-label="Table reference">
+        ${(Object.keys(INFO_TAB_LABELS) as InfoTab[]).map(
+          (tab) => `
+          <button type="button" role="tab" class="info-rail-tab${activeInfoTab === tab ? ' active' : ''}"
+            aria-selected="${activeInfoTab === tab}" data-testid="table-info-tab-${tab}" data-info-tab="${tab}">
+            ${escapeHtml(INFO_TAB_LABELS[tab])}
+          </button>`,
+        ).join('')}
+      </div>
+      <div class="info-rail-viewport" role="tabpanel">
+        ${infoTabBody()}
+      </div>`;
+  }
+
+  function commsDockBody(): string {
+    return `
+      <div class="dock-tabs" role="tablist" aria-label="Table conversations">
+        ${PLAYER_DOCK_TAB_ORDER.map(
+          (tab) => `
+          <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
+            aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
+            ${escapeHtml(DOCK_TAB_LABELS[tab])}
+          </button>`,
+        ).join('')}
+      </div>
+      <div class="dock-viewport" role="tabpanel">
+        ${dockBody()}
+      </div>`;
   }
 
   function compactPresenceLine(): string {
@@ -846,57 +1006,46 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <p class="visually-hidden" data-testid="table-state-meta">
         Table state version ${version} · last event sequence ${sequence}
       </p>
-      <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
-        <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
-        <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
-        ${initiativeStrip()}
-        <p class="table-turn-presence" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
+      <div class="table-action-bar-inner">
+        <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
+          <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
+          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+          ${initiativeStrip()}
+          <p class="table-turn-presence" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
+          ${
+            movePreviewNote === null
+              ? ''
+              : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
+          }
+        </section>
         ${
-          movePreviewNote === null
-            ? ''
-            : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
+          canDescribeTurn
+            ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
+                <label class="field table-action-field">
+                  <span>What do you do?</span>
+                  <textarea data-testid="player-action-input" rows="2"
+                    placeholder="Describe your action in your own words — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+                </label>
+                <div class="table-player-actions" data-testid="table-player-actions">
+                  <button type="button" class="table-primary-action" data-testid="submit-player-action"
+                    aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
+                    ${busy ? 'Sending…' : 'Tell the DM'}
+                  </button>
+                  ${
+                    showEndTurn
+                      ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
+                          aria-disabled="${busy || candidate === null}">
+                          End turn
+                        </button>`
+                      : ''
+                  }
+                </div>
+              </div>`
+            : `<div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
+                <p class="record-meta">Watch the scene, chat with the party, or ask the DM while others act.</p>
+              </div>`
         }
-      </section>
-      ${
-        canDescribeTurn
-          ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
-              <label class="field">
-                <span>What do you do?</span>
-                <textarea data-testid="player-action-input" rows="3"
-                  placeholder="Describe your action in your own words — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
-              </label>
-              <div class="table-player-actions" data-testid="table-player-actions">
-                <button type="button" class="table-primary-action" data-testid="submit-player-action"
-                  aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
-                  ${busy ? 'Sending…' : 'Tell the DM'}
-                </button>
-                ${
-                  showEndTurn
-                    ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
-                        aria-disabled="${busy || candidate === null}">
-                        End turn
-                      </button>`
-                    : ''
-                }
-              </div>
-            </div>`
-          : `<div class="table-player-actions" data-testid="table-player-actions">
-              <p class="record-meta">Watch the scene, chat with the party, or ask the DM while others act.</p>
-            </div>`
-      }`;
-  }
-
-  function actionComposerBody(): string {
-    return `
-      ${playerActionBar()}
-      <details class="table-character-sheet-panel" open data-testid="table-character-sheet-panel">
-        <summary>Your character sheet</summary>
-        ${characterSheetPanel()}
-      </details>
-      <details class="table-advanced-controls" data-testid="table-advanced-controls">
-        <summary>Training, combat tools, and developer controls</summary>
-        ${advancedControlsBody()}
-      </details>`;
+      </div>`;
   }
 
   function advancedControlsBody(): string {
@@ -989,12 +1138,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     container.innerHTML = `
-      <div class="page page-wide" data-testid="table-page-shell">
-        <div data-testid="table-heading-slot"></div>
-        <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
-          <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
-        </section>
-        <div data-testid="table-panels-slot"></div>
+      <div class="page page-wide table-dashboard" data-testid="table-page-shell">
+        <header class="table-dashboard-header" data-testid="table-heading-slot"></header>
+        <div class="table-dashboard-body">
+          <aside class="table-info-rail panel" aria-label="Reference" data-testid="table-info-rail">
+            <div data-testid="table-info-slot"></div>
+          </aside>
+          <main class="table-play-column" aria-label="Play area">
+            <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
+              <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
+            </section>
+            <section class="panel action-composer table-action-bar" aria-labelledby="action-composer-heading" data-testid="action-composer">
+              <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
+              <div data-testid="table-action-slot"></div>
+            </section>
+          </main>
+          <aside class="table-comms-rail panel communication-dock" aria-label="At the table" data-testid="communication-dock">
+            <div data-testid="table-comms-slot"></div>
+          </aside>
+        </div>
+        <footer class="table-dashboard-footer" data-testid="table-footer-slot"></footer>
       </div>`;
   }
 
@@ -1227,22 +1390,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
-  function bindPanelEvents(panels: HTMLElement): void {
-    panels.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
+  function bindPanelEvents(root: HTMLElement): void {
+    root.querySelectorAll<HTMLButtonElement>('[data-info-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        activeInfoTab = button.dataset.infoTab as InfoTab;
+        render();
+      });
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         activeTab = button.dataset.dockTab as DockTab;
         render();
       });
     });
 
-    panels.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
+    root.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
       input.addEventListener('change', () => {
         chatMode = input.value as PartyChatMode;
         render();
       });
     });
 
-    panels
+    root
       .querySelector<HTMLSelectElement>('[data-testid="rules-desk-rule"]')
       ?.addEventListener('change', (event) => {
         if (event.target instanceof HTMLSelectElement) {
@@ -1250,7 +1420,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="rules-desk-explain"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1273,7 +1443,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLSelectElement>('[data-testid="rules-target"]')
       ?.addEventListener('change', (event) => {
         if (event.target instanceof HTMLSelectElement) {
@@ -1281,7 +1451,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
       });
 
-    panels
+    root
       .querySelector<HTMLSelectElement>('[data-testid="rules-spell"]')
       ?.addEventListener('change', (event) => {
         if (event.target instanceof HTMLSelectElement) {
@@ -1289,7 +1459,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
       });
 
-    panels.querySelectorAll<HTMLButtonElement>('[data-rules-command]').forEach((button) => {
+    root.querySelectorAll<HTMLButtonElement>('[data-rules-command]').forEach((button) => {
       button.addEventListener('click', () => {
         if (button.getAttribute('aria-disabled') === 'true') return;
         const commandType = button.dataset.rulesCommand;
@@ -1359,7 +1529,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
-    panels
+    root
       .querySelector<HTMLFormElement>('[data-testid="party-chat-composer"]')
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -1392,7 +1562,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="party-chat-dictate"]')
       ?.addEventListener('click', () => {
         const SpeechRecognitionCtor =
@@ -1448,19 +1618,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         recognition.start();
       });
 
-    const input = panels.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
+    const input = root.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
     });
 
-    const directorInput = panels.querySelector<HTMLTextAreaElement>(
+    const directorInput = root.querySelector<HTMLTextAreaElement>(
       '[data-testid="director-address-input"]',
     );
     directorInput?.addEventListener('input', () => {
       directorDraft = directorInput.value;
     });
 
-    panels
+    root
       .querySelector<HTMLFormElement>('[data-testid="director-address-composer"]')
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -1496,12 +1666,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    const nlInput = panels.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
+    const nlInput = root.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
     nlInput?.addEventListener('input', () => {
       nlIntentText = nlInput.value;
     });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="interpret-nl-intent"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1546,7 +1716,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="request-narration"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1582,7 +1752,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="refresh-table-projection"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1605,7 +1775,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLInputElement>('[data-testid="table-reduced-motion"]')
       ?.addEventListener('change', (event) => {
         void (async () => {
@@ -1642,7 +1812,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLInputElement>('[data-testid="table-low-effects"]')
       ?.addEventListener('change', (event) => {
         void (async () => {
@@ -1682,7 +1852,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
+      .querySelector<HTMLTextAreaElement>('[data-testid="table-notes-input"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLTextAreaElement) {
+          tableNotes = event.target.value;
+          saveTableNotesToStorage(tableNotes);
+        }
+      });
+
+    root
       .querySelector<HTMLTextAreaElement>('[data-testid="player-action-input"]')
       ?.addEventListener('input', (event) => {
         if (event.target instanceof HTMLTextAreaElement) {
@@ -1690,7 +1869,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="submit-player-action"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1721,13 +1900,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="end-combat-turn"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('encounter.next_turn');
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1775,7 +1954,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-move"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1817,7 +1996,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -1867,7 +2046,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         })();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="interpret-action"]')
       ?.addEventListener('click', () => {
         if (!holdsOwnAuthority() || timingAuthority === null) {
@@ -1898,14 +2077,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="cancel-intent-intercept"]')
       ?.addEventListener('click', () => {
         intentDraft = null;
         render();
       });
 
-    panels
+    root
       .querySelector<HTMLButtonElement>('[data-testid="confirm-intent-intercept"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -2028,13 +2207,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function renderTable(): void {
     ensurePageShell();
+    const pageShell = container.querySelector<HTMLElement>('[data-testid="table-page-shell"]');
     const heading = container.querySelector<HTMLElement>('[data-testid="table-heading-slot"]');
-    const panels = container.querySelector<HTMLElement>('[data-testid="table-panels-slot"]');
-    if (heading === null || panels === null) {
+    const infoSlot = container.querySelector<HTMLElement>('[data-testid="table-info-slot"]');
+    const actionSlot = container.querySelector<HTMLElement>('[data-testid="table-action-slot"]');
+    const commsSlot = container.querySelector<HTMLElement>('[data-testid="table-comms-slot"]');
+    const footer = container.querySelector<HTMLElement>('[data-testid="table-footer-slot"]');
+    if (
+      pageShell === null ||
+      heading === null ||
+      infoSlot === null ||
+      actionSlot === null ||
+      commsSlot === null ||
+      footer === null
+    ) {
       return;
     }
 
-    const focused = captureFocusedField(panels);
+    const focused = captureFocusedField(pageShell);
     const scrollY = window.scrollY;
 
     const mapMeta =
@@ -2043,12 +2233,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         : `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square · art: ${escapeHtml(humanizeArtProvenance(mapBundle.artProvenance))}`;
 
     heading.innerHTML = `
-      <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
-      ${
-        mapBundle === null
-          ? ''
-          : `<p class="scene-banner" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
-      }
+      <div class="table-header-main">
+        <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+        ${
+          mapBundle === null
+            ? ''
+            : `<p class="scene-banner" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
+        }
+      </div>
+      <nav class="table-header-links" aria-label="Table navigation">
+        <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Campaign</a>
+        <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings">Settings</a>
+      </nav>
       <p class="visually-hidden" data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
       ${
         error === null
@@ -2056,27 +2252,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           : `<div class="message error" role="alert" data-testid="table-error">${escapeHtml(error)}</div>`
       }`;
 
-    panels.innerHTML = `
-      <section class="panel action-composer table-player-panel" aria-labelledby="action-composer-heading" data-testid="action-composer">
-        <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
-        ${actionComposerBody()}
-      </section>
+    infoSlot.innerHTML = infoRailBody();
+    actionSlot.innerHTML = playerActionBar();
+    commsSlot.innerHTML = commsDockBody();
 
-      <section class="panel communication-dock" aria-label="At the table" data-testid="communication-dock">
-        <div class="dock-tabs" role="tablist" aria-label="Table conversations">
-          ${PLAYER_DOCK_TAB_ORDER.map(
-            (tab) => `
-            <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
-              aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
-              ${escapeHtml(DOCK_TAB_LABELS[tab])}
-            </button>`,
-          ).join('')}
-        </div>
-        <div class="dock-viewport" role="tabpanel">
-          ${dockBody()}
-        </div>
-      </section>
-
+    footer.innerHTML = `
       <details class="table-meta-panel" data-testid="presence-section">
         <summary>Table details</summary>
         <section aria-labelledby="presence-heading">
@@ -2098,16 +2278,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   .join('')}
               </ul>`
         }
-      </details>
+      </details>`;
 
-      <p>
-        <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Back to campaign</a>
-        ·
-        <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings">Campaign settings</a>
-      </p>`;
-
-    bindPanelEvents(panels);
-    restoreFocusedField(panels, focused);
+    bindPanelEvents(pageShell);
+    restoreFocusedField(pageShell, focused);
     if (focused !== null) {
       window.scrollTo(0, scrollY);
     }
@@ -2152,13 +2326,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
       return;
     }
-    const [tableFeed, mapFeed, timingFeed, rulesFeed, chatFeed, chronicleFeed] = await Promise.all([
+    const [tableFeed, mapFeed, timingFeed, rulesFeed, chatFeed, chronicleFeed, memoryFeed] =
+      await Promise.all([
       fetchTableState(campaignId),
       fetchCampaignMap(campaignId),
       fetchTimingAuthority(campaignId),
       seated ? fetchRulesState(campaignId) : Promise.resolve(null),
       fetchPartyChat(campaignId),
       fetchChronicle(campaignId),
+      fetchCampaignMemory(campaignId).catch(() => null),
     ]);
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -2169,11 +2345,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const priorAuthorityState = timingAuthority?.state ?? null;
     const priorChatCount = partyChat?.messages.length ?? 0;
     const priorChronicleCount = chronicle?.entries.length ?? 0;
+    const priorMemoryUpdatedAt = memory?.updatedAt ?? null;
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
     partyChat = chatFeed;
     chronicle = chronicleFeed;
+    if (memoryFeed !== null) {
+      memory = memoryFeed;
+    }
     if (rulesFeed !== null) {
       encounter = rulesFeed.encounter;
       progression = rulesFeed.progression;
@@ -2185,7 +2365,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       (timingFeed.authority?.timingAuthorityId ?? null) !== priorAuthorityId ||
       (timingFeed.authority?.state ?? null) !== priorAuthorityState ||
       chatFeed.messages.length !== priorChatCount ||
-      chronicleFeed.entries.length !== priorChronicleCount;
+      chronicleFeed.entries.length !== priorChronicleCount ||
+      (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt;
     if (changed) {
       render();
     } else if (mapBundle !== null && stageHandle !== null) {
@@ -2274,6 +2455,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     error = null;
+    tableNotes = loadTableNotesFromStorage();
     render();
     const presentationEpochAtLoad = presentationWriteEpoch;
     try {
@@ -2282,7 +2464,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed] =
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed, memoryFeed] =
         await Promise.all([
           fetchChronicle(campaignId),
           fetchPartyChat(campaignId),
@@ -2291,12 +2473,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           fetchTimingAuthority(campaignId),
           fetchPlayerSettings(),
           seated ? fetchRulesState(campaignId) : Promise.resolve(null),
+          fetchCampaignMemory(campaignId).catch(() => null),
         ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
       mapBundle = mapFeed;
       timingAuthority = timingFeed.authority;
+      memory = memoryFeed;
       encounter = rulesFeed?.encounter ?? null;
       progression = rulesFeed?.progression ?? null;
       if (presentationEpochAtLoad === presentationWriteEpoch) {

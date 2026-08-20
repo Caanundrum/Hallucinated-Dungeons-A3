@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 2 chunk 2d: exploration movement and initiative-driven combat turns.
@@ -57,8 +57,9 @@ async function seatOwnCharacter(page: Page): Promise<void> {
 }
 
 async function openAdvancedControls(page: Page): Promise<void> {
+  await page.getByTestId('table-info-tab-tools').click();
   const details = page.getByTestId('table-advanced-controls');
-  if ((await details.getAttribute('open')) === null) {
+  if (!(await details.getAttribute('open'))) {
     await details.locator('summary').click();
   }
 }

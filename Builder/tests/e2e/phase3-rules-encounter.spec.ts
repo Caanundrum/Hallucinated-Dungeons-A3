@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 async function signIn(page: Page): Promise<void> {
   await page.goto('/');
@@ -88,7 +88,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
 
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
     await expect(page.getByTestId('combatant-training-dummy')).toContainText('Training Dummy');
     await expect(page.getByTestId('combatant-practice-goblin')).toContainText('Practice Goblin');
@@ -146,7 +146,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createMage(page);
     const campaignId = await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
@@ -199,7 +199,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await createMage(page);
     await createCampaignAndSeat(page);
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
     await page.getByTestId('roll-initiative').click();
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');

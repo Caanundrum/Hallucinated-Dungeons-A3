@@ -3,14 +3,7 @@ import { Agent, request as httpRequest, type IncomingMessage } from 'node:http';
 import { expect, test } from '@playwright/test';
 
 import { PROJECTION_PAGE_SIZE } from '../../src/shared/contract.js';
-import {
-  enterArena,
-  openArena,
-  readCandidate,
-  recordCheck,
-  renderedNotes,
-  SERVER_ORIGIN,
-} from './arena-page.js';
+import {enterArena, openArena, readCandidate, recordCheck, renderedNotes, SERVER_ORIGIN} from './arena-page.js';
 
 /**
  * Regression coverage for the findings independent QA raised against the first

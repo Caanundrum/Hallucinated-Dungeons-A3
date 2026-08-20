@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, enterArena, openArena } from './arena-page.js';
+import {enterAccountFromShell, enterArena, openArena} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1d: Development Test Identity projected as the ordinary

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import {enterAccountFromShell, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 6 core-loop a11y (automated WCAG-oriented checks — not real VoiceOver).
@@ -101,7 +101,7 @@ test.describe('Phase 6 core-loop a11y (automated WCAG)', () => {
     await createEmberferryCampaign(page, 'Phase6 A11y Table');
     await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('player-action-input')).toBeVisible();
 
     await page.getByTestId('table-reduced-motion').check();

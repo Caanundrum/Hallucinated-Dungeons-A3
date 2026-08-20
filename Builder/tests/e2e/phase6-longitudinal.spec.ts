@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import {enterAccountFromShell, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 6 longitudinal multi-session Emberferry journey.
@@ -110,7 +110,7 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
     await expect(token).toHaveAttribute('data-anchor-row', String(targetRow));
 
     // Optional training encounter when controls are enabled without flake risk.
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     const beginEncounter = page.getByTestId('begin-encounter');
     if (
       (await beginEncounter.isVisible().catch(() => false)) &&

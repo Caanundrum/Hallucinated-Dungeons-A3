@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import {enterAccountFromShell, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1f: campaign settings / Session Zero and Communication Dock
@@ -102,7 +102,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     await expect(page.getByTestId('action-composer')).toBeVisible();
     await expect(page.getByTestId('action-composer-notice')).toContainText('initiative');
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version');
     await expect(page.getByTestId('commit-table-sync')).toBeVisible();
     await expect(page.getByTestId('player-action-input')).toBeVisible();

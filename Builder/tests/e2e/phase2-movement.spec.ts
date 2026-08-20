@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -64,7 +64,7 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
 
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
     await expect(page.getByTestId('table-turn-title')).toContainText('Exploring freely');
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await page.getByTestId('commit-table-sync').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 1');
 
@@ -142,7 +142,7 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
 
     await page.reload();
     await dismissIntroIfPresent(page);
-    await page.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
     await expect(page.getByTestId('commit-table-move')).toBeVisible();
     await expect(page.getByTestId('open-adjacent-door')).toBeVisible();

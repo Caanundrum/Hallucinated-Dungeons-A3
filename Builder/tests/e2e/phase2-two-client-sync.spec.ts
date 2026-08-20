@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import { enterAccountFromShell, readCandidate } from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 /**
  * Phase 2 chunk 2e: two-client table projection sync, reconnect, recovery.
@@ -86,8 +86,8 @@ test.describe('Phase 2e two-client sync and recovery', () => {
 
     await ownerPage.getByTestId('open-campaign-table').click();
     await guestPage.getByTestId('open-campaign-table').click();
-    await ownerPage.getByTestId('table-advanced-controls').locator('summary').click();
-    await guestPage.getByTestId('table-advanced-controls').locator('summary').click();
+    await openTableAdvancedControls(ownerPage);
+    await openTableAdvancedControls(guestPage);
     await expect(ownerPage.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(guestPage.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(guestPage.getByTestId('refresh-table-projection')).toBeVisible();
