@@ -85,7 +85,6 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
       const targetCol = Number(beforeCol) + 1;
       const targetRow = Number(beforeRow);
       await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
-      await page.getByTestId('commit-table-move').click();
       await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
     }
     await page.goto(`/campaigns/${campaignId}`);
