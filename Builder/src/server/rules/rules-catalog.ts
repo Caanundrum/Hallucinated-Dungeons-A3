@@ -25,7 +25,7 @@ import {
 } from './srd-manifest.js';
 
 const CATALOG_NOTICE =
-  'Browse the structured SRD reference used by this Alpha. This listing does not make rulings or change the table — ask the DM when you need a ruling for your character and scene.';
+  'Browse the SRD 5.2.1 reference used by this Alpha. This listing does not make rulings or change the table — ask the Game Director when you need a ruling for your character and scene.';
 
 function coreMechanicEntries(): RulesCatalogEntryProjection[] {
   return RULE_EXPLANATION_IDS.filter((ruleId) => !ruleId.startsWith('condition.')).flatMap(

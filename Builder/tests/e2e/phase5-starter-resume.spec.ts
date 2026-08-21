@@ -183,8 +183,8 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
     await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
     await page.getByTestId('table-back').click();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
+    await page.getByTestId('confirm-close-chapter-confirm').click();
     await expect(page.getByTestId('session-action-message')).toContainText(/Mist-Cut Caves|chapter closed/i);
     await expect(page.getByTestId('current-chapter')).toContainText('The Mist-Cut Caves');
     await page.getByTestId('open-campaign-table').click();

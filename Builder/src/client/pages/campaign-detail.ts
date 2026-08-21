@@ -26,6 +26,7 @@ import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-av
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
+import { confirmInApp } from '../confirm-dialog.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -400,7 +401,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  </div>`
               : `<p class="record-meta">Invite path</p>
                  <p><code data-testid="invite-path">${escapeHtml(openInvitation!.invitePath)}</code></p>
-                 <p class="record-meta">Full local URL</p>
+                 <p class="record-meta">Invite URL</p>
                  <p><code data-testid="invite-url">${escapeHtml(invitePath)}</code></p>
                  <p class="record-meta" data-testid="invite-expires">
                    Expires ${escapeHtml(formatTimestamp(openInvitation!.expiresAt))}
@@ -696,9 +697,13 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
           const chapterTitle = currentMemoryChapter?.title ?? 'this chapter';
           if (
-            !window.confirm(
-              `Close "${chapterTitle}" and travel to the next scene? Only do this after the table has played the chapter. This cannot be undone.`,
-            )
+            !(await confirmInApp({
+              title: 'Close this chapter?',
+              body: `Close "${chapterTitle}" and travel to the next scene? Only do this after the table has played the chapter. This cannot be undone.`,
+              confirmLabel: 'Close chapter',
+              cancelLabel: 'Keep playing',
+              testId: 'confirm-close-chapter',
+            }))
           ) {
             return;
           }

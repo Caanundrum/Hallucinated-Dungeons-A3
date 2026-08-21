@@ -122,7 +122,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <p class="message notice" data-testid="preview-lock-reminder">
           Creating this campaign locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
           for ordinary users. On hosted Invite-Only Alpha the Game Director may narrate through Gemini
-          when enabled; Local Arena uses a deterministic simulator.
+          when enabled.
         </p>
       </section>`;
   }

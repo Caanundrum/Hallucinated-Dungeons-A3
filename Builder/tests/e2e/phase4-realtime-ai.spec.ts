@@ -113,7 +113,7 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     await page.getByTestId('director-address-input').fill('What do I see in this room?');
     await page.getByTestId('director-address-send').click();
     await expect(page.getByTestId('director-address-reply')).toContainText(
-      /visible scene|Ask the DM|Actions thread|Veyra|without changing state/i,
+      /visible scene|Ask the Director|Ask the DM|Actions thread|Veyra|without changing state/i,
     );
 
     

@@ -209,9 +209,13 @@ export function mountAccountPage(host: PageHost): void {
                 <dt>Display name</dt>
                 <dd data-testid="account-display-label">${escapeHtml(account.displayLabel)}</dd>
               </div>
-              <code class="visually-hidden" data-testid="account-page-id">${escapeHtml(account.accountId)}</code>
               ${
-                isBootstrapAdmin
+                hostedSurface || hostedGoogleClientId !== null
+                  ? ''
+                  : `<code class="visually-hidden" data-testid="account-page-id">${escapeHtml(account.accountId)}</code>`
+              }
+              ${
+                !hostedSurface && isBootstrapAdmin
                   ? `<div>
                 <dt>Account id</dt>
                 <dd><code data-testid="account-page-id-visible">${escapeHtml(account.accountId)}</code></dd>
@@ -224,7 +228,12 @@ export function mountAccountPage(host: PageHost): void {
                 <dt>Bootstrap admin</dt>
                 <dd data-testid="account-is-bootstrap-admin">yes</dd>
               </div>`
-                  : ''
+                  : isBootstrapAdmin
+                    ? `<div>
+                <dt>Admin</dt>
+                <dd data-testid="account-is-bootstrap-admin">yes</dd>
+              </div>`
+                    : ''
               }
               <div>
                 <dt>Email</dt>

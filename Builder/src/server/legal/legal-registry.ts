@@ -82,7 +82,7 @@ const TERMS_OF_SERVICE: LegalDocument = {
       heading: '3. Accounts and character ownership',
       paragraphs: [
         'Every player character is owned by exactly one authenticated account, established when the character is created. No host, other player, or automated system may transfer, borrow, or seize that ownership.',
-        'Hosted player identity uses Google Sign-In only. Temporary development identities and machine-only QA fixture sessions exist solely inside the Local Arena testing environment; they are stripped from Gold Master and Launch Production artifacts and cannot be converted into a hosted Google account.',
+        'Hosted player identity uses Google Sign-In only. Development-only test identities exist solely inside the Local Arena testing environment; they are stripped from Gold Master and Launch Production artifacts and cannot be converted into a hosted Google account.',
       ],
     },
     {
@@ -247,7 +247,7 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
       id: 'ai-narration',
       heading: '2. AI-assisted narration',
       paragraphs: [
-        'An AI Game Director narrates scenes and portrays non-player characters. In the Local Arena the Director is a deterministic simulator behind the same production gateway. On hosted Invite-Only Alpha the same gateway may call Gemini through Gemini Enterprise Agent Platform in this Firebase project. Live Gemini is never called from Local Arena.',
+        'An AI Game Director narrates scenes and portrays non-player characters. On hosted Invite-Only Alpha the gateway may call Gemini through Gemini Enterprise Agent Platform in this Firebase project. Internal Local Arena builds use a deterministic simulator behind the same gateway and never call live Gemini.',
         'The Director cannot mutate table state, invent hidden facts, or act as a second rules engine. Party Chat remains a social surface, not a command path.',
       ],
     },

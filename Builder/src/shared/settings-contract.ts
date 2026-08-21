@@ -218,8 +218,13 @@ export interface CampaignSettingsProjection {
   readonly updatedAt: string;
 }
 
+/** Hosted Invite-Only Alpha wording (no Local Arena co-equal path). */
 export const CAMPAIGN_SETTINGS_CONFIGURATION_NOTICE =
-  'These settings are durable campaign configuration. On hosted Invite-Only Alpha the Game Director may enforce tone and safety preferences through live narration when Gemini is enabled; Local Arena records the same settings without calling Gemini.';
+  'These settings are durable campaign configuration. On hosted Invite-Only Alpha the Game Director may enforce tone and safety preferences through live narration when Gemini is enabled.';
+
+/** Local Arena-only companion notice for development surfaces. */
+export const CAMPAIGN_SETTINGS_CONFIGURATION_NOTICE_LOCAL =
+  'These settings are durable campaign configuration. Local Arena records them without calling Gemini.';
 
 export function isContentProfile(value: unknown): value is ContentProfile {
   return typeof value === 'string' && (CONTENT_PROFILES as readonly string[]).includes(value);

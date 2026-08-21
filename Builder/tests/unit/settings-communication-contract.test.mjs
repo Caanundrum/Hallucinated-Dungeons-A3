@@ -8,6 +8,7 @@ import {
   PLAYER_DOCK_TAB_ORDER,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
+  CHRONICLE_ENTRY_KIND_LABELS,
   isDockTab,
   isPartyChatMode,
 } from '../../dist/shared/communication-contract.js';
@@ -29,7 +30,7 @@ test('dock tabs are peer destinations including Director Address', () => {
   assert.equal(DOCK_TAB_LABELS.chronicle, 'Story so far');
   assert.equal(DOCK_TAB_LABELS.party_chat, 'Chat');
   assert.equal(DOCK_TAB_LABELS.rules_desk, 'Rules');
-  assert.equal(DOCK_TAB_LABELS.director_address, 'Ask the DM');
+  assert.equal(DOCK_TAB_LABELS.director_address, 'Ask the Director');
   assert.deepEqual([...PLAYER_DOCK_TAB_ORDER], [
     'party_chat',
     'director_address',
@@ -47,10 +48,16 @@ test('party chat modes stay Table Talk and Speak as Character only', () => {
   assert.equal(isPartyChatMode('address_director'), false);
 });
 
+test('chronicle entry kinds expose player-facing labels', () => {
+  assert.equal(CHRONICLE_ENTRY_KIND_LABELS.campaign_created, 'Campaign created');
+  assert.equal(CHRONICLE_ENTRY_KIND_LABELS.settings_updated, 'Settings updated');
+  assert.equal(CHRONICLE_ENTRY_KIND_LABELS.chapter_closed, 'Chapter closed');
+});
+
 test('action composer enables table sync while keeping Interpret Action gated', () => {
   assert.equal(ACTION_COMPOSER_STRUCTURE.available, true);
   assert.match(ACTION_COMPOSER_STRUCTURE.notice, /initiative/i);
-  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /DM play thread/i);
+  assert.match(ACTION_COMPOSER_STRUCTURE.notice, /Game Director play thread/i);
   assert.equal(ACTION_COMPOSER_STRUCTURE.tableSyncLabel, 'Sync table');
   assert.match(RULES_DESK_NOTICE, /does not make rulings|never changes the table/i);
 });

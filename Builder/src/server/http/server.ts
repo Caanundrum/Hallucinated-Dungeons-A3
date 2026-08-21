@@ -1234,7 +1234,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         sendJson(
           response,
           200,
-          await getAccountDeletionStatus(firestore, session.accountId),
+          await getAccountDeletionStatus(firestore, session.accountId, {
+            hosted: isHostedEnvironmentClass(env.environmentClass),
+          }),
         );
         return;
       }
@@ -1242,7 +1244,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         sendJson(
           response,
           201,
-          await requestAccountDeletion(firestore, session.accountId),
+          await requestAccountDeletion(firestore, session.accountId, new Date(), {
+            hosted: isHostedEnvironmentClass(env.environmentClass),
+          }),
         );
         return;
       }

@@ -15,7 +15,7 @@ export const DOCK_TAB_LABELS: Record<DockTab, string> = {
   chronicle: 'Story so far',
   party_chat: 'Chat',
   rules_desk: 'Rules',
-  director_address: 'Ask the DM',
+  director_address: 'Ask the Director',
 };
 
 /** Player-first tab order: social and help surfaces before the audit log. */
@@ -47,6 +47,18 @@ export const CHRONICLE_ENTRY_KINDS = [
   'chapter_closed',
 ] as const;
 export type ChronicleEntryKind = (typeof CHRONICLE_ENTRY_KINDS)[number];
+
+/** Player-facing labels for Chronicle entry kinds (never show raw codes). */
+export const CHRONICLE_ENTRY_KIND_LABELS: Record<ChronicleEntryKind, string> = {
+  campaign_created: 'Campaign created',
+  member_joined: 'Member joined',
+  seat_created: 'Seat created',
+  settings_updated: 'Settings updated',
+  session_zero_recorded: 'Session Zero recorded',
+  session_suspended: 'Session suspended',
+  session_resumed: 'Session resumed',
+  chapter_closed: 'Chapter closed',
+};
 
 export interface ChronicleEntryProjection {
   readonly entryId: string;
@@ -92,7 +104,7 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
   heading: 'At the table',
   notice:
-    'This is the DM play thread. Move freely until initiative is called. Describe what you do; the selected DM narrates from resolved table state.',
+    'This is the Game Director play thread. Move freely until initiative is called. Describe what you do; the selected Game Director narrates from resolved table state.',
   tableSyncLabel: 'Sync table',
   interpretActionLabel: 'Plan action',
   interpretActionNotice:
@@ -100,10 +112,10 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
 };
 
 export const RULES_DESK_NOTICE =
-  'Browse the structured SRD reference for this Alpha. Looking up a rule never changes the table — ask the DM when you need a ruling for your character and scene.';
+  'Browse the SRD 5.2.1 reference for this Alpha. Looking up a rule never changes the table — ask the Game Director when you need a ruling for your character and scene.';
 
 export const DIRECTOR_ADDRESS_NOTICE =
-  'Ask the DM whether a plan is legal or feasible — action economy, skills, spells on your sheet, and what the scene allows. Only you see this consult. The DM never moves pieces or rolls dice from here.';
+  'Ask the Game Director whether a plan is legal or feasible — action economy, skills, spells on your sheet, and what the scene allows. Only you see this consult. The Game Director never moves pieces or rolls dice from here.';
 
 export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
 

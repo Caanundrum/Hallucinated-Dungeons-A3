@@ -180,7 +180,7 @@ test.describe('Phase 6 chaos and recovery', () => {
     await page.getByTestId('director-address-input').fill('Does this change table state?');
     await page.getByTestId('director-address-send').click();
     await expect(page.getByTestId('director-address-reply')).toContainText(
-      /visible scene|Ask the DM|Actions thread|Veyra|without changing state/i,
+      /visible scene|Ask the Director|Ask the DM|Actions thread|Veyra|without changing state/i,
     );
     await expect(page.getByTestId('table-state-meta')).toHaveText(versionBefore);
   });

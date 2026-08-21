@@ -343,6 +343,37 @@ function projectMemory(
   };
 }
 
+/** True when every chapter already has a recorded summary (adventure finished). */
+function adventureChaptersComplete(memory: StoredCampaignMemory): boolean {
+  return (
+    memory.chapters.length > 0 &&
+    memory.chapters.every((chapter) => chapter.recordedSummary !== null)
+  );
+}
+
+/**
+ * When all chapters are closed, complete open quests and clear open threads so
+ * the finale state matches player expectation (PQA-030).
+ */
+function reconcileFinaleState(memory: StoredCampaignMemory, now: Date): StoredCampaignMemory {
+  if (!adventureChaptersComplete(memory)) {
+    return memory;
+  }
+  const questsNeedClose = memory.quests.some((quest) => quest.status === 'open');
+  const threadsOpen = memory.openThreads.length > 0;
+  if (!questsNeedClose && !threadsOpen) {
+    return memory;
+  }
+  return {
+    ...memory,
+    quests: memory.quests.map((quest) =>
+      quest.status === 'open' ? { ...quest, status: 'completed' as const } : quest,
+    ),
+    openThreads: [],
+    updatedAt: now,
+  };
+}
+
 /** Campaign memory projection for a verified member. Foreign campaigns resolve as not found. */
 export async function loadCampaignMemory(
   firestore: Firestore,
@@ -350,11 +381,15 @@ export async function loadCampaignMemory(
   accountId: string,
 ): Promise<CampaignMemoryProjection> {
   await requireMembership(firestore, campaignId, accountId);
-  const [memory, session] = await Promise.all([
+  const [stored, session] = await Promise.all([
     loadStoredMemory(firestore, campaignId),
     loadStoredSession(firestore, campaignId),
   ]);
-  return projectMemory(memory, session);
+  const reconciled = reconcileFinaleState(stored, new Date());
+  if (reconciled !== stored) {
+    await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(reconciled);
+  }
+  return projectMemory(reconciled, session);
 }
 
 /**
@@ -382,12 +417,13 @@ export async function appendChapterSummary(
   const nextChapter = advance
     ? memory.chapters.find((chapter) => chapter.sequence === closedChapter.sequence + 1) ?? null
     : null;
-  const updated: StoredCampaignMemory = {
+  let updated: StoredCampaignMemory = {
     ...memory,
     chapters,
     currentChapterId: nextChapter?.chapterId ?? memory.currentChapterId,
     updatedAt: now,
   };
+  updated = reconcileFinaleState(updated, now);
   await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated);
   // Traveling to the next Emberferry scene reseats tokens on that scene's
   // spawn anchors — prior dock coordinates are not meaningful in the caves.
