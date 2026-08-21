@@ -156,8 +156,8 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
     await advanceToOwnAction(page);
     const candidate = await readCandidate(page);
-    const stateText = await page.getByTestId('table-state-meta').innerText();
-    const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
+    // Presence meta lives in a collapsed <details>; use textContent, not innerText.
+    const stateVersion = await readStateVersion(page);
     expect(stateVersion).toBeGreaterThan(0);
     const illegal = await page.evaluate(
       async ({ campaignId, candidateId, requestId, stateVersion }) => {
@@ -191,9 +191,9 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     expect(illegal.body.message).toContain('Timing Authority');
 
     await page.getByTestId('refresh-table-projection').click();
-    await expect(page.getByTestId('table-state-meta')).toContainText(
-      `Table state version ${stateVersion}`,
-    );
+    await expect
+      .poll(async () => readStateVersion(page), { timeout: 10_000 })
+      .toBe(stateVersion);
   });
 
   test('rendered death and recovery path: 0 HP enables Death Save then Long Rest clears dying', async ({

@@ -478,16 +478,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
       return 'Another adventurer holds the active combat turn.';
     }
+    // Reaction / Decision credentials outrank the active-turn banner — Ready
+    // issues a reaction window while you still hold the combat turn.
+    if (timingAuthority.opportunityClass === 'reaction') {
+      return `Reaction window credential active · expires ${timingAuthority.expiresAt}`;
+    }
+    if (timingAuthority.opportunityClass === 'decision') {
+      return `Decision window credential active · expires ${timingAuthority.expiresAt}`;
+    }
     if (isOwnCombatTurn()) {
       return 'Initiative gave you the active combat turn.';
     }
-    const label =
-      timingAuthority.opportunityClass === 'reaction'
-        ? 'Reaction window'
-        : timingAuthority.opportunityClass === 'decision'
-          ? 'Decision window'
-          : 'Combat turn';
-    return `${label} credential active · expires ${timingAuthority.expiresAt}`;
+    return `Combat turn credential active · expires ${timingAuthority.expiresAt}`;
   }
 
   function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
