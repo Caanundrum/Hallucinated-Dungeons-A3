@@ -85,7 +85,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('chronicle-entry').first()).toContainText('created this campaign');
 
     await page.getByTestId('dock-tab-rules_desk').click();
-    await expect(page.getByTestId('rules-desk-notice')).toContainText('cannot grant rulings');
+    await expect(page.getByTestId('rules-desk-notice')).toContainText(/Browse the structured SRD|never changes the table/i);
 
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-composer')).toBeVisible();

@@ -39,12 +39,39 @@ import type { NarrationDensity } from '../../shared/settings-contract.js';
 import { getAiKillSwitch } from '../admin/admin-service.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
+import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
   'party_chat_ooc',
   'hidden_facts',
   'rules_desk',
 ];
+
+const ARBITER_CONSTITUTION = [
+  'You are the rules arbiter for this campaign, speaking as the selected DM.',
+  'Players ask whether a plan is legal or feasible: skills, action economy (Action / Bonus Action / Reaction / movement), spell availability on the sheet, range, and whether the scene supports the attempt.',
+  'Use ONLY the AUTHORITATIVE VISIBLE GAME STATE block. If the wall height, DC, or object is not in that block, say the scene has not established it and what the player could do to learn it.',
+  'Never invent DCs, roll dice, spend spell slots, move tokens, or declare success or failure.',
+  'When a plan would require checks or multiple action economy spends, list them clearly.',
+  'If the character lacks a spell, feature, or capacity, say so plainly.',
+  'Answer in 3 to 8 short sentences or tight bullets. Lead with the useful ruling.',
+  'Do not narrate a new story beat unless needed to clarify presence or reach.',
+].join(' ');
+
+const NARRATOR_CONSTITUTION = [
+  'You are the in-world narrator for this campaign, speaking as the selected DM.',
+  'The mechanics summary is authoritative and final. Narrate what the player experiences from it.',
+  'Use the AUTHORITATIVE VISIBLE GAME STATE for spatial awareness, who is present, and atmosphere.',
+  'Never invent damage, conditions, hidden facts, or change success into failure (or the reverse).',
+  'Write in second person. Keep paragraphs short. Do not open with a title or heading.',
+  'If the player tried something not present in the scene state, clarify the gap in-world without granting it.',
+].join(' ');
+
+function looksMechanical(text: string): boolean {
+  return /(can i|could i|would it|action economy|bonus action|reaction|spell slot|magic missile|climb|athletics|acrobatics|check|save|attack|cast|legal|rules|how many|do i have|proficiency)/i.test(
+    text,
+  );
+}
 
 export class AiDirectorUnavailableError extends Error {
   constructor(message: string) {
@@ -225,14 +252,14 @@ function directorVoiceBlock(
 ): string {
   const name = DIRECTOR_IDENTITY_LABELS[identity];
   const label = DIRECTOR_PERSONALITY_LABELS[personality];
-  return `You are ${name}, the Game Director. Personality: ${label} — ${DIRECTOR_PERSONALITY_SUMMARIES[personality]}.`;
+  return `You are ${name}, the Dungeon Master for this Hallucinated Dungeons campaign. Personality: ${label} — ${DIRECTOR_PERSONALITY_SUMMARIES[personality]}.`;
 }
 
 const DIRECTOR_SAFETY_RULES = [
   'You never change table state, move tokens, open doors, roll dice, or invent mechanical outcomes.',
   'You never invent hidden facts, secret NPC motives, or information the speaking player cannot see.',
-  'Party Chat, Rules Desk, and out-of-character table talk are not available to you.',
-  'If the player describes a consequential action, tell them you heard it and that they must confirm it as a declared action. Do not treat the message as a completed command.',
+  'Party Chat and out-of-character table talk are not available to you.',
+  'If the player describes a consequential action in Ask-the-DM, tell them what it would take and that they must declare it in the Actions thread to resolve it. Do not treat the consult as a completed command.',
 ].join(' ');
 
 async function tryLiveProse(
@@ -359,26 +386,40 @@ export async function answerDirectorAddress(options: {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
   const text = options.text.trim();
-  const lower = text.toLowerCase();
-  const actionable = /(pull|attack|move|cast|open the door|i (go|run|strike))/.test(lower);
+  const mechanical = looksMechanical(text);
+  const consultMode = mechanical ? 'arbiter' : 'scene';
+  const role: AiRole = mechanical ? 'bounded_ruling' : 'director_address';
+  const context = await assembleDirectorVisibleContext({
+    firestore: options.firestore,
+    campaignId: options.campaignId,
+    accountId: options.accountId,
+  });
   const createdAt = new Date().toISOString();
   const manifest = buildManifest({
-    role: 'director_address',
+    role,
     campaignId: options.campaignId,
-    sourceType: 'director_address',
+    sourceType: mechanical ? 'ask_dm_arbiter' : 'ask_dm_scene',
     audience: 'private_director',
-    includedIds: [options.accountId],
+    includedIds: context.includedIds,
     visibleFactScope: 'actor_visible',
     directorIdentity: director.identity,
     directorPersonality: director.personality,
   });
 
-  const simulatorBody = actionable
-    ? `${DIRECTOR_IDENTITY_LABELS[director.identity]} hears you, but will not change the table from Director Address. An Action Draft Suggestion is available — open it in Declare Action and confirm Intent Intercept if you mean to act.`
-    : `${DIRECTOR_IDENTITY_LABELS[director.identity]} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers without changing state: the table remains as you left it. Ask Rules Desk for mechanics; use Declare Action for consequential intent.`;
+  const name = DIRECTOR_IDENTITY_LABELS[director.identity];
+  const simulatorBody = mechanical
+    ? `${name} weighs the plan against your sheet and the visible scene. ${
+        context.text.includes('Active character')
+          ? 'If a spell, skill, or action spend is missing from your sheet or the scene has not established the target, say so before you declare the action.'
+          : 'Seat a character so the arbiter can read your sheet.'
+      } Declare the action in the Actions thread when you are ready — this consult does not resolve it.`
+    : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the DM. Use the Actions thread to declare what you do.`;
+
   const liveBody = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Answer in 2 to 5 sentences, in character. Never say you moved a piece or resolved a roll.`,
-    userPrompt: `The player says: ${text}`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${
+      mechanical ? ARBITER_CONSTITUTION : `${ARBITER_CONSTITUTION} Also answer scene questions without inventing unseen detail.`
+    }`,
+    userPrompt: `${context.text}\n\nPlayer ask-the-DM message:\n${text}`,
   });
 
   return {
@@ -386,13 +427,11 @@ export async function answerDirectorAddress(options: {
     campaignId: options.campaignId,
     body: liveBody ?? simulatorBody,
     mutatesState: false,
-    actionDraftSuggestion: actionable
-      ? {
-          draftId: randomUUID(),
-          summary: `Suggested from Director Address: ${text.slice(0, 120)}`,
-          proposedCommandType: 'table.sync',
-        }
-      : null,
+    directorIdentityLabel: name,
+    directorIdentity: director.identity,
+    directorPersonality: director.personality,
+    consultMode,
+    actionDraftSuggestion: null,
     manifest,
     createdAt,
   };
@@ -411,6 +450,11 @@ export async function narrateVisibleBeat(options: {
     accountId: options.accountId,
   });
   const narrationDensity = playerSettings.reserved.narrationDensity;
+  const context = await assembleDirectorVisibleContext({
+    firestore: options.firestore,
+    campaignId: options.campaignId,
+    accountId: options.accountId,
+  });
   const createdAt = new Date().toISOString();
   const simulated = composeNarrationBody(
     options.mechanicsSummary,
@@ -418,8 +462,8 @@ export async function narrateVisibleBeat(options: {
     narrationDensity,
   );
   const liveBody = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The mechanics summary is authoritative. Restate it, then add flavor matching narration density "${narrationDensity}". Do not add damage, conditions, or new events.`,
-    userPrompt: `Mechanics summary: ${options.mechanicsSummary}`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${narrationDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts).`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}`,
   });
   const body = liveBody ?? simulated.body;
   const humorApplied = liveBody === null ? simulated.humorApplied : narrationDensity !== 'concise';
@@ -428,7 +472,7 @@ export async function narrateVisibleBeat(options: {
     campaignId: options.campaignId,
     sourceType: 'mechanics_first_narration',
     audience: 'table',
-    includedIds: [options.accountId],
+    includedIds: context.includedIds,
     visibleFactScope: 'table_visible',
     directorIdentity: director.identity,
     directorPersonality: director.personality,
@@ -443,6 +487,7 @@ export async function narrateVisibleBeat(options: {
     fallbackUsed: liveGeminiEnabled(options) && liveBody === null,
     narrationDensity,
     directorIdentity: director.identity,
+    directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[director.identity],
     directorPersonality: director.personality,
     avatarKey: director.avatarKey,
     manifest,

@@ -275,7 +275,9 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('dock-tab-director_address').click();
     await page.getByTestId('director-address-input').fill('Is the door trapped?');
     await page.getByTestId('director-address-send').click();
-    await expect(page.getByTestId('director-address-reply')).toContainText(/Garrick|without changing state/i);
+    await expect(page.getByTestId('director-address-reply')).toContainText(
+      /Garrick|visible scene|Actions thread|without changing state/i,
+    );
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('party-chat-input').fill('I open the door');
     await page.getByTestId('party-chat-send').click();

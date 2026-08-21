@@ -514,6 +514,12 @@ export async function fetchRuleExplanation(ruleId: string): Promise<RuleExplanat
   )) as RuleExplanationProjection;
 }
 
+export async function fetchRulesCatalog(): Promise<
+  import('../shared/rules-catalog-contract.js').RulesCatalogProjection
+> {
+  return (await request('/api/rules/catalog')) as never;
+}
+
 export async function fetchTimingAuthority(
   campaignId: string,
 ): Promise<{ authority: TimingAuthorityProjection | null }> {

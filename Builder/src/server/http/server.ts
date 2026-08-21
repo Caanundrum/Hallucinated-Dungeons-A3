@@ -161,6 +161,7 @@ import {
   RulesCommandError,
 } from '../rules/engine/rules-commands.js';
 import { explainRule, RULE_EXPLANATION_IDS } from '../rules/engine/rules-explanations.js';
+import { buildRulesCatalog } from '../rules/rules-catalog.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 
 /** Largest request body the server will buffer, in bytes. */
@@ -1324,6 +1325,19 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
       sendJson(response, 200, explanation);
+      return;
+    }
+
+    if (path === '/api/rules/catalog' && method === 'GET') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      sendJson(response, 200, buildRulesCatalog());
       return;
     }
 

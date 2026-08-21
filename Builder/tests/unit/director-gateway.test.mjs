@@ -83,8 +83,24 @@ test('Local Arena Director Address stays on the simulator', async () => {
     },
   });
   assert.equal(answered.mutatesState, false);
-  assert.match(answered.body, /without changing state|Veyra/i);
+  assert.equal(answered.directorIdentityLabel, 'Veyra');
+  assert.equal(answered.consultMode, 'scene');
+  assert.match(answered.body, /visible scene|Actions thread|Veyra/i);
   assert.equal(answered.body.includes('LIVE GEMINI'), false);
+});
+
+test('Ask the DM arbiter mode engages for feasibility questions', async () => {
+  const answered = await answerDirectorAddress({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Can I climb that wall and cast Magic Missile in the same turn?',
+    environmentClass: 'local',
+  });
+  assert.equal(answered.mutatesState, false);
+  assert.equal(answered.consultMode, 'arbiter');
+  assert.equal(answered.manifest.role, 'bounded_ruling');
+  assert.match(answered.body, /Veyra|sheet|Actions thread/i);
 });
 
 test('Milestone Director Address uses the live client and still cannot mutate', async () => {
@@ -103,6 +119,7 @@ test('Milestone Director Address uses the live client and still cannot mutate', 
   });
   assert.equal(answered.mutatesState, false);
   assert.equal(answered.body, 'Veyra studies the doorway. Nothing on the table moves.');
+  assert.equal(answered.directorIdentityLabel, 'Veyra');
 });
 
 test('Gemini failure falls back to the simulator for narration', async () => {
@@ -122,6 +139,7 @@ test('Gemini failure falls back to the simulator for narration', async () => {
   assert.equal(narration.fallbackUsed, true);
   assert.match(narration.body, /You hit the dummy for 4 damage/);
   assert.equal(narration.mechanicsFirstSummary, 'You hit the dummy for 4 damage.');
+  assert.equal(narration.directorIdentityLabel, 'Veyra');
 });
 
 test('hosted NL interpret keeps deterministic command types', async () => {
