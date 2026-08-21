@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterAccountFromShell, readCandidate} from './arena-page.js';
+import {enterAccountFromShell, openTableAdvancedControls, readCandidate} from './arena-page.js';
 
 /**
  * Phase 5 starter campaign, memory, session resume, and long-play settings.
@@ -148,7 +148,8 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await expect(page.getByTestId('map-bundle-meta')).toContainText('Emberferry Mist Dock');
     await expect(page.getByTestId('map-bundle-meta')).toContainText('original phase5 starter v1');
     await expect(page.getByTestId('map-scene-banner')).toContainText('Ember-mist');
-    await expect(page.getByTestId('map-notable-feature').first()).toBeVisible();
+    // Notable feature labels live in the collapsed Table details panel; stage markers stay visible.
+    await expect(page.getByTestId('map-notable-feature')).toHaveCount(3);
     await expect(page.getByTestId('table-stage-notable-features').locator('[data-notable-feature]')).toHaveCount(3);
 
     // Token is visible on the dock; a committed one-step move changes its anchor on the SVG stage.
@@ -205,7 +206,10 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await expect(page.getByTestId('narration-density-summary')).toContainText('mechanics-first');
 
     await page.goto(`/campaigns/${campaignId}/table`);
-    await page.getByTestId('request-narration').click();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible();
+    await openTableAdvancedControls(page);
+    await page.getByTestId('request-narration').click({ force: true });
+    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
     const conciseBody = (await page.getByTestId('director-narration').innerText()).trim();
     expect(conciseBody).toMatch(/gathered at the table|The table is quiet/i);
 
@@ -213,7 +217,10 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await page.getByTestId('account-narration-density').selectOption('cinematic');
 
     await page.goto(`/campaigns/${campaignId}/table`);
-    await page.getByTestId('request-narration').click();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible();
+    await openTableAdvancedControls(page);
+    await page.getByTestId('request-narration').click({ force: true });
+    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
     const cinematicBody = (await page.getByTestId('director-narration').innerText()).trim();
     expect(cinematicBody.length).toBeGreaterThan(conciseBody.length);
     expect(cinematicBody.startsWith(conciseBody)).toBe(true);
