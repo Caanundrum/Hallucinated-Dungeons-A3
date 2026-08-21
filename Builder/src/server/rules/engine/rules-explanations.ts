@@ -7,7 +7,7 @@ const RULES: readonly RuleExplanationProjection[] = [
     ruleId: 'combat.initiative',
     title: 'Initiative',
     summary: 'Each combatant rolls d20 plus its Initiative bonus; highest total acts first.',
-    steps: ['Ties use Initiative bonus, then the stable combatant id.', 'A new round starts when the order wraps.'],
+    steps: ['Ties use Initiative bonus, then a stable tie-break on the combatant order.', 'A new round starts when the order wraps.'],
     source: 'SRD 5.2',
   },
   {
@@ -56,14 +56,18 @@ const RULES: readonly RuleExplanationProjection[] = [
     ruleId: 'spell.areas',
     title: 'Three-dimensional Areas',
     summary: 'Sphere, cube, cone, and line templates resolve to 5-foot square cells at explicit elevations.',
-    steps: ['The server applies each spell’s canonical dimensions.', 'Only combatants whose position occupies a resolved cell are targets.'],
+    steps: ['Each spell uses its published dimensions on the grid.', 'Only combatants whose position occupies a resolved cell are targets.'],
     source: 'Hallucinated Dungeons Phase 3',
   },
   {
     ruleId: 'progression.xp',
     title: 'XP-only Progression',
     summary: 'Characters earn levels only by reaching cumulative XP thresholds.',
-    steps: ['One command awards server-validated XP.', 'Each Level Up advances one earned level and recomputes proficiency, Hit Points, attacks, and spell slots.', 'Single-class progression ends at level 20.'],
+    steps: [
+      'The Game Director awards XP when a beat is resolved at the table.',
+      'Each Level Up advances one earned level and refreshes proficiency, Hit Points, attacks, and spell slots.',
+      'Single-class progression ends at level 20.',
+    ],
     source: 'SRD 5.2',
   },
 ] as const;

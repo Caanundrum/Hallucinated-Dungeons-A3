@@ -2170,6 +2170,21 @@ html.hd-low-effects .map-square-fog,
   background: var(--raised-surface);
 }
 
+.rules-explanation-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-2);
+  list-style: decimal;
+}
+
+.rules-explanation-steps li {
+  display: list-item;
+  margin: 0;
+  padding: 0;
+  color: var(--text-secondary);
+}
+
 .table-stage-frame {
   position: relative;
   width: 100%;
