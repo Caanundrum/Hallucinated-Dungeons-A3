@@ -50,6 +50,7 @@ async function readStateVersion(page: Page): Promise<number> {
 }
 
 async function advanceEncounterTurn(page: Page): Promise<void> {
+  await openTableAdvancedControls(page);
   const before = await page.getByTestId('encounter-meta').innerText();
   const next = page.getByTestId('next-encounter-turn');
   await expect(next).toHaveAttribute('aria-disabled', 'false');
@@ -71,6 +72,7 @@ async function advanceToOwnAction(page: Page): Promise<void> {
   // Training foe auto-attacks are nonlethal (floor at 1 HP), so this helper does not
   // consume the journey's Potion of Healing — that remains an explicit journey step.
   for (let attempt = 0; attempt < 8; attempt += 1) {
+    await openTableAdvancedControls(page);
     if (await ownActionReady(page)) {
       return;
     }
@@ -93,20 +95,11 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('combatant-training-dummy')).toContainText('Training Dummy');
     await expect(page.getByTestId('combatant-practice-goblin')).toContainText('Practice Goblin');
     await expect(page.getByTestId('rules-last-result')).toContainText('Encounter began');
-
-    await expect
-      .poll(
-        async () => {
-          await openTableAdvancedControls(page);
-          const roll = page.getByTestId('roll-initiative');
-          if ((await roll.getAttribute('aria-disabled')) === 'false') {
-            await roll.click();
-          }
-          return page.getByTestId('encounter-meta').innerText();
-        },
-        { timeout: 20_000 },
-      )
-      .toMatch(/round [1-9]/);
+    await expect(page.getByTestId('roll-initiative')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText(/round [1-9]/, {
+      timeout: 15_000,
+    });
     await advanceToOwnAction(page);
 
     await page.getByTestId('rules-spell').selectOption('burning-hands');

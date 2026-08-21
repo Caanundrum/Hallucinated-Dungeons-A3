@@ -262,6 +262,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     </ol>`;
   }
 
+  /** Player-meaningful beats get DM narration; setup/turn-advance stays mechanical to avoid busy races. */
+  function shouldAutoNarrateRulesCommand(commandType: string): boolean {
+    return (
+      commandType.startsWith('combat.') ||
+      commandType.startsWith('inventory.') ||
+      commandType.startsWith('progression.') ||
+      commandType === 'table.move' ||
+      commandType === 'table.open_door'
+    );
+  }
+
+  function patchDmPlayThread(): void {
+    const host = container.querySelector('[data-testid="dm-play-thread"]');
+    if (host === null) {
+      return;
+    }
+    const list = host.querySelector('[data-testid="dm-play-thread-list"]');
+    const empty = host.querySelector('[data-testid="dm-play-thread-list-empty"]');
+    const rendered = renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' });
+    if (list !== null) {
+      list.outerHTML = rendered;
+    } else if (empty !== null) {
+      empty.outerHTML = rendered;
+    }
+  }
+
   async function narrateIntoDmThread(mechanicsSummary: string): Promise<void> {
     if (candidate === null || mechanicsSummary.trim().length === 0) {
       return;
@@ -285,6 +311,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
     } catch {
       appendDmThread('system', 'Table', mechanicsSummary, 'mechanics');
+    }
+    if (isPageMountCurrent(container, mountToken)) {
+      patchDmPlayThread();
     }
   }
 
@@ -1459,11 +1488,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? 'You moved to the selected square.'
           : `You moved ${commitPath.length} squares across the map.`;
       appendDmThread('system', 'Table', moveSummary, 'mechanics');
-      void narrateIntoDmThread(moveSummary).then(() => {
-        if (isPageMountCurrent(container, mountToken)) {
-          render();
-        }
-      });
+      void narrateIntoDmThread(moveSummary);
     } catch (failure) {
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
@@ -1486,8 +1511,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     fields: RulesCommandFields = {},
   ): Promise<void> {
     const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
-    if (candidate === null || busy || tableState === null) {
+    if (candidate === null || tableState === null) {
       return;
+    }
+    if (busy) {
+      // A prior command is still committing — do not drop this click silently.
+      for (let attempt = 0; attempt < 40 && busy; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      if (busy || tableState === null || candidate === null) {
+        error = 'The table is still resolving the previous action. Try again in a moment.';
+        render();
+        return;
+      }
     }
     if (
       !setupCommand &&
@@ -1501,15 +1537,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     error = null;
     render();
     try {
+      const activeEncounter = encounter;
+      const activeCombatant =
+        activeEncounter === null
+          ? null
+          : (activeEncounter.combatants.find(
+              (combatant) => combatant.combatantId === activeEncounter.activeCombatantId,
+            ) ?? null);
+      const omitTimingAuthority =
+        setupCommand ||
+        timingAuthority === null ||
+        (commandType === 'encounter.next_turn' && activeCombatant?.side === 'foe');
       const accepted = await submitTableCommand({
         candidateId: candidate.candidateId,
         campaignId,
         requestId: crypto.randomUUID(),
         commandType,
         expectedStateVersion: tableState.stateVersion,
-        ...(timingAuthority === null ||
-        setupCommand ||
-        commandType === 'encounter.next_turn'
+        ...(omitTimingAuthority || timingAuthority === null
           ? {}
           : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         ...fields,
@@ -1517,23 +1562,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableState = accepted.table;
       if (accepted.encounter !== undefined) encounter = accepted.encounter;
       if (accepted.progression !== undefined) progression = accepted.progression;
+      shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
+      const summary = accepted.event.summary?.trim() ?? null;
+      if (summary) {
+        appendDmThread('system', 'Table', summary, 'mechanics');
+        if (shouldAutoNarrateRulesCommand(commandType)) {
+          void narrateIntoDmThread(summary);
+        } else {
+          patchDmPlayThread();
+        }
+      }
+      // Paint committed encounter meta before Timing Authority refresh so the
+      // tools panel cannot linger on setup while the authority GET is in flight.
+      render();
       if (
         commandType === 'initiative.roll' ||
         commandType === 'encounter.next_turn' ||
         commandType === 'combat.ready' ||
         commandType === 'combat.reaction'
       ) {
-        timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
-      }
-      shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
-      const summary = accepted.event.summary?.trim() ?? null;
-      if (summary) {
-        appendDmThread('system', 'Table', summary, 'mechanics');
-        void narrateIntoDmThread(summary).then(() => {
-          if (isPageMountCurrent(container, mountToken)) {
-            render();
-          }
-        });
+        try {
+          timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
+        } catch {
+          // Authority refresh is best-effort after a successful commit.
+        }
       }
     } catch (failure) {
       error =
@@ -2326,11 +2378,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             appendDmThread('system', 'Table', summary, 'mechanics');
             shell.announce(`Intent Intercept confirmed · ${draft.proposedCommandType}.`);
             intentDraft = null;
-            void narrateIntoDmThread(summary).then(() => {
-              if (isPageMountCurrent(container, mountToken)) {
-                render();
-              }
-            });
+            if (shouldAutoNarrateRulesCommand(draft.proposedCommandType)) {
+              void narrateIntoDmThread(summary);
+            } else {
+              patchDmPlayThread();
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure

@@ -1447,6 +1447,24 @@ export async function acceptRulesCommand(options: {
       summary: mutation.summary,
       rolls: mutation.rolls,
     };
+    // Issue Active Turn Authority before any transaction writes. That helper
+    // reads the active seat + existing authorities; Firestore rejects reads
+    // after writes in the same transaction (which previously flaked initiative
+    // / next_turn whenever a party combatant became active).
+    if (
+      nextEncounter !== null &&
+      nextEncounter.status === 'active' &&
+      (commandType === 'initiative.roll' || commandType === 'encounter.next_turn')
+    ) {
+      await issueAuthorityForActivePartyCombatant({
+        transaction,
+        firestore,
+        campaignId,
+        encounter: nextEncounter,
+        projectionVersion: nextVersion,
+        committedAt,
+      });
+    }
     transaction.set(firestore.collection(COLLECTIONS.campaignCommands).doc(commandId), command);
     transaction.set(firestore.collection(COLLECTIONS.campaignEvents).doc(eventId), event);
     transaction.set(projectionRef, nextTable);
@@ -1480,20 +1498,6 @@ export async function acceptRulesCommand(options: {
           resolutionFrameId: mutation.reactionAuthority.decisionWindowId,
         },
       );
-    }
-    if (
-      nextEncounter !== null &&
-      nextEncounter.status === 'active' &&
-      (commandType === 'initiative.roll' || commandType === 'encounter.next_turn')
-    ) {
-      await issueAuthorityForActivePartyCombatant({
-        transaction,
-        firestore,
-        campaignId,
-        encounter: nextEncounter,
-        projectionVersion: nextVersion,
-        committedAt,
-      });
     }
     if (commandType === 'combat.reaction' && timingAuthorityId !== undefined) {
       transaction.update(
