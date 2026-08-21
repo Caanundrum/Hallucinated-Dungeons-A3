@@ -105,7 +105,7 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('personality-seasoned_host').click();
     await page.getByTestId('create-campaign-submit').click();
     await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Continuity');
-    await expect(page.getByTestId('director-avatar-key')).toHaveText('veyra__seasoned_host');
+    await expect(page.getByTestId('director-identity-label')).toHaveText('Veyra');
 
     await page.getByTestId('open-campaign-settings').click();
     await page.getByTestId('content-profile-tense').click();
@@ -116,7 +116,7 @@ test.describe('Permanent smoke spine', () => {
     await page.reload();
     await page.goto(campaignUrl);
     await expect(page.getByTestId('campaign-detail-heading')).toHaveText('Smoke Spine Continuity');
-    await expect(page.getByTestId('director-avatar-key')).toHaveText('veyra__seasoned_host');
+    await expect(page.getByTestId('director-identity-label')).toHaveText('Veyra');
     await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
     await expect(page.getByTestId('session-zero-summary')).toContainText('Tense');
 

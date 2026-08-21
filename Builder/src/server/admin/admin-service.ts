@@ -22,16 +22,21 @@ export type AdminAuditEvent = {
   readonly atMs: number;
 };
 
-export type AdminPanelSnapshot = {
-  readonly isAdmin: boolean;
-  readonly bootstrapEmail: string;
-  readonly actorEmail: string | null;
-  readonly actorAccountId: string;
-  readonly auditEvents: readonly AdminAuditEvent[];
-  readonly providerMode: string;
-  readonly aiKillSwitch: boolean;
-  readonly notice: string;
-};
+export type AdminPanelSnapshot =
+  | {
+      readonly isAdmin: false;
+      readonly notice: string;
+    }
+  | {
+      readonly isAdmin: true;
+      readonly bootstrapEmail: string;
+      readonly actorEmail: string | null;
+      readonly actorAccountId: string;
+      readonly auditEvents: readonly AdminAuditEvent[];
+      readonly providerMode: string;
+      readonly aiKillSwitch: boolean;
+      readonly notice: string;
+    };
 
 function hashId(parts: string[]): string {
   return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 24);
@@ -121,14 +126,7 @@ export async function buildAdminPanelSnapshot(options: {
   if (!isAdmin) {
     return {
       isAdmin: false,
-      bootstrapEmail: BOOTSTRAP_ADMIN_EMAIL,
-      actorEmail: options.email,
-      actorAccountId: options.accountId,
-      auditEvents: [],
-      providerMode: options.providerMode,
-      aiKillSwitch: false,
-      notice:
-        'Admin panel requires the server-verified bootstrap Google account. Client-supplied email cannot grant access.',
+      notice: 'Admin access denied.',
     };
   }
   const [auditEvents, aiKillSwitch] = await Promise.all([

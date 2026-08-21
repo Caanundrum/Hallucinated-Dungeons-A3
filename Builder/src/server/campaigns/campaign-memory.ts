@@ -125,6 +125,35 @@ async function requireMembership(
   return snapshot.docs[0]!.data() as StoredMembership;
 }
 
+async function requireOwnSeat(
+  firestore: Firestore,
+  campaignId: string,
+  accountId: string,
+): Promise<void> {
+  const snapshot = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('campaignId', '==', campaignId)
+    .where('ownerAccountId', '==', accountId)
+    .limit(1)
+    .get();
+  if (snapshot.empty) {
+    throw new CampaignMemoryError(
+      'BAD_REQUEST',
+      'Seat a character at this table before closing a chapter.',
+    );
+  }
+}
+
+async function readTableStateVersion(firestore: Firestore, campaignId: string): Promise<number> {
+  const tableSnapshot = await firestore
+    .collection(COLLECTIONS.campaignTableProjections)
+    .doc(campaignId)
+    .get();
+  return tableSnapshot.exists
+    ? ((tableSnapshot.data() as { stateVersion?: number }).stateVersion ?? 0)
+    : 0;
+}
+
 /** Resolves the starter pack for a stored campaign's pack id, or null for a blank table. */
 export function resolveStarterPack(adventureTemplateId: string | null): StarterCampaignPack | null {
   return adventureTemplateId === STARTER_CAMPAIGN_PACK_ID ? EMBERFERRY_CROSSING_PACK : null;
@@ -389,6 +418,7 @@ export async function closeCurrentChapter(
   options: { readonly recordedSummary?: string } = {},
 ): Promise<CampaignMemoryProjection> {
   await requireMembership(firestore, campaignId, accountId);
+  await requireOwnSeat(firestore, campaignId, accountId);
   const memory = await loadStoredMemory(firestore, campaignId);
   if (memory.currentChapterId === null) {
     throw new CampaignMemoryError(
@@ -405,6 +435,13 @@ export async function closeCurrentChapter(
     throw new CampaignMemoryError(
       'BAD_REQUEST',
       'This chapter is already closed. Resume play on the next scene from Campaign memory.',
+    );
+  }
+  const tableStateVersion = await readTableStateVersion(firestore, campaignId);
+  if (tableStateVersion <= 0) {
+    throw new CampaignMemoryError(
+      'BAD_REQUEST',
+      'Play at the table before closing this chapter. Open the table, seat tokens, and take at least one action first.',
     );
   }
   const recordedSummary =
@@ -424,9 +461,9 @@ function nextCampaignTime(current: CampaignTimeProjection): CampaignTimeProjecti
 }
 
 /**
- * Suspends the current session. Campaign time advances by one in-game day —
- * the only way it moves is through this committed session event or a closed
- * chapter, never from AI narration text.
+ * Suspends the current session. Campaign time advances by one in-game day only
+ * when the table has actually been played (state version > 0). Pausing an
+ * untouched session keeps Day 1.
  */
 export async function recordSessionSuspend(
   firestore: Firestore,
@@ -446,21 +483,16 @@ export async function recordSessionSuspend(
     );
   }
 
-  const tableSnapshot = await firestore
-    .collection(COLLECTIONS.campaignTableProjections)
-    .doc(campaignId)
-    .get();
-  const tableStateVersion = tableSnapshot.exists
-    ? ((tableSnapshot.data() as { stateVersion?: number }).stateVersion ?? 0)
-    : 0;
-  const tableStateVersionNote = `Table state version ${tableStateVersion} at suspend.`;
+  const tableStateVersion = await readTableStateVersion(firestore, campaignId);
+  const tableStateVersionNote = `Table checkpoint ${tableStateVersion} at suspend.`;
 
   const now = new Date();
   const note =
     typeof options.note === 'string' && options.note.trim().length > 0
       ? options.note.trim().slice(0, 280)
       : null;
-  const nextTime = nextCampaignTime(memory.campaignTime);
+  const nextTime =
+    tableStateVersion > 0 ? nextCampaignTime(memory.campaignTime) : memory.campaignTime;
   const updatedMemory: StoredCampaignMemory = { ...memory, campaignTime: nextTime, updatedAt: now };
   const updatedSession: StoredSessionState = {
     ...session,
@@ -496,15 +528,26 @@ function buildPersonalRecap(
   memory: StoredCampaignMemory,
   accountId: string,
 ): PersonalRecapProjection {
-  const closedChapters = memory.chapters.filter((chapter) => chapter.recordedSummary !== null);
+  const closedChapters = memory.chapters.filter(
+    (chapter) => typeof chapter.recordedSummary === 'string' && chapter.recordedSummary.length > 0,
+  );
   const currentChapter =
     memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null;
-  const headline =
-    closedChapters.length === 0
-      ? currentChapter === null
+  const currentStillOpen =
+    currentChapter !== null &&
+    !(typeof currentChapter.recordedSummary === 'string' && currentChapter.recordedSummary.length > 0);
+
+  let headline: string;
+  if (closedChapters.length === 0) {
+    headline =
+      currentChapter === null
         ? 'No chapters have been played yet.'
-        : `The party has not yet finished "${currentChapter.title}".`
-      : `Since you were last here, the party finished ${closedChapters.length} chapter${closedChapters.length === 1 ? '' : 's'}, most recently "${closedChapters[closedChapters.length - 1]!.title}".`;
+        : `The party has not yet finished "${currentChapter.title}".`;
+  } else if (currentStillOpen && currentChapter !== null) {
+    headline = `Since you were last here, the party finished ${closedChapters.length} chapter${closedChapters.length === 1 ? '' : 's'}, most recently "${closedChapters[closedChapters.length - 1]!.title}". Now playing: "${currentChapter.title}".`;
+  } else {
+    headline = `Since you were last here, the party finished ${closedChapters.length} chapter${closedChapters.length === 1 ? '' : 's'}, most recently "${closedChapters[closedChapters.length - 1]!.title}".`;
+  }
 
   return {
     campaignId: memory.campaignId,

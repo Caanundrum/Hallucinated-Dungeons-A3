@@ -70,6 +70,21 @@ export function mountAdminPage(host: PageHost): void {
       return;
     }
 
+    if (!snapshot.isAdmin) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="admin-heading">Admin</h1>
+          <p class="tagline" data-testid="admin-notice">${escapeHtml(snapshot.notice)}</p>
+          ${
+            error === null
+              ? ''
+              : `<div class="message error" role="alert" data-testid="admin-error">${escapeHtml(error)}</div>`
+          }
+          <p class="record-meta" data-testid="admin-is-admin">Admin authorized: No</p>
+        </div>`;
+      return;
+    }
+
     container.innerHTML = `
       <div class="page">
         <h1 data-testid="admin-heading">Admin</h1>
@@ -82,45 +97,37 @@ export function mountAdminPage(host: PageHost): void {
         <section class="panel" aria-labelledby="admin-status-heading">
           <h2 id="admin-status-heading">Authorization</h2>
           <dl class="detail-list">
-            <div><dt>Admin authorized</dt><dd data-testid="admin-is-admin">${snapshot.isAdmin ? 'Yes' : 'No'}</dd></div>
+            <div><dt>Admin authorized</dt><dd data-testid="admin-is-admin">Yes</dd></div>
             <div><dt>Actor account</dt><dd data-testid="admin-actor-account">${escapeHtml(snapshot.actorAccountId)}</dd></div>
             <div><dt>Actor email</dt><dd data-testid="admin-actor-email">${escapeHtml(snapshot.actorEmail ?? 'none')}</dd></div>
             <div><dt>Bootstrap email</dt><dd data-testid="admin-bootstrap-email">${escapeHtml(snapshot.bootstrapEmail)}</dd></div>
             <div><dt>Identity mode</dt><dd data-testid="admin-provider-mode">${escapeHtml(snapshot.providerMode)}</dd></div>
             <div><dt>AI kill switch</dt><dd data-testid="admin-ai-kill-switch">${snapshot.aiKillSwitch ? 'enabled' : 'disabled'}</dd></div>
           </dl>
+          <div class="actions">
+            <button type="button" data-testid="admin-toggle-kill-switch" aria-disabled="${busy}">
+              ${snapshot.aiKillSwitch ? 'Disable AI kill switch' : 'Enable AI kill switch'}
+            </button>
+          </div>
+        </section>
+        <section class="panel" aria-labelledby="admin-audit-heading">
+          <h2 id="admin-audit-heading">Audit history</h2>
           ${
-            snapshot.isAdmin
-              ? `<div class="actions">
-                  <button type="button" data-testid="admin-toggle-kill-switch" aria-disabled="${busy}">
-                    ${snapshot.aiKillSwitch ? 'Disable AI kill switch' : 'Enable AI kill switch'}
-                  </button>
-                </div>`
-              : ''
+            snapshot.auditEvents.length === 0
+              ? '<p class="empty-state" data-testid="admin-audit-empty">No Admin audit events yet.</p>'
+              : `<ul class="record-list" data-testid="admin-audit-list">
+                  ${snapshot.auditEvents
+                    .map(
+                      (event) => `<li data-testid="admin-audit-event">
+                        <strong>${escapeHtml(event.action)}</strong>
+                        — ${escapeHtml(event.detail)}
+                        <span class="record-meta">${escapeHtml(event.actorEmail)} · ${new Date(event.atMs).toISOString()}</span>
+                      </li>`,
+                    )
+                    .join('')}
+                </ul>`
           }
         </section>
-        ${
-          snapshot.isAdmin
-            ? `<section class="panel" aria-labelledby="admin-audit-heading">
-                <h2 id="admin-audit-heading">Audit history</h2>
-                ${
-                  snapshot.auditEvents.length === 0
-                    ? '<p class="empty-state" data-testid="admin-audit-empty">No Admin audit events yet.</p>'
-                    : `<ul class="record-list" data-testid="admin-audit-list">
-                        ${snapshot.auditEvents
-                          .map(
-                            (event) => `<li data-testid="admin-audit-event">
-                              <strong>${escapeHtml(event.action)}</strong>
-                              — ${escapeHtml(event.detail)}
-                              <span class="record-meta">${escapeHtml(event.actorEmail)} · ${new Date(event.atMs).toISOString()}</span>
-                            </li>`,
-                          )
-                          .join('')}
-                      </ul>`
-                }
-              </section>`
-            : ''
-        }
       </div>`;
 
     container

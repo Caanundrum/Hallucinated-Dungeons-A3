@@ -837,7 +837,7 @@ function mutateRules(options: {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, `${actor.name} does not know or have ${effect.label} prepared.`);
     }
     if (effect.spellId === 'shield') {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Shield is cast only through a Reaction Decision Window.');
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Shield is cast only through an open reaction window.');
     }
     actor = spendAction(spendSlot(actor, effect.level));
     const replacements: CombatantProjection[] = [actor];
@@ -1119,7 +1119,7 @@ function mutateRules(options: {
         entry.state === 'open',
     );
     if (window === undefined || window.reactionKind !== fields.reactionKind) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'That Reaction Decision Window is not open.');
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'That reaction window is not open.');
     }
     if (!actor.actionEconomy.reactionAvailable) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'This combatant has already spent its Reaction.');

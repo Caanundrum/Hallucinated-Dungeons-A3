@@ -15,7 +15,7 @@ export const DOCK_TAB_LABELS: Record<DockTab, string> = {
   chronicle: 'Story so far',
   party_chat: 'Chat',
   rules_desk: 'Rules',
-  director_address: 'Ask the DM',
+  director_address: 'Ask the Game Director',
 };
 
 /** Player-first tab order: social and help surfaces before the audit log. */
@@ -101,7 +101,7 @@ export const RULES_DESK_NOTICE =
   'Look up how a rule works. This explains mechanics only — it does not change the game or make rulings for you.';
 
 export const DIRECTOR_ADDRESS_NOTICE =
-  'Ask the DM a question or describe what you want to happen in the story. Only you see this reply; the DM never moves pieces or rolls dice for you.';
+  'Ask the Game Director a question or describe what you want to happen in the story. Only you see this reply; the Game Director never moves pieces or rolls dice for you.';
 
 export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
 

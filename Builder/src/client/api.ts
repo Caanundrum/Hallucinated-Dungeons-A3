@@ -683,22 +683,28 @@ export async function enterGoogleEmulatorSession(options: {
   })) as AccountProjection;
 }
 
-export async function fetchAdminPanel(): Promise<{
-  readonly isAdmin: boolean;
-  readonly bootstrapEmail: string;
-  readonly actorEmail: string | null;
-  readonly actorAccountId: string;
-  readonly auditEvents: readonly {
-    readonly id: string;
-    readonly actorEmail: string;
-    readonly action: string;
-    readonly detail: string;
-    readonly atMs: number;
-  }[];
-  readonly providerMode: string;
-  readonly aiKillSwitch: boolean;
-  readonly notice: string;
-}> {
+export async function fetchAdminPanel(): Promise<
+  | {
+      readonly isAdmin: false;
+      readonly notice: string;
+    }
+  | {
+      readonly isAdmin: true;
+      readonly bootstrapEmail: string;
+      readonly actorEmail: string | null;
+      readonly actorAccountId: string;
+      readonly auditEvents: readonly {
+        readonly id: string;
+        readonly actorEmail: string;
+        readonly action: string;
+        readonly detail: string;
+        readonly atMs: number;
+      }[];
+      readonly providerMode: string;
+      readonly aiKillSwitch: boolean;
+      readonly notice: string;
+    }
+> {
   return (await request('/api/admin')) as never;
 }
 

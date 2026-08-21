@@ -20,6 +20,60 @@ import {
 } from '../shared/character-contract.js';
 import { escapeHtml } from './dom-utils.js';
 
+/** Player-facing label for a derivation rule id (hides raw machine ids). */
+export function humanRuleLabel(ruleId: string): string {
+  const known: Record<string, string> = {
+    'proficiency-bonus': 'Proficiency Bonus',
+    'proficiency-bonus.level-1': 'Proficiency Bonus (Level 1)',
+    'armor.shield': 'Shield',
+    'armor.unarmored': 'Unarmored',
+    'passive.base': 'Passive base',
+    'spellcasting.save-dc-base': 'Spell save DC base',
+  };
+  if (known[ruleId] !== undefined) {
+    return known[ruleId];
+  }
+  if (ruleId.startsWith('proficiency-bonus.level-')) {
+    return `Proficiency Bonus (Level ${ruleId.slice('proficiency-bonus.level-'.length)})`;
+  }
+  if (ruleId.startsWith('ability.')) {
+    const ability = ruleId.slice('ability.'.length).replace(/-/g, ' ');
+    return ability.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('ability-method.')) {
+    return `Ability scores (${ruleId.slice('ability-method.'.length).replace(/_/g, ' ')})`;
+  }
+  if (ruleId.startsWith('skill.')) {
+    return ruleId
+      .slice('skill.'.length)
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('armor.')) {
+    return `Armor (${ruleId.slice('armor.'.length).replace(/-/g, ' ')})`;
+  }
+  if (ruleId.startsWith('weapon.')) {
+    return `Weapon (${ruleId.slice('weapon.'.length).replace(/-/g, ' ')})`;
+  }
+  if (ruleId.startsWith('class.')) {
+    const rest = ruleId.slice('class.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return rest.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('species.')) {
+    const rest = ruleId.slice('species.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return rest.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('background.')) {
+    const rest = ruleId.slice('background.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return `Background (${rest})`;
+  }
+  return ruleId
+    .split(/[./]/)
+    .map((part) => part.replace(/-/g, ' '))
+    .join(' · ')
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function breakdownList(derived: DerivedValue): string {
   return `
     <ul class="stat-breakdown-list">
@@ -27,7 +81,7 @@ function breakdownList(derived: DerivedValue): string {
         .map(
           (component) =>
             `<li>${escapeHtml(component.label)}: ${escapeHtml(formatModifier(component.amount))}
-              <code>${escapeHtml(component.ruleId)}</code></li>`,
+              <span class="record-meta">${escapeHtml(humanRuleLabel(component.ruleId))}</span></li>`,
         )
         .join('')}
     </ul>`;

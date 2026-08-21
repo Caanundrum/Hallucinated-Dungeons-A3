@@ -110,10 +110,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
             <dd data-testid="preview-director-personality">${escapeHtml(personalityLabel)}</dd>
           </div>
           <div>
-            <dt>Avatar key</dt>
-            <dd><code data-testid="preview-avatar-key">${escapeHtml(avatarKey)}</code></dd>
-          </div>
-          <div>
             <dt>Starter adventure</dt>
             <dd data-testid="preview-adventure-template">${escapeHtml(ADVENTURE_TEMPLATE_LABELS[adventureTemplate])}</dd>
           </div>

@@ -75,6 +75,22 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
     const campaignId = await createEmberferryCampaign(page, 'Phase6 Longitudinal Table');
 
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await seatOwnCharacter(page);
+    await page.getByTestId('open-campaign-table').click();
+    {
+      const token = page.locator('[data-testid="table-stage-semantic"] [data-token]').first();
+      await expect(token).toBeVisible();
+      const beforeCol = await token.getAttribute('data-anchor-column');
+      const beforeRow = await token.getAttribute('data-anchor-row');
+      const targetCol = Number(beforeCol) + 1;
+      const targetRow = Number(beforeRow);
+      await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
+      await page.getByTestId('commit-table-move').click();
+      await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
+    }
+    await page.goto(`/campaigns/${campaignId}`);
+    await dismissIntroIfPresent(page);
+    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
     await expect(page.getByTestId('session-action-message')).toContainText(
       /Mist-Cut Caves|chapter closed/i,
@@ -89,7 +105,6 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
     await expect(page.getByTestId('session-action-message')).toContainText('Session resumed');
     await expect(page.getByTestId('current-chapter')).toContainText('The Mist-Cut Caves');
 
-    await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-bundle-meta')).toContainText('Mist-Cut Caves');
 
@@ -122,7 +137,7 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
 
     await page.goto(`/campaigns/${campaignId}`);
     await dismissIntroIfPresent(page);
-    await expect(page.getByTestId('current-chapter')).toContainText('The Mist-Cut Caves');
+    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
     await expect(page.getByTestId('current-chapter')).toContainText('The Drowned Bell Tower');
     await expect(page.getByTestId('session-action-message')).toContainText(

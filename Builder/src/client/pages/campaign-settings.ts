@@ -37,6 +37,11 @@ import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import type { PageHost } from './home.js';
 
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
+
 export function mountCampaignSettingsPage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Campaign settings');
@@ -173,7 +178,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           <p class="record-meta" data-testid="session-zero-status">
             ${
               draft.sessionZero.completed
-                ? `Recorded${draft.sessionZero.completedAt === null ? '' : ` at ${escapeHtml(draft.sessionZero.completedAt)}`}.`
+                ? `Recorded${draft.sessionZero.completedAt === null ? '' : ` at ${escapeHtml(formatTimestamp(draft.sessionZero.completedAt))}`}.`
                 : 'Not completed yet — record the social contract before the later live table.'
             }
           </p>

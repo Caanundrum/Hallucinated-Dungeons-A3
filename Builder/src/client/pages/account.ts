@@ -75,6 +75,8 @@ export function mountAccountPage(host: PageHost): void {
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let goldMaster: GoldMasterPackageProjection | null = null;
   const goldMasterSurface = candidate?.publicSurface === 'gold_master';
+  const hostedSurface =
+    candidate?.environmentClass === 'milestone' || candidate?.publicSurface === 'gold_master';
   const hostedGoogleClientId = candidate?.hostedGoogleClientId ?? null;
   const mountToken = beginPageMount(container);
   const searchParams = new URLSearchParams(window.location.search);
@@ -94,7 +96,7 @@ export function mountAccountPage(host: PageHost): void {
           <h1 data-testid="account-heading">Account</h1>
           <p class="tagline">
             ${
-              goldMasterSurface
+              hostedSurface || goldMasterSurface
                 ? 'Your Google account is your doorway into character creation, campaigns, and the table.'
                 : 'Local Arena testing can mint a development account. Hosted Gold Master artifacts use Google Sign-In only.'
             }
@@ -105,7 +107,7 @@ export function mountAccountPage(host: PageHost): void {
               : `<div class="message error" role="alert" tabindex="-1" data-testid="account-error">${escapeHtml(error)}</div>`
           }
           ${
-            goldMasterSurface
+            hostedSurface || goldMasterSurface
               ? ''
               : `<section class="panel" aria-labelledby="sign-in-heading">
             <h2 id="sign-in-heading">Development account</h2>
@@ -129,13 +131,13 @@ export function mountAccountPage(host: PageHost): void {
             <h2 id="google-sign-in-heading">Google Sign-In</h2>
             <p>
               ${
-                hostedGoogleClientId !== null
+                hostedSurface || hostedGoogleClientId !== null
                   ? 'Hosted players enter with Google. One account carries your heroes and your place at the table.'
                   : 'Hosted player identity is Google-only. On this Local Arena host the control talks to the Auth emulator — it is not a live OAuth popup against a public Google Cloud project.'
               }
             </p>
             ${
-              hostedGoogleClientId !== null
+              hostedSurface || hostedGoogleClientId !== null
                 ? `<p class="record-meta">
               Use the official Google button below to continue.
             </p>`
@@ -156,7 +158,7 @@ export function mountAccountPage(host: PageHost): void {
             }
           </section>
           ${
-            hostedGoogleClientId !== null
+            hostedSurface || hostedGoogleClientId !== null
               ? `<section class="account-gate panel" aria-labelledby="hosted-account-gate-heading">
             <div class="account-gate-copy">
               <div class="account-gate-mark">${ACCOUNT_GATE_MOTIF}</div>
@@ -170,7 +172,9 @@ export function mountAccountPage(host: PageHost): void {
               ${
                 candidate === null
                   ? `<button type="button" data-testid="account-retry-candidate">Retry connection</button>`
-                  : `<div class="hosted-google-sign-in" data-testid="account-google-hosted-button"></div>`
+                  : hostedGoogleClientId !== null
+                    ? `<div class="hosted-google-sign-in" data-testid="account-google-hosted-button"></div>`
+                    : `<p class="record-meta">Google Sign-In is configured for this hosted surface.</p>`
               }
             </div>
             <p class="account-gate-note record-meta">
@@ -182,12 +186,13 @@ export function mountAccountPage(host: PageHost): void {
           }
         </div>`;
     } else {
+      const isBootstrapAdmin = account.isBootstrapAdmin === true;
       container.innerHTML = `
         <div class="page">
           <h1 data-testid="account-heading">Account</h1>
           <p class="tagline">
             ${
-              hostedGoogleClientId !== null
+              hostedSurface || hostedGoogleClientId !== null
                 ? 'Signed in with Google. Characters you create are owned by this account.'
                 : 'Signed in for local testing. Characters you create are owned by this account.'
             }
@@ -198,13 +203,15 @@ export function mountAccountPage(host: PageHost): void {
               : `<div class="message error" role="alert" tabindex="-1" data-testid="account-error">${escapeHtml(error)}</div>`
           }
           <section class="panel" aria-labelledby="account-details-heading">
-            <h2 id="account-details-heading">${hostedGoogleClientId !== null ? 'Your account' : 'Your development account'}</h2>
+            <h2 id="account-details-heading">${hostedSurface || hostedGoogleClientId !== null ? 'Your account' : 'Your development account'}</h2>
             <dl class="account-details" data-testid="account-details">
               <div>
                 <dt>Display name</dt>
                 <dd data-testid="account-display-label">${escapeHtml(account.displayLabel)}</dd>
               </div>
-              <div>
+              ${
+                isBootstrapAdmin
+                  ? `<div>
                 <dt>Account id</dt>
                 <dd><code data-testid="account-page-id">${escapeHtml(account.accountId)}</code></dd>
               </div>
@@ -213,12 +220,14 @@ export function mountAccountPage(host: PageHost): void {
                 <dd data-testid="account-identity-mode">${escapeHtml(account.identityMode)}</dd>
               </div>
               <div>
+                <dt>Bootstrap admin</dt>
+                <dd data-testid="account-is-bootstrap-admin">yes</dd>
+              </div>`
+                  : ''
+              }
+              <div>
                 <dt>Email</dt>
                 <dd data-testid="account-email">${escapeHtml(account.email ?? 'none')}</dd>
-              </div>
-              <div>
-                <dt>Bootstrap admin</dt>
-                <dd data-testid="account-is-bootstrap-admin">${account.isBootstrapAdmin ? 'yes' : 'no'}</dd>
               </div>
               <div>
                 <dt>Session expires</dt>
@@ -232,7 +241,11 @@ export function mountAccountPage(host: PageHost): void {
               </button>
               <a href="/characters" data-link data-testid="account-characters-link">Open Character Vault</a>
               <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Campaigns</a>
-              <a href="/admin" data-link data-testid="account-admin-link">Admin panel</a>
+              ${
+                isBootstrapAdmin
+                  ? '<a href="/admin" data-link data-testid="account-admin-link">Admin panel</a>'
+                  : ''
+              }
             </div>
           </section>
           <section class="panel" aria-labelledby="presentation-heading">
@@ -277,10 +290,17 @@ export function mountAccountPage(host: PageHost): void {
             records already stored for this account.
           </p>
           <section class="panel" aria-labelledby="account-deletion-heading">
-            <h2 id="account-deletion-heading">Local data deletion request</h2>
+            <h2 id="account-deletion-heading">${
+              hostedSurface
+                ? 'Account data deletion request'
+                : 'Local data deletion request'
+            }</h2>
             <p class="record-meta">
-              Local Arena clears local development data in the emulator when you request it.
-              This is not a hosted production deletion claim.
+              ${
+                hostedSurface
+                  ? 'Request deletion of hosted account data associated with this Google sign-in. The server records the request; fulfillment follows the Privacy Notice process.'
+                  : 'Local Arena clears local development data in the emulator when you request it. This is not a hosted production deletion claim.'
+              }
             </p>
             <p class="record-meta" data-testid="account-deletion-status">
               ${
@@ -303,7 +323,9 @@ export function mountAccountPage(host: PageHost): void {
                     ? 'Deletion already requested'
                     : busy
                       ? 'Requesting…'
-                      : 'Request local data deletion'
+                      : hostedSurface
+                        ? 'Request account data deletion'
+                        : 'Request local data deletion'
                 }
               </button>
             </div>
@@ -311,8 +333,8 @@ export function mountAccountPage(host: PageHost): void {
           <section class="panel" aria-labelledby="legal-acceptance-heading">
             <h2 id="legal-acceptance-heading">Legal acceptance</h2>
             <p class="record-meta">
-              Gold Master legal documents are versioned. Recording acceptance stores the current
-              route, version, and content digest on the server — the browser does not invent them.
+              Recording acceptance is recommended for Alpha; play is not blocked yet.
+              When you record acceptance, the server stores the current route, version, and content digest.
             </p>
             <ul data-testid="legal-acceptance-list">
               ${
@@ -327,6 +349,7 @@ export function mountAccountPage(host: PageHost): void {
                     ${document.accepted ? 'accepted' : 'not yet accepted'}
                     <button type="button" class="secondary" data-legal-route="${escapeHtml(document.route)}"
                       data-testid="accept-legal-${escapeHtml(document.route.replace(/\//g, '-'))}"
+                      aria-label="${document.accepted ? `Accepted ${escapeHtml(document.title)}` : `Record acceptance of ${escapeHtml(document.title)}`}"
                       aria-disabled="${busy || document.accepted}">
                       ${document.accepted ? 'Accepted' : 'Record acceptance'}
                     </button>
@@ -345,7 +368,9 @@ export function mountAccountPage(host: PageHost): void {
               }
             </p>
           </section>
-          <section class="panel" aria-labelledby="gold-master-heading">
+          ${
+            isBootstrapAdmin
+              ? `<section class="panel" aria-labelledby="gold-master-heading">
             <h2 id="gold-master-heading">Gold Master package</h2>
             <p class="record-meta" data-testid="gold-master-status">
               ${
@@ -358,7 +383,9 @@ export function mountAccountPage(host: PageHost): void {
               Support: use the invitation channel named in the legal documents. Hosted on-call is
               not standing until Launch Production is authorized.
             </p>
-          </section>
+          </section>`
+              : ''
+          }
         </div>`;
     }
 
@@ -696,7 +723,11 @@ export function mountAccountPage(host: PageHost): void {
           render();
           try {
             deletionStatus = await requestAccountDeletion(candidate.candidateId);
-            shell.announce('Local Arena deletion request recorded.');
+            shell.announce(
+              hostedSurface
+                ? 'Account data deletion request recorded.'
+                : 'Local Arena deletion request recorded.',
+            );
           } catch (failure) {
             error =
               failure instanceof ApiFailure

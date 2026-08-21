@@ -64,7 +64,11 @@ function renderMemoryPanel(memory: CampaignMemoryProjection): string {
                <li data-testid="chapter-item">
                  <span class="record-note">${escapeHtml(chapter.sessionLabel)}: ${escapeHtml(chapter.title)}</span>
                  <span class="record-meta">
-                   ${chapter.recordedSummary === null ? 'Not yet played' : escapeHtml(chapter.recordedSummary)}
+                   ${
+                     chapter.recordedSummary === null
+                       ? 'Not yet played'
+                       : `Completed — ${escapeHtml(chapter.recordedSummary)}`
+                   }
                  </span>
                </li>`,
                )
@@ -220,21 +224,26 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       openInvitation === null
         ? null
         : `${window.location.origin}${openInvitation.invitePath}`;
+    const memorySnapshot = memory;
     const currentMemoryChapter =
-      memory === null
+      memorySnapshot === null
         ? null
-        : (memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null);
+        : (memorySnapshot.chapters.find(
+            (chapter) => chapter.chapterId === memorySnapshot.currentChapterId,
+          ) ?? null);
     const canCloseChapter =
-      currentMemoryChapter !== null && currentMemoryChapter.recordedSummary === null;
+      currentMemoryChapter !== null &&
+      currentMemoryChapter.recordedSummary === null &&
+      ownSeat !== null;
 
     const nextStep =
       ownSeat === null
         ? campaign.isCampaignOwner
-          ? 'Next: seat a character you own, then share an invite link with a second Local Arena account.'
-          : 'Next: seat a character you own to finish joining this table’s membership proof.'
+          ? 'Next: seat a character you own, then invite friends or open the table to play.'
+          : 'Next: seat a character you own to join this table.'
         : campaign.isCampaignOwner && members.length < 2
-          ? 'Next: share the invite link so a second development account can join and seat their own character.'
-          : 'Membership and seating are recorded. This Phase 1 build proves ownership continuity; the live tactical table is a later phase.';
+          ? 'Next: share an invite link so another player can join, or open the table to play.'
+          : 'Your seat is ready. Open the table to play the current chapter.';
 
     container.innerHTML = `
       <div class="page">
@@ -242,7 +251,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         <p class="tagline">
           ${
             campaign.summary.length === 0
-              ? 'Campaign membership and seats for the Local Arena.'
+              ? 'Campaign membership, seats, and session memory for your table.'
               : escapeHtml(campaign.summary)
           }
         </p>
@@ -283,9 +292,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             <span class="lock-badge" data-testid="director-lock-badge">Fixed</span>
           </h2>
           <p class="message notice" data-testid="director-locked-notice">
-            Fixed after creation for ordinary users — there is no edit control here. This is
-            configuration for the later AI-enabled table; it does not activate AI narration in this
-            build.
+            Fixed after creation for ordinary users — there is no edit control here. The Game Director
+            narrates at the table; this panel only records which voice you chose.
           </p>
           ${directorAvatarMarkup({
             avatarKey: campaign.director.avatarKey,
@@ -303,18 +311,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               <dd data-testid="director-personality-label">${escapeHtml(campaign.director.personalityLabel)}</dd>
             </div>
             <div>
-              <dt>Look key</dt>
-              <dd><code data-testid="director-avatar-key">${escapeHtml(campaign.director.avatarKey)}</code></dd>
-            </div>
-            <div>
               <dt>Fixed at</dt>
               <dd data-testid="director-locked-at">${escapeHtml(formatTimestamp(campaign.director.lockedAt))}</dd>
             </div>
           </dl>
-          <p class="record-meta">
-            The look key is stored so later Director art can attach without changing this campaign
-            record. It is not a control and does not load art in this build.
-          </p>
         </section>
 
         <section class="panel" aria-labelledby="members-heading">
@@ -370,8 +370,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                    </button>
                  </div>
                  <p class="record-meta" data-testid="chapter-travel-hint">
-                   Closing the current chapter advances Emberferry to the next tactical scene
-                   (Mist Dock → Mist-Cut Caves → Drowned Bell Tower) and reseats tokens there.
+                   ${
+                     ownSeat === null
+                       ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
+                       : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower).'
+                   }
                  </p>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}
@@ -383,8 +386,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         <section class="panel" aria-labelledby="invite-heading">
           <h2 id="invite-heading">Invitation</h2>
           <p>
-            Share an invite link with a second Local Arena development account. The link shows a
-            bounded preview before sign-in, expires after 48 hours, and can be revoked.
+            Share an invite link with another player. The link shows a bounded preview before
+            sign-in, expires after 48 hours, and can be revoked.
           </p>
           ${
             invitePath === null
@@ -689,6 +692,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           if (candidate === null || sessionBusy || !canCloseChapter) {
             return;
           }
+          const chapterTitle = currentMemoryChapter?.title ?? 'this chapter';
+          if (
+            !window.confirm(
+              `Close "${chapterTitle}" and travel to the next scene? Only do this after the table has played the chapter. This cannot be undone.`,
+            )
+          ) {
+            return;
+          }
           sessionBusy = true;
           error = null;
           render();
@@ -697,11 +708,17 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               candidateId: candidate.candidateId,
               campaignId,
             });
+            recap = null;
             const nextTitle =
               memory.chapters.find((chapter) => chapter.chapterId === memory!.currentChapterId)
                 ?.title ?? 'the next scene';
             sessionMessage = `Chapter closed. The table now opens on "${nextTitle}".`;
             shell.announce(sessionMessage);
+            try {
+              recap = await fetchPersonalRecap(campaignId);
+            } catch {
+              recap = null;
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure

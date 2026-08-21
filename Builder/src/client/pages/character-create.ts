@@ -146,6 +146,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let tutorialOpen = false;
   let tutorialStep = 0;
   let pendingChoices: CharacterChoices | null = null;
+  /** Choices currently being saved — identity edits merge against this while busy. */
+  let inFlightChoices: CharacterChoices | null = null;
   let openGeneration = 0;
   const mountToken = beginPageMount(container);
 
@@ -160,6 +162,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
       choices.speciesId !== null ||
       Object.keys(choices.baseAbilityScores).length > 0
     );
+  }
+
+  function latestChoices(): CharacterChoices {
+    return pendingChoices ?? inFlightChoices ?? current!.draft.choices;
   }
 
   function tutorialDismissed(): boolean {
@@ -210,6 +216,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     busy = true;
     error = null;
     pendingChoices = null;
+    inFlightChoices = next;
     render();
     try {
       current = await saveDraft({
@@ -221,6 +228,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
       busy = false;
+      inFlightChoices = null;
       if (pendingChoices !== null && candidate !== null && current !== null) {
         const queued = pendingChoices;
         pendingChoices = null;
@@ -1046,6 +1054,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           dismissTutorialPermanently();
           tutorialOpen = false;
           tutorialStep = 0;
+          activeStep = 'class';
           render();
           return;
         }
@@ -1274,11 +1283,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
     });
 
     container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
-      // Identity text saves on change rather than on every keystroke, so a
-      // draft save is not issued per character typed.
-      input.addEventListener('change', () => {
+      // Merge against in-flight / pending choices so a Pronouns blur cannot wipe a
+      // Name save that is still round-tripping (HD-A3-PQA-001).
+      const commitIdentityField = () => {
+        if (current === null) {
+          return;
+        }
         const field = input.dataset.identity as keyof CharacterChoices['identity'];
-        void commitChoices({ ...base, identity: { ...base.identity, [field]: input.value } });
+        const foundation = latestChoices();
+        void commitChoices({
+          ...foundation,
+          identity: { ...foundation.identity, [field]: input.value },
+        });
+      };
+      input.addEventListener('change', commitIdentityField);
+      input.addEventListener('blur', () => {
+        if (current === null) {
+          return;
+        }
+        const field = input.dataset.identity as keyof CharacterChoices['identity'];
+        const foundation = latestChoices();
+        if (foundation.identity[field] === input.value) {
+          return;
+        }
+        commitIdentityField();
       });
     });
 

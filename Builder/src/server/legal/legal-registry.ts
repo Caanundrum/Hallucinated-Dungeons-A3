@@ -66,7 +66,7 @@ const TERMS_OF_SERVICE: LegalDocument = {
       heading: '1. What these terms cover',
       paragraphs: [
         'Hallucinated Dungeons is an original multiplayer tabletop roleplaying project, currently in a closed, unpaid Alpha. These terms describe how the hosted product may be used while it is being built.',
-        'Using an account, entering a campaign, or accepting an invitation means you agree to these terms, the Privacy Notice, and the Alpha Participation Terms as they read at the time.',
+        'Recording acceptance of these terms, the Privacy Notice, and the Alpha Participation Terms is recommended during Alpha. Acceptance is recorded against the published version in effect when you confirm it.',
       ],
     },
     {

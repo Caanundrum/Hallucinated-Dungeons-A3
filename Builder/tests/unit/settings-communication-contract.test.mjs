@@ -29,7 +29,7 @@ test('dock tabs are peer destinations including Director Address', () => {
   assert.equal(DOCK_TAB_LABELS.chronicle, 'Story so far');
   assert.equal(DOCK_TAB_LABELS.party_chat, 'Chat');
   assert.equal(DOCK_TAB_LABELS.rules_desk, 'Rules');
-  assert.equal(DOCK_TAB_LABELS.director_address, 'Ask the DM');
+  assert.equal(DOCK_TAB_LABELS.director_address, 'Ask the Game Director');
   assert.deepEqual([...PLAYER_DOCK_TAB_ORDER], [
     'party_chat',
     'director_address',

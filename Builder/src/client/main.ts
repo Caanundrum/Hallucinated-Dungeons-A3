@@ -81,19 +81,14 @@ async function start(): Promise<void> {
     const host: PageHost = { container: shell.mainElement, shell, candidate };
     const hostedPlayerEntry = isHostedPlayerSurface(candidate);
 
-    if (hostedPlayerEntry && path === '/' && getAccount() !== null) {
-      navigate('/campaigns', { replace: true });
-      return;
-    }
-
-    shell.setPresentationMode(path === '/' && hostedPlayerEntry ? 'welcome' : 'app');
+    shell.setPresentationMode(path === '/' && hostedPlayerEntry && getAccount() === null ? 'welcome' : 'app');
 
     const characterId = characterIdFromPath(path);
     const campaignRoute = campaignRouteFromPath(path);
     const inviteCode = inviteCodeFromPath(path);
 
     if (path === '/') {
-      if (hostedPlayerEntry) {
+      if (hostedPlayerEntry && getAccount() === null) {
         mountWelcomePage(host);
       } else {
         mountHomePage(host);

@@ -86,8 +86,9 @@ function accountChipMarkup(
 export function mountShell(root: HTMLElement, candidate: CandidateIdentity | null): ShellHandle {
   const legalLinks = LEGAL_ROUTES.map(
     (route) =>
-      `<li><a href="${route}" target="_blank" rel="noopener noreferrer">${escapeHtml(LEGAL_LABELS[route] ?? route)}</a></li>`,
+      `<li><a href="${route}">${escapeHtml(LEGAL_LABELS[route] ?? route)}</a></li>`,
   ).join('');
+  const hostedGoldMaster = candidate?.publicSurface === 'gold_master';
 
   root.innerHTML = `
     <div class="shell">
@@ -100,9 +101,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
               <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
               <li><a href="/campaigns" data-link data-testid="nav-campaigns">Campaigns</a></li>
               <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
-              <li><a href="/admin" data-link data-testid="nav-admin">Admin</a></li>
+              <li data-nav-admin hidden><a href="/admin" data-link data-testid="nav-admin">Admin</a></li>
               ${
-                candidate?.publicSurface === 'gold_master'
+                hostedGoldMaster
                   ? ''
                   : '<li><a href="/diagnostics" data-link data-testid="nav-diagnostics">Diagnostics</a></li>'
               }
@@ -211,15 +212,31 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
       });
   }
 
+  function updateAdminNavVisibility(): void {
+    const adminItem = root.querySelector<HTMLElement>('[data-nav-admin]');
+    if (adminItem === null) {
+      return;
+    }
+    const account = getAccount();
+    // Hosted gold_master: Admin only for bootstrap admins. Local Arena keeps the link for QA.
+    const showAdmin = hostedGoldMaster
+      ? account?.isBootstrapAdmin === true
+      : true;
+    adminItem.hidden = !showAdmin;
+  }
+
   function renderAccountChip(): void {
     accountSlot.innerHTML = accountChipMarkup(getAccount(), accountBusy, candidate !== null);
     bindAccountChip();
+    updateAdminNavVisibility();
   }
 
   renderAccountChip();
   subscribeAccount(() => {
     if (!accountBusy) {
       renderAccountChip();
+    } else {
+      updateAdminNavVisibility();
     }
   });
 
@@ -230,6 +247,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
       root.classList.toggle('shell-welcome-mode', mode === 'welcome');
     },
     setActiveRoute(path: string): void {
+      lastAnnouncement = '';
+      liveRegion.textContent = '';
+      updateAdminNavVisibility();
       root.querySelectorAll<HTMLAnchorElement>('.primary-nav a[data-link]').forEach((link) => {
         const linkPath = new URL(link.href, window.location.href).pathname;
         const matches =

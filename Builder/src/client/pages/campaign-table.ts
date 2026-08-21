@@ -69,6 +69,11 @@ import { mountTableStage, type TableStageHandle } from '../table/table-stage.js'
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import type { PageHost } from './home.js';
 
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
+
 /** Distinct short tone per cue kind so table events are at least audibly distinguishable. */
 const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   attack_hit: 440,
@@ -83,6 +88,9 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   level_up: 720,
   token_moved: 200,
 };
+
+/** Non-authoritative private notes preference for the current tab session. */
+const tableNotesPreferences = new Map<string, string>();
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
@@ -317,7 +325,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function authorityMeta(): string {
     if (explorationMode()) {
-      return 'Exploration — move freely until the DM calls for initiative.';
+      return 'Exploration — move freely until the Game Director calls for initiative.';
     }
     if (timingAuthority === null) {
       return encounter?.status === 'active'
@@ -360,7 +368,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return {
           tone: 'waiting',
           title: `${active.name}'s turn`,
-          detail: 'The DM is running the scene. Review your sheet, chat, or ask the DM while you wait.',
+          detail: 'The Game Director is running the scene. Review your sheet, chat, or ask the Game Director while you wait.',
         };
       }
     }
@@ -368,13 +376,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return {
         tone: 'waiting',
         title: 'Combat is forming',
-        detail: 'The DM will call for initiative when the fight begins.',
+        detail: 'The Game Director will call for initiative when the fight begins.',
       };
     }
     return {
       tone: 'exploration',
       title: 'Exploring freely',
-      detail: 'Move where you like until the DM calls for initiative. Chat and ask the DM anytime.',
+      detail: 'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
     };
   }
 
@@ -407,24 +415,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `<div data-testid="table-character-sheet">${renderCharacterSheet(progression.sheet)}</div>`;
   }
 
-  function tableNotesStorageKey(): string {
-    return `hd-table-notes:${campaignId}`;
+  function loadTableNotesPreference(): string {
+    return tableNotesPreferences.get(campaignId) ?? '';
   }
 
-  function loadTableNotesFromStorage(): string {
-    try {
-      return localStorage.getItem(tableNotesStorageKey()) ?? '';
-    } catch {
-      return '';
-    }
-  }
-
-  function saveTableNotesToStorage(value: string): void {
-    try {
-      localStorage.setItem(tableNotesStorageKey(), value);
-    } catch {
-      // Private notes are best-effort local storage only.
-    }
+  function saveTableNotesPreference(value: string): void {
+    // Non-authoritative UI preference for this browser tab session only.
+    tableNotesPreferences.set(campaignId, value);
   }
 
   const INFO_TAB_LABELS: Record<InfoTab, string> = {
@@ -522,7 +519,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return `
           <section class="table-info-pane" data-testid="table-tools-panel">
             <details class="table-advanced-controls" data-testid="table-advanced-controls">
-              <summary>Training, combat tools, and developer controls</summary>
+              <summary>Training and combat tools</summary>
               ${advancedControlsBody()}
             </details>
           </section>`;
@@ -576,7 +573,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return unique.length === 0 ? 'No one else is at the table yet.' : `At the table: ${unique.join(', ')}`;
   }
 
-  /** Visible prerequisite copy for disabled training / developer controls. */
+  /** Visible prerequisite copy for disabled training controls. */
   function composerGateHint(): string {
     if (candidate === null) {
       return 'Arena candidate is still loading.';
@@ -703,7 +700,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       (entry) => `
                     <li data-testid="chronicle-entry">
                       <span class="record-note">${escapeHtml(entry.body)}</span>
-                      <span class="record-meta">${escapeHtml(entry.kind)} · ${escapeHtml(entry.createdAt)}</span>
+                      <span class="record-meta">${escapeHtml(entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
                     </li>`,
                     )
                     .join('')}
@@ -725,7 +722,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <div class="dock-pane" data-testid="rules-desk-pane">
           <p data-testid="rules-desk-notice">${escapeHtml(RULES_DESK_NOTICE)}</p>
           <label class="field">
-            <span>Structured rule</span>
+            <span>Rule</span>
             <select data-testid="rules-desk-rule">
               ${[
                 ['combat.attack', 'Attack rolls'],
@@ -751,12 +748,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </button>
           ${
             ruleExplanation === null
-              ? '<p class="record-meta">Choose a rule for a read-only explanation from structured data.</p>'
+              ? '<p class="record-meta">Choose a rule for a read-only explanation.</p>'
               : `<article class="rules-explanation" data-testid="rules-explanation">
                   <h3>${escapeHtml(ruleExplanation.title)}</h3>
                   <p>${escapeHtml(ruleExplanation.summary)}</p>
                   <ol>${ruleExplanation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
-                  <p class="record-meta">${escapeHtml(ruleExplanation.ruleId)} · ${escapeHtml(ruleExplanation.source)}</p>
+                  <p class="record-meta">${escapeHtml(ruleExplanation.source)}</p>
                 </article>`
           }
         </div>`;
@@ -776,11 +773,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           <form class="dock-composer" data-testid="director-address-composer">
             <label class="field">
-              <span>Your message to the DM</span>
+              <span>Your message to the Game Director</span>
               <textarea data-testid="director-address-input" rows="3" placeholder="Ask about the scene, an NPC, or what you want to try.">${escapeHtml(directorDraft)}</textarea>
             </label>
-            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null}">
-              ${busy ? 'Sending…' : 'Send to DM'}
+            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null || directorDraft.trim().length === 0}">
+              ${busy ? 'Sending…' : 'Send to Game Director'}
             </button>
           </form>
         </div>`;
@@ -802,7 +799,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       · ${escapeHtml(PARTY_CHAT_MODE_LABELS[message.mode])}
                     </span>
                     <p>${escapeHtml(message.body)}</p>
-                    <span class="record-meta">${escapeHtml(message.createdAt)}</span>
+                    <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
                   </li>`,
                   )
                   .join('')}
@@ -813,18 +810,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <legend class="visually-hidden">Chat mode</legend>
             ${PARTY_CHAT_MODES.map(
               (mode) => `
-              <label class="option${chatMode === mode ? ' selected' : ''}">
+              <label class="option${chatMode === mode ? ' selected' : ''}${mode === 'speak_as_character' && !seated ? ' disabled' : ''}">
                 <input type="radio" name="chat-mode" value="${mode}"
-                  ${chatMode === mode ? 'checked' : ''} data-testid="chat-mode-${mode}" />
+                  ${chatMode === mode ? 'checked' : ''}
+                  ${mode === 'speak_as_character' && !seated ? 'disabled' : ''}
+                  data-testid="chat-mode-${mode}" />
                 <span class="option-label">${escapeHtml(PARTY_CHAT_MODE_LABELS[mode])}</span>
               </label>`,
             ).join('')}
           </fieldset>
+          ${
+            !seated
+              ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to use Speak as Character.</p>'
+              : ''
+          }
           <label class="field">
             <span>Message</span>
             <textarea data-testid="party-chat-input" rows="3" placeholder="Talk with your party…">${escapeHtml(draft)}</textarea>
           </label>
-          <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null}">
+          <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null || draft.trim().length === 0}">
             ${busy ? 'Sending…' : 'Send'}
           </button>
           ${
@@ -1000,12 +1004,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const banner = turnBanner();
     const showEndTurn = isOwnCombatTurn();
     const canDescribeTurn = seated && (explorationMode() || isOwnCombatTurn());
-    const version = tableState?.stateVersion ?? 0;
-    const sequence = tableState?.lastEventSequence ?? 0;
     return `
-      <p class="visually-hidden" data-testid="table-state-meta">
-        Table state version ${version} · last event sequence ${sequence}
-      </p>
       <div class="table-action-bar-inner table-action-bar-compact">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
@@ -1024,12 +1023,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="1"
-                    placeholder="What do you do? Describe your action — the DM narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+                    placeholder="What do you do? Describe your action — the Game Director narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
                 </label>
                 <div class="table-player-actions" data-testid="table-player-actions">
                   <button type="button" class="table-primary-action" data-testid="submit-player-action"
                     aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
-                    ${busy ? 'Sending…' : 'Tell the DM'}
+                    ${busy ? 'Sending…' : 'Tell the Game Director'}
                   </button>
                   ${
                     showEndTurn
@@ -1049,8 +1048,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function advancedControlsBody(): string {
-    const version = tableState?.stateVersion ?? 0;
-    const sequence = tableState?.lastEventSequence ?? 0;
     const ownAuthority = holdsOwnAuthority();
     const needsAuthority = !explorationMode();
     const syncDisabled =
@@ -1060,7 +1057,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const gateHint = composerGateHint();
     return `
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
-      <p class="record-meta" data-testid="table-event-meta">Last event sequence ${sequence}</p>
       <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
         <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
@@ -1407,6 +1403,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     root.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
       input.addEventListener('change', () => {
+        if (input.value === 'speak_as_character' && !seated) {
+          chatMode = 'table_talk';
+          render();
+          return;
+        }
         chatMode = input.value as PartyChatMode;
         render();
       });
@@ -1430,12 +1431,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
           try {
             ruleExplanation = await fetchRuleExplanation(selectedRuleId);
-            shell.announce(`${ruleExplanation.title} explanation loaded from structured rules.`);
+            shell.announce(`${ruleExplanation.title} explanation loaded.`);
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'The structured rule explanation could not be loaded.';
+                : 'The rule explanation could not be loaded.';
           } finally {
             busy = false;
             render();
@@ -1537,6 +1538,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (candidate === null || busy || draft.trim().length === 0) {
             return;
           }
+          if (chatMode === 'speak_as_character' && !seated) {
+            error = 'Seat a character before using Speak as Character.';
+            chatMode = 'table_talk';
+            render();
+            return;
+          }
           busy = true;
           error = null;
           render();
@@ -1621,6 +1628,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const input = root.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
+      const send = root.querySelector<HTMLButtonElement>('[data-testid="party-chat-send"]');
+      send?.setAttribute(
+        'aria-disabled',
+        String(busy || candidate === null || draft.trim().length === 0),
+      );
     });
 
     const directorInput = root.querySelector<HTMLTextAreaElement>(
@@ -1628,6 +1640,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     );
     directorInput?.addEventListener('input', () => {
       directorDraft = directorInput.value;
+      const send = root.querySelector<HTMLButtonElement>('[data-testid="director-address-send"]');
+      send?.setAttribute(
+        'aria-disabled',
+        String(busy || candidate === null || directorDraft.trim().length === 0),
+      );
     });
 
     root
@@ -1731,7 +1748,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               mechanicsSummary:
                 tableState === null
                   ? 'The table is quiet.'
-                  : `Table state version ${tableState.stateVersion} is visible to seated players.`,
+                  : 'The party is gathered at the table.',
             });
             lastNarration = narration.body;
             activeTab = 'chronicle';
@@ -1857,7 +1874,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('input', (event) => {
         if (event.target instanceof HTMLTextAreaElement) {
           tableNotes = event.target.value;
-          saveTableNotesToStorage(tableNotes);
+          saveTableNotesPreference(tableNotes);
         }
       });
 
@@ -1885,14 +1902,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               campaignId,
               body: playerActionDraft.trim(),
             });
-            directorReply = answered.reply;
+            directorReply = answered.body;
             playerActionDraft = '';
-            shell.announce('The DM heard your action.');
+            shell.announce('The Game Director heard your action.');
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'The DM could not respond right now.';
+                : 'The Game Director could not respond right now.';
           } finally {
             busy = false;
             render();
@@ -2263,6 +2280,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <h2 id="presence-heading">Who is connected</h2>
           ${presenceBody()}
         </section>
+        <p class="visually-hidden" data-testid="table-state-meta">
+          Table state version ${tableState?.stateVersion ?? 0} · last event sequence ${tableState?.lastEventSequence ?? 0}
+        </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
         ${
           mapBundle === null || mapBundle.notableFeatures.length === 0
@@ -2455,7 +2475,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     error = null;
-    tableNotes = loadTableNotesFromStorage();
+    tableNotes = loadTableNotesPreference();
     render();
     const presentationEpochAtLoad = presentationWriteEpoch;
     try {
@@ -2463,6 +2483,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       campaignName = detail.campaign.name;
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;
+      if (!seated && chatMode === 'speak_as_character') {
+        chatMode = 'table_talk';
+      }
       shell.setDocumentTitle(`Table · ${campaignName}`);
       const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed, memoryFeed] =
         await Promise.all([
