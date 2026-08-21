@@ -79,11 +79,19 @@ async function loadMapBuildContext(
 
 export class TableCommandError extends Error {
   readonly code: string;
+  readonly conflict?: import('../../shared/table-contention-contract.js').TableConflictDetail;
 
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    conflict?: import('../../shared/table-contention-contract.js').TableConflictDetail,
+  ) {
     super(message);
     this.name = 'TableCommandError';
     this.code = code;
+    if (conflict !== undefined) {
+      this.conflict = conflict;
+    }
   }
 }
 
@@ -134,6 +142,7 @@ interface StoredProjection extends StoredMapRuntime {
   readonly lastEventSequence: number;
   readonly lastEventId: string | null;
   readonly updatedAt: Timestamp | Date | null;
+  readonly npcSpotlight?: import('../../shared/table-contention-contract.js').NpcSpotlightProjection | null;
 }
 
 function toIso(value: Timestamp | Date | null | undefined): string | null {
@@ -183,6 +192,9 @@ function toTableProjection(
   stored: StoredProjection | null,
   recentEvents: readonly TableEventProjection[],
 ): TableStateProjection {
+  const spotlight = stored?.npcSpotlight ?? null;
+  const spotlightLive =
+    spotlight !== null && Date.parse(spotlight.expiresAt) > Date.now() ? spotlight : null;
   return {
     campaignId,
     stateVersion: stored?.stateVersion ?? 0,
@@ -190,6 +202,7 @@ function toTableProjection(
     lastEventId: stored?.lastEventId ?? null,
     updatedAt: toIso(stored?.updatedAt ?? null),
     recentEvents,
+    npcSpotlight: spotlightLive,
   };
 }
 
@@ -200,6 +213,75 @@ function emptyProjection(campaignId: string): StoredProjection {
     lastEventSequence: 0,
     lastEventId: null,
     updatedAt: null,
+    npcSpotlight: null,
+  };
+}
+
+export function classifyExplorationConflict(options: {
+  readonly commandType: TableCommandType;
+  readonly current: StoredProjection;
+  readonly expectedStateVersion: number;
+  readonly openEdgeId?: string;
+  readonly movePath?: readonly { readonly column: number; readonly row: number }[];
+  readonly actorSeatId: string;
+  readonly encounterActive: boolean;
+}): import('../../shared/table-contention-contract.js').TableConflictDetail {
+  const {
+    commandType,
+    current,
+    expectedStateVersion,
+    openEdgeId,
+    movePath,
+    actorSeatId,
+    encounterActive,
+  } = options;
+  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door')) {
+    return {
+      reason: 'scene_lock',
+      message:
+        'Combat started while your free-roam action was in flight. Initiative owns the scene now — re-declare on your turn.',
+      competingSummary: 'Encounter is active.',
+      serverStateVersion: current.stateVersion,
+    };
+  }
+  if (
+    commandType === 'table.open_door' &&
+    typeof openEdgeId === 'string' &&
+    current.doorStates?.[openEdgeId] === 'open'
+  ) {
+    return {
+      reason: 'same_door',
+      message:
+        'Someone else already opened that door. The latch is free — choose another beat or sync the table.',
+      edgeId: openEdgeId,
+      competingSummary: 'Door is already open.',
+      serverStateVersion: current.stateVersion,
+    };
+  }
+  if (commandType === 'table.move' && movePath !== undefined && movePath.length > 0) {
+    const destination = movePath[movePath.length - 1]!;
+    const occupant = (current.tokenPositions ?? []).find(
+      (token) =>
+        token.seatId !== actorSeatId &&
+        token.column === destination.column &&
+        token.row === destination.row,
+    );
+    if (occupant !== undefined) {
+      return {
+        reason: 'overlapping_move',
+        message:
+          'Another adventurer already stands on that square. Pick a different path or wait for them to move.',
+        contestedSquares: [{ column: destination.column, row: destination.row }],
+        competingSummary: `Square ${destination.column},${destination.row} is occupied.`,
+        serverStateVersion: current.stateVersion,
+      };
+    }
+  }
+  return {
+    reason: 'version_race',
+    message: `This table moved on (server version ${current.stateVersion}; you had ${expectedStateVersion}). Reload, then retry — or re-declare if another beat landed first.`,
+    competingSummary: `Table is now at version ${current.stateVersion}.`,
+    serverStateVersion: current.stateVersion,
   };
 }
 
@@ -571,10 +653,32 @@ export async function acceptTableCommand(options: {
     }
 
     if (current.stateVersion !== expectedStateVersion) {
-      throw new TableCommandError(
-        ERROR_CODES.STALE_STATE_VERSION,
-        `This table moved on (server version ${current.stateVersion}). Reload the table state, then retry.`,
-      );
+      const conflict = classifyExplorationConflict({
+        commandType,
+        current,
+        expectedStateVersion,
+        actorSeatId: seat.seatId,
+        encounterActive: encounter !== null && encounter.status === 'active',
+        ...(openEdgeId !== undefined ? { openEdgeId } : {}),
+        ...(movePath !== undefined ? { movePath } : {}),
+      });
+      throw new TableCommandError(ERROR_CODES.STALE_STATE_VERSION, conflict.message, conflict);
+    }
+
+    if (
+      commandType === 'table.open_door' &&
+      openEdgeId !== undefined &&
+      current.doorStates?.[openEdgeId] === 'open'
+    ) {
+      const conflict = classifyExplorationConflict({
+        commandType,
+        current,
+        expectedStateVersion,
+        openEdgeId,
+        actorSeatId: seat.seatId,
+        encounterActive: false,
+      });
+      throw new TableCommandError(ERROR_CODES.STALE_STATE_VERSION, conflict.message, conflict);
     }
 
     const commandId = randomUUID();
@@ -652,6 +756,7 @@ export async function acceptTableCommand(options: {
       tokenPositions,
       doorStates,
       exploredByAccount,
+      npcSpotlight: current.npcSpotlight ?? null,
     };
 
     transaction.set(firestore.collection(COLLECTIONS.campaignCommands).doc(commandId), command);

@@ -41,6 +41,10 @@ import type {
   ActionDraftSuggestion,
   TimingAuthorityProjection,
 } from '../../shared/timing-authority-contract.js';
+import {
+  deriveEpicFramingTags,
+  isRulesIntentDraftCommand,
+} from '../../shared/intent-draft-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
@@ -63,6 +67,7 @@ import {
   requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
+  yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
@@ -273,6 +278,100 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     );
   }
 
+  function markIntentDraftStale(reason: string): void {
+    if (intentDraft === null) {
+      return;
+    }
+    if (intentDraft.interceptState !== 'stale') {
+      intentDraft = { ...intentDraft, interceptState: 'stale' };
+    }
+    appendDmThread('system', 'Table', reason, 'system');
+  }
+
+  function presentTableConflict(failure: ApiFailure): void {
+    const detail = failure.conflict;
+    const headline =
+      detail === undefined
+        ? failure.message
+        : detail.reason === 'same_door'
+          ? `Conflict — same door: ${detail.message}`
+          : detail.reason === 'overlapping_move'
+            ? `Conflict — overlapping move: ${detail.message}`
+            : detail.reason === 'scene_lock'
+              ? `Conflict — scene lock: ${detail.message}`
+              : detail.reason === 'npc_spotlight'
+                ? `Conflict — NPC floor: ${detail.message}`
+                : `Conflict — table moved: ${detail.message}`;
+    if (intentDraft !== null) {
+      markIntentDraftStale(headline);
+    } else {
+      appendDmThread('system', 'Table', headline, 'system');
+    }
+    if (detail?.competingSummary) {
+      appendDmThread(
+        'system',
+        'Table',
+        `Competing beat: ${detail.competingSummary}`,
+        'system',
+      );
+    }
+  }
+
+  function draftFromInterpret(
+    interpreted: import('../../shared/ai-director-contract.js').IntentInterpretResponse,
+  ): ActionDraftSuggestion {
+    const projectionVersionAtIssue =
+      interpreted.projectionVersionAtIssue ?? tableState?.stateVersion;
+    return {
+      draftId: interpreted.draftId,
+      source: 'action_composer_interpret',
+      campaignId,
+      proposedCommandType: interpreted.proposedCommandType,
+      summary: interpreted.summary,
+      ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
+      ...(interpreted.edgeId !== undefined ? { edgeId: interpreted.edgeId } : {}),
+      ...(interpreted.targetCombatantId !== undefined
+        ? { targetCombatantId: interpreted.targetCombatantId }
+        : {}),
+      ...(interpreted.spellId !== undefined ? { spellId: interpreted.spellId } : {}),
+      ...(interpreted.itemId !== undefined ? { itemId: interpreted.itemId } : {}),
+      ...(interpreted.attackId !== undefined ? { attackId: interpreted.attackId } : {}),
+      ...(interpreted.area !== undefined ? { area: interpreted.area } : {}),
+      ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
+      interceptState: interpreted.interceptState,
+      createdAt: interpreted.createdAt,
+    };
+  }
+
+  function fieldsFromIntentDraft(draft: ActionDraftSuggestion): RulesCommandFields {
+    const seatedCombatant = ownCombatant();
+    if (draft.proposedCommandType === 'combat.cast_spell' && draft.spellId === 'burning-hands') {
+      return {
+        spellId: 'burning-hands',
+        area: {
+          shape: 'cone',
+          origin: {
+            column: moveTarget?.column ?? seatedCombatant?.position.column ?? 1,
+            row: moveTarget?.row ?? seatedCombatant?.position.row ?? 1,
+            elevationFeet: seatedCombatant?.position.elevationFeet ?? 0,
+          },
+          sizeFeet: 15,
+          heightFeet: 10,
+          direction: 'east',
+        },
+      };
+    }
+    return {
+      ...(draft.targetCombatantId !== undefined
+        ? { targetCombatantId: draft.targetCombatantId }
+        : {}),
+      ...(draft.spellId !== undefined ? { spellId: draft.spellId } : {}),
+      ...(draft.itemId !== undefined ? { itemId: draft.itemId } : {}),
+      ...(draft.attackId !== undefined ? { attackId: draft.attackId } : {}),
+      ...(draft.area !== undefined ? { area: draft.area } : {}),
+    };
+  }
+
   function patchDmPlayThread(): void {
     const host = container.querySelector('[data-testid="dm-play-thread"]');
     if (host === null) {
@@ -288,7 +387,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
-  async function narrateIntoDmThread(mechanicsSummary: string): Promise<void> {
+  async function narrateIntoDmThread(
+    mechanicsSummary: string,
+    rolls: readonly number[] = [],
+  ): Promise<void> {
     if (candidate === null || mechanicsSummary.trim().length === 0) {
       return;
     }
@@ -297,14 +399,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         candidateId: candidate.candidateId,
         campaignId,
         mechanicsSummary,
+        rolls,
       });
       lastNarration = narration.body;
+      const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
       appendDmThread(
         'dm',
         narration.directorIdentityLabel || directorIdentityLabel,
         narration.body,
         'narration',
       );
+      if (tags.length > 0) {
+        appendDmThread(
+          'system',
+          'Table',
+          `Epic framing (outcome unchanged): ${tags.map((tag) => tag.replace(/_/g, ' ')).join(', ')}.`,
+          'system',
+        );
+      }
       if (textToSpeechEnabled && 'speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(narration.body);
         window.speechSynthesis.speak(utterance);
@@ -952,8 +1064,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     const messages = partyChat?.messages ?? [];
+    const spotlight = tableState?.npcSpotlight ?? null;
+    const holdOwnSpotlight =
+      spotlight !== null && ownSeatId !== null && spotlight.holderSeatId === ownSeatId;
     return `
       <div class="dock-pane" data-testid="party-chat-pane">
+        ${
+          spotlight === null
+            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is open — Speak as Character and name them (for example Lysa Quill).</p>'
+            : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
+                <p data-testid="npc-spotlight-meta">
+                  Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
+                  ${escapeHtml(spotlight.holderDisplayName)}
+                  ${holdOwnSpotlight ? '(you)' : ''}
+                </p>
+                ${
+                  spotlight.lastMessagePreview === null
+                    ? ''
+                    : `<p class="record-meta" data-testid="npc-spotlight-preview">${escapeHtml(spotlight.lastMessagePreview)}</p>`
+                }
+                ${
+                  holdOwnSpotlight
+                    ? `<button type="button" data-testid="yield-npc-spotlight">Yield floor</button>`
+                    : `<p class="record-meta">Wait for the spotlight to clear before addressing ${escapeHtml(spotlight.npcName)}.</p>`
+                }
+              </div>`
+        }
         ${
           messages.length === 0
             ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet. Say hello to your party.</p>'
@@ -965,6 +1101,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     <span class="record-note">
                       <strong>${escapeHtml(message.senderDisplayLabel)}</strong>
                       · ${escapeHtml(PARTY_CHAT_MODE_LABELS[message.mode])}
+                      ${
+                        message.addressedNpcName
+                          ? ` · to ${escapeHtml(message.addressedNpcName)}`
+                          : ''
+                      }
                     </span>
                     <p>${escapeHtml(message.body)}</p>
                     <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
@@ -1064,6 +1205,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <div class="rules-heading-row">
           <div>
             <h3 id="rules-encounter-heading">Training encounter</h3>
+            <p class="record-meta" data-testid="rules-tools-secondary-note">
+              Prefer declaring what you do in the Actions thread. These controls are training shortcuts.
+            </p>
             <p class="record-meta" data-testid="progression-meta">
               Level ${progression?.level ?? 1} · ${progression?.experiencePoints ?? 0} XP
               ${progression?.levelUpAvailable === true ? ' · Level Up available' : ''}
@@ -1187,19 +1331,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
         </section>
         <div class="dm-play-thread" data-testid="dm-play-thread">
-          <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · play thread</p>
+          <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
+          <p class="record-meta" data-testid="dm-beat-queue-hint">
+            Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
+          </p>
           ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
           ${
             intentDraft === null
               ? ''
-              : `<div class="intent-intercept dm-thread-intent" data-testid="intent-intercept">
+              : `<div class="intent-intercept dm-thread-intent${intentDraft.interceptState === 'stale' ? ' intent-stale' : ''}" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
                   <p data-testid="intent-intercept-summary">${escapeHtml(intentDraft.summary)}</p>
-                  <div class="action-composer-controls">
+                  ${
+                    intentDraft.interceptState === 'stale'
+                      ? `<p class="message error" data-testid="intent-intercept-stale">Scene changed — cancel and re-declare.</p>
+                         <div class="action-composer-controls">
+                           <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss stale draft</button>
+                         </div>`
+                      : `<div class="action-composer-controls">
                     <button type="button" data-testid="confirm-intent-intercept"
                       aria-disabled="${busy || (!explorationMode() && !holdsOwnAuthority())}">Confirm action</button>
                     <button type="button" data-testid="cancel-intent-intercept"
                       aria-disabled="${busy}">Cancel draft</button>
-                  </div>
+                  </div>`
+                  }
                 </div>`
           }
         </div>
@@ -1495,6 +1649,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
       if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        presentTableConflict(failure);
         try {
           tableState = await fetchTableState(campaignId);
           mapBundle = await fetchCampaignMap(campaignId);
@@ -1564,12 +1719,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableState = accepted.table;
       if (accepted.encounter !== undefined) encounter = accepted.encounter;
       if (accepted.progression !== undefined) progression = accepted.progression;
+      if (commandType === 'encounter.begin' || commandType === 'initiative.roll') {
+        markIntentDraftStale(
+          commandType === 'encounter.begin'
+            ? 'Scene lock: encounter began. Open free-roam drafts are stale — re-declare if you still want that action.'
+            : 'Scene lock: initiative is live. Open free-roam drafts are stale — re-declare on your turn.',
+        );
+      }
       shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
       const summary = accepted.event.summary?.trim() ?? null;
+      const rolls = accepted.event.rolls ?? [];
       if (summary) {
         appendDmThread('system', 'Table', summary, 'mechanics');
         if (shouldAutoNarrateRulesCommand(commandType)) {
-          void narrateIntoDmThread(summary);
+          void narrateIntoDmThread(summary, rolls);
         } else {
           patchDmPlayThread();
         }
@@ -1595,6 +1758,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? failure.message
           : 'The rules action could not be resolved.';
       if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        presentTableConflict(failure);
         const [tableFeed, rulesFeed] = await Promise.all([
           fetchTableState(campaignId),
           fetchRulesState(campaignId),
@@ -1766,13 +1930,63 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               body: draft.trim(),
             });
             draft = '';
-            partyChat = await fetchPartyChat(campaignId);
-            shell.announce('Party Chat message sent. It did not become a command.');
+            const [chatFeed, tableFeed] = await Promise.all([
+              fetchPartyChat(campaignId),
+              fetchTableState(campaignId),
+            ]);
+            partyChat = chatFeed;
+            tableState = tableFeed;
+            shell.announce(
+              chatMode === 'speak_as_character'
+                ? 'Spoken in character. Party Chat never becomes a mechanical command.'
+                : 'Party Chat message sent. It did not become a command.',
+            );
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Party Chat message could not be sent.';
+            if (
+              failure instanceof ApiFailure &&
+              (failure.code === 'NPC_SPOTLIGHT_HELD' || failure.code === 'STALE_STATE_VERSION')
+            ) {
+              presentTableConflict(failure);
+              try {
+                tableState = await fetchTableState(campaignId);
+              } catch {
+                // Keep the spotlight conflict visible.
+              }
+            }
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="yield-npc-spotlight"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await yieldNpcSpotlight({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            tableState = await fetchTableState(campaignId);
+            appendDmThread('system', 'Table', 'You yielded the NPC floor.', 'system');
+            shell.announce('NPC floor yielded.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Could not yield the NPC floor.';
           } finally {
             busy = false;
             render();
@@ -1905,6 +2119,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const nlInput = root.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
     nlInput?.addEventListener('input', () => {
       nlIntentText = nlInput.value;
+      root
+        .querySelector<HTMLButtonElement>('[data-testid="interpret-nl-intent"]')
+        ?.setAttribute(
+          'aria-disabled',
+          String(
+            busy ||
+              candidate === null ||
+              !seated ||
+              (!explorationMode() && !holdsOwnAuthority()) ||
+              nlIntentText.trim().length === 0,
+          ),
+        );
     });
 
     root
@@ -1931,16 +2157,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: nlIntentText.trim(),
               moveTarget,
             });
-            intentDraft = {
-              draftId: interpreted.draftId,
-              source: 'action_composer_interpret',
-              campaignId,
-              proposedCommandType: interpreted.proposedCommandType,
-              summary: interpreted.summary,
-              ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
-              interceptState: interpreted.interceptState,
-              createdAt: interpreted.createdAt,
-            };
+            intentDraft = draftFromInterpret(interpreted);
+            appendDmThread('player', 'You', nlIntentText.trim(), 'declaration');
             appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
             shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
           } catch (failure) {
@@ -2106,6 +2324,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('input', (event) => {
         if (event.target instanceof HTMLTextAreaElement) {
           playerActionDraft = event.target.value;
+          root
+            .querySelector<HTMLButtonElement>('[data-testid="submit-player-action"]')
+            ?.setAttribute(
+              'aria-disabled',
+              String(busy || candidate === null || playerActionDraft.trim().length === 0),
+            );
         }
       });
 
@@ -2132,16 +2356,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: declaration,
               moveTarget,
             });
-            intentDraft = {
-              draftId: interpreted.draftId,
-              source: 'action_composer_interpret',
-              campaignId,
-              proposedCommandType: interpreted.proposedCommandType,
-              summary: interpreted.summary,
-              ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
-              interceptState: interpreted.interceptState,
-              createdAt: interpreted.createdAt,
-            };
+            intentDraft = draftFromInterpret(interpreted);
             appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
             shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
           } catch (failure) {
@@ -2197,6 +2412,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             error =
               failure instanceof ApiFailure ? failure.message : 'Table sync could not be committed.';
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+              presentTableConflict(failure);
               try {
                 tableState = await fetchTableState(campaignId);
               } catch {
@@ -2352,10 +2568,33 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ) {
             return;
           }
+          if (intentDraft.interceptState === 'stale') {
+            error = 'That draft is stale — the scene moved on. Re-declare your action.';
+            render();
+            return;
+          }
+          if (
+            intentDraft.projectionVersionAtIssue !== undefined &&
+            intentDraft.projectionVersionAtIssue !== tableState.stateVersion
+          ) {
+            markIntentDraftStale(
+              'Table conflict: the scene changed while this draft was open. Re-declare against the current beat.',
+            );
+            render();
+            return;
+          }
           if (!explorationMode() && (timingAuthority === null || !holdsOwnAuthority())) {
             return;
           }
           const draft = intentDraft;
+          if (isRulesIntentDraftCommand(draft.proposedCommandType)) {
+            intentDraft = null;
+            await submitRulesAction(
+              draft.proposedCommandType,
+              fieldsFromIntentDraft(draft),
+            );
+            return;
+          }
           busy = true;
           error = null;
           render();
@@ -2381,7 +2620,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             shell.announce(`Intent Intercept confirmed · ${draft.proposedCommandType}.`);
             intentDraft = null;
             if (shouldAutoNarrateRulesCommand(draft.proposedCommandType)) {
-              void narrateIntoDmThread(summary);
+              void narrateIntoDmThread(summary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();
             }
@@ -2390,6 +2629,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Intent Intercept could not be confirmed.';
+            if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+              presentTableConflict(failure);
+              try {
+                tableState = await fetchTableState(campaignId);
+              } catch {
+                // Keep the conflict message visible.
+              }
+            }
           } finally {
             busy = false;
             render();
@@ -2634,6 +2881,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const priorChatCount = partyChat?.messages.length ?? 0;
     const priorChronicleCount = chronicle?.entries.length ?? 0;
     const priorMemoryUpdatedAt = memory?.updatedAt ?? null;
+    const priorSpotlightKey = tableState?.npcSpotlight
+      ? `${tableState.npcSpotlight.npcId}:${tableState.npcSpotlight.holderSeatId}:${tableState.npcSpotlight.expiresAt}`
+      : null;
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
@@ -2646,6 +2896,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       encounter = rulesFeed.encounter;
       progression = rulesFeed.progression;
     }
+    const nextSpotlightKey = tableFeed.npcSpotlight
+      ? `${tableFeed.npcSpotlight.npcId}:${tableFeed.npcSpotlight.holderSeatId}:${tableFeed.npcSpotlight.expiresAt}`
+      : null;
     const changed =
       options?.forceRender === true ||
       tableFeed.stateVersion !== priorVersion ||
@@ -2654,7 +2907,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       (timingFeed.authority?.state ?? null) !== priorAuthorityState ||
       chatFeed.messages.length !== priorChatCount ||
       chronicleFeed.entries.length !== priorChronicleCount ||
-      (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt;
+      (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt ||
+      nextSpotlightKey !== priorSpotlightKey;
     if (changed) {
       render();
     } else if (mapBundle !== null && stageHandle !== null) {

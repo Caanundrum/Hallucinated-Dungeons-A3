@@ -116,6 +116,10 @@ import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
 import {
+  NpcSpotlightError,
+  yieldNpcSpotlight,
+} from '../table/npc-spotlight.js';
+import {
   getAccountDeletionStatus,
   requestAccountDeletion,
 } from '../privacy/account-deletion.js';
@@ -236,6 +240,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.ILLEGAL_PATH]: 409,
   [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
   [ERROR_CODES.TIMING_AUTHORITY_INVALID]: 409,
+  [ERROR_CODES.NPC_SPOTLIGHT_HELD]: 409,
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]: 503,
   [ERROR_CODES.SESSION_ALREADY_SUSPENDED]: 409,
   [ERROR_CODES.SESSION_NOT_SUSPENDED]: 409,
@@ -285,6 +290,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Claim Active Turn before committing table actions.',
   [ERROR_CODES.TIMING_AUTHORITY_INVALID]:
     'Your Timing Authority expired or belongs to another seat.',
+  [ERROR_CODES.NPC_SPOTLIGHT_HELD]:
+    'Another adventurer currently holds the floor with that NPC. Wait for the spotlight to clear, then speak.',
   [ERROR_CODES.UPSTREAM_UNAVAILABLE]:
     'The local emulator suite did not respond. Confirm the Local Arena is running, then retry.',
   [ERROR_CODES.SESSION_ALREADY_SUSPENDED]:
@@ -1874,6 +1881,19 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      const npcSpotlightYieldMatch =
+        /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/npc-spotlight\/yield$/.exec(path);
+      if (npcSpotlightYieldMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = npcSpotlightYieldMatch[1]!;
+        const cleared = await yieldNpcSpotlight({ firestore, accountId, campaignId });
+        sendJson(response, 200, { cleared });
+        return;
+      }
+
       const presenceMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/presence$/.exec(path);
       if (presenceMatch !== null) {
         const campaignId = presenceMatch[1]!;
@@ -2083,6 +2103,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.BAD_REQUEST);
           return;
         }
+        const rollsRaw = (body as { rolls?: unknown }).rolls;
+        const rolls = Array.isArray(rollsRaw)
+          ? rollsRaw.filter((value): value is number => typeof value === 'number')
+          : undefined;
         await readCampaignDetail({ firestore, accountId, campaignId });
         try {
           const narration = await narrateVisibleBeat({
@@ -2090,6 +2114,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             campaignId,
             accountId,
             mechanicsSummary,
+            ...(rolls !== undefined ? { rolls } : {}),
             environmentClass: env.environmentClass,
             firebaseProjectId: env.firebaseProjectId,
           });
@@ -2323,13 +2348,17 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         error instanceof TableCommandError ||
         error instanceof MapProjectionError ||
         error instanceof TimingAuthorityError ||
-        error instanceof RulesCommandError
+        error instanceof RulesCommandError ||
+        error instanceof NpcSpotlightError
       ) {
         const code = error.code as ErrorCode;
         if (code in ERROR_STATUS) {
           sendJson(response, ERROR_STATUS[code], {
             error: code,
             message: error.message,
+            ...('conflict' in error && error.conflict !== undefined
+              ? { conflict: error.conflict }
+              : {}),
           } satisfies ApiErrorBody);
           return;
         }

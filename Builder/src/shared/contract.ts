@@ -8,6 +8,7 @@
  */
 
 import type { PublicSurface } from './public-surface-contract.js';
+import type { TableConflictDetail } from './table-contention-contract.js';
 
 export const ENVIRONMENT_CLASSES = ['local', 'milestone', 'launch'] as const;
 export type EnvironmentClass = (typeof ENVIRONMENT_CLASSES)[number];
@@ -51,6 +52,7 @@ export const ERROR_CODES = {
   ILLEGAL_PATH: 'ILLEGAL_PATH',
   TIMING_AUTHORITY_REQUIRED: 'TIMING_AUTHORITY_REQUIRED',
   TIMING_AUTHORITY_INVALID: 'TIMING_AUTHORITY_INVALID',
+  NPC_SPOTLIGHT_HELD: 'NPC_SPOTLIGHT_HELD',
   UPSTREAM_UNAVAILABLE: 'UPSTREAM_UNAVAILABLE',
   SESSION_ALREADY_SUSPENDED: 'SESSION_ALREADY_SUSPENDED',
   SESSION_NOT_SUSPENDED: 'SESSION_NOT_SUSPENDED',
@@ -61,6 +63,7 @@ export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 export interface ApiErrorBody {
   readonly error: ErrorCode;
   readonly message: string;
+  readonly conflict?: TableConflictDetail;
 }
 
 /** Identity of the running candidate, safe to expose to the browser. */

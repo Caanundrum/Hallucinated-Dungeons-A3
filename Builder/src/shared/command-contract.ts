@@ -14,6 +14,7 @@ import type {
   CharacterProgressionProjection,
   EncounterProjection,
 } from './rules-combat-contract.js';
+import type { NpcSpotlightProjection } from './table-contention-contract.js';
 
 /** Commands accepted by the canonical table command gateway. */
 export const TABLE_COMMAND_TYPES = [
@@ -109,6 +110,8 @@ export interface TableStateProjection {
   readonly lastEventId: string | null;
   readonly updatedAt: string | null;
   readonly recentEvents: readonly TableEventProjection[];
+  /** Speak-as-Character floor for one NPC, if any. */
+  readonly npcSpotlight: NpcSpotlightProjection | null;
 }
 
 export interface TableCommandAcceptResponse {

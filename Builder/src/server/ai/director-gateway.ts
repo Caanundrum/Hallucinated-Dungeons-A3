@@ -35,10 +35,18 @@ import type {
   IntentInterpretResponse,
   ProviderComplianceEntry,
 } from '../../shared/ai-director-contract.js';
+import {
+  deriveEpicFramingTags,
+  type IntentDraftCommandType,
+} from '../../shared/intent-draft-contract.js';
 import type { NarrationDensity } from '../../shared/settings-contract.js';
+import type { EncounterProjection } from '../../shared/rules-combat-contract.js';
 import { getAiKillSwitch } from '../admin/admin-service.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { fetchRulesState } from '../rules/engine/rules-commands.js';
+import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
+import { fetchTableState } from '../table/commands.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -63,6 +71,8 @@ const NARRATOR_CONSTITUTION = [
   'The mechanics summary is authoritative and final. Narrate what the player experiences from it.',
   'Use the AUTHORITATIVE VISIBLE GAME STATE for spatial awareness, who is present, and atmosphere.',
   'Never invent damage, conditions, hidden facts, or change success into failure (or the reverse).',
+  'Never change Hit Points, kill a creature the mechanics left standing, or spare one the mechanics dropped.',
+  'If framing tags are present (crit, finishing_blow, near_miss, heroic_failure, bold_stunt, overkill), lean into cinematic emphasis for that beat without altering the outcome.',
   'Write in second person. Keep paragraphs short. Do not open with a title or heading.',
   'If the player tried something not present in the scene state, clarify the gap in-world without granting it.',
 ].join(' ');
@@ -322,11 +332,45 @@ export async function interpretNaturalLanguageIntent(options: {
 } & DirectorLiveOptions): Promise<IntentInterpretResponse> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
-  const text = options.text.trim().toLowerCase();
-  let proposedCommandType: IntentInterpretResponse['proposedCommandType'] = 'table.sync';
+  const rawText = options.text.trim();
+  const text = rawText.toLowerCase();
+
+  let proposedCommandType: IntentDraftCommandType = 'table.sync';
   let summary =
-    'Intent Intercept draft: commit a table sync from your natural-language declaration.';
+    'Intent Intercept draft: sync the table from your declaration. Confirm only commits what the engine can resolve.';
   let path: IntentInterpretResponse['path'];
+  let targetCombatantId: string | undefined;
+  let spellId: string | undefined;
+  let itemId: string | undefined;
+  let projectionVersionAtIssue: number | undefined;
+
+  let encounter: EncounterProjection | null = null;
+  try {
+    const [rules, table] = await Promise.all([
+      fetchRulesState({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      }),
+      fetchTableState({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      }),
+    ]);
+    encounter = rules.encounter;
+    projectionVersionAtIssue = table.stateVersion;
+  } catch {
+    encounter = null;
+  }
+
+  const combatActive = encounter !== null && encounter.status === 'active';
+  const foes =
+    encounter?.combatants.filter(
+      (combatant) => combatant.side === 'foe' && combatant.currentHitPoints > 0,
+    ) ?? [];
+  const party =
+    encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
   if (/(move|walk|go|step|approach)/.test(text) && options.moveTarget) {
     proposedCommandType = 'table.move';
@@ -336,15 +380,68 @@ export async function interpretNaturalLanguageIntent(options: {
     proposedCommandType = 'table.open_door';
     summary =
       'Intent Intercept draft: open the selected door. Confirm to submit through Timing Authority.';
-  } else if (/(attack|strike|hit|cast|spell)/.test(text)) {
-    summary =
-      'Intent Intercept draft: your words sound combat-bound. Confirm a table sync first, then use the combat controls — this gateway will not invent attack resolution.';
-    proposedCommandType = 'table.sync';
+  } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
+    const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
+    if (!combatActive || self === null) {
+      summary =
+        'Intent Intercept draft: you want to use a Potion of Healing, but there is no active combat seat to spend it from. Begin encounter and take your turn, then declare again.';
+      proposedCommandType = 'table.sync';
+    } else {
+      proposedCommandType = 'inventory.use_item';
+      itemId = 'healing-potion';
+      targetCombatantId = self.combatantId;
+      summary = `Intent Intercept draft: use a Potion of Healing on ${self.name}. Confirm to let the engine resolve the heal — no invented numbers.`;
+    }
+  } else if (/(cast|spell|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
+    const matchedSpell = matchSpellFromText(text);
+    const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
+    if (!combatActive) {
+      summary =
+        'Intent Intercept draft: that sounds like a spell, but combat is not active. Begin encounter and roll initiative, then declare the cast again.';
+      proposedCommandType = 'table.sync';
+    } else if (matchedSpell === null) {
+      summary =
+        'Intent Intercept draft: name which prepared spell you cast (for example Fire Bolt or Burning Hands), then declare again.';
+      proposedCommandType = 'table.sync';
+    } else if (matchedSpell.targetKind === 'area') {
+      proposedCommandType = 'combat.cast_spell';
+      spellId = matchedSpell.spellId;
+      summary = `Intent Intercept draft: cast ${matchedSpell.label}. Confirm to resolve the area with the engine (origin from your position or selected square).`;
+    } else if (matchedSpell.targetKind === 'self') {
+      const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
+      proposedCommandType = 'combat.cast_spell';
+      spellId = matchedSpell.spellId;
+      if (self !== null) targetCombatantId = self.combatantId;
+      summary = `Intent Intercept draft: cast ${matchedSpell.label} on yourself. Confirm to resolve with the engine.`;
+    } else if (target === null) {
+      summary = `Intent Intercept draft: cast ${matchedSpell.label}, but name which foe (for example Training Dummy or Practice Goblin).`;
+      proposedCommandType = 'table.sync';
+    } else {
+      proposedCommandType = 'combat.cast_spell';
+      spellId = matchedSpell.spellId;
+      targetCombatantId = target.combatantId;
+      summary = `Intent Intercept draft: cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine — flavor stays; numbers stay server-authored.`;
+    }
+  } else if (/(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)/.test(text)) {
+    const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
+    if (!combatActive) {
+      summary =
+        'Intent Intercept draft: that sounds like an attack, but combat is not active. Begin encounter and roll initiative, then declare the attack again.';
+      proposedCommandType = 'table.sync';
+    } else if (target === null) {
+      summary =
+        'Intent Intercept draft: say who you attack (Training Dummy or Practice Goblin), then declare again.';
+      proposedCommandType = 'table.sync';
+    } else {
+      proposedCommandType = 'combat.attack';
+      targetCombatantId = target.combatantId;
+      summary = `Intent Intercept draft: attack ${target.name} with your weapon. Confirm to let the engine roll to hit and damage — the DM will narrate the true result.`;
+    }
   }
 
   const liveSummary = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent Intercept summary for the player in one or two sentences. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action.`,
-    userPrompt: `Player said: ${options.text.trim()}\nDeterministic summary: ${summary}`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent Intercept summary for the player in one or two sentences. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action or mechanical outcome.`,
+    userPrompt: `Player said: ${rawText}\nDeterministic summary: ${summary}`,
   });
   if (liveSummary !== null) {
     summary = liveSummary;
@@ -365,16 +462,68 @@ export async function interpretNaturalLanguageIntent(options: {
   return {
     draftId: randomUUID(),
     campaignId: options.campaignId,
-    summary: liveSummary === null
-      ? `${summary} (${DIRECTOR_IDENTITY_LABELS[director.identity]} · ${DIRECTOR_PERSONALITY_LABELS[director.personality]})`
-      : summary,
+    summary:
+      liveSummary === null
+        ? `${summary} (${DIRECTOR_IDENTITY_LABELS[director.identity]} · ${DIRECTOR_PERSONALITY_LABELS[director.personality]})`
+        : summary,
     proposedCommandType,
     ...(path !== undefined ? { path } : {}),
+    ...(targetCombatantId !== undefined ? { targetCombatantId } : {}),
+    ...(spellId !== undefined ? { spellId } : {}),
+    ...(itemId !== undefined ? { itemId } : {}),
+    ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
     interceptState: 'awaiting_confirmation',
     source: 'action_composer_nl',
     manifest,
     createdAt,
   };
+}
+
+function matchSpellFromText(text: string): (typeof SPELL_EFFECTS)[string] | null {
+  const entries = Object.values(SPELL_EFFECTS);
+  for (const effect of entries) {
+    const label = effect.label.toLowerCase();
+    const id = effect.spellId.replace(/-/g, ' ');
+    if (text.includes(label) || text.includes(id) || text.includes(effect.spellId)) {
+      return effect;
+    }
+  }
+  return null;
+}
+
+function matchCombatantFromText(
+  text: string,
+  combatants: EncounterProjection['combatants'],
+): EncounterProjection['combatants'][number] | null {
+  let best: EncounterProjection['combatants'][number] | null = null;
+  let bestScore = 0;
+  for (const combatant of combatants) {
+    const nameTokens = combatant.name
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((token) => token.length > 2);
+    const idTokens = combatant.combatantId
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 2);
+    const score = [...new Set([...nameTokens, ...idTokens])].filter((token) =>
+      text.includes(token),
+    ).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = combatant;
+    }
+  }
+  if (best !== null) {
+    return best;
+  }
+  if (/kobold|goblin/.test(text)) {
+    return combatants.find((combatant) => /goblin/i.test(combatant.name)) ?? null;
+  }
+  if (/dummy|training/.test(text)) {
+    return combatants.find((combatant) => /dummy/i.test(combatant.name)) ?? null;
+  }
+  return null;
 }
 
 export async function answerDirectorAddress(options: {
@@ -442,6 +591,8 @@ export async function narrateVisibleBeat(options: {
   readonly campaignId: string;
   readonly accountId: string;
   readonly mechanicsSummary: string;
+  readonly rolls?: readonly number[];
+  readonly framingTags?: readonly import('../../shared/intent-draft-contract.js').EpicFramingTag[];
 } & DirectorLiveOptions): Promise<DirectorNarrationProjection> {
   await requireAiEnabled(options.firestore);
   const director = await loadDirectorConfig(options.firestore, options.campaignId);
@@ -450,23 +601,37 @@ export async function narrateVisibleBeat(options: {
     accountId: options.accountId,
   });
   const narrationDensity = playerSettings.reserved.narrationDensity;
+  const framingTags =
+    options.framingTags ?? deriveEpicFramingTags(options.mechanicsSummary, options.rolls ?? []);
   const context = await assembleDirectorVisibleContext({
     firestore: options.firestore,
     campaignId: options.campaignId,
     accountId: options.accountId,
   });
   const createdAt = new Date().toISOString();
+  const emphasis =
+    framingTags.length === 0
+      ? ''
+      : ` Framing tags (emphasis only, never change outcomes): ${framingTags.join(', ')}.`;
+  const effectiveDensity =
+    framingTags.includes('crit') ||
+    framingTags.includes('finishing_blow') ||
+    framingTags.includes('overkill')
+      ? narrationDensity === 'concise'
+        ? 'balanced'
+        : narrationDensity
+      : narrationDensity;
   const simulated = composeNarrationBody(
     options.mechanicsSummary,
     director.personality,
-    narrationDensity,
+    effectiveDensity,
   );
   const liveBody = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${narrationDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts).`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts).${emphasis}`,
     userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}`,
   });
   const body = liveBody ?? simulated.body;
-  const humorApplied = liveBody === null ? simulated.humorApplied : narrationDensity !== 'concise';
+  const humorApplied = liveBody === null ? simulated.humorApplied : effectiveDensity !== 'concise';
   const manifest = buildManifest({
     role: 'narrator',
     campaignId: options.campaignId,
@@ -485,7 +650,8 @@ export async function narrateVisibleBeat(options: {
     mechanicsFirstSummary: options.mechanicsSummary,
     humorApplied,
     fallbackUsed: liveGeminiEnabled(options) && liveBody === null,
-    narrationDensity,
+    narrationDensity: effectiveDensity,
+    framingTags,
     directorIdentity: director.identity,
     directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[director.identity],
     directorPersonality: director.personality,
