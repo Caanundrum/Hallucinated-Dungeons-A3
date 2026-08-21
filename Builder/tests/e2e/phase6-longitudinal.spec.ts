@@ -89,8 +89,8 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
     }
     await page.goto(`/campaigns/${campaignId}`);
     await dismissIntroIfPresent(page);
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
+    await page.getByTestId('confirm-close-chapter-confirm').click();
     await expect(page.getByTestId('session-action-message')).toContainText(
       /Mist-Cut Caves|chapter closed/i,
     );
@@ -136,8 +136,8 @@ test.describe('Phase 6 longitudinal Emberferry multi-session journey', () => {
 
     await page.goto(`/campaigns/${campaignId}`);
     await dismissIntroIfPresent(page);
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
+    await page.getByTestId('confirm-close-chapter-confirm').click();
     await expect(page.getByTestId('current-chapter')).toContainText('The Drowned Bell Tower');
     await expect(page.getByTestId('session-action-message')).toContainText(
       /Bell Tower|chapter closed/i,

@@ -16,6 +16,9 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 export const ACCOUNT_DELETION_LOCAL_ARENA_NOTICE =
   'Local Arena only: this records a request to clear local development data in the emulator. It is not a hosted production account-deletion claim.';
 
+export const ACCOUNT_DELETION_HOSTED_NOTICE =
+  'This records a request to delete hosted account data for Invite-Only Alpha. Fulfillment follows the Privacy Notice; it is not an immediate wipe of every Alpha record.';
+
 export interface AccountDeletionStatus {
   readonly requested: boolean;
   readonly requestedAt: string | null;
@@ -38,7 +41,11 @@ function toIsoString(value: Timestamp | Date | string | undefined | null): strin
 export async function getAccountDeletionStatus(
   firestore: Firestore,
   accountId: string,
+  options: { readonly hosted?: boolean } = {},
 ): Promise<AccountDeletionStatus> {
+  const notice = options.hosted
+    ? ACCOUNT_DELETION_HOSTED_NOTICE
+    : ACCOUNT_DELETION_LOCAL_ARENA_NOTICE;
   const requestSnap = await firestore
     .collection(COLLECTIONS.accountDeletionRequests)
     .doc(accountId)
@@ -48,7 +55,7 @@ export async function getAccountDeletionStatus(
     return {
       requested: true,
       requestedAt: toIsoString(data.requestedAt),
-      notice: ACCOUNT_DELETION_LOCAL_ARENA_NOTICE,
+      notice,
     };
   }
 
@@ -63,7 +70,7 @@ export async function getAccountDeletionStatus(
   return {
     requested: requestedAt !== null,
     requestedAt,
-    notice: ACCOUNT_DELETION_LOCAL_ARENA_NOTICE,
+    notice,
   };
 }
 
@@ -75,15 +82,19 @@ export async function requestAccountDeletion(
   firestore: Firestore,
   accountId: string,
   now: Date = new Date(),
+  options: { readonly hosted?: boolean } = {},
 ): Promise<AccountDeletionStatus> {
   const requestedAt = now.toISOString();
+  const notice = options.hosted
+    ? ACCOUNT_DELETION_HOSTED_NOTICE
+    : ACCOUNT_DELETION_LOCAL_ARENA_NOTICE;
 
   await firestore.collection(COLLECTIONS.accountDeletionRequests).doc(accountId).set({
     accountId,
     requestedAt: now,
     status: 'requested',
-    scope: 'local_arena_development_data',
-    notice: ACCOUNT_DELETION_LOCAL_ARENA_NOTICE,
+    scope: options.hosted ? 'hosted_invite_only_alpha_data' : 'local_arena_development_data',
+    notice,
   });
 
   await firestore.collection(COLLECTIONS.developmentIdentities).doc(accountId).set(
@@ -97,6 +108,6 @@ export async function requestAccountDeletion(
   return {
     requested: true,
     requestedAt,
-    notice: ACCOUNT_DELETION_LOCAL_ARENA_NOTICE,
+    notice,
   };
 }

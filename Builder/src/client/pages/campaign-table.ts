@@ -17,6 +17,7 @@ import {
   PARTY_CHAT_MODE_LABELS,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
+  CHRONICLE_ENTRY_KIND_LABELS,
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
@@ -108,7 +109,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   shell.setDocumentTitle('Campaign table');
 
   let campaignName = 'Campaign';
-  let directorIdentityLabel = 'the DM';
+  let directorIdentityLabel = 'the Game Director';
   type InfoTab = 'character' | 'notes' | 'people' | 'tools';
   let activeInfoTab: InfoTab = 'character';
   let activeTab: DockTab = 'party_chat';
@@ -947,7 +948,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const entries = chronicle?.entries ?? [];
       return `
         <div class="dock-pane" data-testid="chronicle-pane">
-          <p class="record-meta">Trusted system entries only. Players cannot post here.</p>
+          <p class="record-meta">Campaign history only. Players cannot post here.</p>
           ${
             entries.length === 0
               ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
@@ -957,7 +958,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       (entry) => `
                     <li data-testid="chronicle-entry">
                       <span class="record-note">${escapeHtml(entry.body)}</span>
-                      <span class="record-meta">${escapeHtml(entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
+                      <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
                     </li>`,
                     )
                     .join('')}
@@ -990,8 +991,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <p class="record-meta" data-testid="rules-catalog-meta">
             ${
               rulesCatalog === null
-                ? 'Loading SRD catalog…'
-                : `${escapeHtml(rulesCatalog.rulesVersion)} · ${rulesCatalog.entries.length} entries`
+                ? 'Loading SRD reference…'
+                : 'SRD 5.2.1 reference'
             }
           </p>
           <label class="field">
@@ -1002,7 +1003,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   (category) =>
                     `<option value="${escapeHtml(category.id)}" ${
                       selectedRulesCategory === category.id ? 'selected' : ''
-                    }>${escapeHtml(category.label)} (${category.entryCount})</option>`,
+                    }>${escapeHtml(category.label)}</option>`,
                 )
                 .join('')}
             </select>
@@ -1029,7 +1030,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </div>
           ${
             selectedEntry === null
-              ? '<p class="record-meta">Choose an entry to read the structured reference.</p>'
+              ? '<p class="record-meta">Choose an entry to read the reference.</p>'
               : `<article class="rules-explanation" data-testid="rules-explanation">
                   <h3>${escapeHtml(selectedEntry.title)}</h3>
                   <p>${escapeHtml(selectedEntry.summary)}</p>
@@ -1384,7 +1385,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 <p class="record-meta">${
                   seated
                     ? 'Watch the scene or use chat while others act.'
-                    : 'Seat a character to play in this DM thread.'
+                    : 'Seat a character to play in this Game Director thread.'
                 }</p>
               </div>`
         }
@@ -1461,7 +1462,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
             </p>`
           : `<p class="record-meta" data-testid="interpret-action-notice">
-              Draft ready in the DM play thread below the map — confirm or cancel there.
+              Draft ready in the Game Director play thread below the map — confirm or cancel there.
             </p>`
       }`;
   }
@@ -2108,7 +2109,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'Ask the DM could not be sent.';
+                : 'Ask the Game Director could not be sent.';
           } finally {
             busy = false;
             render();

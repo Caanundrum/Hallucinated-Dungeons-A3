@@ -43,6 +43,7 @@ import {
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet, renderLiveSheetPreview } from '../character-sheet-view.js';
+import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
@@ -1110,14 +1111,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
             return;
           }
           const hasProgress = draftHasProgress();
-          if (
-            hasProgress &&
-            !window.confirm(
-              'Apply this ready-made character? It replaces your current draft choices. You can still edit afterward.',
-            )
-          ) {
-            input.checked = false;
-            return;
+          if (hasProgress) {
+            const accepted = await confirmInApp({
+              title: 'Apply ready-made character?',
+              body: 'Apply this ready-made character? It replaces your current draft choices. You can still edit afterward.',
+              confirmLabel: 'Apply template',
+              cancelLabel: 'Keep my draft',
+              testId: 'confirm-quick-start',
+            });
+            if (!accepted) {
+              input.checked = false;
+              return;
+            }
           }
           busy = true;
           error = null;
@@ -1168,31 +1173,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
         },
       ],
       ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {} })],
-      [
-        'ability-method',
-        (value) => {
-          const foundation = latestChoices();
-          const clearing =
-            Object.keys(foundation.baseAbilityScores).length > 0 ||
-            (foundation.abilityMethod === 'rolled' && foundation.rolledScorePool !== null);
-          if (
-            clearing &&
-            value !== foundation.abilityMethod &&
-            !window.confirm(
-              'Switching ability methods clears your current score assignments. Continue?',
-            )
-          ) {
-            return null;
-          }
-          return {
-            ...foundation,
-            abilityMethod: value as CharacterChoices['abilityMethod'],
-            baseAbilityScores: {},
-            rolledScorePool: null,
-            abilityRollAttempts: value === 'rolled' ? 0 : 0,
-          };
-        },
-      ],
       ['class-equipment', (value) => ({ ...latestChoices(), classEquipmentOptionId: value })],
       [
         'background-equipment',
@@ -1211,6 +1191,37 @@ export function mountCharacterCreatePage(host: PageHost): void {
         });
       });
     }
+
+    container.querySelectorAll<HTMLInputElement>('input[name="ability-method"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          const clearing =
+            Object.keys(foundation.baseAbilityScores).length > 0 ||
+            (foundation.abilityMethod === 'rolled' && foundation.rolledScorePool !== null);
+          if (clearing && input.value !== foundation.abilityMethod) {
+            const accepted = await confirmInApp({
+              title: 'Switch ability method?',
+              body: 'Switching ability methods clears your current score assignments. Continue?',
+              confirmLabel: 'Clear and switch',
+              cancelLabel: 'Keep assignments',
+              testId: 'confirm-ability-method',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          await commitChoices({
+            ...foundation,
+            abilityMethod: input.value as CharacterChoices['abilityMethod'],
+            baseAbilityScores: {},
+            rolledScorePool: null,
+            abilityRollAttempts: 0,
+          });
+        })();
+      });
+    });
 
     container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]').forEach((input) => {
       input.addEventListener('change', () => {
@@ -1480,7 +1491,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
             return;
           }
           if (
-            !window.confirm('Discard this draft? Your unfinished choices will be removed.')
+            !(await confirmInApp({
+              title: 'Discard this draft?',
+              body: 'Discard this draft? Your unfinished choices will be removed.',
+              confirmLabel: 'Discard draft',
+              cancelLabel: 'Keep draft',
+              testId: 'confirm-discard-draft',
+            }))
           ) {
             return;
           }
