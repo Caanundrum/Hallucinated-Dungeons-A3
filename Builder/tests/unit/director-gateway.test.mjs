@@ -8,7 +8,10 @@ import {
   narrateVisibleBeat,
   PROVIDER_COMPLIANCE_REGISTRY,
 } from '../../dist/server/ai/director-gateway.js';
-import { sanitizeDirectorProse } from '../../dist/server/ai/gemini-director.js';
+import {
+  GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
+  sanitizeDirectorProse,
+} from '../../dist/server/ai/gemini-director.js';
 
 function fakeFirestore(options = { killSwitch: false }) {
   return {
@@ -52,6 +55,11 @@ test('sanitizeDirectorProse strips fences and caps length', () => {
   assert.equal(capped.endsWith('…'), true);
   assert.ok(capped.length <= 1200);
   assert.throws(() => sanitizeDirectorProse('   '));
+});
+
+test('Gemini Director output budget leaves room for thinking plus prose', () => {
+  // Gemini 3.x counts thinking tokens against maxOutputTokens; 400 truncates mid-sentence.
+  assert.ok(GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS >= 2048);
 });
 
 test('provider registry lists Gemini for hosted Milestone', () => {
