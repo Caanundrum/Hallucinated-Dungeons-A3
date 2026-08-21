@@ -14,7 +14,7 @@ const RULES: readonly RuleExplanationProjection[] = [
     ruleId: 'combat.action-economy',
     title: 'Action Economy',
     summary: 'On its turn a combatant has an Action, Bonus Action, movement, and one Reaction until its next turn.',
-    steps: ['Attacks, spells, Ready, rests, and item use spend the Action.', 'A Reaction requires a server-issued Decision Window.'],
+    steps: ['Attacks, spells, Ready, rests, and item use spend the Action.', 'A Reaction requires an open reaction window from the Game Director.'],
     source: 'SRD 5.2',
   },
   {
@@ -41,7 +41,7 @@ const RULES: readonly RuleExplanationProjection[] = [
   {
     ruleId: 'combat.reactions',
     title: 'Reactions and Ready',
-    summary: 'Ready spends an Action and opens a single-use, server-issued Reaction Decision Window.',
+    summary: 'Ready spends an Action and opens a single-use reaction window you can spend later.',
     steps: ['Opportunity Attack requires a target in reach.', 'Shield spends a Reaction and a level 1 spell slot for +5 Armor Class.'],
     source: 'SRD 5.2',
   },

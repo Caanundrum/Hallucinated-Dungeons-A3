@@ -258,7 +258,7 @@ export const EMBERFERRY_CROSSING_PACK: StarterCampaignPack = {
     'A fresh Emberferry campaign starts on chapter 1 ("Dockside at Emberferry") with Lysa Quill and Sera Windlow visible in every member\u2019s campaign memory.',
     'Old Bram Halyard\u2019s smuggling knowledge stays out of any member\u2019s recap until a chapter summary records it (private, never secret-leaking).',
     'The Bellkeeper\u2019s true nature never appears in any campaign memory projection or personal recap returned to a client.',
-    'Campaign time starts at in-game day 1 and only advances through a recorded session suspend or a closed chapter.',
+    'Campaign time starts at in-game day 1. Suspending an untouched session keeps Day 1; a session suspend after table play, or a closed chapter, advances the day.',
     'The starter map for this template reports title "Emberferry Mist Dock" and artProvenance "original_phase5_starter_v1".',
   ],
 };

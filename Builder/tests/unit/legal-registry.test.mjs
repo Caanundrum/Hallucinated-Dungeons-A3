@@ -93,7 +93,8 @@ test('rendering a document produces a complete, escaped, anchor-linked page', ()
     assert.match(html, new RegExp(`id="${section.id}"`));
   }
 
-  assert.match(html, /Return to Hallucinated Dungeons/);
+  assert.match(html, /data-testid="legal-return-link"/);
+  assert.match(html, /Back to Campaigns/);
   assert.doesNotMatch(html, /<script/i);
 });
 

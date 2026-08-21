@@ -82,9 +82,11 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
 export async function openTableAdvancedControls(page: Page): Promise<void> {
   await page.getByTestId('table-info-tab-tools').click();
   const details = page.getByTestId('table-advanced-controls');
-  if ((await details.getAttribute('open')) === null) {
-    await details.locator('summary').click();
-  }
+  await expect(details).toBeVisible();
+  await details.evaluate((element) => {
+    (element as HTMLDetailsElement).open = true;
+  });
+  await expect(details).toHaveAttribute('open', '');
 }
 
 /** Reads the notes currently rendered from the server projection. */

@@ -14,6 +14,8 @@ import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
+import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
 export function mountCharacterSheetPage(host: PageHost, characterId: string): void {
@@ -75,6 +77,10 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       return;
     }
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Character',
         body: 'Sign in with a Local Arena development account to view characters you own.',

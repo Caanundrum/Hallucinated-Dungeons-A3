@@ -83,7 +83,7 @@ export class ApiFailure extends Error {
 }
 
 const NETWORK_FAILURE_MESSAGE =
-  'The Local Arena server did not respond. Confirm it is running, then retry.';
+  'The game server did not respond. Check your connection, then try again.';
 
 let authFailureHandler: (() => void) | null = null;
 
@@ -125,7 +125,7 @@ async function request<T>(
   } catch {
     throw new ApiFailure(
       ERROR_CODES.UPSTREAM_UNAVAILABLE,
-      'The Local Arena server returned a response this page could not read.',
+      'The game server returned a response this page could not read.',
     );
   }
 
@@ -318,11 +318,14 @@ export async function fetchInvitationPreview(inviteCode: string): Promise<Invita
 export async function acceptCampaignInvitation(options: {
   readonly candidateId: string;
   readonly inviteCode: string;
-}): Promise<CampaignProjection> {
-  return (await request<CampaignProjection>(`/api/invitations/${options.inviteCode}/accept`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-  })) as CampaignProjection;
+}): Promise<{ readonly campaign: CampaignProjection; readonly alreadyMember: boolean }> {
+  return (await request<{ readonly campaign: CampaignProjection; readonly alreadyMember: boolean }>(
+    `/api/invitations/${options.inviteCode}/accept`,
+    {
+      method: 'POST',
+      candidateId: options.candidateId,
+    },
+  )) as { readonly campaign: CampaignProjection; readonly alreadyMember: boolean };
 }
 
 export async function createCampaignSeat(options: {
@@ -683,22 +686,28 @@ export async function enterGoogleEmulatorSession(options: {
   })) as AccountProjection;
 }
 
-export async function fetchAdminPanel(): Promise<{
-  readonly isAdmin: boolean;
-  readonly bootstrapEmail: string;
-  readonly actorEmail: string | null;
-  readonly actorAccountId: string;
-  readonly auditEvents: readonly {
-    readonly id: string;
-    readonly actorEmail: string;
-    readonly action: string;
-    readonly detail: string;
-    readonly atMs: number;
-  }[];
-  readonly providerMode: string;
-  readonly aiKillSwitch: boolean;
-  readonly notice: string;
-}> {
+export async function fetchAdminPanel(): Promise<
+  | {
+      readonly isAdmin: false;
+      readonly notice: string;
+    }
+  | {
+      readonly isAdmin: true;
+      readonly bootstrapEmail: string;
+      readonly actorEmail: string | null;
+      readonly actorAccountId: string;
+      readonly auditEvents: readonly {
+        readonly id: string;
+        readonly actorEmail: string;
+        readonly action: string;
+        readonly detail: string;
+        readonly atMs: number;
+      }[];
+      readonly providerMode: string;
+      readonly aiKillSwitch: boolean;
+      readonly notice: string;
+    }
+> {
   return (await request('/api/admin')) as never;
 }
 

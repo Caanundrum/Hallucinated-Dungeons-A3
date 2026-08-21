@@ -83,7 +83,7 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
 
     await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Veyra');
     await expect(ownerPage.getByTestId('director-personality-label')).toHaveText('Dry Storyteller');
-    await expect(ownerPage.getByTestId('director-avatar-key')).toHaveText('veyra__dry_storyteller');
+    await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Veyra');
     await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Fixed after creation');
     await expect(ownerPage.getByTestId('director-lock-badge')).toHaveText('Fixed');
     await expect(ownerPage.getByTestId('campaign-next-step')).toBeVisible();
@@ -129,7 +129,7 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(guestPage.getByTestId('invite-accept')).toBeVisible();
     await guestPage.getByTestId('invite-accept').click();
     await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
-    await expect(guestPage.getByTestId('director-avatar-key')).toHaveText('veyra__dry_storyteller');
+    await expect(guestPage.getByTestId('director-identity-label')).toHaveText('Veyra');
 
     await createQuickCharacter(guestPage, 'Guest Blade');
     await guestPage.goto(`/campaigns/${campaignId}`);

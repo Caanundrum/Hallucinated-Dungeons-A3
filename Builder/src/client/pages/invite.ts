@@ -11,10 +11,12 @@ import { getAccount, signInAccount, subscribeAccount } from '../account-session.
 import {
   ApiFailure,
   acceptCampaignInvitation,
+  fetchCampaignDetail,
   fetchInvitationPreview,
 } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -28,10 +30,24 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
   shell.setDocumentTitle('Campaign invitation');
 
   let preview: InvitationPreview | null = null;
+  let alreadyMember = false;
   let error: string | null = null;
   let unavailable = false;
   let busy = false;
   const mountToken = beginPageMount(container);
+
+  async function refreshMembershipFlag(): Promise<void> {
+    alreadyMember = false;
+    if (preview === null || getAccount() === null) {
+      return;
+    }
+    try {
+      await fetchCampaignDetail(preview.campaignId);
+      alreadyMember = true;
+    } catch {
+      alreadyMember = false;
+    }
+  }
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
@@ -57,12 +73,16 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
     }
 
     const account = getAccount();
+    const hosted = isHostedPlayerSurface(candidate);
     container.innerHTML = `
       <div class="page">
         <h1 data-testid="invite-heading">Campaign invitation</h1>
         <p class="tagline">
-          Bounded preview before membership. Sign in with a Local Arena development account to
-          join.
+          ${
+            hosted
+              ? 'Bounded preview before membership. Sign in with Google to join this campaign.'
+              : 'Bounded preview before membership. Sign in with a Local Arena development account to join.'
+          }
         </p>
         ${
           error === null
@@ -78,21 +98,19 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
             </div>
             <div>
               <dt>Host</dt>
-              <dd data-testid="invite-host-label">${escapeHtml(preview.hostDisplayLabel)}</dd>
-            </div>
-            <div>
-              <dt>Content profile</dt>
-              <dd data-testid="invite-content-profile">${escapeHtml(preview.contentProfileSummary)}</dd>
-            </div>
-            <div>
-              <dt>Session state</dt>
-              <dd data-testid="invite-session-state">${escapeHtml(preview.sessionStateLabel)}</dd>
+              <dd data-testid="invite-host">${escapeHtml(preview.hostDisplayLabel)}</dd>
             </div>
             <div>
               <dt>Game Director</dt>
-              <dd data-testid="invite-director">
-                ${escapeHtml(preview.directorIdentityLabel)} · ${escapeHtml(preview.directorPersonalityLabel)}
-              </dd>
+              <dd>${escapeHtml(preview.directorIdentityLabel)} · ${escapeHtml(preview.directorPersonalityLabel)}</dd>
+            </div>
+            <div>
+              <dt>Content profile</dt>
+              <dd>${escapeHtml(preview.contentProfileSummary)}</dd>
+            </div>
+            <div>
+              <dt>Session</dt>
+              <dd data-testid="invite-session-state">${escapeHtml(preview.sessionStateLabel)}</dd>
             </div>
             <div>
               <dt>Invite expires</dt>
@@ -104,22 +122,28 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
         ${
           account === null
             ? ''
-            : `<p class="message notice" data-testid="invite-joining-as">
-                 You will join as <strong>${escapeHtml(account.displayLabel)}</strong>
-                 (<code>${escapeHtml(account.accountId)}</code>).
-               </p>`
+            : alreadyMember
+              ? `<p class="message notice" data-testid="invite-already-member">
+                   You are already a member of this campaign as
+                   <strong>${escapeHtml(account.displayLabel)}</strong>.
+                 </p>`
+              : `<p class="message notice" data-testid="invite-joining-as">
+                   You will join as <strong>${escapeHtml(account.displayLabel)}</strong>.
+                 </p>`
         }
         <div class="actions">
           ${
             account === null
               ? `<button type="button" data-testid="invite-sign-in"
                    aria-disabled="${busy || candidate === null}">
-                   ${busy ? 'Signing in…' : 'Sign in to join'}
+                   ${busy ? 'Signing in…' : hosted ? 'Sign in with Google' : 'Sign in to join'}
                  </button>`
-              : `<button type="button" data-testid="invite-accept"
-                   aria-disabled="${busy || candidate === null}">
-                   ${busy ? 'Joining…' : `Accept as ${escapeHtml(account.displayLabel)}`}
-                 </button>`
+              : alreadyMember
+                ? ''
+                : `<button type="button" data-testid="invite-accept"
+                     aria-disabled="${busy || candidate === null}">
+                     ${busy ? 'Joining…' : `Accept as ${escapeHtml(account.displayLabel)}`}
+                   </button>`
           }
           ${
             account === null
@@ -139,12 +163,17 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
           if (candidate === null || busy) {
             return;
           }
+          if (hosted) {
+            navigate('/');
+            return;
+          }
           busy = true;
           error = null;
           render();
           try {
             const accountNext = await signInAccount(candidate);
             shell.announce(`Signed in as ${accountNext.displayLabel}.`);
+            await refreshMembershipFlag();
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -168,28 +197,21 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
           error = null;
           render();
           try {
-            const campaign = await acceptCampaignInvitation({
+            const accepted = await acceptCampaignInvitation({
               candidateId: candidate.candidateId,
               inviteCode,
             });
-            shell.announce(`Joined ${campaign.name}.`);
-            navigate(`/campaigns/${campaign.campaignId}`);
-          } catch (failure) {
-            if (
-              failure instanceof ApiFailure &&
-              (failure.code === 'INVITATION_UNAVAILABLE' || failure.code === 'NOT_FOUND')
-            ) {
-              preview = null;
-              unavailable = true;
-              error = failure.message;
-              busy = false;
-              render();
-              return;
+            if (accepted.alreadyMember) {
+              shell.announce(`You are already in ${accepted.campaign.name}.`);
+            } else {
+              shell.announce(`Joined ${accepted.campaign.name}.`);
             }
+            navigate(`/campaigns/${accepted.campaign.campaignId}`);
+          } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'The invitation could not be accepted.';
+                : 'That invitation could not be accepted.';
             busy = false;
             render();
           }
@@ -198,25 +220,25 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
   }
 
   async function load(): Promise<void> {
-    unavailable = false;
     error = null;
-    render();
+    unavailable = false;
     try {
       preview = await fetchInvitationPreview(inviteCode);
-      shell.setDocumentTitle(`Invite · ${preview.campaignName}`);
+      await refreshMembershipFlag();
     } catch (failure) {
-      preview = null;
       unavailable = true;
+      preview = null;
       error =
-        failure instanceof ApiFailure
-          ? failure.message
-          : 'That invitation could not be loaded.';
+        failure instanceof ApiFailure ? failure.message : 'That invitation could not be loaded.';
     }
     render();
   }
 
-  subscribeAccount(() => {
-    render();
-  });
   void load();
+  subscribeAccount(() => {
+    void (async () => {
+      await refreshMembershipFlag();
+      render();
+    })();
+  });
 }

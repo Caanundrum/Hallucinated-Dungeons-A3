@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterAccountFromShell, readCandidate} from './arena-page.js';
+import {enterAccountFromShell, openTableAdvancedControls, readCandidate} from './arena-page.js';
 
 /**
  * Phase 5 starter campaign, memory, session resume, and long-play settings.
@@ -38,6 +38,7 @@ async function createQuickCharacter(page: Page, name: string): Promise<void> {
   await page.getByTestId('identity-name').fill(name);
   await page.getByTestId('identity-name').dispatchEvent('change');
   await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+  await expect(page.getByTestId('create-character')).toHaveAttribute('aria-disabled', 'false');
   await page.getByTestId('create-character').click();
   await expect(page.getByTestId('character-sheet-heading')).toHaveText(name);
 }
@@ -79,7 +80,7 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     // Director avatar renders as a real image, not the accessible text fallback.
     await expect(page.getByTestId('director-avatar')).toBeVisible();
     await expect(page.getByTestId('director-avatar-fallback')).toHaveCount(0);
-    await expect(page.getByTestId('director-avatar-key')).toHaveText('veyra__seasoned_host');
+    await expect(page.getByTestId('director-identity-label')).toHaveText('Veyra');
 
     // Campaign memory seeded from the starter pack.
     await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
@@ -111,12 +112,12 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     expect(memoryBody.npcs.some((npc) => npc.npcId === 'lysa-quill')).toBe(true);
     expect(memoryBody.npcs.some((npc) => npc.npcId === 'old-bram-halyard')).toBe(true);
 
-    // Suspend the session: campaign time advances one day, chapter continuity holds.
+    // Suspend an untouched session: pause only — Day 1 does not advance without table play.
     await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'false');
     await expect(page.getByTestId('resume-session')).toHaveAttribute('aria-disabled', 'true');
     await page.getByTestId('suspend-session').click();
     await expect(page.getByTestId('session-action-message')).toContainText('Session suspended');
-    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
     await expect(page.getByTestId('campaign-time')).toContainText('suspended');
     await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('resume-session')).toHaveAttribute('aria-disabled', 'false');
@@ -130,14 +131,14 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     // Resume: chapter/current-chapter continuity survives, campaign time does not reset.
     await page.getByTestId('resume-session').click();
     await expect(page.getByTestId('session-action-message')).toContainText('Session resumed');
-    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
     await expect(page.getByTestId('campaign-time')).toContainText('Session active');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
     await expect(page.getByTestId('personal-recap-panel')).toBeVisible();
 
     // Reloading the page re-fetches memory from the server and still agrees.
     await page.reload();
-    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
     await expect(page.getByTestId('campaign-time')).toContainText('Session active');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
 
@@ -147,7 +148,8 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await expect(page.getByTestId('map-bundle-meta')).toContainText('Emberferry Mist Dock');
     await expect(page.getByTestId('map-bundle-meta')).toContainText('original phase5 starter v1');
     await expect(page.getByTestId('map-scene-banner')).toContainText('Ember-mist');
-    await expect(page.getByTestId('map-notable-feature').first()).toBeVisible();
+    // Notable feature labels live in the collapsed Table details panel; stage markers stay visible.
+    await expect(page.getByTestId('map-notable-feature')).toHaveCount(3);
     await expect(page.getByTestId('table-stage-notable-features').locator('[data-notable-feature]')).toHaveCount(3);
 
     // Token is visible on the dock; a committed one-step move changes its anchor on the SVG stage.
@@ -161,8 +163,6 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     const targetCol = Number(beforeCol) + 1;
     const targetRow = Number(beforeRow);
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
-    await expect(page.getByTestId('move-target-meta')).toContainText(/Legal|Move target/i);
-    await page.getByTestId('commit-table-move').click();
     await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
     await expect(token).toHaveAttribute('data-anchor-row', String(targetRow));
   });
@@ -172,10 +172,21 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await createQuickCharacter(page, 'Chapter Traveler');
     await createEmberferryCampaign(page, 'Chapter Travel Table');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await seatOwnCharacter(page);
+    await page.getByTestId('open-campaign-table').click();
+    const token = page.locator('[data-testid="table-stage-semantic"] [data-token]').first();
+    await expect(token).toBeVisible();
+    const beforeCol = await token.getAttribute('data-anchor-column');
+    const beforeRow = await token.getAttribute('data-anchor-row');
+    const targetCol = Number(beforeCol) + 1;
+    const targetRow = Number(beforeRow);
+    await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
+    await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
+    await page.getByTestId('table-back').click();
+    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
     await expect(page.getByTestId('session-action-message')).toContainText(/Mist-Cut Caves|chapter closed/i);
     await expect(page.getByTestId('current-chapter')).toContainText('The Mist-Cut Caves');
-    await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-bundle-meta')).toContainText('Mist-Cut Caves');
     await expect(page.getByTestId('map-scene-banner')).toContainText(/caves|Bluff/i);
@@ -195,15 +206,21 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     await expect(page.getByTestId('narration-density-summary')).toContainText('mechanics-first');
 
     await page.goto(`/campaigns/${campaignId}/table`);
-    await page.getByTestId('request-narration').click();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible();
+    await openTableAdvancedControls(page);
+    await page.getByTestId('request-narration').click({ force: true });
+    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
     const conciseBody = (await page.getByTestId('director-narration').innerText()).trim();
-    expect(conciseBody).toMatch(/Table state version \d+ is visible to seated players\.$/);
+    expect(conciseBody).toMatch(/gathered at the table|The table is quiet/i);
 
     await page.getByTestId('nav-account').click();
     await page.getByTestId('account-narration-density').selectOption('cinematic');
 
     await page.goto(`/campaigns/${campaignId}/table`);
-    await page.getByTestId('request-narration').click();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible();
+    await openTableAdvancedControls(page);
+    await page.getByTestId('request-narration').click({ force: true });
+    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
     const cinematicBody = (await page.getByTestId('director-narration').innerText()).trim();
     expect(cinematicBody.length).toBeGreaterThan(conciseBody.length);
     expect(cinematicBody.startsWith(conciseBody)).toBe(true);

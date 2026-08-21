@@ -6,7 +6,7 @@
  */
 
 import type { CampaignListProjection } from '../../shared/campaign-contract.js';
-import { getAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchCampaigns } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -86,6 +86,14 @@ export function mountCampaignsPage(host: PageHost): void {
     if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
+    if (!isAccountHydrated()) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaigns-heading">Campaigns</h1>
+          <p class="tagline" data-testid="campaigns-loading">Checking your session…</p>
+        </div>`;
+      return;
+    }
     if (getAccount() === null) {
       if (isHostedPlayerSurface(candidate)) {
         navigate('/', { replace: true });
@@ -113,6 +121,14 @@ export function mountCampaignsPage(host: PageHost): void {
         },
         render,
       });
+      return;
+    }
+    if (list === null && error === null) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaigns-heading">Campaigns</h1>
+          <p class="tagline" data-testid="campaigns-loading">Loading your campaigns…</p>
+        </div>`;
       return;
     }
     renderSignedIn();

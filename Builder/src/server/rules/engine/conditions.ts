@@ -27,7 +27,7 @@ const rules: readonly ConditionRule[] = [
   { conditionId: 'unconscious', label: 'Unconscious', summary: 'Incapacitated, prone, and unaware.', effects: ['Fails Strength and Dexterity saves.', 'Nearby hits are critical hits.'] },
   { conditionId: 'exhaustion', label: 'Exhaustion', summary: 'A cumulative penalty tracked by level.', effects: ['Phase 3 clears one level on a Long Rest.'] },
   { conditionId: 'guiding-bolt-marked', label: 'Guiding Bolt marked', summary: 'The next attack against this target has advantage.', effects: ['Consumed by the next attack before the caster’s next turn.'] },
-  { conditionId: 'shielded', label: 'Shielded', summary: 'Shield grants +5 Armor Class until the start of the next turn.', effects: ['The reaction is available only through an open Decision Window.'] },
+  { conditionId: 'shielded', label: 'Shielded', summary: 'Shield grants +5 Armor Class until the start of the next turn.', effects: ['The reaction is available only while a reaction window is open.'] },
 ] as const;
 
 export const CONDITION_CATALOG: Readonly<Record<ConditionId, ConditionRule>> = Object.fromEntries(

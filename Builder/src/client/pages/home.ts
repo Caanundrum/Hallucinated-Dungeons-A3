@@ -18,6 +18,7 @@
 import type { CandidateIdentity } from '../../shared/contract.js';
 import { BROWSER_SUPPORT_MATRIX } from '../../shared/public-surface-contract.js';
 import { escapeHtml } from '../dom-utils.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import type { ShellHandle } from '../shell.js';
 
 export interface PageHost {
@@ -122,7 +123,10 @@ export function mountHomePage(host: PageHost): void {
           ).join('')}
         </ul>
       </section>
-      <div class="candidate-strip" data-testid="candidate-strip">
+        ${
+          isHostedPlayerSurface(candidate)
+            ? ''
+            : `<div class="candidate-strip" data-testid="candidate-strip">
         ${
           candidate === null
             ? 'Contacting the Local Arena server…'
@@ -131,7 +135,8 @@ export function mountHomePage(host: PageHost): void {
                <span>Surface <b data-testid="public-surface">${escapeHtml(candidate.publicSurface)}</b></span>
                <span>Blueprint <b>${escapeHtml(candidate.blueprintVersion)}</b></span>`
         }
-      </div>
+      </div>`
+        }
     </div>`;
 
   container

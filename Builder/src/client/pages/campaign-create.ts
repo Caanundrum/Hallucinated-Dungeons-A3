@@ -35,6 +35,7 @@ import { ApiFailure, createCampaign, fetchDirectorCatalog } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -110,10 +111,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
             <dd data-testid="preview-director-personality">${escapeHtml(personalityLabel)}</dd>
           </div>
           <div>
-            <dt>Avatar key</dt>
-            <dd><code data-testid="preview-avatar-key">${escapeHtml(avatarKey)}</code></dd>
-          </div>
-          <div>
             <dt>Starter adventure</dt>
             <dd data-testid="preview-adventure-template">${escapeHtml(ADVENTURE_TEMPLATE_LABELS[adventureTemplate])}</dd>
           </div>
@@ -124,8 +121,8 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <p data-testid="preview-play-rhythm">${escapeHtml(preview.playRhythm)}</p>
         <p class="message notice" data-testid="preview-lock-reminder">
           Creating this campaign locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
-          for ordinary users. This configures the later AI-enabled table; it does not start AI
-          narration in this build.
+          for ordinary users. On hosted Invite-Only Alpha the Game Director may narrate through Gemini
+          when enabled; Local Arena uses a deterministic simulator.
         </p>
       </section>`;
   }
@@ -432,6 +429,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
       return;
     }
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Create a campaign',
         body: 'Sign in with a Local Arena development account before creating a campaign.',

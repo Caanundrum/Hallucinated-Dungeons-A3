@@ -128,7 +128,6 @@ test.describe('Phase 5 Independent QA — starter, memory, resume, presentation'
     await page.getByTestId('claim-active-turn').click();
     await expect(page.getByTestId('timing-authority-meta')).toContainText(/Active Turn/i);
     await page.locator(`[data-square="${beforeCol + 1},${beforeRow}"]`).click();
-    await page.getByTestId('commit-table-move').click();
     await expect(token).toHaveAttribute('data-anchor-column', String(beforeCol + 1), {
       timeout: 10_000,
     });
@@ -138,9 +137,20 @@ test.describe('Phase 5 Independent QA — starter, memory, resume, presentation'
     await signIn(page);
     await quickCharacter(page, 'QA P5 Traveler');
     await createEmberferry(page, 'QA P5 Travel Table');
+    await seatOwnCharacter(page);
+    await page.getByTestId('open-campaign-table').click();
+    const token = page.locator('[data-testid="table-stage-semantic"] [data-token]').first();
+    await expect(token).toBeVisible();
+    const beforeCol = Number(await token.getAttribute('data-anchor-column'));
+    const beforeRow = Number(await token.getAttribute('data-anchor-row'));
+    await page.locator(`[data-square="${beforeCol + 1},${beforeRow}"]`).click();
+    await expect(token).toHaveAttribute('data-anchor-column', String(beforeCol + 1), {
+      timeout: 10_000,
+    });
+    await page.getByTestId('table-back').click();
+    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('close-chapter').click();
     await expect(page.getByTestId('current-chapter')).toContainText(/Mist-Cut Caves/i);
-    await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-bundle-meta')).toContainText(/Mist-Cut Caves/i);
   });

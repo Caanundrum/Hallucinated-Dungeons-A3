@@ -137,10 +137,6 @@ test.describe('Phase 2 independent QA — rendered frozen tabletop', () => {
     const legal = { column: start.column + 1, row: start.row };
 
     await page.locator(`[data-square="${legal.column},${legal.row}"]`).click({ force: true });
-    await expect(page.getByTestId('move-target-meta')).toContainText(
-      `column ${legal.column}, row ${legal.row}`,
-    );
-    await page.getByTestId('commit-table-move').click();
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
 
     const authority = await page.request.get(`/api/campaigns/${campaignId}/timing-authority`, {

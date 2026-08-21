@@ -1564,13 +1564,13 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
           return;
         }
-        const campaign = await acceptInvitation({
+        const accepted = await acceptInvitation({
           firestore,
           accountId: session.accountId,
           displayLabel: session.identity.displayLabel,
           inviteCode: inviteAcceptMatch[1]!,
         });
-        sendJson(response, 200, campaign);
+        sendJson(response, 200, accepted);
         return;
       }
 

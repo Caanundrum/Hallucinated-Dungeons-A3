@@ -20,6 +20,60 @@ import {
 } from '../shared/character-contract.js';
 import { escapeHtml } from './dom-utils.js';
 
+/** Player-facing label for a derivation rule id (hides raw machine ids). */
+export function humanRuleLabel(ruleId: string): string {
+  const known: Record<string, string> = {
+    'proficiency-bonus': 'Proficiency Bonus',
+    'proficiency-bonus.level-1': 'Proficiency Bonus (Level 1)',
+    'armor.shield': 'Shield',
+    'armor.unarmored': 'Unarmored',
+    'passive.base': 'Passive base',
+    'spellcasting.save-dc-base': 'Spell save DC base',
+  };
+  if (known[ruleId] !== undefined) {
+    return known[ruleId];
+  }
+  if (ruleId.startsWith('proficiency-bonus.level-')) {
+    return `Proficiency Bonus (Level ${ruleId.slice('proficiency-bonus.level-'.length)})`;
+  }
+  if (ruleId.startsWith('ability.')) {
+    const ability = ruleId.slice('ability.'.length).replace(/-/g, ' ');
+    return ability.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('ability-method.')) {
+    return `Ability scores (${ruleId.slice('ability-method.'.length).replace(/_/g, ' ')})`;
+  }
+  if (ruleId.startsWith('skill.')) {
+    return ruleId
+      .slice('skill.'.length)
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('armor.')) {
+    return `Armor (${ruleId.slice('armor.'.length).replace(/-/g, ' ')})`;
+  }
+  if (ruleId.startsWith('weapon.')) {
+    return `Weapon (${ruleId.slice('weapon.'.length).replace(/-/g, ' ')})`;
+  }
+  if (ruleId.startsWith('class.')) {
+    const rest = ruleId.slice('class.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return rest.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('species.')) {
+    const rest = ruleId.slice('species.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return rest.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  if (ruleId.startsWith('background.')) {
+    const rest = ruleId.slice('background.'.length).replace(/\./g, ' · ').replace(/-/g, ' ');
+    return `Background (${rest})`;
+  }
+  return ruleId
+    .split(/[./]/)
+    .map((part) => part.replace(/-/g, ' '))
+    .join(' · ')
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function breakdownList(derived: DerivedValue): string {
   return `
     <ul class="stat-breakdown-list">
@@ -27,7 +81,7 @@ function breakdownList(derived: DerivedValue): string {
         .map(
           (component) =>
             `<li>${escapeHtml(component.label)}: ${escapeHtml(formatModifier(component.amount))}
-              <code>${escapeHtml(component.ruleId)}</code></li>`,
+              <span class="record-meta">${escapeHtml(humanRuleLabel(component.ruleId))}</span></li>`,
         )
         .join('')}
     </ul>`;
@@ -239,14 +293,20 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
  * Compact live preview for the creation wizard sidebar. Same server-derived
  * numbers as the full sheet — just fewer panels so it fits beside the steps.
  */
-export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
+export function renderLiveSheetPreview(
+  sheet: DerivedCharacterSheet,
+  options: { readonly abilitiesComplete?: boolean } = {},
+): string {
+  const abilitiesComplete = options.abilitiesComplete !== false;
   const abilityBlock = ABILITIES.map((ability) => {
     const score = sheet.abilityScores[ability];
     return `
       <div class="ability-card compact">
         <span class="ability-name">${escapeHtml(ABILITY_LABELS[ability])}</span>
-        <span class="ability-score">${score.value}</span>
-        <span class="ability-modifier">${escapeHtml(formatModifier(sheet.abilityModifiers[ability]))}</span>
+        <span class="ability-score">${abilitiesComplete ? score.value : '—'}</span>
+        <span class="ability-modifier">${
+          abilitiesComplete ? escapeHtml(formatModifier(sheet.abilityModifiers[ability])) : '—'
+        }</span>
       </div>`;
   }).join('');
 
@@ -260,14 +320,40 @@ export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
     .map((feature) => feature.name)
     .join(', ');
 
+  const gearSummary =
+    sheet.equipment.length === 0 && sheet.currencyGold <= 0
+      ? 'None yet'
+      : [
+          ...sheet.equipment.map((item) =>
+            item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name,
+          ),
+          sheet.currencyGold > 0 ? `${sheet.currencyGold} GP` : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join(', ');
+
   return `
     <div class="live-sheet-body" data-testid="live-sheet-stats">
       <p class="sheet-legend compact">Hover highlighted totals for <b>How we got this</b>.</p>
+      ${
+        abilitiesComplete
+          ? ''
+          : `<p class="message notice" data-testid="preview-abilities-incomplete">
+              Ability scores are incomplete — Hit Points, Armor Class, and modifiers stay blank until every score is assigned.
+            </p>`
+      }
       <div class="stat-grid compact">
-        ${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
+        ${
+          abilitiesComplete
+            ? `${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
         ${explained('Armor Class', sheet.armorClass, 'preview-armor-class')}
         ${explained('Initiative', sheet.initiative, 'preview-initiative', formatModifier)}
-        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}
+        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}`
+            : `<p class="record-meta" data-testid="preview-hit-points">Hit Points —</p>
+        <p class="record-meta" data-testid="preview-armor-class">Armor Class —</p>
+        <p class="record-meta" data-testid="preview-initiative">Initiative —</p>
+        <p class="record-meta" data-testid="preview-speed">Speed ${sheet.speed.value} ft.</p>`
+        }
       </div>
       <div class="ability-grid compact">${abilityBlock}</div>
       <p class="record-meta"><b>Skills:</b> ${
@@ -281,10 +367,6 @@ export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
           ? 'None yet'
           : escapeHtml(sheet.features.map((feature) => feature.name).join(', '))
       }</p>
-      <p class="record-meta"><b>Gear:</b> ${
-        sheet.equipment.length === 0
-          ? 'None yet'
-          : escapeHtml(sheet.equipment.map((item) => item.name).join(', '))
-      }</p>
+      <p class="record-meta"><b>Gear:</b> ${escapeHtml(gearSummary)}</p>
     </div>`;
 }

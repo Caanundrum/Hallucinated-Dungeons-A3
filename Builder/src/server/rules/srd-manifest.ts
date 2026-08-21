@@ -82,6 +82,8 @@ export interface OptionChoice {
 export interface FeatureRecord {
   readonly name: string;
   readonly summary: string;
+  /** When set, the feature is shown on the sheet only at this character level or higher. */
+  readonly minLevel?: number;
 }
 
 export interface EquipmentOption {
@@ -332,7 +334,11 @@ export const SPECIES: readonly SpeciesRecord[] = [
     features: [
       { name: 'Breath Weapon', summary: 'You can replace one attack with a burst of damage of your ancestry type.' },
       { name: 'Damage Resistance', summary: 'You have Resistance to the damage type of your Draconic Ancestry.' },
-      { name: 'Draconic Flight', summary: 'At level 5 you can sprout spectral wings for 10 minutes.' },
+      {
+        name: 'Draconic Flight',
+        summary: 'At level 5 you can sprout spectral wings for 10 minutes.',
+        minLevel: 5,
+      },
     ],
     choices: [
       {
@@ -975,7 +981,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     classId: 'fighter', backgroundId: 'soldier', speciesId: 'dwarf',
     baseAbilityScores: { strength: 15, dexterity: 12, constitution: 14, intelligence: 10, wisdom: 13, charisma: 8 },
     backgroundAbilityBonuses: { strength: 2, constitution: 1 },
-    classSkillIds: ['athletics', 'perception'],
+    classSkillIds: ['perception', 'survival'],
     speciesChoiceIds: {}, classChoiceIds: { 'fighting-style': ['defense'] },
     classEquipmentOptionId: 'fighter-a', backgroundEquipmentOptionId: 'soldier-kit',
     cantripIds: [], spellIds: [],
@@ -986,8 +992,8 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     classId: 'cleric', backgroundId: 'acolyte', speciesId: 'human',
     baseAbilityScores: { strength: 13, dexterity: 10, constitution: 14, intelligence: 8, wisdom: 15, charisma: 12 },
     backgroundAbilityBonuses: { wisdom: 2, charisma: 1 },
-    classSkillIds: ['insight', 'religion'],
-    speciesChoiceIds: { 'human-skillful': 'medicine' }, classChoiceIds: { 'divine-order': ['protector'] },
+    classSkillIds: ['medicine', 'persuasion'],
+    speciesChoiceIds: { 'human-skillful': 'athletics' }, classChoiceIds: { 'divine-order': ['protector'] },
     classEquipmentOptionId: 'cleric-a', backgroundEquipmentOptionId: 'acolyte-kit',
     cantripIds: ['guidance', 'sacred-flame', 'light'], spellIds: ['cure-wounds', 'bless', 'guiding-bolt', 'healing-word'],
   },
@@ -997,7 +1003,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     classId: 'rogue', backgroundId: 'criminal', speciesId: 'halfling',
     baseAbilityScores: { strength: 8, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 10 },
     backgroundAbilityBonuses: { dexterity: 2, constitution: 1 },
-    classSkillIds: ['acrobatics', 'investigation', 'perception', 'stealth'],
+    classSkillIds: ['acrobatics', 'investigation', 'perception', 'insight'],
     speciesChoiceIds: {}, classChoiceIds: {},
     classEquipmentOptionId: 'rogue-a', backgroundEquipmentOptionId: 'criminal-kit',
     cantripIds: [], spellIds: [],
@@ -1008,7 +1014,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     classId: 'wizard', backgroundId: 'sage', speciesId: 'tiefling',
     baseAbilityScores: { strength: 8, dexterity: 14, constitution: 13, intelligence: 15, wisdom: 12, charisma: 10 },
     backgroundAbilityBonuses: { intelligence: 2, constitution: 1 },
-    classSkillIds: ['arcana', 'investigation'],
+    classSkillIds: ['insight', 'investigation'],
     speciesChoiceIds: { 'fiendish-legacy': 'infernal' }, classChoiceIds: {},
     classEquipmentOptionId: 'wizard-a', backgroundEquipmentOptionId: 'sage-kit',
     cantripIds: ['fire-bolt', 'mage-hand', 'prestidigitation'],

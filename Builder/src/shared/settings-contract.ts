@@ -219,7 +219,7 @@ export interface CampaignSettingsProjection {
 }
 
 export const CAMPAIGN_SETTINGS_CONFIGURATION_NOTICE =
-  'These settings are durable campaign configuration for the later AI-enabled table. Phase 1 records and recovers them; the Game Director does not enforce them as live AI behavior in this build.';
+  'These settings are durable campaign configuration. On hosted Invite-Only Alpha the Game Director may enforce tone and safety preferences through live narration when Gemini is enabled; Local Arena records the same settings without calling Gemini.';
 
 export function isContentProfile(value: unknown): value is ContentProfile {
   return typeof value === 'string' && (CONTENT_PROFILES as readonly string[]).includes(value);

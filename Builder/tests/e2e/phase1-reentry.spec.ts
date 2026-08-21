@@ -64,9 +64,6 @@ test.describe('Phase 1 reentry journey', () => {
     await expect(ownerPage.getByTestId('director-personality-label')).toHaveText(
       'Friendly Adventurer',
     );
-    await expect(ownerPage.getByTestId('director-avatar-key')).toHaveText(
-      'garrick__friendly_adventurer',
-    );
 
     const origin = new URL(ownerPage.url()).origin;
     const candidate = await readCandidate(ownerPage);
@@ -130,9 +127,7 @@ test.describe('Phase 1 reentry journey', () => {
     await expect(ownerPage.getByTestId('campaign-detail-heading')).toHaveText(
       'Reentry Continuity Table',
     );
-    await expect(ownerPage.getByTestId('director-avatar-key')).toHaveText(
-      'garrick__friendly_adventurer',
-    );
+    await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Garrick');
     await expect(ownerPage.getByTestId('own-seat')).toContainText('Reentry Owner Guard');
     await expect(ownerPage.getByTestId('session-zero-summary')).toContainText('recorded');
     await expect(ownerPage.getByTestId('session-zero-summary')).toContainText('Custom Restricted');
