@@ -2,8 +2,8 @@
  * Communication Dock and Action Composer structural contract.
  *
  * Blueprint ownership: Sections 1.5.2.1–1.5.2.5 and Phase 2 Action Composer
- * plumbing (chunk 2a). Chronicle, Party Chat, and Rules Desk are peer
- * destinations. The Action Composer stays visually and behaviorally separate.
+ * plumbing (chunk 2a). Chronicle, Party Chat, and Rules are peer destinations.
+ * The Action Composer (DM play thread) stays visually and behaviorally separate.
  * Phase 2a enables seated `table.sync` commits; Interpret Action remains gated
  * until Timing Authority arrives.
  */
@@ -15,7 +15,7 @@ export const DOCK_TAB_LABELS: Record<DockTab, string> = {
   chronicle: 'Story so far',
   party_chat: 'Chat',
   rules_desk: 'Rules',
-  director_address: 'Ask the Game Director',
+  director_address: 'Ask the DM',
 };
 
 /** Player-first tab order: social and help surfaces before the audit log. */
@@ -90,7 +90,7 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
   available: true,
   heading: 'At the table',
   notice:
-    'Move freely until the DM calls for initiative. On your turn, describe what you do in your own words — no menus required.',
+    'This is the DM play thread. Move freely until initiative is called. Describe what you do; the selected DM narrates from resolved table state.',
   tableSyncLabel: 'Sync table',
   interpretActionLabel: 'Plan action',
   interpretActionNotice:
@@ -98,12 +98,25 @@ export const ACTION_COMPOSER_STRUCTURE: ActionComposerProjection = {
 };
 
 export const RULES_DESK_NOTICE =
-  'Look up how a rule works. This explains mechanics only — it does not change the game or make rulings for you.';
+  'Browse the structured SRD reference for this Alpha. Looking up a rule never changes the table — ask the DM when you need a ruling for your character and scene.';
 
 export const DIRECTOR_ADDRESS_NOTICE =
-  'Ask the Game Director a question or describe what you want to happen in the story. Only you see this reply; the Game Director never moves pieces or rolls dice for you.';
+  'Ask the DM whether a plan is legal or feasible — action economy, skills, spells on your sheet, and what the scene allows. Only you see this consult. The DM never moves pieces or rolls dice from here.';
 
 export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
+
+/** Local rolling DM play-thread message kinds (Action Composer). */
+export const DM_THREAD_SPEAKERS = ['dm', 'player', 'system'] as const;
+export type DmThreadSpeaker = (typeof DM_THREAD_SPEAKERS)[number];
+
+export interface DmThreadMessage {
+  readonly messageId: string;
+  readonly speaker: DmThreadSpeaker;
+  readonly speakerLabel: string;
+  readonly body: string;
+  readonly createdAt: string;
+  readonly kind: 'prompt' | 'declaration' | 'ruling_hint' | 'narration' | 'mechanics' | 'system';
+}
 
 export function isDockTab(value: unknown): value is DockTab {
   return typeof value === 'string' && (DOCK_TABS as readonly string[]).includes(value);

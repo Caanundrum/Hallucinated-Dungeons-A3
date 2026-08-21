@@ -8,7 +8,7 @@
 
 import type { TableStateProjection } from '../../shared/command-contract.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
-import type { ChronicleFeedProjection, PartyChatFeedProjection } from '../../shared/communication-contract.js';
+import type { ChronicleFeedProjection, DmThreadMessage, PartyChatFeedProjection } from '../../shared/communication-contract.js';
 import {
   ACTION_COMPOSER_STRUCTURE,
   DIRECTOR_ADDRESS_NOTICE,
@@ -20,6 +20,11 @@ import {
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
+import type {
+  RulesCatalogCategory,
+  RulesCatalogProjection,
+} from '../../shared/rules-catalog-contract.js';
+import { RULES_CATALOG_CATEGORY_LABELS } from '../../shared/rules-catalog-contract.js';
 import type { CampaignPresenceProjection } from '../../shared/presence-contract.js';
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
@@ -30,7 +35,6 @@ import type {
 import type {
   CharacterProgressionProjection,
   EncounterProjection,
-  RuleExplanationProjection,
   RulesCommandFields,
 } from '../../shared/rules-combat-contract.js';
 import type {
@@ -47,7 +51,7 @@ import {
   fetchPartyChat,
   fetchPlayerSettings,
   fetchPresentationCuePlan,
-  fetchRuleExplanation,
+  fetchRulesCatalog,
   fetchRulesState,
   fetchTableState,
   fetchTimingAuthority,
@@ -99,6 +103,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   shell.setDocumentTitle('Campaign table');
 
   let campaignName = 'Campaign';
+  let directorIdentityLabel = 'the DM';
   type InfoTab = 'character' | 'notes' | 'people' | 'tools';
   let activeInfoTab: InfoTab = 'character';
   let activeTab: DockTab = 'party_chat';
@@ -114,8 +119,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let progression: CharacterProgressionProjection | null = null;
   let selectedCombatantId: string | null = null;
   let selectedSpellId = 'fire-bolt';
-  let selectedRuleId = 'combat.attack';
-  let ruleExplanation: RuleExplanationProjection | null = null;
+  let rulesCatalog: RulesCatalogProjection | null = null;
+  let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
+  let selectedRulesEntryId: string | null = 'core:progression.xp';
   let intentDraft: ActionDraftSuggestion | null = null;
   let reducedMotion = false;
   let lowEffects = false;
@@ -129,7 +135,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let movePreviewNote: string | null = null;
   let draft = '';
   let directorDraft = '';
-  let directorReply: string | null = null;
+  let askDmThread: DmThreadMessage[] = [];
+  let dmThread: DmThreadMessage[] = [];
+  let dmThreadSeeded = false;
   let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
@@ -174,6 +182,139 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   /** "original_phase5_starter_v1" -> "original phase5 starter v1", never a fabricated art label. */
   function humanizeArtProvenance(provenance: string): string {
     return provenance.replace(/_/g, ' ');
+  }
+
+  function newThreadMessage(
+    speaker: DmThreadMessage['speaker'],
+    speakerLabel: string,
+    body: string,
+    kind: DmThreadMessage['kind'],
+  ): DmThreadMessage {
+    return {
+      messageId: crypto.randomUUID(),
+      speaker,
+      speakerLabel,
+      body,
+      createdAt: new Date().toISOString(),
+      kind,
+    };
+  }
+
+  function seedDmThreadIfNeeded(): void {
+    if (dmThreadSeeded || !seated) {
+      return;
+    }
+    const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
+    dmThread = [
+      newThreadMessage(
+        'dm',
+        directorIdentityLabel,
+        `${scene} What do you do?`,
+        'prompt',
+      ),
+    ];
+    dmThreadSeeded = true;
+  }
+
+  function appendDmThread(
+    speaker: DmThreadMessage['speaker'],
+    speakerLabel: string,
+    body: string,
+    kind: DmThreadMessage['kind'],
+  ): void {
+    dmThread = [...dmThread, newThreadMessage(speaker, speakerLabel, body, kind)];
+  }
+
+  function appendAskDmThread(
+    speaker: DmThreadMessage['speaker'],
+    speakerLabel: string,
+    body: string,
+    kind: DmThreadMessage['kind'],
+  ): void {
+    askDmThread = [...askDmThread, newThreadMessage(speaker, speakerLabel, body, kind)];
+  }
+
+  function renderThreadMessages(
+    messages: readonly DmThreadMessage[],
+    options: { readonly latestReplyTestId?: string; readonly listTestId: string },
+  ): string {
+    if (messages.length === 0) {
+      return `<p class="empty-state" data-testid="${options.listTestId}-empty">No messages yet.</p>`;
+    }
+    const lastDmIndex = [...messages]
+      .map((message, index) => (message.speaker === 'dm' ? index : -1))
+      .filter((index) => index >= 0)
+      .at(-1);
+    return `<ol class="record-list dm-thread-list" data-testid="${options.listTestId}">
+      ${messages
+        .map((message, index) => {
+          const testId =
+            options.latestReplyTestId !== undefined && index === lastDmIndex
+              ? options.latestReplyTestId
+              : 'dm-thread-message';
+          return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="${testId}">
+            <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
+            <p>${escapeHtml(message.body)}</p>
+            <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
+          </li>`;
+        })
+        .join('')}
+    </ol>`;
+  }
+
+  /** Player-meaningful beats get DM narration; setup/turn-advance stays mechanical to avoid busy races. */
+  function shouldAutoNarrateRulesCommand(commandType: string): boolean {
+    return (
+      commandType.startsWith('combat.') ||
+      commandType.startsWith('inventory.') ||
+      commandType.startsWith('progression.') ||
+      commandType === 'table.move' ||
+      commandType === 'table.open_door'
+    );
+  }
+
+  function patchDmPlayThread(): void {
+    const host = container.querySelector('[data-testid="dm-play-thread"]');
+    if (host === null) {
+      return;
+    }
+    const list = host.querySelector('[data-testid="dm-play-thread-list"]');
+    const empty = host.querySelector('[data-testid="dm-play-thread-list-empty"]');
+    const rendered = renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' });
+    if (list !== null) {
+      list.outerHTML = rendered;
+    } else if (empty !== null) {
+      empty.outerHTML = rendered;
+    }
+  }
+
+  async function narrateIntoDmThread(mechanicsSummary: string): Promise<void> {
+    if (candidate === null || mechanicsSummary.trim().length === 0) {
+      return;
+    }
+    try {
+      const narration = await requestDirectorNarration({
+        candidateId: candidate.candidateId,
+        campaignId,
+        mechanicsSummary,
+      });
+      lastNarration = narration.body;
+      appendDmThread(
+        'dm',
+        narration.directorIdentityLabel || directorIdentityLabel,
+        narration.body,
+        'narration',
+      );
+      if (textToSpeechEnabled && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(narration.body);
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch {
+      appendDmThread('system', 'Table', mechanicsSummary, 'mechanics');
+    }
+    if (isPageMountCurrent(container, mountToken)) {
+      patchDmPlayThread();
+    }
   }
 
   function getPresentationAudioContext(): AudioContext | null {
@@ -337,16 +478,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (timingAuthority.timingAuthorityId === 'held-by-other') {
       return 'Another adventurer holds the active combat turn.';
     }
+    // Reaction / Decision credentials outrank the active-turn banner — Ready
+    // issues a reaction window while you still hold the combat turn.
+    if (timingAuthority.opportunityClass === 'reaction') {
+      return `Reaction window credential active · expires ${timingAuthority.expiresAt}`;
+    }
+    if (timingAuthority.opportunityClass === 'decision') {
+      return `Decision window credential active · expires ${timingAuthority.expiresAt}`;
+    }
     if (isOwnCombatTurn()) {
       return 'Initiative gave you the active combat turn.';
     }
-    const label =
-      timingAuthority.opportunityClass === 'reaction'
-        ? 'Reaction window'
-        : timingAuthority.opportunityClass === 'decision'
-          ? 'Decision window'
-          : 'Combat turn';
-    return `${label} credential active · expires ${timingAuthority.expiresAt}`;
+    return `Combat turn credential active · expires ${timingAuthority.expiresAt}`;
   }
 
   function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
@@ -720,42 +863,68 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     if (activeTab === 'rules_desk') {
+      const categoryEntries =
+        rulesCatalog?.entries.filter((entry) => entry.category === selectedRulesCategory) ?? [];
+      const selectedEntry =
+        categoryEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
+        categoryEntries[0] ??
+        null;
+      if (selectedEntry !== null && selectedRulesEntryId !== selectedEntry.entryId) {
+        selectedRulesEntryId = selectedEntry.entryId;
+      }
       return `
         <div class="dock-pane" data-testid="rules-desk-pane">
-          <p data-testid="rules-desk-notice">${escapeHtml(RULES_DESK_NOTICE)}</p>
+          <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
+          <p class="record-meta" data-testid="rules-catalog-meta">
+            ${
+              rulesCatalog === null
+                ? 'Loading SRD catalog…'
+                : `${escapeHtml(rulesCatalog.rulesVersion)} · ${rulesCatalog.entries.length} entries`
+            }
+          </p>
           <label class="field">
-            <span>Rule</span>
-            <select data-testid="rules-desk-rule">
-              ${[
-                ['combat.attack', 'Attack rolls'],
-                ['combat.action-economy', 'Action economy'],
-                ['combat.death-saves', 'Death Saving Throws'],
-                ['combat.reactions', 'Reactions and Ready'],
-                ['combat.rests', 'Short and Long Rests'],
-                ['spell.areas', 'Three-dimensional areas'],
-                ['spell.concentration', 'Concentration'],
-                ['progression.xp', 'XP-only progression'],
-                ['condition.prone', 'Prone condition'],
-                ['condition.unconscious', 'Unconscious condition'],
-              ]
+            <span>Category</span>
+            <select data-testid="rules-catalog-category">
+              ${(rulesCatalog?.categories ?? [])
                 .map(
-                  ([id, label]) =>
-                    `<option value="${id}" ${selectedRuleId === id ? 'selected' : ''}>${escapeHtml(label!)}</option>`,
+                  (category) =>
+                    `<option value="${escapeHtml(category.id)}" ${
+                      selectedRulesCategory === category.id ? 'selected' : ''
+                    }>${escapeHtml(category.label)} (${category.entryCount})</option>`,
                 )
                 .join('')}
             </select>
           </label>
-          <button type="button" data-testid="rules-desk-explain" aria-disabled="${busy}">
-            Explain rule
-          </button>
+          <div class="rules-catalog-entries" data-testid="rules-catalog-entries">
+            ${
+              categoryEntries.length === 0
+                ? '<p class="record-meta">No entries in this category yet.</p>'
+                : `<ul class="record-list compact">
+                    ${categoryEntries
+                      .map(
+                        (entry) => `
+                      <li>
+                        <button type="button" class="rules-catalog-entry${
+                          selectedEntry?.entryId === entry.entryId ? ' selected' : ''
+                        }" data-testid="rules-catalog-entry" data-entry-id="${escapeHtml(entry.entryId)}">
+                          ${escapeHtml(entry.title)}
+                        </button>
+                      </li>`,
+                      )
+                      .join('')}
+                  </ul>`
+            }
+          </div>
           ${
-            ruleExplanation === null
-              ? '<p class="record-meta">Choose a rule for a read-only explanation.</p>'
+            selectedEntry === null
+              ? '<p class="record-meta">Choose an entry to read the structured reference.</p>'
               : `<article class="rules-explanation" data-testid="rules-explanation">
-                  <h3>${escapeHtml(ruleExplanation.title)}</h3>
-                  <p>${escapeHtml(ruleExplanation.summary)}</p>
-                  <ol>${ruleExplanation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
-                  <p class="record-meta">${escapeHtml(ruleExplanation.source)}</p>
+                  <h3>${escapeHtml(selectedEntry.title)}</h3>
+                  <p>${escapeHtml(selectedEntry.summary)}</p>
+                  <ol>${selectedEntry.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}</ol>
+                  <p class="record-meta">${escapeHtml(selectedEntry.source)} · ${escapeHtml(
+                    RULES_CATALOG_CATEGORY_LABELS[selectedEntry.category],
+                  )}</p>
                 </article>`
           }
         </div>`;
@@ -765,21 +934,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return `
         <div class="dock-pane" data-testid="director-address-pane">
           <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
-          ${
-            directorReply === null
-              ? ''
-              : `<article class="rules-explanation" data-testid="director-address-reply">
-                  <h3>Director reply</h3>
-                  <p>${escapeHtml(directorReply)}</p>
-                </article>`
-          }
+          <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
+          ${renderThreadMessages(askDmThread, {
+            listTestId: 'ask-dm-thread',
+            latestReplyTestId: 'director-address-reply',
+          })}
           <form class="dock-composer" data-testid="director-address-composer">
             <label class="field">
-              <span>Your message to the Game Director</span>
-              <textarea data-testid="director-address-input" rows="3" placeholder="Ask about the scene, an NPC, or what you want to try.">${escapeHtml(directorDraft)}</textarea>
+              <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
+              <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?">${escapeHtml(directorDraft)}</textarea>
             </label>
             <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null || directorDraft.trim().length === 0}">
-              ${busy ? 'Sending…' : 'Send to Game Director'}
+              ${busy ? 'Sending…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
             </button>
           </form>
         </div>`;
@@ -1003,11 +1169,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function playerActionBar(): string {
+    seedDmThreadIfNeeded();
     const banner = turnBanner();
     const showEndTurn = isOwnCombatTurn();
     const canDescribeTurn = seated && (explorationMode() || isOwnCombatTurn());
     return `
-      <div class="table-action-bar-inner table-action-bar-compact">
+      <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
@@ -1019,18 +1186,35 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
         </section>
+        <div class="dm-play-thread" data-testid="dm-play-thread">
+          <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · play thread</p>
+          ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
+          ${
+            intentDraft === null
+              ? ''
+              : `<div class="intent-intercept dm-thread-intent" data-testid="intent-intercept">
+                  <p data-testid="intent-intercept-summary">${escapeHtml(intentDraft.summary)}</p>
+                  <div class="action-composer-controls">
+                    <button type="button" data-testid="confirm-intent-intercept"
+                      aria-disabled="${busy || (!explorationMode() && !holdsOwnAuthority())}">Confirm action</button>
+                    <button type="button" data-testid="cancel-intent-intercept"
+                      aria-disabled="${busy}">Cancel draft</button>
+                  </div>
+                </div>`
+          }
+        </div>
         ${
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
-                  <textarea data-testid="player-action-input" rows="1"
-                    placeholder="What do you do? Describe your action — the Game Director narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+                  <textarea data-testid="player-action-input" rows="2"
+                    placeholder="What do you do? ${escapeHtml(directorIdentityLabel)} narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
                 </label>
                 <div class="table-player-actions" data-testid="table-player-actions">
                   <button type="button" class="table-primary-action" data-testid="submit-player-action"
                     aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
-                    ${busy ? 'Sending…' : 'Tell the Game Director'}
+                    ${busy ? 'Sending…' : `Tell ${escapeHtml(directorIdentityLabel)}`}
                   </button>
                   ${
                     showEndTurn
@@ -1043,7 +1227,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 </div>
               </div>`
             : `<div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
-                <p class="record-meta">Watch the scene or use chat while others act.</p>
+                <p class="record-meta">${
+                  seated
+                    ? 'Watch the scene or use chat while others act.'
+                    : 'Seat a character to play in this DM thread.'
+                }</p>
               </div>`
         }
       </div>`;
@@ -1118,16 +1306,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? `<p class="record-meta" data-testid="interpret-action-notice">
               ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionNotice)}
             </p>`
-          : `<div class="intent-intercept" data-testid="intent-intercept">
-              <p data-testid="intent-intercept-summary">${escapeHtml(intentDraft.summary)}</p>
-              <p class="record-meta">State: ${escapeHtml(intentDraft.interceptState)} · draft ${escapeHtml(intentDraft.draftId)}</p>
-              <div class="action-composer-controls">
-                <button type="button" data-testid="confirm-intent-intercept"
-                  aria-disabled="${busy || !ownAuthority}">Confirm action</button>
-                <button type="button" data-testid="cancel-intent-intercept"
-                  aria-disabled="${busy}">Cancel draft</button>
-              </div>
-            </div>`
+          : `<p class="record-meta" data-testid="interpret-action-notice">
+              Draft ready in the DM play thread below the map — confirm or cancel there.
+            </p>`
       }`;
   }
 
@@ -1304,6 +1485,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? 'You moved to the selected square.'
           : `You moved ${commitPath.length} squares.`,
       );
+      const moveSummary =
+        commitPath.length <= 1
+          ? 'You moved to the selected square.'
+          : `You moved ${commitPath.length} squares across the map.`;
+      appendDmThread('system', 'Table', moveSummary, 'mechanics');
+      void narrateIntoDmThread(moveSummary);
     } catch (failure) {
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
@@ -1326,16 +1513,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     fields: RulesCommandFields = {},
   ): Promise<void> {
     const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
-    const endTurnCommand = commandType === 'encounter.next_turn';
-    if (candidate === null || busy || tableState === null) {
+    if (candidate === null || tableState === null) {
       return;
     }
-    if (endTurnCommand && !isOwnCombatTurn()) {
-      return;
+    if (busy) {
+      // A prior command is still committing — do not drop this click silently.
+      for (let attempt = 0; attempt < 40 && busy; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      if (busy || tableState === null || candidate === null) {
+        error = 'The table is still resolving the previous action. Try again in a moment.';
+        render();
+        return;
+      }
     }
     if (
       !setupCommand &&
-      !endTurnCommand &&
+      commandType !== 'encounter.next_turn' &&
       !holdsOwnAuthority() &&
       encounter?.status === 'active'
     ) {
@@ -1345,13 +1539,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     error = null;
     render();
     try {
+      const activeEncounter = encounter;
+      const activeCombatant =
+        activeEncounter === null
+          ? null
+          : (activeEncounter.combatants.find(
+              (combatant) => combatant.combatantId === activeEncounter.activeCombatantId,
+            ) ?? null);
+      const omitTimingAuthority =
+        setupCommand ||
+        timingAuthority === null ||
+        (commandType === 'encounter.next_turn' && activeCombatant?.side === 'foe');
       const accepted = await submitTableCommand({
         candidateId: candidate.candidateId,
         campaignId,
         requestId: crypto.randomUUID(),
         commandType,
         expectedStateVersion: tableState.stateVersion,
-        ...(timingAuthority === null || setupCommand
+        ...(omitTimingAuthority || timingAuthority === null
           ? {}
           : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         ...fields,
@@ -1359,15 +1564,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableState = accepted.table;
       if (accepted.encounter !== undefined) encounter = accepted.encounter;
       if (accepted.progression !== undefined) progression = accepted.progression;
+      shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
+      const summary = accepted.event.summary?.trim() ?? null;
+      if (summary) {
+        appendDmThread('system', 'Table', summary, 'mechanics');
+        if (shouldAutoNarrateRulesCommand(commandType)) {
+          void narrateIntoDmThread(summary);
+        } else {
+          patchDmPlayThread();
+        }
+      }
+      // Paint committed encounter meta before Timing Authority refresh so the
+      // tools panel cannot linger on setup while the authority GET is in flight.
+      render();
       if (
         commandType === 'initiative.roll' ||
         commandType === 'encounter.next_turn' ||
         commandType === 'combat.ready' ||
         commandType === 'combat.reaction'
       ) {
-        timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
+        try {
+          timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
+        } catch {
+          // Authority refresh is best-effort after a successful commit.
+        }
       }
-      shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
     } catch (failure) {
       error =
         failure instanceof ApiFailure
@@ -1416,35 +1637,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     });
 
     root
-      .querySelector<HTMLSelectElement>('[data-testid="rules-desk-rule"]')
+      .querySelector<HTMLSelectElement>('[data-testid="rules-catalog-category"]')
       ?.addEventListener('change', (event) => {
         if (event.target instanceof HTMLSelectElement) {
-          selectedRuleId = event.target.value;
+          selectedRulesCategory = event.target.value as RulesCatalogCategory;
+          const first =
+            rulesCatalog?.entries.find((entry) => entry.category === selectedRulesCategory) ?? null;
+          selectedRulesEntryId = first?.entryId ?? null;
+          render();
         }
       });
 
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="rules-desk-explain"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (busy) return;
-          busy = true;
-          error = null;
-          render();
-          try {
-            ruleExplanation = await fetchRuleExplanation(selectedRuleId);
-            shell.announce(`${ruleExplanation.title} explanation loaded.`);
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'The rule explanation could not be loaded.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="rules-catalog-entry"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        selectedRulesEntryId = button.dataset.entryId ?? null;
+        render();
       });
+    });
 
     root
       .querySelector<HTMLSelectElement>('[data-testid="rules-target"]')
@@ -1657,27 +1866,35 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (candidate === null || busy || directorDraft.trim().length === 0) {
             return;
           }
+          const question = directorDraft.trim();
           busy = true;
           error = null;
+          appendAskDmThread('player', 'You', question, 'declaration');
+          directorDraft = '';
           render();
           try {
             const answered = await postDirectorAddress({
               candidateId: candidate.candidateId,
               campaignId,
-              body: directorDraft.trim(),
+              body: question,
             });
-            directorReply = answered.body;
-            directorDraft = '';
+            directorIdentityLabel = answered.directorIdentityLabel || directorIdentityLabel;
+            appendAskDmThread(
+              'dm',
+              answered.directorIdentityLabel,
+              answered.body,
+              'ruling_hint',
+            );
             if (textToSpeechEnabled && 'speechSynthesis' in window) {
               const utterance = new SpeechSynthesisUtterance(answered.body);
               window.speechSynthesis.speak(utterance);
             }
-            shell.announce('Director Address reply received. No table state changed.');
+            shell.announce(`${answered.directorIdentityLabel} answered. No table state changed.`);
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'Director Address could not be sent.';
+                : 'Ask the DM could not be sent.';
           } finally {
             busy = false;
             render();
@@ -1697,9 +1914,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (
             candidate === null ||
             busy ||
-            !holdsOwnAuthority() ||
             nlIntentText.trim().length === 0
           ) {
+            return;
+          }
+          if (!explorationMode() && !holdsOwnAuthority()) {
             return;
           }
           busy = true;
@@ -1722,6 +1941,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               interceptState: interpreted.interceptState,
               createdAt: interpreted.createdAt,
             };
+            appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
             shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
           } catch (failure) {
             error =
@@ -1748,17 +1968,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               candidateId: candidate.candidateId,
               campaignId,
               mechanicsSummary:
-                tableState === null
-                  ? 'The table is quiet.'
-                  : 'The party is gathered at the table.',
+                mapBundle?.sceneBanner?.trim() ||
+                (tableState === null ? 'The table is quiet.' : 'The party is gathered at the table.'),
             });
             lastNarration = narration.body;
+            directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
+            appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
             activeTab = 'chronicle';
             if (textToSpeechEnabled && 'speechSynthesis' in window) {
               const utterance = new SpeechSynthesisUtterance(narration.body);
               window.speechSynthesis.speak(utterance);
             }
-            shell.announce('Director narration delivered mechanics-first.');
+            shell.announce(`${narration.directorIdentityLabel} narrated the beat.`);
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -1895,23 +2116,39 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (candidate === null || busy || playerActionDraft.trim().length === 0) {
             return;
           }
+          if (!explorationMode() && !holdsOwnAuthority()) {
+            return;
+          }
+          const declaration = playerActionDraft.trim();
           busy = true;
           error = null;
+          appendDmThread('player', 'You', declaration, 'declaration');
+          playerActionDraft = '';
           render();
           try {
-            const answered = await postDirectorAddress({
+            const interpreted = await interpretNaturalLanguage({
               candidateId: candidate.candidateId,
               campaignId,
-              body: playerActionDraft.trim(),
+              text: declaration,
+              moveTarget,
             });
-            directorReply = answered.body;
-            playerActionDraft = '';
-            shell.announce('The Game Director heard your action.');
+            intentDraft = {
+              draftId: interpreted.draftId,
+              source: 'action_composer_interpret',
+              campaignId,
+              proposedCommandType: interpreted.proposedCommandType,
+              summary: interpreted.summary,
+              ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
+              interceptState: interpreted.interceptState,
+              createdAt: interpreted.createdAt,
+            };
+            appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
+            shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'The Game Director could not respond right now.';
+                : `${directorIdentityLabel} could not interpret that action right now.`;
           } finally {
             busy = false;
             render();
@@ -2111,12 +2348,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             candidate === null ||
             busy ||
             intentDraft === null ||
-            tableState === null ||
-            !holdsOwnAuthority() ||
-            timingAuthority === null
+            tableState === null
           ) {
             return;
           }
+          if (!explorationMode() && (timingAuthority === null || !holdsOwnAuthority())) {
+            return;
+          }
+          const draft = intentDraft;
           busy = true;
           error = null;
           render();
@@ -2125,19 +2364,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               candidateId: candidate.candidateId,
               campaignId,
               requestId: crypto.randomUUID(),
-              commandType: intentDraft.proposedCommandType,
+              commandType: draft.proposedCommandType,
               expectedStateVersion: tableState.stateVersion,
-              timingAuthorityId: timingAuthority.timingAuthorityId,
-              ...(intentDraft.path !== undefined ? { path: intentDraft.path } : {}),
-              ...(intentDraft.edgeId !== undefined ? { edgeId: intentDraft.edgeId } : {}),
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+              ...(draft.path !== undefined ? { path: draft.path } : {}),
+              ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
-            intentDraft = { ...intentDraft, interceptState: 'confirmed' };
-            shell.announce(
-              `Intent Intercept confirmed · ${intentDraft.proposedCommandType} · version ${accepted.table.stateVersion}.`,
-            );
+            const summary =
+              accepted.event.summary?.trim() ||
+              `${draft.proposedCommandType} committed · version ${accepted.table.stateVersion}.`;
+            appendDmThread('system', 'Table', summary, 'mechanics');
+            shell.announce(`Intent Intercept confirmed · ${draft.proposedCommandType}.`);
             intentDraft = null;
+            if (shouldAutoNarrateRulesCommand(draft.proposedCommandType)) {
+              void narrateIntoDmThread(summary);
+            } else {
+              patchDmPlayThread();
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -2245,6 +2492,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     const focused = captureFocusedField(pageShell);
     const scrollY = window.scrollY;
+    const presenceOpen =
+      container.querySelector<HTMLDetailsElement>('[data-testid="presence-section"]')?.open === true;
+    const advancedOpen =
+      container.querySelector<HTMLDetailsElement>('[data-testid="table-advanced-controls"]')?.open ===
+      true;
+    const toolsWereActive = activeInfoTab === 'tools';
 
     const mapMeta =
       mapBundle === null
@@ -2276,13 +2529,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     commsSlot.innerHTML = commsDockBody();
 
     footer.innerHTML = `
-      <details class="table-meta-panel" data-testid="presence-section">
+      <details class="table-meta-panel" data-testid="presence-section"${presenceOpen ? ' open' : ''}>
         <summary>Table details</summary>
         <section aria-labelledby="presence-heading">
           <h2 id="presence-heading">Who is connected</h2>
           ${presenceBody()}
         </section>
-        <p class="visually-hidden" data-testid="table-state-meta">
+        <p class="record-meta" data-testid="table-state-meta">
           Table state version ${tableState?.stateVersion ?? 0} · last event sequence ${tableState?.lastEventSequence ?? 0}
         </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
@@ -2301,6 +2554,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </ul>`
         }
       </details>`;
+
+    if (toolsWereActive && advancedOpen) {
+      const advanced = infoSlot.querySelector<HTMLDetailsElement>(
+        '[data-testid="table-advanced-controls"]',
+      );
+      if (advanced !== null) {
+        advanced.open = true;
+      }
+    }
 
     bindPanelEvents(pageShell);
     restoreFocusedField(pageShell, focused);
@@ -2487,13 +2749,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     try {
       const detail = await fetchCampaignDetail(campaignId);
       campaignName = detail.campaign.name;
+      directorIdentityLabel = detail.campaign.director.identityLabel;
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;
       if (!seated && chatMode === 'speak_as_character') {
         chatMode = 'table_talk';
       }
       shell.setDocumentTitle(`Table · ${campaignName}`);
-      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed, memoryFeed] =
+      const [chronicleFeed, chatFeed, tableFeed, mapFeed, timingFeed, presentation, rulesFeed, memoryFeed, catalogFeed] =
         await Promise.all([
           fetchChronicle(campaignId),
           fetchPartyChat(campaignId),
@@ -2503,6 +2766,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           fetchPlayerSettings(),
           seated ? fetchRulesState(campaignId) : Promise.resolve(null),
           fetchCampaignMemory(campaignId).catch(() => null),
+          fetchRulesCatalog().catch(() => null),
         ]);
       chronicle = chronicleFeed;
       partyChat = chatFeed;
@@ -2510,8 +2774,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       mapBundle = mapFeed;
       timingAuthority = timingFeed.authority;
       memory = memoryFeed;
+      rulesCatalog = catalogFeed;
       encounter = rulesFeed?.encounter ?? null;
       progression = rulesFeed?.progression ?? null;
+      seedDmThreadIfNeeded();
       if (presentationEpochAtLoad === presentationWriteEpoch) {
         reducedMotion = presentation.reducedMotion;
         lowEffects = presentation.lowEffects;

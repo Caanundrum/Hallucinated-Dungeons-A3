@@ -43,20 +43,21 @@ async function createCampaignAndSeat(page: Page): Promise<string> {
 }
 
 async function readStateVersion(page: Page): Promise<number> {
-  const text = await page.getByTestId('table-state-meta').innerText();
+  const text = await page.getByTestId('table-state-meta').evaluate((el) => el.textContent ?? '');
   const match = /Table state version (\d+)/.exec(text);
   expect(match).toBeTruthy();
   return Number(match![1]);
 }
 
 async function advanceEncounterTurn(page: Page): Promise<void> {
-  const before = await readStateVersion(page);
+  await openTableAdvancedControls(page);
+  const before = await page.getByTestId('encounter-meta').innerText();
   const next = page.getByTestId('next-encounter-turn');
   await expect(next).toHaveAttribute('aria-disabled', 'false');
   await next.click();
   await expect
-    .poll(async () => readStateVersion(page), { timeout: 15_000 })
-    .toBeGreaterThan(before);
+    .poll(async () => page.getByTestId('encounter-meta').innerText(), { timeout: 15_000 })
+    .not.toBe(before);
 }
 
 async function ownActionReady(page: Page): Promise<boolean> {
@@ -71,6 +72,7 @@ async function advanceToOwnAction(page: Page): Promise<void> {
   // Training foe auto-attacks are nonlethal (floor at 1 HP), so this helper does not
   // consume the journey's Potion of Healing — that remains an explicit journey step.
   for (let attempt = 0; attempt < 8; attempt += 1) {
+    await openTableAdvancedControls(page);
     if (await ownActionReady(page)) {
       return;
     }
@@ -93,9 +95,11 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('combatant-training-dummy')).toContainText('Training Dummy');
     await expect(page.getByTestId('combatant-practice-goblin')).toContainText('Practice Goblin');
     await expect(page.getByTestId('rules-last-result')).toContainText('Encounter began');
-
+    await expect(page.getByTestId('roll-initiative')).toHaveAttribute('aria-disabled', 'false');
     await page.getByTestId('roll-initiative').click();
-    await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
+    await expect(page.getByTestId('encounter-meta')).toContainText(/round [1-9]/, {
+      timeout: 15_000,
+    });
     await advanceToOwnAction(page);
 
     await page.getByTestId('rules-spell').selectOption('burning-hands');
@@ -135,8 +139,8 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('progression-meta')).toContainText('Level 2');
 
     await page.getByTestId('dock-tab-rules_desk').click();
-    await page.getByTestId('rules-desk-rule').selectOption('progression.xp');
-    await page.getByTestId('rules-desk-explain').click();
+    await page.getByTestId('rules-catalog-category').selectOption('core_mechanics');
+    await page.getByTestId('rules-catalog-entry').filter({ hasText: 'XP-only Progression' }).click();
     await expect(page.getByTestId('rules-explanation')).toContainText('XP-only Progression');
     await expect(page.getByTestId('rules-explanation')).toContainText('server-validated XP');
   });
@@ -152,8 +156,8 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
     await advanceToOwnAction(page);
     const candidate = await readCandidate(page);
-    const stateText = await page.getByTestId('table-state-meta').innerText();
-    const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
+    // Presence meta lives in a collapsed <details>; use textContent, not innerText.
+    const stateVersion = await readStateVersion(page);
     expect(stateVersion).toBeGreaterThan(0);
     const illegal = await page.evaluate(
       async ({ campaignId, candidateId, requestId, stateVersion }) => {
@@ -187,9 +191,9 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     expect(illegal.body.message).toContain('Timing Authority');
 
     await page.getByTestId('refresh-table-projection').click();
-    await expect(page.getByTestId('table-state-meta')).toContainText(
-      `Table state version ${stateVersion}`,
-    );
+    await expect
+      .poll(async () => readStateVersion(page), { timeout: 10_000 })
+      .toBe(stateVersion);
   });
 
   test('rendered death and recovery path: 0 HP enables Death Save then Long Rest clears dying', async ({

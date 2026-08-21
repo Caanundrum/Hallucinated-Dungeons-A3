@@ -55,6 +55,7 @@ export interface DirectorNarrationProjection {
   /** Player-controlled narration length applied to this beat (Section 25 Phase 5). */
   readonly narrationDensity: NarrationDensity;
   readonly directorIdentity: DirectorIdentity;
+  readonly directorIdentityLabel: string;
   readonly directorPersonality: DirectorPersonality;
   readonly avatarKey: string;
   readonly manifest: AiPayloadManifest;
@@ -66,6 +67,12 @@ export interface DirectorAddressResponse {
   readonly campaignId: string;
   readonly body: string;
   readonly mutatesState: false;
+  /** Locked campaign DM display name (Veyra / Garrick). */
+  readonly directorIdentityLabel: string;
+  readonly directorIdentity: DirectorIdentity;
+  readonly directorPersonality: DirectorPersonality;
+  /** Ask-the-DM consults use the rules-arbiter role when the question is mechanical. */
+  readonly consultMode: 'arbiter' | 'scene';
   readonly actionDraftSuggestion: {
     readonly draftId: string;
     readonly summary: string;

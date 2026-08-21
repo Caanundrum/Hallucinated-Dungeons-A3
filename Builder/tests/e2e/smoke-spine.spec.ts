@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import {enterArena, openArena, openTableAdvancedControls, projectionVersion, readCandidate, recordCheck, renderedNotes} from './arena-page.js';
+import {enterArena, openArena, openTableAdvancedControls, openTablePresencePanel, closeTablePresencePanel, projectionVersion, readCandidate, recordCheck, renderedNotes} from './arena-page.js';
 
 /**
  * The permanent smoke spine.
@@ -271,11 +271,14 @@ test.describe('Permanent smoke spine', () => {
     await page.getByTestId('create-seat').click();
 
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('presence-panel')).toBeVisible({ timeout: 10_000 });
+    await openTablePresencePanel(page);
+    await closeTablePresencePanel(page);
     await page.getByTestId('dock-tab-director_address').click();
     await page.getByTestId('director-address-input').fill('Is the door trapped?');
     await page.getByTestId('director-address-send').click();
-    await expect(page.getByTestId('director-address-reply')).toContainText(/Garrick|without changing state/i);
+    await expect(page.getByTestId('director-address-reply')).toContainText(
+      /Garrick|visible scene|Actions thread|without changing state/i,
+    );
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('party-chat-input').fill('I open the door');
     await page.getByTestId('party-chat-send').click();
