@@ -38,6 +38,7 @@ async function createQuickCharacter(page: Page, name: string): Promise<void> {
   await page.getByTestId('identity-name').fill(name);
   await page.getByTestId('identity-name').dispatchEvent('change');
   await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+  await expect(page.getByTestId('create-character')).toHaveAttribute('aria-disabled', 'false');
   await page.getByTestId('create-character').click();
   await expect(page.getByTestId('character-sheet-heading')).toHaveText(name);
 }

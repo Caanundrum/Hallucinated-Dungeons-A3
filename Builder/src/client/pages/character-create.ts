@@ -1285,7 +1285,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
       // Merge against in-flight / pending choices so a Pronouns blur cannot wipe a
       // Name save that is still round-tripping (HD-A3-PQA-001).
-      const commitIdentityField = () => {
+      input.addEventListener('change', () => {
         if (current === null) {
           return;
         }
@@ -1295,18 +1295,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
           ...foundation,
           identity: { ...foundation.identity, [field]: input.value },
         });
-      };
-      input.addEventListener('change', commitIdentityField);
-      input.addEventListener('blur', () => {
-        if (current === null) {
-          return;
-        }
-        const field = input.dataset.identity as keyof CharacterChoices['identity'];
-        const foundation = latestChoices();
-        if (foundation.identity[field] === input.value) {
-          return;
-        }
-        commitIdentityField();
       });
     });
 
@@ -1314,7 +1302,26 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="create-character"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || current === null || busy || !current.draft.canCreate) {
+          if (candidate === null || current === null || busy) {
+            return;
+          }
+          // Flush visible identity fields before create so a typed name that has
+          // not yet fired `change` still counts (and avoid a blur→save race).
+          const foundation = latestChoices();
+          const identity = { ...foundation.identity };
+          container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
+            const field = input.dataset.identity as keyof CharacterChoices['identity'];
+            identity[field] = input.value;
+          });
+          if (
+            identity.name !== foundation.identity.name ||
+            identity.pronouns !== foundation.identity.pronouns ||
+            identity.appearance !== foundation.identity.appearance ||
+            identity.concept !== foundation.identity.concept
+          ) {
+            await commitChoices({ ...foundation, identity });
+          }
+          if (current === null || !current.draft.canCreate) {
             return;
           }
           busy = true;
