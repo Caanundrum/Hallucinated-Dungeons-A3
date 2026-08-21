@@ -2083,6 +2083,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.BAD_REQUEST);
           return;
         }
+        const rollsRaw = (body as { rolls?: unknown }).rolls;
+        const rolls = Array.isArray(rollsRaw)
+          ? rollsRaw.filter((value): value is number => typeof value === 'number')
+          : undefined;
         await readCampaignDetail({ firestore, accountId, campaignId });
         try {
           const narration = await narrateVisibleBeat({
@@ -2090,6 +2094,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             campaignId,
             accountId,
             mechanicsSummary,
+            ...(rolls !== undefined ? { rolls } : {}),
             environmentClass: env.environmentClass,
             firebaseProjectId: env.firebaseProjectId,
           });

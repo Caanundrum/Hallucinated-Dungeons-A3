@@ -5,6 +5,9 @@
  * Authority / Action Composer plumbing. Clients never mint authorities.
  */
 
+import type { IntentDraftCommandType } from './intent-draft-contract.js';
+import type { AreaTarget } from './rules-combat-contract.js';
+
 export const TIMING_AUTHORITY_SCHEMA_VERSION = 'phase3-timing-v1' as const;
 
 /** Server-issued opportunities; Reaction and Decision windows are single-use. */
@@ -78,10 +81,16 @@ export interface ActionDraftSuggestion {
   readonly draftId: string;
   readonly source: 'action_composer_interpret';
   readonly campaignId: string;
-  readonly proposedCommandType: 'table.move' | 'table.open_door' | 'table.sync';
+  readonly proposedCommandType: IntentDraftCommandType;
   readonly summary: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly targetCombatantId?: string;
+  readonly spellId?: string;
+  readonly itemId?: string;
+  readonly attackId?: string;
+  readonly area?: AreaTarget;
+  readonly projectionVersionAtIssue?: number;
   readonly interceptState: IntentInterceptState;
   readonly createdAt: string;
 }

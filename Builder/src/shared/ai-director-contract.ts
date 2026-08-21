@@ -8,7 +8,10 @@
  */
 
 import type { DirectorIdentity, DirectorPersonality } from './campaign-contract.js';
+import type { EpicFramingTag, IntentDraftCommandType } from './intent-draft-contract.js';
+import type { AreaTarget } from './rules-combat-contract.js';
 import type { NarrationDensity } from './settings-contract.js';
+
 
 export const AI_ROLES = [
   'intent_interpreter',
@@ -54,6 +57,8 @@ export interface DirectorNarrationProjection {
   readonly fallbackUsed: boolean;
   /** Player-controlled narration length applied to this beat (Section 25 Phase 5). */
   readonly narrationDensity: NarrationDensity;
+  /** Emphasis tags derived from committed mechanics — never rewrite outcomes. */
+  readonly framingTags: readonly EpicFramingTag[];
   readonly directorIdentity: DirectorIdentity;
   readonly directorIdentityLabel: string;
   readonly directorPersonality: DirectorPersonality;
@@ -76,7 +81,7 @@ export interface DirectorAddressResponse {
   readonly actionDraftSuggestion: {
     readonly draftId: string;
     readonly summary: string;
-    readonly proposedCommandType: 'table.sync' | 'table.move' | 'table.open_door';
+    readonly proposedCommandType: IntentDraftCommandType;
   } | null;
   readonly manifest: AiPayloadManifest;
   readonly createdAt: string;
@@ -86,8 +91,15 @@ export interface IntentInterpretResponse {
   readonly draftId: string;
   readonly campaignId: string;
   readonly summary: string;
-  readonly proposedCommandType: 'table.sync' | 'table.move' | 'table.open_door';
+  readonly proposedCommandType: IntentDraftCommandType;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
+  readonly edgeId?: string;
+  readonly targetCombatantId?: string;
+  readonly spellId?: string;
+  readonly itemId?: string;
+  readonly attackId?: string;
+  readonly area?: AreaTarget;
+  readonly projectionVersionAtIssue?: number;
   readonly interceptState: 'awaiting_confirmation';
   readonly source: 'action_composer_nl';
   readonly manifest: AiPayloadManifest;

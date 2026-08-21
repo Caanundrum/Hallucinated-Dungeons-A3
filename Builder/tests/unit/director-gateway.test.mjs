@@ -163,6 +163,33 @@ test('hosted NL interpret keeps deterministic command types', async () => {
   assert.equal(interpreted.summary, 'Draft: you step to column 3, row 4. Confirm to move.');
 });
 
+test('NL attack without active combat stays a clarify draft, not a fake hit', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I leap down and smash the goblin with my warhammer',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.match(interpreted.summary, /combat is not active|Begin encounter/i);
+  assert.equal(interpreted.targetCombatantId, undefined);
+});
+
+test('narration framing tags emphasize epic beats without changing mechanics summary', async () => {
+  const narration = await narrateVisibleBeat({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    mechanicsSummary: 'Critical hit! Practice Goblin drops to 0 Hit Points.',
+    rolls: [20, 12],
+    environmentClass: 'local',
+  });
+  assert.equal(narration.mechanicsFirstSummary, 'Critical hit! Practice Goblin drops to 0 Hit Points.');
+  assert.ok(narration.framingTags.includes('crit'));
+  assert.ok(narration.framingTags.includes('finishing_blow'));
+});
+
 test('kill switch still refuses Director AI before Gemini', async () => {
   await assert.rejects(
     () =>

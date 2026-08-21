@@ -798,11 +798,15 @@ export async function requestDirectorNarration(options: {
   readonly candidateId: string;
   readonly campaignId: string;
   readonly mechanicsSummary: string;
+  readonly rolls?: readonly number[];
 }): Promise<import('../shared/ai-director-contract.js').DirectorNarrationProjection> {
   return (await request(`/api/campaigns/${options.campaignId}/narrate`, {
     method: 'POST',
     candidateId: options.candidateId,
-    body: JSON.stringify({ mechanicsSummary: options.mechanicsSummary }),
+    body: JSON.stringify({
+      mechanicsSummary: options.mechanicsSummary,
+      ...(options.rolls !== undefined ? { rolls: options.rolls } : {}),
+    }),
   })) as never;
 }
 
