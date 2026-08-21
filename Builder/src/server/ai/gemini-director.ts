@@ -9,6 +9,13 @@
 export const GEMINI_DIRECTOR_MODEL = 'gemini-3.7-flash';
 export const GEMINI_DIRECTOR_LOCATION = 'global';
 
+/**
+ * Gemini 3.x counts thinking tokens against maxOutputTokens. A low cap (e.g. 400)
+ * truncates Director prose mid-sentence once thinking burns the budget.
+ * Keep headroom for LOW thinking + a few short sentences.
+ */
+export const GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS = 2048;
+
 export interface DirectorLlmClient {
   generateText(input: {
     readonly systemInstruction: string;
@@ -35,7 +42,7 @@ export function createGeminiDirectorClient(options: {
     (process.env.GOOGLE_CLOUD_LOCATION ?? '').trim() || GEMINI_DIRECTOR_LOCATION;
   return {
     async generateText(input) {
-      const { GoogleGenAI } = await import('@google/genai');
+      const { GoogleGenAI, ThinkingLevel } = await import('@google/genai');
       const client = new GoogleGenAI({
         enterprise: true,
         project: options.projectId,
@@ -47,9 +54,19 @@ export function createGeminiDirectorClient(options: {
         config: {
           systemInstruction: input.systemInstruction,
           temperature: 0.8,
-          maxOutputTokens: 400,
+          maxOutputTokens: GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
+          // Director Address / narration do not need deep reasoning.
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
         },
       });
+      const finishReason = response.candidates?.[0]?.finishReason;
+      if (finishReason === 'MAX_TOKENS') {
+        process.stderr.write(
+          '[gemini-director] Response hit MAX_TOKENS; prose may be truncated.\n',
+        );
+      }
       return sanitizeDirectorProse(response.text ?? '');
     },
   };
