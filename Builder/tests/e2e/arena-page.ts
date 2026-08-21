@@ -81,12 +81,34 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
 /** Opens training / developer controls on the campaign table dashboard. */
 export async function openTableAdvancedControls(page: Page): Promise<void> {
   await page.getByTestId('table-info-tab-tools').click();
+  await expect(page.getByTestId('table-tools-panel')).toBeVisible();
   const details = page.getByTestId('table-advanced-controls');
   await expect(details).toBeVisible();
-  await details.evaluate((element) => {
-    (element as HTMLDetailsElement).open = true;
-  });
+  if ((await details.getAttribute('open')) === null) {
+    await details.locator('summary').click();
+  }
   await expect(details).toHaveAttribute('open', '');
+  await expect(page.getByTestId('begin-encounter')).toBeVisible();
+}
+
+/** Opens the footer Table details panel so presence / state meta are visible. */
+export async function openTablePresencePanel(page: Page): Promise<void> {
+  const details = page.getByTestId('presence-section');
+  await expect(details).toBeVisible();
+  if ((await details.getAttribute('open')) === null) {
+    await details.locator('summary').click();
+  }
+  await expect(details).toHaveAttribute('open', '');
+  await expect(page.getByTestId('presence-panel')).toBeVisible();
+}
+
+/** Closes the footer Table details panel so it does not cover dock controls. */
+export async function closeTablePresencePanel(page: Page): Promise<void> {
+  const details = page.getByTestId('presence-section');
+  if ((await details.getAttribute('open')) !== null) {
+    await details.locator('summary').click();
+  }
+  await expect(details).not.toHaveAttribute('open', '');
 }
 
 /** Reads the notes currently rendered from the server projection. */

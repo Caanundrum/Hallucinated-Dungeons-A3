@@ -404,7 +404,7 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread {
-  max-height: 180px;
+  max-height: 140px;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -542,6 +542,13 @@ a.account-chip-label:focus-visible {
 .table-dashboard-footer {
   flex-shrink: 0;
   margin-top: var(--space-2);
+  position: relative;
+  z-index: 1;
+}
+
+.table-dashboard-footer .table-meta-panel[open] {
+  max-height: 12rem;
+  overflow: auto;
 }
 
 .table-comms-rail.communication-dock {

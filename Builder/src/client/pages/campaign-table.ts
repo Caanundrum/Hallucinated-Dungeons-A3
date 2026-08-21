@@ -248,11 +248,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `<ol class="record-list dm-thread-list" data-testid="${options.listTestId}">
       ${messages
         .map((message, index) => {
-          const replyAttr =
+          const testId =
             options.latestReplyTestId !== undefined && index === lastDmIndex
-              ? ` data-testid="${options.latestReplyTestId}"`
-              : '';
-          return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="dm-thread-message"${replyAttr}>
+              ? options.latestReplyTestId
+              : 'dm-thread-message';
+          return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="${testId}">
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
             <p>${escapeHtml(message.body)}</p>
             <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
@@ -1459,7 +1459,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? 'You moved to the selected square.'
           : `You moved ${commitPath.length} squares across the map.`;
       appendDmThread('system', 'Table', moveSummary, 'mechanics');
-      await narrateIntoDmThread(moveSummary);
+      void narrateIntoDmThread(moveSummary).then(() => {
+        if (isPageMountCurrent(container, mountToken)) {
+          render();
+        }
+      });
     } catch (failure) {
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
@@ -1482,16 +1486,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     fields: RulesCommandFields = {},
   ): Promise<void> {
     const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
-    const endTurnCommand = commandType === 'encounter.next_turn';
     if (candidate === null || busy || tableState === null) {
-      return;
-    }
-    if (endTurnCommand && !isOwnCombatTurn()) {
       return;
     }
     if (
       !setupCommand &&
-      !endTurnCommand &&
+      commandType !== 'encounter.next_turn' &&
       !holdsOwnAuthority() &&
       encounter?.status === 'active'
     ) {
@@ -1507,7 +1507,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         requestId: crypto.randomUUID(),
         commandType,
         expectedStateVersion: tableState.stateVersion,
-        ...(timingAuthority === null || setupCommand
+        ...(timingAuthority === null ||
+        setupCommand ||
+        commandType === 'encounter.next_turn'
           ? {}
           : { timingAuthorityId: timingAuthority.timingAuthorityId }),
         ...fields,
@@ -1524,10 +1526,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         timingAuthority = (await fetchTimingAuthority(campaignId)).authority;
       }
       shell.announce(accepted.event.summary ?? `${commandType} resolved by the server.`);
-      const summary = accepted.event.summary?.trim();
+      const summary = accepted.event.summary?.trim() ?? null;
       if (summary) {
         appendDmThread('system', 'Table', summary, 'mechanics');
-        await narrateIntoDmThread(summary);
+        void narrateIntoDmThread(summary).then(() => {
+          if (isPageMountCurrent(container, mountToken)) {
+            render();
+          }
+        });
       }
     } catch (failure) {
       error =
@@ -2320,7 +2326,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             appendDmThread('system', 'Table', summary, 'mechanics');
             shell.announce(`Intent Intercept confirmed · ${draft.proposedCommandType}.`);
             intentDraft = null;
-            await narrateIntoDmThread(summary);
+            void narrateIntoDmThread(summary).then(() => {
+              if (isPageMountCurrent(container, mountToken)) {
+                render();
+              }
+            });
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -2428,6 +2438,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     const focused = captureFocusedField(pageShell);
     const scrollY = window.scrollY;
+    const presenceOpen =
+      container.querySelector<HTMLDetailsElement>('[data-testid="presence-section"]')?.open === true;
+    const advancedOpen =
+      container.querySelector<HTMLDetailsElement>('[data-testid="table-advanced-controls"]')?.open ===
+      true;
+    const toolsWereActive = activeInfoTab === 'tools';
 
     const mapMeta =
       mapBundle === null
@@ -2459,13 +2475,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     commsSlot.innerHTML = commsDockBody();
 
     footer.innerHTML = `
-      <details class="table-meta-panel" data-testid="presence-section">
+      <details class="table-meta-panel" data-testid="presence-section"${presenceOpen ? ' open' : ''}>
         <summary>Table details</summary>
         <section aria-labelledby="presence-heading">
           <h2 id="presence-heading">Who is connected</h2>
           ${presenceBody()}
         </section>
-        <p class="visually-hidden" data-testid="table-state-meta">
+        <p class="record-meta" data-testid="table-state-meta">
           Table state version ${tableState?.stateVersion ?? 0} · last event sequence ${tableState?.lastEventSequence ?? 0}
         </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
@@ -2484,6 +2500,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </ul>`
         }
       </details>`;
+
+    if (toolsWereActive && advancedOpen) {
+      const advanced = infoSlot.querySelector<HTMLDetailsElement>(
+        '[data-testid="table-advanced-controls"]',
+      );
+      if (advanced !== null) {
+        advanced.open = true;
+      }
+    }
 
     bindPanelEvents(pageShell);
     restoreFocusedField(pageShell, focused);

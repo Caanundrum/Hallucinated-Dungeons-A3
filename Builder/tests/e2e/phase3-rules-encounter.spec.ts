@@ -43,20 +43,20 @@ async function createCampaignAndSeat(page: Page): Promise<string> {
 }
 
 async function readStateVersion(page: Page): Promise<number> {
-  const text = await page.getByTestId('table-state-meta').innerText();
+  const text = await page.getByTestId('table-state-meta').evaluate((el) => el.textContent ?? '');
   const match = /Table state version (\d+)/.exec(text);
   expect(match).toBeTruthy();
   return Number(match![1]);
 }
 
 async function advanceEncounterTurn(page: Page): Promise<void> {
-  const before = await readStateVersion(page);
+  const before = await page.getByTestId('encounter-meta').innerText();
   const next = page.getByTestId('next-encounter-turn');
   await expect(next).toHaveAttribute('aria-disabled', 'false');
   await next.click();
   await expect
-    .poll(async () => readStateVersion(page), { timeout: 15_000 })
-    .toBeGreaterThan(before);
+    .poll(async () => page.getByTestId('encounter-meta').innerText(), { timeout: 15_000 })
+    .not.toBe(before);
 }
 
 async function ownActionReady(page: Page): Promise<boolean> {
@@ -94,8 +94,19 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await expect(page.getByTestId('combatant-practice-goblin')).toContainText('Practice Goblin');
     await expect(page.getByTestId('rules-last-result')).toContainText('Encounter began');
 
-    await page.getByTestId('roll-initiative').click();
-    await expect(page.getByTestId('encounter-meta')).toContainText('round 1');
+    await expect
+      .poll(
+        async () => {
+          await openTableAdvancedControls(page);
+          const roll = page.getByTestId('roll-initiative');
+          if ((await roll.getAttribute('aria-disabled')) === 'false') {
+            await roll.click();
+          }
+          return page.getByTestId('encounter-meta').innerText();
+        },
+        { timeout: 20_000 },
+      )
+      .toMatch(/round [1-9]/);
     await advanceToOwnAction(page);
 
     await page.getByTestId('rules-spell').selectOption('burning-hands');

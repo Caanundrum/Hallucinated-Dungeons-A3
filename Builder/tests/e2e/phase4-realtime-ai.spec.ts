@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
+import {enterAccountFromShell, readCandidate, openTableAdvancedControls, openTablePresencePanel, closeTablePresencePanel} from './arena-page.js';
 
 /**
  * Phase 4: presence, Google emulator admin, Director Address, NL Intent Intercept,
@@ -105,8 +105,9 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     await seatOwnCharacter(page);
     await page.getByTestId('open-campaign-table').click();
 
-    await expect(page.getByTestId('presence-panel')).toBeVisible({ timeout: 10_000 });
+    await openTablePresencePanel(page);
     await expect(page.getByTestId('presence-meta')).toContainText('online');
+    await closeTablePresencePanel(page);
 
     await page.getByTestId('dock-tab-director_address').click();
     await page.getByTestId('director-address-input').fill('What do I see in this room?');
@@ -173,10 +174,13 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     const guestC = await joinGuest('P4 Guest C');
 
     await ownerPage.getByTestId('open-campaign-table').click();
-    await expect(ownerPage.getByTestId('presence-panel')).toBeVisible({ timeout: 15_000 });
+    await openTablePresencePanel(ownerPage);
+    await closeTablePresencePanel(ownerPage);
 
     for (const page of [ownerPage, guestA, guestB, guestC]) {
+      await openTablePresencePanel(page);
       await expect(page.getByTestId('presence-list')).toBeVisible();
+      await closeTablePresencePanel(page);
       await page.getByTestId('dock-tab-party_chat').click();
       await page.getByTestId('party-chat-input').fill(`Hello from ${randomUUID().slice(0, 6)}`);
       await page.getByTestId('party-chat-send').click();

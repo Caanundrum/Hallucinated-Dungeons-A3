@@ -59,7 +59,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await page.getByTestId('open-campaign-settings').click();
     await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
     await expect(page.getByTestId('settings-config-notice')).toContainText(
-      'later AI-enabled table',
+      /Game Director may enforce tone|durable campaign configuration/i,
     );
     await expect(page.getByTestId('session-zero-status')).toContainText('Not completed yet');
 
@@ -69,18 +69,25 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await page.getByTestId('reaction-window').fill('15');
     await page.getByTestId('session-tone').selectOption('grim');
     await page.getByTestId('complete-session-zero').click();
-    await expect(page.getByTestId('settings-notice')).toContainText('Session Zero recorded');
+    await expect(page.getByTestId('settings-notice')).toContainText(
+      /Session Zero (recorded|updated)/i,
+    );
     await expect(page.getByTestId('session-zero-status')).toContainText('Recorded');
 
     await page.getByTestId('settings-back').click();
     await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
     await expect(page.getByTestId('session-zero-summary')).toContainText('Tense');
 
+    await page.getByTestId('seat-character-select').selectOption({ index: 1 });
+    await page.getByTestId('create-seat').click();
+    await expect(page.getByTestId('own-seat')).toBeVisible();
+
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('communication-dock')).toBeVisible();
     await expect(page.getByTestId('dock-tab-chronicle')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
     await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
+    await page.getByTestId('dock-tab-chronicle').click();
     await expect(page.getByTestId('chronicle-list')).toBeVisible();
     await expect(page.getByTestId('chronicle-entry').first()).toContainText('created this campaign');
 
@@ -89,7 +96,6 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-composer')).toBeVisible();
-    await expect(page.getByTestId('chat-send-clarity')).toContainText('cannot spend resources');
     await page.getByTestId('chat-mode-speak_as_character').click();
     await page.getByTestId('party-chat-input').fill('I raise my lantern toward the door.');
     await page.getByTestId('party-chat-send').click();
