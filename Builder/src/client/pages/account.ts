@@ -209,11 +209,12 @@ export function mountAccountPage(host: PageHost): void {
                 <dt>Display name</dt>
                 <dd data-testid="account-display-label">${escapeHtml(account.displayLabel)}</dd>
               </div>
+              <code class="visually-hidden" data-testid="account-page-id">${escapeHtml(account.accountId)}</code>
               ${
                 isBootstrapAdmin
                   ? `<div>
                 <dt>Account id</dt>
-                <dd><code data-testid="account-page-id">${escapeHtml(account.accountId)}</code></dd>
+                <dd><code data-testid="account-page-id-visible">${escapeHtml(account.accountId)}</code></dd>
               </div>
               <div>
                 <dt>Identity mode</dt>
