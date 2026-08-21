@@ -18,7 +18,8 @@ test('director catalog exposes both identities and six personalities', () => {
   assert.equal(catalog.identities.length, DIRECTOR_IDENTITIES.length);
   assert.equal(catalog.personalities.length, DIRECTOR_PERSONALITIES.length);
   assert.equal(catalog.personalities.length, 6);
-  assert.ok(catalog.configurationNotice.includes('later AI-enabled table'));
+  assert.ok(catalog.configurationNotice.includes('Game Director'));
+  assert.ok(catalog.configurationNotice.includes('Gemini') || catalog.configurationNotice.includes('simulator'));
   assert.ok(!/\bcoming\s+soon\b/i.test(catalog.configurationNotice));
 
   const recommended = catalog.personalities.filter((entry) => entry.recommended);

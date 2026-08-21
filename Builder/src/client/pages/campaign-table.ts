@@ -498,7 +498,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function notesPanelBody(): string {
     return `
-      <p class="record-meta">Private scratch notes — saved on this device only.</p>
+      <p class="record-meta">Private scratch notes — saved on this device for this browser tab only. They start empty; campaign prompts live under People and Story so far.</p>
       <label class="field">
         <span class="visually-hidden">Table notes</span>
         <textarea data-testid="table-notes-input" rows="12"

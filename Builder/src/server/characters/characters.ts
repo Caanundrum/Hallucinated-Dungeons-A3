@@ -417,9 +417,14 @@ export async function readVault(options: {
   const drafts = draftsSnapshot.docs.map((doc) => {
     const stored = doc.data() as StoredDraft;
     const problems = validateChoices(stored.choices);
+    const labels = describeChoices(stored.choices);
     return {
       draftId: stored.draftId,
-      classLabel: describeChoices(stored.choices).classLabel,
+      classLabel: labels.classLabel,
+      speciesLabel: labels.speciesLabel,
+      backgroundLabel: labels.backgroundLabel,
+      name: stored.choices.identity.name.trim(),
+      concept: stored.choices.identity.concept.trim(),
       updatedAt: toIso(stored.updatedAt),
       canCreate: problems.length === 0,
       unresolvedCount: problems.length,

@@ -268,6 +268,10 @@ export interface CharacterSummary {
 export interface DraftSummary {
   readonly draftId: string;
   readonly classLabel: string | null;
+  readonly speciesLabel: string | null;
+  readonly backgroundLabel: string | null;
+  readonly name: string;
+  readonly concept: string;
   readonly updatedAt: string;
   readonly canCreate: boolean;
   readonly unresolvedCount: number;

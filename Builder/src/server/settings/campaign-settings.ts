@@ -260,6 +260,14 @@ export async function updateCampaignSettings(options: {
     );
   }
 
+  if (payload.contentProfile !== undefined || payload.safetyBoundaries !== undefined) {
+    if (next.contentProfile === 'custom_restricted' && next.safetyBoundaries.trim().length === 0) {
+      throw new CampaignValidationError(
+        'Custom Restricted requires at least one line, veil, or safety boundary.',
+      );
+    }
+  }
+
   if (payload.groupDecisionPolicy !== undefined) {
     if (!isGroupDecisionPolicy(payload.groupDecisionPolicy)) {
       throw new CampaignValidationError('Choose a valid group-decision policy.');
@@ -274,6 +282,24 @@ export async function updateCampaignSettings(options: {
     } else if (typeof caller !== 'string' || caller.length > 64) {
       throw new CampaignValidationError('Designated caller must be a campaign member account.');
     } else {
+      const callerMembership = await firestore
+        .collection(COLLECTIONS.campaignMemberships)
+        .where('campaignId', '==', campaignId)
+        .where('accountId', '==', caller)
+        .limit(1)
+        .get();
+      if (callerMembership.empty) {
+        throw new CampaignValidationError('Designated caller must be a campaign member.');
+      }
+      const callerSeat = await firestore
+        .collection(COLLECTIONS.campaignSeats)
+        .where('campaignId', '==', campaignId)
+        .where('ownerAccountId', '==', caller)
+        .limit(1)
+        .get();
+      if (callerSeat.empty) {
+        throw new CampaignValidationError('Designated caller must be a seated campaign member.');
+      }
       next.designatedCallerAccountId = caller;
     }
   }
@@ -370,9 +396,20 @@ export async function updateCampaignSettings(options: {
       }
       next.sessionZero.contentSource = zero.contentSource;
     }
-    if (zero.complete === true && !next.sessionZero.completed) {
-      next.sessionZero.completed = true;
-      next.sessionZero.completedAt = new Date();
+    if (zero.complete === true) {
+      if (next.sessionZero.expectedSessionLength.trim().length === 0) {
+        throw new CampaignValidationError('Expected session length is required for Session Zero.');
+      }
+      if (next.sessionZero.textChatExpectations.trim().length === 0) {
+        throw new CampaignValidationError('Text-chat expectations are required for Session Zero.');
+      }
+      if (!next.sessionZero.completed) {
+        next.sessionZero.completed = true;
+        next.sessionZero.completedAt = new Date();
+      } else {
+        // Updates refresh the recorded timestamp so players see the change stuck.
+        next.sessionZero.completedAt = new Date();
+      }
     }
     // Locked defaults — ignore client attempts to weaken them.
     next.sessionZero.pvpPolicy = 'consent_required';

@@ -137,9 +137,11 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
       classRecord.skillChoiceIds.length === 0
         ? SKILLS.map((skill) => skill.id)
         : classRecord.skillChoiceIds;
+    const backgroundSkills = new Set(backgroundRecord?.skillIds ?? []);
     const chosen = choices.classSkillIds;
     const illegal = chosen.filter((id) => !allowed.includes(id));
     const duplicated = chosen.length !== new Set(chosen).size;
+    const overlappingBackground = chosen.filter((id) => backgroundSkills.has(id));
 
     if (illegal.length > 0) {
       problems.push(
@@ -153,6 +155,18 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
     if (duplicated) {
       problems.push(
         unresolved('class', 'CLASS_SKILL_DUPLICATE', 'Each skill proficiency must be different.'),
+      );
+    }
+    if (overlappingBackground.length > 0) {
+      const labels = overlappingBackground
+        .map((id) => findSkill(id)?.label ?? id)
+        .join(', ');
+      problems.push(
+        unresolved(
+          'class',
+          'CLASS_SKILL_BACKGROUND_OVERLAP',
+          `Your Background already grants ${labels}. Pick a different ${classRecord.label} skill.`,
+        ),
       );
     }
     if (chosen.length !== classRecord.skillChoiceCount) {
@@ -183,6 +197,10 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
 
   // ── Species choices ────────────────────────────────────────────────────
   if (speciesRecord !== null) {
+    const alreadyProficient = new Set<string>([
+      ...(backgroundRecord?.skillIds ?? []),
+      ...choices.classSkillIds,
+    ]);
     for (const choice of speciesRecord.choices) {
       const selected = choices.speciesChoiceIds[choice.id];
       if (selected === undefined) {
@@ -192,6 +210,15 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
       if (!choice.from.some((option) => option.id === selected)) {
         problems.push(
           unresolved('species', 'SPECIES_CHOICE_INVALID', `That option is not available for ${choice.label}.`),
+        );
+      }
+      if (choice.grantsSkillProficiency === true && alreadyProficient.has(selected)) {
+        problems.push(
+          unresolved(
+            'species',
+            'SPECIES_SKILL_ALREADY_PROFICIENT',
+            `You are already proficient in ${findSkill(selected)?.label ?? selected}. Choose a different skill.`,
+          ),
         );
       }
     }
@@ -704,6 +731,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       });
     }),
     ...speciesRecord.features
+      .filter((feature) => (feature.minLevel ?? 1) <= STARTING_LEVEL)
       .filter((feature) => !speciesRecord.choices.some((choice) => choice.label.startsWith(feature.name)))
       .map((feature) => ({ name: feature.name, source: speciesRecord.label, summary: feature.summary })),
     ...speciesRecord.choices.flatMap((choice) => {
@@ -807,6 +835,7 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
               ? SKILLS.map((skill) => skill.id)
               : classRecord.skillChoiceIds
             )
+              .filter((id) => !(backgroundRecord?.skillIds ?? []).includes(id))
               .map((id) => findSkill(id))
               .filter((skill): skill is NonNullable<typeof skill> => skill !== null)
               .map((skill) => ({ id: skill.id, label: skill.label })),
@@ -853,18 +882,31 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
             speed: speciesRecord.speed,
             size: speciesRecord.size,
             senses: speciesRecord.senses,
-            features: speciesRecord.features.map((feature) => ({ name: feature.name, summary: feature.summary })),
-            choices: speciesRecord.choices.map((choice) => ({
-              id: choice.id,
-              label: choice.label,
-              helper: choice.helper,
-              choose: choice.choose,
-              from: choice.from.map((option) => ({
-                id: option.id,
-                label: option.label,
-                summary: option.summary,
-              })),
-            })),
+            features: speciesRecord.features
+              .filter((feature) => (feature.minLevel ?? 1) <= STARTING_LEVEL)
+              .map((feature) => ({ name: feature.name, summary: feature.summary })),
+            choices: speciesRecord.choices.map((choice) => {
+              const alreadyProficient = new Set<string>([
+                ...(backgroundRecord?.skillIds ?? []),
+                ...choices.classSkillIds,
+              ]);
+              return {
+                id: choice.id,
+                label: choice.label,
+                helper: choice.helper,
+                choose: choice.choose,
+                from: choice.from
+                  .filter(
+                    (option) =>
+                      choice.grantsSkillProficiency !== true || !alreadyProficient.has(option.id),
+                  )
+                  .map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                    summary: option.summary,
+                  })),
+              };
+            }),
           },
     backgroundDetail:
       backgroundRecord === null

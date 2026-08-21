@@ -75,7 +75,7 @@ const STEP_HELPERS: Record<WizardStep, string> = {
   features:
     'Lock in the clever tricks your Class actually knows at level 1. Each choice below has a short explanation — read it before you pick.',
   identity:
-    'Mechanics done. Name them, skim the sheet (hover numbers for How we got this), and commit when you are ready.',
+    'Name your adventurer and review the sheet. Hover highlighted numbers for How we got this. Create Character stays locked until every mechanical choice is legal.',
 };
 
 const TUTORIAL_STEPS: readonly { title: string; body: string }[] = [
@@ -252,16 +252,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   function stepTrain(): string {
     const draft = current?.draft;
+    const activeIndex = WIZARD_STEPS.indexOf(activeStep);
     return `
       <nav class="wizard-train" aria-label="Character creation steps" data-testid="wizard-steps">
         <ol class="wizard-steps">
           ${WIZARD_STEPS.map((step, index) => {
             const done = draft?.completedSteps.includes(step) === true;
             const isActive = step === activeStep;
+            const priorComplete =
+              index === 0 ||
+              WIZARD_STEPS.slice(0, index).every((prior) => draft?.completedSteps.includes(prior) === true);
+            const allowed = index <= activeIndex || done || priorComplete;
             return `
-              <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''}">
+              <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''} ${allowed ? '' : 'locked'}">
                 <button type="button" data-step="${step}" data-testid="step-${step}"
-                  aria-current="${isActive ? 'step' : 'false'}">
+                  aria-current="${isActive ? 'step' : 'false'}"
+                  aria-disabled="${allowed ? 'false' : 'true'}">
                   <span class="step-number">${index + 1}</span>
                   <span class="step-label">${escapeHtml(STEP_TRAIN_LABELS[step])}</span>
                 </button>
@@ -301,9 +307,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
             ? isLast && state.draft.canCreate
               ? `<p class="wizard-ready" data-testid="nothing-unresolved">Everything required is ready. Create them when you are.</p>`
               : `<p class="wizard-coach" data-testid="step-coach">Looking good — keep going.</p>`
-            : `<p class="wizard-coach" data-testid="step-blockers" role="status">${escapeHtml(blockers[0]!)}${
-                blockers.length > 1 ? ` (+${blockers.length - 1} more on this step)` : ''
-              }</p>`
+            : `<div class="wizard-coach" data-testid="step-blockers" role="status">
+                <p>${escapeHtml(blockers[0]!)}</p>
+                ${
+                  blockers.length > 1
+                    ? `<ul class="record-list compact" data-testid="step-blocker-list">
+                        ${blockers
+                          .slice(1)
+                          .map((message) => `<li>${escapeHtml(message)}</li>`)
+                          .join('')}
+                      </ul>`
+                    : ''
+                }
+              </div>`
         }
         <div class="wizard-nav-actions">
           <button type="button" class="secondary" data-testid="wizard-back"
@@ -446,10 +462,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     return `
       <h3>Choose a Background</h3>
-      <p class="step-helper">${escapeHtml(STEP_HELPERS.background)}</p>
-      <p class="nav-hint" data-testid="background-nav-hint">
-        Clicking an option shows details at the bottom.
-      </p>
+      <p class="step-helper" data-testid="background-nav-hint">${escapeHtml(STEP_HELPERS.background)}</p>
       ${optionList({
         name: 'background',
         testId: 'background-options',
@@ -829,7 +842,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
 
       <h3>Final review</h3>
-      <p>Hover or focus any highlighted number for <b>How we got this</b>. The server did the math.</p>
+      ${
+        state.draft.unresolved.some((item) => item.step !== 'identity')
+          ? `<p class="message notice" data-testid="final-review-incomplete">
+              Mechanics are still incomplete. Finish earlier steps before treating this sheet as final.
+            </p>`
+          : ''
+      }
       ${
         state.draft.sheet === null
           ? '<p class="empty-state">Finish Class, Background, and Species to preview the sheet.</p>'
@@ -883,7 +902,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
             ? `<p class="empty-state" data-testid="preview-waiting">
                 Choose Class, Background, and Species to build the sheet here as you go.
               </p>`
-            : renderLiveSheetPreview(state.draft.sheet)
+            : renderLiveSheetPreview(state.draft.sheet, {
+                abilitiesComplete: ABILITIES.every(
+                  (ability) => state.draft.choices.baseAbilityScores[ability] !== undefined,
+                ),
+              })
         }
       </aside>`;
   }
@@ -964,11 +987,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return;
     }
-    const base = state.draft.choices;
 
     container.querySelectorAll<HTMLButtonElement>('[data-step]').forEach((button) => {
       button.addEventListener('click', () => {
-        activeStep = button.dataset.step as WizardStep;
+        if (button.getAttribute('aria-disabled') === 'true' || busy) {
+          return;
+        }
+        const target = button.dataset.step as WizardStep;
+        const targetIndex = WIZARD_STEPS.indexOf(target);
+        const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+        const priorComplete =
+          targetIndex <= activeIndex ||
+          targetIndex === 0 ||
+          WIZARD_STEPS.slice(0, targetIndex).every(
+            (prior) => current?.draft.completedSteps.includes(prior) === true,
+          );
+        if (!priorComplete) {
+          error = 'Finish earlier steps before jumping ahead on the step train.';
+          render();
+          return;
+        }
+        activeStep = target;
+        error = null;
         render();
       });
     });
@@ -1100,30 +1140,81 @@ export function mountCharacterCreatePage(host: PageHost): void {
       });
     });
 
-    const radioHandlers: ReadonlyArray<[string, (value: string) => CharacterChoices]> = [
-      ['class', (value) => ({ ...base, classId: value, classSkillIds: [], classChoiceIds: {}, classEquipmentOptionId: null, cantripIds: [], spellIds: [] })],
+    const radioHandlers: ReadonlyArray<[string, (value: string) => CharacterChoices | null]> = [
+      [
+        'class',
+        (value) => ({
+          ...latestChoices(),
+          classId: value,
+          classSkillIds: [],
+          classChoiceIds: {},
+          classEquipmentOptionId: null,
+          cantripIds: [],
+          spellIds: [],
+        }),
+      ],
       [
         'background',
         (value) => {
           backgroundBonusPattern = null;
           backgroundPlusTwo = '';
           backgroundPlusOne = '';
-          return { ...base, backgroundId: value, backgroundAbilityBonuses: {}, backgroundEquipmentOptionId: null };
+          return {
+            ...latestChoices(),
+            backgroundId: value,
+            backgroundAbilityBonuses: {},
+            backgroundEquipmentOptionId: null,
+          };
         },
       ],
-      ['species', (value) => ({ ...base, speciesId: value, speciesChoiceIds: {} })],
-      ['ability-method', (value) => ({ ...base, abilityMethod: value as CharacterChoices['abilityMethod'], baseAbilityScores: {} })],
-      ['class-equipment', (value) => ({ ...base, classEquipmentOptionId: value })],
-      ['background-equipment', (value) => ({ ...base, backgroundEquipmentOptionId: value })],
+      ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {} })],
+      [
+        'ability-method',
+        (value) => {
+          const foundation = latestChoices();
+          const clearing =
+            Object.keys(foundation.baseAbilityScores).length > 0 ||
+            (foundation.abilityMethod === 'rolled' && foundation.rolledScorePool !== null);
+          if (
+            clearing &&
+            value !== foundation.abilityMethod &&
+            !window.confirm(
+              'Switching ability methods clears your current score assignments. Continue?',
+            )
+          ) {
+            return null;
+          }
+          return {
+            ...foundation,
+            abilityMethod: value as CharacterChoices['abilityMethod'],
+            baseAbilityScores: {},
+            rolledScorePool: null,
+            abilityRollAttempts: value === 'rolled' ? 0 : 0,
+          };
+        },
+      ],
+      ['class-equipment', (value) => ({ ...latestChoices(), classEquipmentOptionId: value })],
+      [
+        'background-equipment',
+        (value) => ({ ...latestChoices(), backgroundEquipmentOptionId: value }),
+      ],
     ];
     for (const [name, build] of radioHandlers) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
-        input.addEventListener('change', () => void commitChoices(build(input.value)));
+        input.addEventListener('change', () => {
+          const next = build(input.value);
+          if (next === null) {
+            render();
+            return;
+          }
+          void commitChoices(next);
+        });
       });
     }
 
     container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]').forEach((input) => {
       input.addEventListener('change', () => {
+        const foundation = latestChoices();
         const max = state.options.classDetail?.skillChoiceCount;
         let selected = [...container.querySelectorAll<HTMLInputElement>('input[name="class-skill"]:checked')].map(
           (checked) => checked.value,
@@ -1131,7 +1222,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         if (max !== undefined && selected.length > max) {
           selected = selected.slice(0, max);
         }
-        void commitChoices({ ...base, classSkillIds: selected });
+        void commitChoices({ ...foundation, classSkillIds: selected });
       });
     });
 
@@ -1141,6 +1232,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     ] as const) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
         input.addEventListener('change', () => {
+          const foundation = latestChoices();
           const max = maxOf();
           let selected = [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)].map(
             (checked) => checked.value,
@@ -1148,13 +1240,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
           if (max !== undefined && selected.length > max) {
             selected = selected.slice(0, max);
           }
-          void commitChoices({ ...base, [key]: selected });
+          void commitChoices({ ...foundation, [key]: selected });
         });
       });
     }
 
     container.querySelectorAll<HTMLInputElement>('input[name^="class-choice-"]').forEach((input) => {
       input.addEventListener('change', () => {
+        const foundation = latestChoices();
         const name = input.name;
         const choiceId = name.replace('class-choice-', '');
         const max = state.options.classDetail?.choices.find((choice) => choice.id === choiceId)?.choose;
@@ -1164,28 +1257,32 @@ export function mountCharacterCreatePage(host: PageHost): void {
         if (max !== undefined && selected.length > max) {
           selected = selected.slice(0, max);
         }
-        void commitChoices({ ...base, classChoiceIds: { ...base.classChoiceIds, [choiceId]: selected } });
+        void commitChoices({
+          ...foundation,
+          classChoiceIds: { ...foundation.classChoiceIds, [choiceId]: selected },
+        });
       });
     });
 
     container.querySelectorAll<HTMLSelectElement>('[data-ability]').forEach((select) => {
       select.addEventListener('change', () => {
+        const foundation = latestChoices();
         const ability = select.dataset.ability as Ability;
-        const scores = { ...base.baseAbilityScores };
+        const scores = { ...foundation.baseAbilityScores };
         if (select.value === '') {
           delete scores[ability];
         } else {
           const nextScore = Number(select.value);
-          if (base.abilityMethod === 'point-buy') {
+          if (foundation.abilityMethod === 'point-buy') {
             const legal = pointBuyScoresForAbility(scores, ability);
             if (!legal.includes(nextScore)) {
               return;
             }
           } else {
             const pool =
-              base.abilityMethod === 'standard-array'
+              foundation.abilityMethod === 'standard-array'
                 ? [...STANDARD_ARRAY]
-                : [...(base.rolledScorePool ?? [])];
+                : [...(foundation.rolledScorePool ?? [])];
             const legal = availableScoresFromPool(pool, scores, ability);
             if (!legal.includes(nextScore)) {
               return;
@@ -1193,7 +1290,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           }
           scores[ability] = nextScore;
         }
-        void commitChoices({ ...base, baseAbilityScores: scores });
+        void commitChoices({ ...foundation, baseAbilityScores: scores });
       });
     });
 
@@ -1209,12 +1306,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
         backgroundPlusOne = '';
         if (nextPattern === 'plus-one-each') {
           void commitChoices({
-            ...base,
+            ...latestChoices(),
             backgroundAbilityBonuses: bonusesForPlusOneEach(detail.abilityOptions),
           });
           return;
         }
-        void commitChoices({ ...base, backgroundAbilityBonuses: {} });
+        void commitChoices({ ...latestChoices(), backgroundAbilityBonuses: {} });
       });
     });
 
@@ -1233,7 +1330,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         return;
       }
       void commitChoices({
-        ...base,
+        ...latestChoices(),
         backgroundAbilityBonuses: {
           [backgroundPlusTwo]: 2,
           [backgroundPlusOne]: 1,
@@ -1276,17 +1373,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
     container.querySelectorAll<HTMLInputElement>('[data-species-choice]').forEach((input) => {
       input.addEventListener('change', () => {
         const choiceId = input.dataset.speciesChoice ?? '';
+        const foundation = latestChoices();
         void commitChoices({
-          ...base,
-          speciesChoiceIds: { ...base.speciesChoiceIds, [choiceId]: input.value },
+          ...foundation,
+          speciesChoiceIds: { ...foundation.speciesChoiceIds, [choiceId]: input.value },
         });
       });
     });
 
     container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
       // Merge against in-flight / pending choices so a Pronouns blur cannot wipe a
-      // Name save that is still round-tripping (HD-A3-PQA-001).
-      input.addEventListener('change', () => {
+      // Name save that is still round-tripping (HD-A3-PQA-001 / 051).
+      const persistIdentity = (): void => {
         if (current === null) {
           return;
         }
@@ -1296,7 +1394,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
           ...foundation,
           identity: { ...foundation.identity, [field]: input.value },
         });
+      };
+      input.addEventListener('input', () => {
+        window.clearTimeout((input as HTMLInputElement & { _hdIdentityTimer?: number })._hdIdentityTimer);
+        (input as HTMLInputElement & { _hdIdentityTimer?: number })._hdIdentityTimer = window.setTimeout(
+          persistIdentity,
+          300,
+        );
       });
+      input.addEventListener('change', persistIdentity);
     });
 
     container
@@ -1310,9 +1416,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           // not yet fired `change` still counts (and avoid a blur→save race).
           const foundation = latestChoices();
           const identity = { ...foundation.identity };
-          container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
-            const field = input.dataset.identity as keyof CharacterChoices['identity'];
-            identity[field] = input.value;
+          container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((fieldInput) => {
+            const field = fieldInput.dataset.identity as keyof CharacterChoices['identity'];
+            identity[field] = fieldInput.value;
           });
           if (
             identity.name !== foundation.identity.name ||
@@ -1323,6 +1429,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
             await commitChoices({ ...foundation, identity });
           }
           if (current === null || !current.draft.canCreate) {
+            const remaining = (current?.draft.unresolved ?? [])
+              .map((item) => item.message)
+              .slice(0, 3)
+              .join(' ');
+            error =
+              remaining.length > 0
+                ? `Cannot create yet. ${remaining}`
+                : 'Cannot create yet. Finish every required choice first.';
+            shell.announce(error);
+            render();
             return;
           }
           busy = true;

@@ -106,7 +106,7 @@ const TERMS_OF_SERVICE: LegalDocument = {
       heading: '6. Ending access',
       paragraphs: [
         'Alpha access may be paused or ended for a tester at any time, for any reason connected to testing quality, safety, or capacity, without that being a statement about you personally.',
-        'You may stop using the service at any time. Section 3 governs what happens to characters you have created.',
+        'You may stop using the service at any time. Characters and campaigns you created remain associated with your account while Alpha access continues. If access ends or Alpha data is reset, those records may become unavailable; Section 3 still means you do not lose authorship of the concepts you created, even when server copies are no longer reachable.',
       ],
     },
   ],
@@ -269,7 +269,8 @@ const CONTENT_AND_SAFETY_NOTICE: LegalDocument = {
       id: 'contact',
       heading: '5. Contact',
       paragraphs: [
-        'For any question about these documents or to report a concern, contact the project team through the invitation channel you received your Alpha access from.',
+        'For questions about these documents, deletion requests, or safety reports, reply to the Alpha invitation email that granted your access. That invitation channel is the durable contact path for Invite-Only Alpha.',
+        'If your invitation email is no longer available, ask the person who invited you to forward the current Alpha contact address from the project team.',
       ],
     },
   ],

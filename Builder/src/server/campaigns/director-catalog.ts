@@ -21,7 +21,7 @@ import {
 } from '../../shared/campaign-contract.js';
 
 export const DIRECTOR_CONFIGURATION_NOTICE =
-  'This chooses the Game Director identity and personality for the later AI-enabled table. It does not activate AI narration in this Phase 1 build.';
+  'This locks the Game Director identity and personality for the campaign. On hosted Invite-Only Alpha the Game Director may narrate through Gemini when the AI kill switch is off. Local Arena uses a deterministic simulator instead of live Gemini.';
 
 export function buildDirectorCatalog(): DirectorCatalog {
   return {

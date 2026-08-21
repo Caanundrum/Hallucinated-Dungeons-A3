@@ -50,7 +50,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
 
   let settings: CampaignSettingsProjection | null = null;
   let isOwner = false;
-  let members: readonly { accountId: string; displayLabel: string }[] = [];
+  let members: readonly { accountId: string; displayLabel: string; seated: boolean }[] = [];
   let busy = false;
   let error: string | null = null;
   let notice: string | null = null;
@@ -137,6 +137,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
                    <select data-testid="designated-caller" ${disabled ? 'disabled' : ''}>
                      <option value="">Choose a member</option>
                      ${members
+                       .filter((member) => member.seated)
                        .map(
                          (member) => `
                        <option value="${escapeHtml(member.accountId)}"
@@ -146,6 +147,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
                        )
                        .join('')}
                    </select>
+                   <span class="record-meta">Only seated party members can be the designated caller.</span>
                  </label>`
               : ''
           }
@@ -350,23 +352,79 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
     const save = async (completeSessionZero: boolean): Promise<void> => {
       if (candidate === null || draft === null || busy) return;
       syncText();
+      const reactionSeconds = draft.reactionWindowSeconds;
+      if (
+        !Number.isInteger(reactionSeconds) ||
+        reactionSeconds < REACTION_WINDOW_SECONDS_MIN ||
+        reactionSeconds > REACTION_WINDOW_SECONDS_MAX
+      ) {
+        error = `Reaction window must be ${REACTION_WINDOW_SECONDS_MIN}–${REACTION_WINDOW_SECONDS_MAX} seconds.`;
+        notice = null;
+        shell.announce(error);
+        render();
+        return;
+      }
+      if (draft.contentProfile === 'custom_restricted' && draft.safetyBoundaries.trim().length === 0) {
+        error = 'Custom Restricted requires at least one line, veil, or safety boundary.';
+        notice = null;
+        shell.announce(error);
+        render();
+        return;
+      }
+      if (
+        draft.groupDecisionPolicy === 'designated_caller' &&
+        (draft.designatedCallerAccountId === null ||
+          !members.some(
+            (member) => member.seated && member.accountId === draft!.designatedCallerAccountId,
+          ))
+      ) {
+        error = 'Designated caller must be a seated campaign member.';
+        notice = null;
+        shell.announce(error);
+        render();
+        return;
+      }
+      if (completeSessionZero) {
+        if (draft.sessionZero.expectedSessionLength.trim().length === 0) {
+          error = 'Expected session length is required for Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+        if (draft.sessionZero.textChatExpectations.trim().length === 0) {
+          error = 'Text-chat expectations are required for Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+      }
+      const payload: Record<string, unknown> = {
+        contentProfile: draft.contentProfile,
+        safetyBoundaries: draft.safetyBoundaries,
+        groupDecisionPolicy: draft.groupDecisionPolicy,
+        designatedCallerAccountId: draft.designatedCallerAccountId,
+        reactionWindowSeconds: draft.reactionWindowSeconds,
+        enemyHealthPresentation: draft.enemyHealthPresentation,
+        sessionZero: {
+          tone: draft.sessionZero.tone,
+          characterConflictPolicy: draft.sessionZero.characterConflictPolicy,
+          romancePolicy: draft.sessionZero.romancePolicy,
+          lethalityPreference: draft.sessionZero.lethalityPreference,
+          expectedSessionLength: draft.sessionZero.expectedSessionLength,
+          dropInOutPolicy: draft.sessionZero.dropInOutPolicy,
+          textChatExpectations: draft.sessionZero.textChatExpectations,
+          externalVoiceNote: draft.sessionZero.externalVoiceNote,
+          accessibilityNeeds: draft.sessionZero.accessibilityNeeds,
+          contentSource: draft.sessionZero.contentSource,
+          complete: completeSessionZero,
+        },
+      };
       busy = true;
       error = null;
       notice = null;
-      render();
       try {
-        const payload: Record<string, unknown> = {
-          contentProfile: draft.contentProfile,
-          safetyBoundaries: draft.safetyBoundaries,
-          groupDecisionPolicy: draft.groupDecisionPolicy,
-          designatedCallerAccountId: draft.designatedCallerAccountId,
-          reactionWindowSeconds: draft.reactionWindowSeconds,
-          enemyHealthPresentation: draft.enemyHealthPresentation,
-          sessionZero: {
-            ...draft.sessionZero,
-            complete: completeSessionZero,
-          },
-        };
         settings = await saveCampaignSettings({
           candidateId: candidate.candidateId,
           campaignId,
@@ -374,11 +432,15 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         });
         draft = structuredClone(settings);
         notice = completeSessionZero
-          ? 'Session Zero recorded and settings saved.'
+          ? settings.sessionZero.completed
+            ? 'Session Zero updated and settings saved.'
+            : 'Session Zero recorded and settings saved.'
           : 'Campaign settings saved.';
         shell.announce(notice);
       } catch (failure) {
         error = failure instanceof ApiFailure ? failure.message : 'Settings could not be saved.';
+        notice = null;
+        shell.announce(error);
       } finally {
         busy = false;
         render();
@@ -435,9 +497,11 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
     try {
       const detail = await fetchCampaignDetail(campaignId);
       isOwner = detail.campaign.isCampaignOwner;
+      const seatedAccountIds = new Set(detail.seats.map((seat) => seat.ownerAccountId));
       members = detail.members.map((member) => ({
         accountId: member.accountId,
         displayLabel: member.displayLabel,
+        seated: seatedAccountIds.has(member.accountId),
       }));
       settings = detail.settings;
       draft = structuredClone(detail.settings);

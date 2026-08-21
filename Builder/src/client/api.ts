@@ -318,11 +318,14 @@ export async function fetchInvitationPreview(inviteCode: string): Promise<Invita
 export async function acceptCampaignInvitation(options: {
   readonly candidateId: string;
   readonly inviteCode: string;
-}): Promise<CampaignProjection> {
-  return (await request<CampaignProjection>(`/api/invitations/${options.inviteCode}/accept`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-  })) as CampaignProjection;
+}): Promise<{ readonly campaign: CampaignProjection; readonly alreadyMember: boolean }> {
+  return (await request<{ readonly campaign: CampaignProjection; readonly alreadyMember: boolean }>(
+    `/api/invitations/${options.inviteCode}/accept`,
+    {
+      method: 'POST',
+      candidateId: options.candidateId,
+    },
+  )) as { readonly campaign: CampaignProjection; readonly alreadyMember: boolean };
 }
 
 export async function createCampaignSeat(options: {

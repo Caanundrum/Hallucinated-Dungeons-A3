@@ -112,7 +112,13 @@ export function renderLegalPage(document: LegalDocument & { readonly contentDige
       ${sectionsHtml}
       <div class="doc-nav">
         <p><a href="${escapeHtml(document.contactPath)}" data-testid="legal-contact-link">Contact about this document</a></p>
-        <p><a href="/" data-testid="legal-return-link">Return to Hallucinated Dungeons</a></p>
+        <p>
+          <a href="/campaigns" data-testid="legal-return-campaigns">Back to Campaigns</a>
+          ·
+          <a href="/account" data-testid="legal-return-account">Account</a>
+          ·
+          <a href="/" data-testid="legal-return-link">Home</a>
+        </p>
       </div>
     </main>
   </body>

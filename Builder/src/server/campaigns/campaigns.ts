@@ -673,7 +673,7 @@ export async function acceptInvitation(options: {
   readonly accountId: string;
   readonly displayLabel: string;
   readonly inviteCode: string;
-}): Promise<CampaignProjection> {
+}): Promise<{ readonly campaign: CampaignProjection; readonly alreadyMember: boolean }> {
   const { firestore, accountId, displayLabel, inviteCode } = options;
   if (!/^[A-Za-z0-9]{8,32}$/.test(inviteCode)) {
     throw new InvitationUnavailableError();
@@ -699,7 +699,10 @@ export async function acceptInvitation(options: {
       countMembers(firestore, invitation.campaignId),
       countSeats(firestore, invitation.campaignId),
     ]);
-    return projectCampaign(campaign, existing, memberCount, seatCount);
+    return {
+      campaign: projectCampaign(campaign, existing, memberCount, seatCount),
+      alreadyMember: true,
+    };
   }
 
   const now = new Date();
@@ -727,7 +730,10 @@ export async function acceptInvitation(options: {
     countMembers(firestore, invitation.campaignId),
     countSeats(firestore, invitation.campaignId),
   ]);
-  return projectCampaign(campaign, membership, memberCount, seatCount);
+  return {
+    campaign: projectCampaign(campaign, membership, memberCount, seatCount),
+    alreadyMember: false,
+  };
 }
 
 /**

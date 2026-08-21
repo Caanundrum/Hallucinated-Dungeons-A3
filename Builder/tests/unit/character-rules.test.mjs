@@ -39,9 +39,18 @@ function legalCharacterFor(classId, overrides = {}) {
       ? ['acrobatics', 'arcana', 'athletics', 'deception', 'history', 'insight']
       : classRecord.skillChoiceIds;
 
+  const classSkillIds = skillPool
+    .filter((id) => !background.skillIds.includes(id))
+    .slice(0, classRecord.skillChoiceCount);
+  const alreadyProficient = new Set([...background.skillIds, ...classSkillIds]);
   const speciesChoiceIds = {};
   for (const choice of species.choices) {
-    speciesChoiceIds[choice.id] = choice.from[0].id;
+    if (choice.grantsSkillProficiency === true) {
+      const pick = choice.from.find((option) => !alreadyProficient.has(option.id));
+      speciesChoiceIds[choice.id] = (pick ?? choice.from[0]).id;
+    } else {
+      speciesChoiceIds[choice.id] = choice.from[0].id;
+    }
   }
   const classChoiceIds = {};
   for (const choice of classRecord.choices) {
@@ -71,7 +80,7 @@ function legalCharacterFor(classId, overrides = {}) {
       charisma: 8,
     },
     backgroundAbilityBonuses: { [background.abilityOptions[0]]: 2, [background.abilityOptions[1]]: 1 },
-    classSkillIds: skillPool.slice(0, classRecord.skillChoiceCount),
+    classSkillIds,
     speciesChoiceIds,
     classEquipmentOptionId: classRecord.equipmentOptions[0].id,
     backgroundEquipmentOptionId: background.equipmentOptions[0].id,

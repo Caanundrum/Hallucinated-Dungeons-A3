@@ -19,6 +19,7 @@ import type { AccountProjection, CandidateIdentity } from '../shared/contract.js
 import { LEGAL_ROUTES } from '../shared/routes.js';
 import {
   getAccount,
+  isAccountHydrated,
   signInAccount,
   signOutAccount,
   subscribeAccount,
@@ -61,6 +62,12 @@ function accountChipMarkup(
         <button type="button" data-testid="shell-retry-candidate">Retry</button>
       </div>`;
   }
+  if (!isAccountHydrated()) {
+    return `
+      <div class="account-chip" data-testid="shell-account-chip">
+        <span class="account-chip-label" data-testid="shell-account-status">Checking session…</span>
+      </div>`;
+  }
   if (account === null) {
     return `
       <div class="account-chip" data-testid="shell-account-chip">
@@ -73,8 +80,7 @@ function accountChipMarkup(
 
   return `
     <div class="account-chip" data-testid="shell-account-chip">
-      <a class="account-chip-label" href="/account" data-link data-testid="shell-account-link"
-        title="${escapeHtml(account.accountId)}">
+      <a class="account-chip-label" href="/account" data-link data-testid="shell-account-link">
         ${escapeHtml(account.displayLabel)}
       </a>
       <button type="button" class="secondary" data-testid="shell-leave-account" aria-disabled="${busy}">

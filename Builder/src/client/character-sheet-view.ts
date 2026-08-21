@@ -293,14 +293,20 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
  * Compact live preview for the creation wizard sidebar. Same server-derived
  * numbers as the full sheet — just fewer panels so it fits beside the steps.
  */
-export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
+export function renderLiveSheetPreview(
+  sheet: DerivedCharacterSheet,
+  options: { readonly abilitiesComplete?: boolean } = {},
+): string {
+  const abilitiesComplete = options.abilitiesComplete !== false;
   const abilityBlock = ABILITIES.map((ability) => {
     const score = sheet.abilityScores[ability];
     return `
       <div class="ability-card compact">
         <span class="ability-name">${escapeHtml(ABILITY_LABELS[ability])}</span>
-        <span class="ability-score">${score.value}</span>
-        <span class="ability-modifier">${escapeHtml(formatModifier(sheet.abilityModifiers[ability]))}</span>
+        <span class="ability-score">${abilitiesComplete ? score.value : '—'}</span>
+        <span class="ability-modifier">${
+          abilitiesComplete ? escapeHtml(formatModifier(sheet.abilityModifiers[ability])) : '—'
+        }</span>
       </div>`;
   }).join('');
 
@@ -314,14 +320,40 @@ export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
     .map((feature) => feature.name)
     .join(', ');
 
+  const gearSummary =
+    sheet.equipment.length === 0 && sheet.currencyGold <= 0
+      ? 'None yet'
+      : [
+          ...sheet.equipment.map((item) =>
+            item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name,
+          ),
+          sheet.currencyGold > 0 ? `${sheet.currencyGold} GP` : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join(', ');
+
   return `
     <div class="live-sheet-body" data-testid="live-sheet-stats">
       <p class="sheet-legend compact">Hover highlighted totals for <b>How we got this</b>.</p>
+      ${
+        abilitiesComplete
+          ? ''
+          : `<p class="message notice" data-testid="preview-abilities-incomplete">
+              Ability scores are incomplete — Hit Points, Armor Class, and modifiers stay blank until every score is assigned.
+            </p>`
+      }
       <div class="stat-grid compact">
-        ${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
+        ${
+          abilitiesComplete
+            ? `${explained('Hit Points', sheet.hitPoints, 'preview-hit-points')}
         ${explained('Armor Class', sheet.armorClass, 'preview-armor-class')}
         ${explained('Initiative', sheet.initiative, 'preview-initiative', formatModifier)}
-        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}
+        ${explained('Speed', sheet.speed, 'preview-speed', (value) => `${value} ft.`)}`
+            : `<p class="record-meta" data-testid="preview-hit-points">Hit Points —</p>
+        <p class="record-meta" data-testid="preview-armor-class">Armor Class —</p>
+        <p class="record-meta" data-testid="preview-initiative">Initiative —</p>
+        <p class="record-meta" data-testid="preview-speed">Speed ${sheet.speed.value} ft.</p>`
+        }
       </div>
       <div class="ability-grid compact">${abilityBlock}</div>
       <p class="record-meta"><b>Skills:</b> ${
@@ -335,10 +367,6 @@ export function renderLiveSheetPreview(sheet: DerivedCharacterSheet): string {
           ? 'None yet'
           : escapeHtml(sheet.features.map((feature) => feature.name).join(', '))
       }</p>
-      <p class="record-meta"><b>Gear:</b> ${
-        sheet.equipment.length === 0
-          ? 'None yet'
-          : escapeHtml(sheet.equipment.map((item) => item.name).join(', '))
-      }</p>
+      <p class="record-meta"><b>Gear:</b> ${escapeHtml(gearSummary)}</p>
     </div>`;
 }

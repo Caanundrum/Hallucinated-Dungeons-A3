@@ -9,7 +9,7 @@
  */
 
 import type { CharacterVaultProjection } from '../../shared/character-contract.js';
-import { getAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchVault } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -88,18 +88,42 @@ export function mountCharactersPage(host: PageHost): void {
                 <p>A draft is saved after every confirmed step. Resuming continues the same draft rather than starting a second one.</p>
                 <ul class="record-list" data-testid="draft-list">
                   ${drafts
-                    .map(
-                      (draft) => `
+                    .map((draft) => {
+                      const titleParts = [
+                        draft.name.length > 0 ? draft.name : null,
+                        draft.classLabel === null || draft.classLabel === 'Unchosen'
+                          ? null
+                          : draft.classLabel,
+                        draft.backgroundLabel === null || draft.backgroundLabel === 'Unchosen'
+                          ? null
+                          : draft.backgroundLabel,
+                        draft.speciesLabel === null || draft.speciesLabel === 'Unchosen'
+                          ? null
+                          : draft.speciesLabel,
+                      ].filter((part): part is string => part !== null);
+                      const title =
+                        titleParts.length === 0
+                          ? 'Unnamed draft'
+                          : draft.name.length > 0
+                            ? `${draft.name} · ${titleParts.slice(1).join(' · ') || 'In progress'}`
+                            : titleParts.join(' · ');
+                      const remaining =
+                        draft.unresolvedCount === 0
+                          ? 'Ready to create'
+                          : draft.unresolvedCount === 1
+                            ? '1 decision remaining'
+                            : `${draft.unresolvedCount} decisions remaining`;
+                      return `
                     <li data-testid="draft-item">
                       <a class="record-note" href="/characters/new" data-link data-testid="resume-draft">
-                        ${draft.classLabel === null || draft.classLabel === 'Unchosen' ? 'Unnamed draft' : escapeHtml(draft.classLabel)}
+                        ${escapeHtml(title)}
                       </a>
                       <span class="record-meta">
-                        ${draft.unresolvedCount === 0 ? 'Ready to create' : `${draft.unresolvedCount} decision(s) remaining`}
+                        ${escapeHtml(remaining)}
                         · last saved ${escapeHtml(formatTimestamp(draft.updatedAt))}
                       </span>
-                    </li>`,
-                    )
+                    </li>`;
+                    })
                     .join('')}
                 </ul>
               </section>`
@@ -113,6 +137,14 @@ export function mountCharactersPage(host: PageHost): void {
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
+    if (!isAccountHydrated()) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="vault-heading">Character Vault</h1>
+          <p class="tagline" data-testid="vault-loading">Checking your session…</p>
+        </div>`;
       return;
     }
     if (getAccount() === null) {
@@ -142,6 +174,14 @@ export function mountCharactersPage(host: PageHost): void {
         },
         render,
       });
+      return;
+    }
+    if (vault === null && error === null) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="vault-heading">Character Vault</h1>
+          <p class="tagline" data-testid="vault-loading">Loading your characters…</p>
+        </div>`;
       return;
     }
     renderSignedIn();
