@@ -70,13 +70,14 @@ test.describe('Declaration-first Intent Intercept', () => {
       'I leap in and strike the Practice Goblin with my warhammer',
     );
     await page.getByTestId('submit-player-action').click();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/attack|Practice Goblin/i, {
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/Practice Goblin/i, {
       timeout: 15_000,
     });
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/Confirm to let the engine|attack/i);
     await page.getByTestId('confirm-intent-intercept').click();
-    await expect(page.getByTestId('rules-last-result')).toContainText(/hit|missed|Practice Goblin/i, {
-      timeout: 20_000,
-    });
+    await expect
+      .poll(async () => page.getByTestId('rules-last-result').innerText(), { timeout: 20_000 })
+      .toMatch(/hit|missed|Practice Goblin/i);
     await expect(page.getByTestId('dm-beat-queue-hint')).toBeVisible();
   });
 
