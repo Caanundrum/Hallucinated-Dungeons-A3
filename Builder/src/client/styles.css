@@ -2096,6 +2096,16 @@ html.hd-low-effects .map-square-fog,
   border-top-color: color-mix(in srgb, var(--signal-danger, #b44) 55%, var(--structural-border));
 }
 
+.npc-spotlight-banner {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--moonlit-blue) 45%, var(--structural-border));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--moonlit-blue) 10%, var(--obsidian-surface));
+  display: grid;
+  gap: var(--space-2);
+}
+
 .rules-encounter {
   display: grid;
   gap: var(--space-4);

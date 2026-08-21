@@ -122,6 +122,7 @@ interface StoredTableProjection {
   readonly tokenPositions?: readonly unknown[];
   readonly doorStates?: Readonly<Record<string, string>>;
   readonly exploredByAccount?: Readonly<Record<string, readonly string[]>>;
+  readonly npcSpotlight?: import('../../../shared/table-contention-contract.js').NpcSpotlightProjection | null;
 }
 
 interface StoredCommand {
@@ -220,6 +221,7 @@ function tableProjection(
     lastEventId: stored.lastEventId,
     updatedAt: toIso(stored.updatedAt),
     recentEvents: events,
+    npcSpotlight: stored.npcSpotlight ?? null,
   };
 }
 

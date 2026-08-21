@@ -67,6 +67,7 @@ import {
   requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
+  yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
@@ -278,11 +279,42 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function markIntentDraftStale(reason: string): void {
-    if (intentDraft === null || intentDraft.interceptState === 'stale') {
+    if (intentDraft === null) {
       return;
     }
-    intentDraft = { ...intentDraft, interceptState: 'stale' };
+    if (intentDraft.interceptState !== 'stale') {
+      intentDraft = { ...intentDraft, interceptState: 'stale' };
+    }
     appendDmThread('system', 'Table', reason, 'system');
+  }
+
+  function presentTableConflict(failure: ApiFailure): void {
+    const detail = failure.conflict;
+    const headline =
+      detail === undefined
+        ? failure.message
+        : detail.reason === 'same_door'
+          ? `Conflict — same door: ${detail.message}`
+          : detail.reason === 'overlapping_move'
+            ? `Conflict — overlapping move: ${detail.message}`
+            : detail.reason === 'scene_lock'
+              ? `Conflict — scene lock: ${detail.message}`
+              : detail.reason === 'npc_spotlight'
+                ? `Conflict — NPC floor: ${detail.message}`
+                : `Conflict — table moved: ${detail.message}`;
+    if (intentDraft !== null) {
+      markIntentDraftStale(headline);
+    } else {
+      appendDmThread('system', 'Table', headline, 'system');
+    }
+    if (detail?.competingSummary) {
+      appendDmThread(
+        'system',
+        'Table',
+        `Competing beat: ${detail.competingSummary}`,
+        'system',
+      );
+    }
   }
 
   function draftFromInterpret(
@@ -1032,8 +1064,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     const messages = partyChat?.messages ?? [];
+    const spotlight = tableState?.npcSpotlight ?? null;
+    const holdOwnSpotlight =
+      spotlight !== null && ownSeatId !== null && spotlight.holderSeatId === ownSeatId;
     return `
       <div class="dock-pane" data-testid="party-chat-pane">
+        ${
+          spotlight === null
+            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is open — Speak as Character and name them (for example Lysa Quill).</p>'
+            : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
+                <p data-testid="npc-spotlight-meta">
+                  Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
+                  ${escapeHtml(spotlight.holderDisplayName)}
+                  ${holdOwnSpotlight ? '(you)' : ''}
+                </p>
+                ${
+                  spotlight.lastMessagePreview === null
+                    ? ''
+                    : `<p class="record-meta" data-testid="npc-spotlight-preview">${escapeHtml(spotlight.lastMessagePreview)}</p>`
+                }
+                ${
+                  holdOwnSpotlight
+                    ? `<button type="button" data-testid="yield-npc-spotlight">Yield floor</button>`
+                    : `<p class="record-meta">Wait for the spotlight to clear before addressing ${escapeHtml(spotlight.npcName)}.</p>`
+                }
+              </div>`
+        }
         ${
           messages.length === 0
             ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet. Say hello to your party.</p>'
@@ -1045,6 +1101,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     <span class="record-note">
                       <strong>${escapeHtml(message.senderDisplayLabel)}</strong>
                       · ${escapeHtml(PARTY_CHAT_MODE_LABELS[message.mode])}
+                      ${
+                        message.addressedNpcName
+                          ? ` · to ${escapeHtml(message.addressedNpcName)}`
+                          : ''
+                      }
                     </span>
                     <p>${escapeHtml(message.body)}</p>
                     <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
@@ -1588,6 +1649,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
       if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        presentTableConflict(failure);
         try {
           tableState = await fetchTableState(campaignId);
           mapBundle = await fetchCampaignMap(campaignId);
@@ -1696,9 +1758,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? failure.message
           : 'The rules action could not be resolved.';
       if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
-        markIntentDraftStale(
-          'Table conflict: someone else changed the scene first. Reload the beat and re-declare.',
-        );
+        presentTableConflict(failure);
         const [tableFeed, rulesFeed] = await Promise.all([
           fetchTableState(campaignId),
           fetchRulesState(campaignId),
@@ -1870,13 +1930,63 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               body: draft.trim(),
             });
             draft = '';
-            partyChat = await fetchPartyChat(campaignId);
-            shell.announce('Party Chat message sent. It did not become a command.');
+            const [chatFeed, tableFeed] = await Promise.all([
+              fetchPartyChat(campaignId),
+              fetchTableState(campaignId),
+            ]);
+            partyChat = chatFeed;
+            tableState = tableFeed;
+            shell.announce(
+              chatMode === 'speak_as_character'
+                ? 'Spoken in character. Party Chat never becomes a mechanical command.'
+                : 'Party Chat message sent. It did not become a command.',
+            );
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Party Chat message could not be sent.';
+            if (
+              failure instanceof ApiFailure &&
+              (failure.code === 'NPC_SPOTLIGHT_HELD' || failure.code === 'STALE_STATE_VERSION')
+            ) {
+              presentTableConflict(failure);
+              try {
+                tableState = await fetchTableState(campaignId);
+              } catch {
+                // Keep the spotlight conflict visible.
+              }
+            }
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="yield-npc-spotlight"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await yieldNpcSpotlight({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            tableState = await fetchTableState(campaignId);
+            appendDmThread('system', 'Table', 'You yielded the NPC floor.', 'system');
+            shell.announce('NPC floor yielded.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Could not yield the NPC floor.';
           } finally {
             busy = false;
             render();
@@ -2009,6 +2119,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const nlInput = root.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
     nlInput?.addEventListener('input', () => {
       nlIntentText = nlInput.value;
+      root
+        .querySelector<HTMLButtonElement>('[data-testid="interpret-nl-intent"]')
+        ?.setAttribute(
+          'aria-disabled',
+          String(
+            busy ||
+              candidate === null ||
+              !seated ||
+              (!explorationMode() && !holdsOwnAuthority()) ||
+              nlIntentText.trim().length === 0,
+          ),
+        );
     });
 
     root
@@ -2202,6 +2324,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('input', (event) => {
         if (event.target instanceof HTMLTextAreaElement) {
           playerActionDraft = event.target.value;
+          root
+            .querySelector<HTMLButtonElement>('[data-testid="submit-player-action"]')
+            ?.setAttribute(
+              'aria-disabled',
+              String(busy || candidate === null || playerActionDraft.trim().length === 0),
+            );
         }
       });
 
@@ -2284,6 +2412,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             error =
               failure instanceof ApiFailure ? failure.message : 'Table sync could not be committed.';
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+              presentTableConflict(failure);
               try {
                 tableState = await fetchTableState(campaignId);
               } catch {
@@ -2501,9 +2630,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 ? failure.message
                 : 'Intent Intercept could not be confirmed.';
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
-              markIntentDraftStale(
-                'Table conflict: someone else changed the scene first. Re-declare your action.',
-              );
+              presentTableConflict(failure);
               try {
                 tableState = await fetchTableState(campaignId);
               } catch {
@@ -2754,6 +2881,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const priorChatCount = partyChat?.messages.length ?? 0;
     const priorChronicleCount = chronicle?.entries.length ?? 0;
     const priorMemoryUpdatedAt = memory?.updatedAt ?? null;
+    const priorSpotlightKey = tableState?.npcSpotlight
+      ? `${tableState.npcSpotlight.npcId}:${tableState.npcSpotlight.holderSeatId}:${tableState.npcSpotlight.expiresAt}`
+      : null;
     tableState = tableFeed;
     mapBundle = mapFeed;
     timingAuthority = timingFeed.authority;
@@ -2766,6 +2896,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       encounter = rulesFeed.encounter;
       progression = rulesFeed.progression;
     }
+    const nextSpotlightKey = tableFeed.npcSpotlight
+      ? `${tableFeed.npcSpotlight.npcId}:${tableFeed.npcSpotlight.holderSeatId}:${tableFeed.npcSpotlight.expiresAt}`
+      : null;
     const changed =
       options?.forceRender === true ||
       tableFeed.stateVersion !== priorVersion ||
@@ -2774,7 +2907,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       (timingFeed.authority?.state ?? null) !== priorAuthorityState ||
       chatFeed.messages.length !== priorChatCount ||
       chronicleFeed.entries.length !== priorChronicleCount ||
-      (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt;
+      (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt ||
+      nextSpotlightKey !== priorSpotlightKey;
     if (changed) {
       render();
     } else if (mapBundle !== null && stageHandle !== null) {

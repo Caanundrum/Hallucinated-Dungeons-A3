@@ -21,6 +21,9 @@ import {
   CampaignValidationError,
 } from '../campaigns/errors.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import {
+  claimNpcSpotlightForSpeech,
+} from '../table/npc-spotlight.js';
 
 interface StoredMembership {
   readonly membershipId: string;
@@ -39,6 +42,8 @@ interface StoredPartyChatMessage {
   readonly mode: PartyChatMode;
   readonly body: string;
   readonly createdAt: Timestamp | Date;
+  readonly addressedNpcId?: string;
+  readonly addressedNpcName?: string;
 }
 
 function toIso(value: Timestamp | Date): string {
@@ -71,6 +76,12 @@ function projectMessage(stored: StoredPartyChatMessage): PartyChatMessageProject
     mode: stored.mode,
     body: stored.body,
     createdAt: toIso(stored.createdAt),
+    ...(stored.addressedNpcId !== undefined
+      ? { addressedNpcId: stored.addressedNpcId }
+      : {}),
+    ...(stored.addressedNpcName !== undefined
+      ? { addressedNpcName: stored.addressedNpcName }
+      : {}),
   };
 }
 
@@ -120,6 +131,22 @@ export async function postPartyChatMessage(options: {
     throw new CampaignValidationError('Chat message is too long.');
   }
 
+  let addressedNpcId: string | undefined;
+  let addressedNpcName: string | undefined;
+  if (options.mode === 'speak_as_character') {
+    const spotlight = await claimNpcSpotlightForSpeech({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      campaignId: options.campaignId,
+      displayLabel: membership.displayLabel,
+      body,
+    });
+    if (spotlight !== null) {
+      addressedNpcId = spotlight.npcId;
+      addressedNpcName = spotlight.npcName;
+    }
+  }
+
   const message: StoredPartyChatMessage = {
     messageId: randomUUID(),
     campaignId: options.campaignId,
@@ -128,6 +155,8 @@ export async function postPartyChatMessage(options: {
     mode: options.mode,
     body,
     createdAt: new Date(),
+    ...(addressedNpcId !== undefined ? { addressedNpcId } : {}),
+    ...(addressedNpcName !== undefined ? { addressedNpcName } : {}),
   };
   await options.firestore
     .collection(COLLECTIONS.partyChatMessages)

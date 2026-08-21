@@ -74,11 +74,19 @@ export interface DraftResponse {
 /** A failure the page can explain to the person using it. */
 export class ApiFailure extends Error {
   readonly code: ErrorCode;
+  readonly conflict?: import('../shared/table-contention-contract.js').TableConflictDetail;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(
+    code: ErrorCode,
+    message: string,
+    conflict?: import('../shared/table-contention-contract.js').TableConflictDetail,
+  ) {
     super(message);
     this.name = 'ApiFailure';
     this.code = code;
+    if (conflict !== undefined) {
+      this.conflict = conflict;
+    }
   }
 }
 
@@ -138,7 +146,11 @@ async function request<T>(
     ) {
       authFailureHandler();
     }
-    throw new ApiFailure(code, body.message ?? NETWORK_FAILURE_MESSAGE);
+    throw new ApiFailure(
+      code,
+      body.message ?? NETWORK_FAILURE_MESSAGE,
+      body.conflict,
+    );
   }
 
   return payload as T;
@@ -385,6 +397,17 @@ export async function postPartyChat(options: {
     }
     throw failure;
   }
+}
+
+export async function yieldNpcSpotlight(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<{ cleared: import('../shared/table-contention-contract.js').NpcSpotlightProjection | null }> {
+  return (await request(`/api/campaigns/${options.campaignId}/npc-spotlight/yield`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({}),
+  })) as never;
 }
 
 export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {

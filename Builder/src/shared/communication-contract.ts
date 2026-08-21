@@ -70,6 +70,8 @@ export interface PartyChatMessageProjection {
   readonly mode: PartyChatMode;
   readonly body: string;
   readonly createdAt: string;
+  readonly addressedNpcId?: string;
+  readonly addressedNpcName?: string;
 }
 
 export interface PartyChatFeedProjection {
