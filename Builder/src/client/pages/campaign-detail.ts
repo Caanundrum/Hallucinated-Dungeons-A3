@@ -25,6 +25,8 @@ import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
+import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -737,6 +739,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       return;
     }
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Campaign',
         body: 'Sign in with a Local Arena development account to open this campaign.',

@@ -25,6 +25,7 @@ import {
 } from './account-session.js';
 import { ApiFailure } from './api.js';
 import { escapeHtml } from './dom-utils.js';
+import { isHostedPlayerSurface } from './player-surface.js';
 import { navigate } from './router.js';
 
 export interface ShellHandle {
@@ -119,8 +120,10 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
           <p class="footer-build-info" data-testid="footer-build-info">
             ${
               candidate === null
-                ? 'Contacting the Local Arena server…'
-                : `Blueprint ${escapeHtml(candidate.blueprintVersion)} · Build ${escapeHtml(candidate.candidateId)}`
+                ? 'Connecting…'
+                : isHostedPlayerSurface(candidate)
+                  ? 'Hallucinated Dungeons · Invite-Only Alpha'
+                  : `Blueprint ${escapeHtml(candidate.blueprintVersion)} · Build ${escapeHtml(candidate.candidateId)}`
             }
           </p>
         </div>

@@ -35,6 +35,7 @@ import { ApiFailure, createCampaign, fetchDirectorCatalog } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -428,6 +429,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
       return;
     }
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Create a campaign',
         body: 'Sign in with a Local Arena development account before creating a campaign.',

@@ -162,8 +162,6 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     const targetCol = Number(beforeCol) + 1;
     const targetRow = Number(beforeRow);
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
-    await expect(page.getByTestId('move-target-meta')).toContainText(/Legal|Move target/i);
-    await page.getByTestId('commit-table-move').click();
     await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
     await expect(token).toHaveAttribute('data-anchor-row', String(targetRow));
   });
@@ -182,7 +180,6 @@ test.describe('Phase 5 starter campaign, memory, and session resume', () => {
     const targetCol = Number(beforeCol) + 1;
     const targetRow = Number(beforeRow);
     await page.locator(`[data-square="${targetCol},${targetRow}"]`).click();
-    await page.getByTestId('commit-table-move').click();
     await expect(token).toHaveAttribute('data-anchor-column', String(targetCol), { timeout: 10_000 });
     await page.getByTestId('table-back').click();
     page.once('dialog', (dialog) => dialog.accept());

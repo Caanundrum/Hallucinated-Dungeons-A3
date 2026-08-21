@@ -45,6 +45,7 @@ import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet, renderLiveSheetPreview } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
@@ -178,7 +179,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   async function openOwnedDraft(): Promise<void> {
     if (candidate === null) {
-      error = 'The Local Arena server did not respond.';
+      error = 'The game server did not respond.';
       render();
       return;
     }
@@ -1451,6 +1452,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
 
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Create a character',
         body: 'Sign in with a Local Arena development account before starting character creation. Your draft will be owned by that account.',

@@ -83,7 +83,7 @@ export class ApiFailure extends Error {
 }
 
 const NETWORK_FAILURE_MESSAGE =
-  'The Local Arena server did not respond. Confirm it is running, then retry.';
+  'The game server did not respond. Check your connection, then try again.';
 
 let authFailureHandler: (() => void) | null = null;
 
@@ -125,7 +125,7 @@ async function request<T>(
   } catch {
     throw new ApiFailure(
       ERROR_CODES.UPSTREAM_UNAVAILABLE,
-      'The Local Arena server returned a response this page could not read.',
+      'The game server returned a response this page could not read.',
     );
   }
 

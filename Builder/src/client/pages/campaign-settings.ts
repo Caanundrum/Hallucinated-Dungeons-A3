@@ -35,6 +35,8 @@ import { ApiFailure, fetchCampaignDetail, saveCampaignSettings } from '../api.js
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
+import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -394,6 +396,10 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) return;
     if (getAccount() === null) {
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Campaign settings',
         body: 'Sign in to view or edit campaign settings.',

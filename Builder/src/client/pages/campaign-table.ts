@@ -64,7 +64,9 @@ import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
+import { navigate } from '../router.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import type { PageHost } from './home.js';
@@ -2315,6 +2317,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       stopProjectionPoll();
       stageHandle?.destroy();
       stageHandle = null;
+      if (isHostedPlayerSurface(candidate)) {
+        navigate('/', { replace: true });
+        return;
+      }
       container.innerHTML = renderSignedOutGate({
         title: 'Campaign table',
         body: 'Sign in to open the Communication Dock for a campaign you belong to.',
