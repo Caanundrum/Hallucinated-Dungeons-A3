@@ -142,7 +142,10 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('rules-catalog-category').selectOption('core_mechanics');
     await page.getByTestId('rules-catalog-entry').filter({ hasText: 'XP-only Progression' }).click();
     await expect(page.getByTestId('rules-explanation')).toContainText('XP-only Progression');
-    await expect(page.getByTestId('rules-explanation')).toContainText('server-validated XP');
+    await expect(page.getByTestId('rules-explanation')).toContainText(/awards XP|Game Director awards/i);
+    await expect(page.getByTestId('rules-explanation')).not.toContainText('server-validated');
+    const explanationText = await page.getByTestId('rules-explanation').innerText();
+    expect(explanationText).not.toMatch(/XP\.Each|slots\.Single/);
   });
 
   test('illegal mechanical command fails closed without advancing state', async ({ page }) => {

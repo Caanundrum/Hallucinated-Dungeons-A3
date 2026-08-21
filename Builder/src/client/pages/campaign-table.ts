@@ -1034,7 +1034,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               : `<article class="rules-explanation" data-testid="rules-explanation">
                   <h3>${escapeHtml(selectedEntry.title)}</h3>
                   <p>${escapeHtml(selectedEntry.summary)}</p>
-                  <ol>${selectedEntry.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}</ol>
+                  <ol class="rules-explanation-steps">${selectedEntry.details
+                    .map((detail) => `<li>${escapeHtml(detail)}</li>`)
+                    .join('\n')}</ol>
                   <p class="record-meta">${escapeHtml(selectedEntry.source)} · ${escapeHtml(
                     RULES_CATALOG_CATEGORY_LABELS[selectedEntry.category],
                   )}</p>

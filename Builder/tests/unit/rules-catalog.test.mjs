@@ -13,6 +13,10 @@ test('rules catalog lists SRD categories without claiming full prose books', () 
     [...RULES_CATALOG_CATEGORIES],
   );
   assert.ok(catalog.entries.some((entry) => entry.entryId === 'core:progression.xp'));
+  const xp = catalog.entries.find((entry) => entry.entryId === 'core:progression.xp');
+  assert.ok(xp);
+  assert.match(xp.details.join(' '), /Game Director awards XP/i);
+  assert.equal(xp.details.some((line) => /server-validated/i.test(line)), false);
   assert.ok(catalog.entries.some((entry) => entry.category === 'spells'));
   assert.ok(catalog.entries.some((entry) => entry.category === 'skills'));
   assert.ok(catalog.entries.length > 40);
