@@ -592,7 +592,10 @@ export async function acceptTableCommand(options: {
 
   if (commandType === 'table.open_door') {
     if (typeof edgeId !== 'string' || edgeId.length === 0) {
-      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'table.open_door requires edgeId.');
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'That door could not be identified on the map. Move next to a closed door and declare opening it again.',
+      );
     }
     const map = buildAuthoritativeMapBundle({
       campaignId,
@@ -603,7 +606,7 @@ export async function acceptTableCommand(options: {
     });
     const edge = map.edges.find((entry) => entry.edgeId === edgeId);
     if (edge === undefined || edge.kind !== 'door') {
-      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door edge does not exist.');
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is not on this scene.');
     }
     if (edge.doorState === 'open') {
       throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is already open.');
@@ -612,15 +615,16 @@ export async function acceptTableCommand(options: {
     if (token === undefined) {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
     }
-    const doorNeighbor = { column: edge.column + 1, row: edge.row };
+    const anchor = token.footprint.anchor;
+    const doorNeighbor =
+      edge.orientation === 'north'
+        ? { column: edge.column, row: edge.row - 1 }
+        : { column: edge.column + 1, row: edge.row };
     const nearDoor =
+      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1 ||
       Math.max(
-        Math.abs(token.footprint.anchor.column - edge.column),
-        Math.abs(token.footprint.anchor.row - edge.row),
-      ) <= 1 ||
-      Math.max(
-        Math.abs(token.footprint.anchor.column - doorNeighbor.column),
-        Math.abs(token.footprint.anchor.row - doorNeighbor.row),
+        Math.abs(anchor.column - doorNeighbor.column),
+        Math.abs(anchor.row - doorNeighbor.row),
       ) <= 1;
     if (!nearDoor) {
       throw new TableCommandError(
