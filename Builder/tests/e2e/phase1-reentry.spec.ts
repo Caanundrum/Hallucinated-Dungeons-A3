@@ -106,6 +106,7 @@ test.describe('Phase 1 reentry journey', () => {
     await ownerPage.getByTestId('open-campaign-settings').click();
     await ownerPage.getByTestId('content-profile-custom_restricted').click();
     await ownerPage.getByTestId('safety-boundaries').fill('Reentry lines and veils.');
+    await ownerPage.getByTestId('session-length').fill('3–5 sessions');
     await ownerPage.getByTestId('complete-session-zero').click();
     await expect(ownerPage.getByTestId('settings-notice')).toContainText(/Session Zero (recorded|updated)/);
 

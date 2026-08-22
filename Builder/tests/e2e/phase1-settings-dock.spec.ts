@@ -68,6 +68,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await page.getByTestId('group-decision-unanimous_consent').click();
     await page.getByTestId('reaction-window').fill('15');
     await page.getByTestId('session-tone').selectOption('grim');
+    await page.getByTestId('session-length').fill('3–5 sessions');
     await page.getByTestId('complete-session-zero').click();
     await expect(page.getByTestId('settings-notice')).toContainText(
       /Session Zero (recorded|updated)/i,

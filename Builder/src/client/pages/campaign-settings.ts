@@ -224,7 +224,9 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           </label>
           <label class="field">
             <span>Expected session length</span>
-            <input type="text" data-testid="session-length" value="${escapeHtml(draft.sessionZero.expectedSessionLength)}" ${disabled ? 'disabled' : ''} />
+            <input type="text" data-testid="session-length" placeholder="Example: 3–5 sessions"
+              value="${escapeHtml(draft.sessionZero.expectedSessionLength)}" ${disabled ? 'disabled' : ''} />
+            <span class="record-meta">Required to record Session Zero. Clearing this field cannot fall back to a hidden default.</span>
           </label>
           <label class="field">
             <span>Drop-in / drop-out</span>
@@ -539,7 +541,15 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
   }
 
   subscribeAccount(() => {
-    void load();
+    // Do not reload settings while the owner is mid-edit — account heartbeats were
+    // restoring the prior Expected session length over a cleared field (PQA-108).
+    if (getAccount() === null) {
+      void load();
+      return;
+    }
+    if (settings === null || draft === null) {
+      void load();
+    }
   });
   void load();
 }

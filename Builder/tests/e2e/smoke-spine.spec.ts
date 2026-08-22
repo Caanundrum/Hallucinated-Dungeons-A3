@@ -109,6 +109,7 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('open-campaign-settings').click();
     await page.getByTestId('content-profile-tense').click();
+    await page.getByTestId('session-length').fill('3–5 sessions');
     await page.getByTestId('complete-session-zero').click();
     await expect(page.getByTestId('settings-notice')).toContainText('Session Zero recorded');
 
