@@ -2430,6 +2430,8 @@ html.hd-low-effects .map-square-fog,
   gap: var(--space-1);
   margin-bottom: var(--space-1);
   flex-shrink: 0;
+  position: relative;
+  z-index: 3;
 }
 
 .table-stage-toolbar button {
