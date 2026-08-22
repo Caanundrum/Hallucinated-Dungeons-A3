@@ -53,6 +53,7 @@ export const INTENT_INTERCEPT_STATES = [
   'confirmed',
   'cancelled',
   'stale',
+  'failed',
 ] as const;
 export type IntentInterceptState = (typeof INTENT_INTERCEPT_STATES)[number];
 

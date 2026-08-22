@@ -8,10 +8,19 @@ import {
   narrateVisibleBeat,
   PROVIDER_COMPLIANCE_REGISTRY,
 } from '../../dist/server/ai/director-gateway.js';
+import { scrubPlayerFacingIntentCopy } from '../../dist/shared/ai-director-contract.js';
 import {
   GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
   sanitizeDirectorProse,
 } from '../../dist/server/ai/gemini-director.js';
+
+test('PQA-141: scrub strips internal command identifiers from player-facing copy', () => {
+  assert.equal(
+    scrubPlayerFacingIntentCopy('Confirm table.open_door with edgeId now.'),
+    'Confirm that action with door now.',
+  );
+  assert.doesNotMatch(scrubPlayerFacingIntentCopy('table.move ready'), /table\.move/i);
+});
 
 function fakeFirestore(options = { killSwitch: false }) {
   return {
@@ -174,6 +183,20 @@ test('NL attack without active combat stays a clarify draft, not a fake hit', as
   assert.equal(interpreted.proposedCommandType, 'table.sync');
   assert.match(interpreted.summary, /combat is not active|Begin encounter/i);
   assert.equal(interpreted.targetCombatantId, undefined);
+});
+
+test('PQA-141/143/145: door intent without scene doors clarifies instead of leaking open_door', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I walk to the far wall, open the wooden door, and enter the room beyond.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.equal(interpreted.edgeId, undefined);
+  assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId/i);
+  assert.match(interpreted.summary, /no door|open floor|Emberferry/i);
 });
 
 test('narration framing tags emphasize epic beats without changing mechanics summary', async () => {

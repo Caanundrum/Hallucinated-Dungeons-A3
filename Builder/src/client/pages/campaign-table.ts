@@ -22,6 +22,7 @@ import {
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
+import { scrubPlayerFacingIntentCopy } from '../../shared/ai-director-contract.js';
 import type {
   RulesCatalogCategory,
   RulesCatalogProjection,
@@ -113,6 +114,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let directorIdentityLabel = 'the Game Director';
   type InfoTab = 'character' | 'notes' | 'people' | 'tools';
   let activeInfoTab: InfoTab = 'character';
+  let infoRailCollapsed = false;
+  let commsRailCollapsed = false;
   let activeTab: DockTab = 'party_chat';
   let memory: CampaignMemoryProjection | null = null;
   let tableNotes = '';
@@ -745,6 +748,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     tools: 'Tools',
   };
 
+  function trainingToolsVisible(): boolean {
+    // Hosted players get fiction-first play only (PQA-148). Local Arena keeps Tools for QA.
+    return !isHostedPlayerSurface(candidate);
+  }
+
+  function visibleInfoTabs(): InfoTab[] {
+    const tabs: InfoTab[] = ['character', 'notes', 'people'];
+    if (trainingToolsVisible()) {
+      tabs.push('tools');
+    }
+    return tabs;
+  }
+
   function peoplePanelBody(): string {
     if (memory === null) {
       return '<p class="record-meta" data-testid="table-people-loading">Campaign memory is loading…</p>';
@@ -832,24 +848,45 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function infoRailBody(): string {
+    const tabs = visibleInfoTabs();
+    if (!tabs.includes(activeInfoTab)) {
+      activeInfoTab = 'character';
+    }
     return `
-      <div class="info-rail-tabs" role="tablist" aria-label="Table reference">
-        ${(Object.keys(INFO_TAB_LABELS) as InfoTab[]).map(
-          (tab) => `
+      <button type="button" class="table-rail-collapse" data-testid="collapse-info-rail"
+        aria-expanded="${!infoRailCollapsed}">
+        ${infoRailCollapsed ? 'Show reference' : 'Hide reference'}
+      </button>
+      ${
+        infoRailCollapsed
+          ? ''
+          : `<div class="info-rail-tabs" role="tablist" aria-label="Table reference">
+        ${tabs
+          .map(
+            (tab) => `
           <button type="button" role="tab" class="info-rail-tab${activeInfoTab === tab ? ' active' : ''}"
             aria-selected="${activeInfoTab === tab}" data-testid="table-info-tab-${tab}" data-info-tab="${tab}">
             ${escapeHtml(INFO_TAB_LABELS[tab])}
           </button>`,
-        ).join('')}
+          )
+          .join('')}
       </div>
       <div class="info-rail-viewport" role="tabpanel">
         ${infoTabBody()}
-      </div>`;
+      </div>`
+      }`;
   }
 
   function commsDockBody(): string {
     return `
-      <div class="dock-tabs" role="tablist" aria-label="Table conversations">
+      <button type="button" class="table-rail-collapse" data-testid="collapse-comms-rail"
+        aria-expanded="${!commsRailCollapsed}">
+        ${commsRailCollapsed ? 'Show chat' : 'Hide chat'}
+      </button>
+      ${
+        commsRailCollapsed
+          ? ''
+          : `<div class="dock-tabs" role="tablist" aria-label="Table conversations">
         ${PLAYER_DOCK_TAB_ORDER.map(
           (tab) => `
           <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
@@ -860,7 +897,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>
       <div class="dock-viewport" role="tabpanel">
         ${dockBody()}
-      </div>`;
+      </div>`
+      }`;
   }
 
   function compactPresenceLine(): string {
@@ -1428,15 +1466,32 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${
             intentDraft === null
               ? ''
-              : `<div class="intent-intercept dm-thread-intent${intentDraft.interceptState === 'stale' ? ' intent-stale' : ''}" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
-                  <p data-testid="intent-intercept-summary">${escapeHtml(intentDraft.summary)}</p>
+              : `<div class="intent-intercept dm-thread-intent${
+                  intentDraft.interceptState === 'stale' || intentDraft.interceptState === 'failed'
+                    ? ' intent-stale'
+                    : ''
+                }" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
+                  <p data-testid="intent-intercept-summary">${escapeHtml(
+                    scrubPlayerFacingIntentCopy(intentDraft.summary),
+                  )}</p>
                   ${
                     intentDraft.interceptState === 'stale'
                       ? `<p class="message error" data-testid="intent-intercept-stale">Scene changed — cancel and re-declare.</p>
                          <div class="action-composer-controls">
                            <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss stale draft</button>
                          </div>`
-                      : `<div class="action-composer-controls">
+                      : intentDraft.interceptState === 'failed'
+                        ? `<p class="message error" data-testid="intent-intercept-failed">That action could not be completed. Edit your declaration and try again.</p>
+                         <div class="action-composer-controls">
+                           <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss</button>
+                         </div>`
+                        : intentDraft.proposedCommandType === 'table.sync' &&
+                            intentDraft.edgeId === undefined &&
+                            intentDraft.path === undefined
+                          ? `<div class="action-composer-controls">
+                           <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Got it</button>
+                         </div>`
+                          : `<div class="action-composer-controls">
                     <button type="button" data-testid="confirm-intent-intercept"
                       aria-disabled="${busy || (!explorationMode() && !holdsOwnAuthority())}">Confirm action</button>
                     <button type="button" data-testid="cancel-intent-intercept"
@@ -1449,6 +1504,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ${
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
+                <p class="record-meta" data-testid="action-channel-hint">
+                  This is the play channel — declarations can change the table. Chat stays social; Ask the Director is advice only.
+                </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="2"
@@ -1926,6 +1984,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
       });
     });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="collapse-info-rail"]')
+      ?.addEventListener('click', () => {
+        infoRailCollapsed = !infoRailCollapsed;
+        render();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="collapse-comms-rail"]')
+      ?.addEventListener('click', () => {
+        commsRailCollapsed = !commsRailCollapsed;
+        render();
+      });
 
     root.querySelectorAll<HTMLButtonElement>('[data-dock-tab]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -2499,12 +2571,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: declaration,
               moveTarget,
             });
-            intentDraft = draftFromInterpret(interpreted);
-            shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
+            appendDmThread('player', 'You', declaration, 'declaration');
+            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            const clarificationOnly =
+              interpreted.proposedCommandType === 'table.sync' &&
+              interpreted.edgeId === undefined &&
+              interpreted.path === undefined;
+            if (clarificationOnly) {
+              intentDraft = null;
+              appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+              shell.announce(`${directorIdentityLabel} replied in the play thread.`);
+            } else {
+              intentDraft = draftFromInterpret({
+                ...interpreted,
+                summary: scrubbedSummary,
+              });
+              shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure
-                ? failure.message
+                ? scrubPlayerFacingIntentCopy(failure.message)
                 : `${directorIdentityLabel} could not interpret that action right now.`;
           } finally {
             busy = false;
@@ -2804,9 +2891,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             mapBundle = await fetchCampaignMap(campaignId);
             const summary =
               accepted.event.summary?.trim() ||
-              `${draft.proposedCommandType} committed · version ${accepted.table.stateVersion}.`;
-            appendDmThread('system', 'Table', summary, 'mechanics');
-            shell.announce(`Intent Intercept confirmed · ${draft.proposedCommandType}.`);
+              `Action committed · version ${accepted.table.stateVersion}.`;
+            appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
+            shell.announce('Action confirmed on the table.');
             intentDraft = null;
             if (shouldAutoNarrateRulesCommand(draft.proposedCommandType)) {
               void narrateIntoDmThread(summary, accepted.event.rolls ?? []);
@@ -2814,10 +2901,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               patchDmPlayThread();
             }
           } catch (failure) {
-            error =
+            const raw =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'Intent Intercept could not be confirmed.';
+                : 'That action could not be confirmed.';
+            error = scrubPlayerFacingIntentCopy(raw);
+            if (intentDraft !== null) {
+              intentDraft = {
+                ...intentDraft,
+                interceptState: 'failed',
+                summary: scrubPlayerFacingIntentCopy(
+                  `${intentDraft.summary} — ${error}`,
+                ),
+              };
+            }
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
               presentTableConflict(failure);
               try {
@@ -2967,6 +3064,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     infoSlot.innerHTML = infoRailBody();
     actionSlot.innerHTML = playerActionBar();
     commsSlot.innerHTML = commsDockBody();
+
+    const infoRail = container.querySelector<HTMLElement>('[data-testid="table-info-rail"]');
+    const commsRail = container.querySelector<HTMLElement>('[data-testid="communication-dock"]');
+    infoRail?.classList.toggle('is-collapsed', infoRailCollapsed);
+    commsRail?.classList.toggle('is-collapsed', commsRailCollapsed);
 
     footer.innerHTML = `
       <details class="table-meta-panel" data-testid="presence-section"${presenceOpen ? ' open' : ''}>

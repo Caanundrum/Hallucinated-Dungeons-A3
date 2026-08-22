@@ -262,10 +262,18 @@ a.account-chip-label:focus-visible {
   padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 7.5rem);
-  min-height: 32rem;
-  overflow: hidden;
+  /* Prefer min-height so overflowing play controls stay in document flow (PQA-114). */
+  min-height: calc(100dvh - 7.5rem);
+  height: auto;
+  max-height: none;
+  overflow: visible;
   box-sizing: border-box;
+}
+
+@supports (height: 100dvh) {
+  .table-dashboard.page-wide {
+    min-height: calc(100dvh - 7.5rem);
+  }
 }
 
 .table-dashboard-header {
@@ -296,10 +304,11 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-body {
   display: grid;
-  grid-template-columns: minmax(220px, 17rem) minmax(0, 1fr) minmax(240px, 20rem);
+  grid-template-columns: minmax(200px, 15rem) minmax(0, 1fr) minmax(220px, 18rem);
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
+  align-items: stretch;
 }
 
 .table-info-rail,
@@ -307,8 +316,25 @@ a.account-chip-label:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  max-height: min(70dvh, 42rem);
   overflow: hidden;
   padding: var(--space-3);
+  position: relative;
+}
+
+.table-info-rail.is-collapsed,
+.table-comms-rail.is-collapsed {
+  max-height: none;
+  overflow: visible;
+}
+
+.table-rail-collapse {
+  align-self: flex-end;
+  flex-shrink: 0;
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.78rem;
+  min-height: 32px;
 }
 
 .table-info-rail > [data-testid='table-info-slot'],
@@ -321,12 +347,14 @@ a.account-chip-label:focus-visible {
 
 .info-rail-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-1);
   border-bottom: var(--border-weight) solid var(--structural-border);
   padding-bottom: var(--space-2);
   margin-bottom: var(--space-2);
   flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .info-rail-tab {
@@ -353,9 +381,22 @@ a.account-chip-label:focus-visible {
 
 .info-rail-viewport,
 .table-comms-rail .dock-viewport {
+  overflow-x: hidden;
   overflow-y: auto;
   min-height: 0;
   flex: 1;
+}
+
+.table-info-pane,
+.table-character-sheet-panel,
+[data-testid='table-character-sheet-panel'] {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.table-info-pane table,
+.table-info-pane .sheet-block {
+  max-width: 100%;
 }
 
 .table-info-pane {
@@ -372,8 +413,9 @@ a.account-chip-label:focus-visible {
 }
 
 .table-dashboard .table-stage-frame {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: min(52vh, 28rem);
+  aspect-ratio: 16 / 10;
   height: auto;
   margin: 0;
 }
@@ -382,25 +424,36 @@ a.account-chip-label:focus-visible {
   flex-shrink: 0;
   margin: 0;
   padding: var(--space-2) var(--space-3);
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--obsidian-surface) 92%, transparent);
+  backdrop-filter: blur(6px);
 }
 
 .table-action-bar-inner {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   align-items: start;
 }
 
 .table-action-bar-inner.table-action-bar-compact {
-  grid-template-columns: minmax(120px, 24%) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   align-items: center;
 }
 
 .table-action-bar-inner.table-action-bar-dm {
-  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   align-items: stretch;
+}
+
+@media (min-width: 1101px) {
+  .table-action-bar-inner.table-action-bar-dm {
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  }
 }
 
 .dm-play-thread {
@@ -503,23 +556,34 @@ a.account-chip-label:focus-visible {
 
 .table-action-bar .table-player-turn-composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(12rem, 1fr) auto;
   gap: var(--space-2);
-  align-items: center;
+  align-items: end;
   margin-top: 0;
+  width: 100%;
+}
+
+.table-action-bar .table-player-turn-composer [data-testid='action-channel-hint'] {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .table-action-bar .table-action-field {
   margin: 0;
+  min-width: 0;
 }
 
 .table-action-bar .table-action-field textarea {
-  min-height: 2.15rem;
-  max-height: 2.15rem;
-  resize: none;
-  padding: var(--space-2);
-  font-size: 0.88rem;
-  line-height: 1.2;
+  width: 100%;
+  min-width: 0;
+  min-height: 3.25rem;
+  max-height: 8.5rem;
+  resize: vertical;
+  field-sizing: content;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  overflow-y: auto;
 }
 
 .table-action-bar .table-primary-action,
@@ -527,6 +591,7 @@ a.account-chip-label:focus-visible {
   padding: var(--space-2) var(--space-3);
   font-size: 0.84rem;
   white-space: nowrap;
+  max-width: 11rem;
 }
 
 .table-action-bar .table-player-actions {
@@ -559,41 +624,115 @@ a.account-chip-label:focus-visible {
 
 .table-comms-rail .dock-tabs {
   flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table-comms-rail .dock-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.table-comms-rail .dock-composer {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  background: color-mix(in srgb, var(--obsidian-surface) 94%, transparent);
+  z-index: 2;
+}
+
+.intent-intercept[data-intercept-state='failed'] {
+  border-left: 3px solid color-mix(in srgb, var(--danger, #c45) 70%, transparent);
+  padding-left: var(--space-2);
 }
 
 @media (max-width: 1100px) {
+  /* Collapse the reference rail into a drawer strip so play keeps width (PQA-119/120). */
   .table-dashboard-body {
-    grid-template-columns: minmax(200px, 14rem) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(12rem, 18rem);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
     grid-template-areas:
-      'info play'
-      'comms comms';
+      'play'
+      'comms'
+      'info';
   }
 
   .table-info-rail {
     grid-area: info;
+    max-height: none;
+    order: 3;
   }
 
   .table-play-column {
     grid-area: play;
+    order: 1;
+    min-height: 28rem;
   }
 
   .table-comms-rail {
     grid-area: comms;
+    order: 2;
+    max-height: min(40dvh, 22rem);
+  }
+
+  .table-dashboard .table-stage-frame {
+    min-height: min(48vh, 26rem);
+    aspect-ratio: 4 / 3;
   }
 }
 
 @media (max-width: 760px) {
-  .table-dashboard {
+  .table-dashboard.page-wide {
     height: auto;
     min-height: 100dvh;
+    max-height: none;
     overflow: visible;
+    padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   }
 
   .table-dashboard-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    grid-template-columns: none;
+    grid-template-rows: none;
     grid-template-areas: none;
+  }
+
+  .table-info-rail,
+  .table-play-column,
+  .table-comms-rail {
+    grid-area: auto;
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+    left: auto;
+    top: auto;
+    max-height: none;
+  }
+
+  .table-play-column {
+    order: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .table-action-bar {
+    order: 2;
+    position: sticky;
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .table-comms-rail {
+    order: 3;
+  }
+
+  .table-info-rail {
+    order: 4;
   }
 
   .table-action-bar-inner,
@@ -601,9 +740,21 @@ a.account-chip-label:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .table-action-bar .table-primary-action {
+    max-width: none;
+    width: 100%;
+  }
+
   .table-dashboard .table-stage-frame {
-    min-height: 280px;
-    height: min(45vh, 420px);
+    min-height: 240px;
+    height: min(42vh, 360px);
+    aspect-ratio: auto;
+    flex: 0 0 auto;
+  }
+
+  /* Keep chat from covering the map: dock is a document block below play (PQA-113). */
+  .table-comms-rail {
+    z-index: 1;
   }
 }
 
@@ -1875,10 +2026,12 @@ html.hd-low-effects .map-square-fog,
 
 .dock-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   border-bottom: var(--border-weight) solid var(--structural-border);
   padding-bottom: var(--space-3);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .dock-tab {

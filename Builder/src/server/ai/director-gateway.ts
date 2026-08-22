@@ -35,6 +35,7 @@ import type {
   IntentInterpretResponse,
   ProviderComplianceEntry,
 } from '../../shared/ai-director-contract.js';
+import { scrubPlayerFacingIntentCopy } from '../../shared/ai-director-contract.js';
 import {
   deriveEpicFramingTags,
   type IntentDraftCommandType,
@@ -47,6 +48,7 @@ import { fetchRulesState } from '../rules/engine/rules-commands.js';
 import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
+import { fetchCampaignMap } from '../table/map-projection.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -337,8 +339,9 @@ export async function interpretNaturalLanguageIntent(options: {
 
   let proposedCommandType: IntentDraftCommandType = 'table.sync';
   let summary =
-    'Intent Intercept draft: sync the table from your declaration. Confirm only commits what the engine can resolve.';
+    'I heard your declaration. Confirm only commits what the table can resolve right now.';
   let path: IntentInterpretResponse['path'];
+  let edgeId: string | undefined;
   let targetCombatantId: string | undefined;
   let spellId: string | undefined;
   let itemId: string | undefined;
@@ -375,77 +378,120 @@ export async function interpretNaturalLanguageIntent(options: {
   if (/(move|walk|go|step|approach)/.test(text) && options.moveTarget) {
     proposedCommandType = 'table.move';
     path = [options.moveTarget];
-    summary = `Intent Intercept draft: move to column ${options.moveTarget.column}, row ${options.moveTarget.row} (interpreted from your words).`;
-  } else if (/(open|unlock|push).*(door|gate)/.test(text)) {
-    proposedCommandType = 'table.open_door';
-    summary =
-      'Intent Intercept draft: open the selected door. Confirm to submit through Timing Authority.';
+    summary = `Ready to move toward column ${options.moveTarget.column}, row ${options.moveTarget.row}. Confirm to commit the step.`;
+  } else if (/(open|unlock|push).*(door|gate)/.test(text) || /(door|gate).*(open|unlock|push)/.test(text)) {
+    let resolvedEdgeId: string | undefined;
+    let doorCount = 0;
+    try {
+      const map = await fetchCampaignMap({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      });
+      const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
+      doorCount = closedDoors.length;
+      const ownToken =
+        map.viewerSeatId === null
+          ? map.tokens[0]
+          : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+      const adjacent = closedDoors.find((edge) => {
+        if (ownToken === undefined) {
+          return false;
+        }
+        const anchor = ownToken.footprint.anchor;
+        return (
+          (edge.orientation === 'east' &&
+            edge.row === anchor.row &&
+            (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
+          (edge.orientation === 'north' &&
+            edge.column === anchor.column &&
+            (edge.row === anchor.row || edge.row === anchor.row - 1))
+        );
+      });
+      resolvedEdgeId = adjacent?.edgeId;
+    } catch {
+      resolvedEdgeId = undefined;
+    }
+
+    if (resolvedEdgeId !== undefined) {
+      proposedCommandType = 'table.open_door';
+      edgeId = resolvedEdgeId;
+      summary = 'Ready to open the door beside you. Confirm to commit it on the map.';
+    } else if (doorCount > 0) {
+      proposedCommandType = 'table.sync';
+      summary =
+        'There is a door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.';
+    } else {
+      proposedCommandType = 'table.sync';
+      summary =
+        'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+    }
   } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
     const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
     if (!combatActive || self === null) {
       summary =
-        'Intent Intercept draft: you want to use a Potion of Healing, but there is no active combat seat to spend it from. Begin encounter and take your turn, then declare again.';
+        'You want to use a Potion of Healing, but there is no active combat seat to spend it from. Begin encounter and take your turn, then declare again.';
       proposedCommandType = 'table.sync';
     } else {
       proposedCommandType = 'inventory.use_item';
       itemId = 'healing-potion';
       targetCombatantId = self.combatantId;
-      summary = `Intent Intercept draft: use a Potion of Healing on ${self.name}. Confirm to let the engine resolve the heal — no invented numbers.`;
+      summary = `Ready to use a Potion of Healing on ${self.name}. Confirm to let the engine resolve the heal.`;
     }
   } else if (/(cast|spell|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
     const matchedSpell = matchSpellFromText(text);
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       summary =
-        'Intent Intercept draft: that sounds like a spell, but combat is not active. Begin encounter and roll initiative, then declare the cast again.';
+        'That sounds like a spell, but combat is not active. Begin encounter and roll initiative, then declare the cast again.';
       proposedCommandType = 'table.sync';
     } else if (matchedSpell === null) {
       summary =
-        'Intent Intercept draft: name which prepared spell you cast (for example Fire Bolt or Burning Hands), then declare again.';
+        'Name which prepared spell you cast (for example Fire Bolt or Burning Hands), then declare again.';
       proposedCommandType = 'table.sync';
     } else if (matchedSpell.targetKind === 'area') {
       proposedCommandType = 'combat.cast_spell';
       spellId = matchedSpell.spellId;
-      summary = `Intent Intercept draft: cast ${matchedSpell.label}. Confirm to resolve the area with the engine (origin from your position or selected square).`;
+      summary = `Ready to cast ${matchedSpell.label}. Confirm to resolve the area with the engine.`;
     } else if (matchedSpell.targetKind === 'self') {
       const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
       proposedCommandType = 'combat.cast_spell';
       spellId = matchedSpell.spellId;
       if (self !== null) targetCombatantId = self.combatantId;
-      summary = `Intent Intercept draft: cast ${matchedSpell.label} on yourself. Confirm to resolve with the engine.`;
+      summary = `Ready to cast ${matchedSpell.label} on yourself. Confirm to resolve with the engine.`;
     } else if (target === null) {
-      summary = `Intent Intercept draft: cast ${matchedSpell.label}, but name which foe (for example Training Dummy or Practice Goblin).`;
+      summary = `Ready to cast ${matchedSpell.label}, but name which foe (for example Training Dummy or Practice Goblin).`;
       proposedCommandType = 'table.sync';
     } else {
       proposedCommandType = 'combat.cast_spell';
       spellId = matchedSpell.spellId;
       targetCombatantId = target.combatantId;
-      summary = `Intent Intercept draft: cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine — flavor stays; numbers stay server-authored.`;
+      summary = `Ready to cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine.`;
     }
   } else if (/(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)/.test(text)) {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       summary =
-        'Intent Intercept draft: that sounds like an attack, but combat is not active. Begin encounter and roll initiative, then declare the attack again.';
+        'That sounds like an attack, but combat is not active. Begin encounter and roll initiative, then declare the attack again.';
       proposedCommandType = 'table.sync';
     } else if (target === null) {
-      summary =
-        'Intent Intercept draft: say who you attack (Training Dummy or Practice Goblin), then declare again.';
+      summary = 'Say who you attack (Training Dummy or Practice Goblin), then declare again.';
       proposedCommandType = 'table.sync';
     } else {
       proposedCommandType = 'combat.attack';
       targetCombatantId = target.combatantId;
-      summary = `Intent Intercept draft: attack ${target.name} with your weapon. Confirm to let the engine roll to hit and damage — the DM will narrate the true result.`;
+      summary = `Ready to attack ${target.name} with your weapon. Confirm to let the engine roll to hit and damage.`;
     }
   }
 
   const liveSummary = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent Intercept summary for the player in one or two sentences. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action or mechanical outcome.`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent summary for the player in one or two sentences. Do not name internal command types or tool ids. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action or mechanical outcome. Do not invent doors or walls that are not on the map.`,
     userPrompt: `Player said: ${rawText}\nDeterministic summary: ${summary}`,
   });
   if (liveSummary !== null) {
     summary = liveSummary;
   }
+  summary = scrubPlayerFacingIntentCopy(summary);
 
   const createdAt = new Date().toISOString();
   const manifest = buildManifest({
@@ -465,9 +511,10 @@ export async function interpretNaturalLanguageIntent(options: {
     summary:
       liveSummary === null
         ? `${summary} (${DIRECTOR_IDENTITY_LABELS[director.identity]} · ${DIRECTOR_PERSONALITY_LABELS[director.personality]})`
-        : summary,
+        : scrubPlayerFacingIntentCopy(summary),
     proposedCommandType,
     ...(path !== undefined ? { path } : {}),
+    ...(edgeId !== undefined ? { edgeId } : {}),
     ...(targetCombatantId !== undefined ? { targetCombatantId } : {}),
     ...(spellId !== undefined ? { spellId } : {}),
     ...(itemId !== undefined ? { itemId } : {}),

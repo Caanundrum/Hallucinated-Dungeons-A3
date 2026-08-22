@@ -106,6 +106,17 @@ export interface IntentInterpretResponse {
   readonly createdAt: string;
 }
 
+/** Strip internal command/tool identifiers from player-facing Intent copy (PQA-141). */
+export function scrubPlayerFacingIntentCopy(text: string): string {
+  return text
+    .replace(/\btable\.(?:open_door|move|sync)\b/gi, 'that action')
+    .replace(/\bcombat\.(?:attack|cast_spell|reaction)\b/gi, 'that action')
+    .replace(/\binventory\.use_item\b/gi, 'that item')
+    .replace(/\bedgeId\b/gi, 'door')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export interface ProviderComplianceEntry {
   readonly providerId: string;
   readonly displayName: string;
