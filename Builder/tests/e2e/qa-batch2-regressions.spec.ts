@@ -130,7 +130,7 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('dock-tab-chronicle').click();
     await expect(page.getByTestId('chronicle-entry').filter({ hasText: /session was suspended/i })).toBeVisible();
     await expect(page.getByTestId('chronicle-pane')).not.toContainText('checkpoint 0');
-    await expect(page.getByTestId('chronicle-pane')).toContainText(/checkpoint [1-9]/i);
+    await expect(page.getByTestId('chronicle-pane')).not.toContainText(/Table checkpoint/i);
     await openTableAdvancedControls(page);
     await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
   });

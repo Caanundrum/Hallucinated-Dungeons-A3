@@ -267,8 +267,8 @@ async function readTableStateVersion(firestore: Firestore, campaignId: string): 
   }
 
   // Seating, table commands, and settings bump campaigns.updatedAt. If the campaign
-  // document moved after creation, treat that as at least checkpoint 1 so Story so far
-  // never claims "checkpoint 0" after real campaign activity (PQA-087).
+  // document moved after creation, treat that as at least checkpoint 1 so suspend
+  // toasts never claim "checkpoint 0" after real campaign activity (PQA-087).
   if (checkpoint === 0) {
     try {
       const campaignSnapshot = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
@@ -697,8 +697,8 @@ export async function recordSessionSuspend(
   }
 
   const tableStateVersion = await readTableStateVersion(firestore, campaignId);
-  // Never publish "checkpoint 0" into Story so far — it reads as a false diagnostic
-  // after play when the projection version was missing (PQA-087).
+  // Campaign-page toast may mention a real checkpoint; Story so far never does (PQA-087).
+  // Never publish "checkpoint 0" anywhere — it reads as a false diagnostic.
   const tableStateVersionNote =
     tableStateVersion > 0
       ? `Table checkpoint ${tableStateVersion} at suspend.`
@@ -726,14 +726,15 @@ export async function recordSessionSuspend(
   batch.set(firestore.collection(COLLECTIONS.campaignSessions).doc(campaignId), updatedSession);
   await batch.commit();
 
+  // Keep checkpoint diagnostics off Story so far — only the human suspend note belongs there.
   await appendChronicleEntry({
     firestore,
     campaignId,
     kind: 'session_suspended',
     body:
       note === null
-        ? `The session was suspended. ${tableStateVersionNote}`
-        : `The session was suspended: ${note} ${tableStateVersionNote}`,
+        ? 'The session was suspended.'
+        : `The session was suspended: ${note}`,
   });
 
   return {
