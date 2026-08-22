@@ -92,6 +92,7 @@ export async function recordDefaultSessionZero(page: Page): Promise<void> {
   }
   await page.getByTestId('open-campaign-settings').click();
   await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
+  await page.getByTestId('session-length').fill('3–5 sessions');
   await page.getByTestId('complete-session-zero').click();
   await expect(page.getByTestId('settings-notice')).toContainText(
     /Session Zero (recorded|updated)/i,

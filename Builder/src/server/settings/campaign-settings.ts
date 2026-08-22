@@ -420,9 +420,20 @@ export async function updateCampaignSettings(options: {
       next.sessionZero.contentSource = zero.contentSource;
     }
     if (zero.complete === true) {
-      if (next.sessionZero.expectedSessionLength.trim().length === 0) {
-        throw new CampaignValidationError('Expected session length is required for Session Zero.');
+      // Require an explicit non-empty length in THIS request. Do not complete Session
+      // Zero by inheriting a previously stored default the player just cleared (PQA-108).
+      const providedLength =
+        typeof zero.expectedSessionLength === 'string' ? zero.expectedSessionLength.trim() : '';
+      if (providedLength.length === 0) {
+        throw new CampaignValidationError(
+          'Expected session length is required for Session Zero. Enter a duration such as “3–5 sessions”.',
+        );
       }
+      next.sessionZero.expectedSessionLength = clampText(
+        providedLength,
+        EXPECTED_SESSION_LENGTH_MAX_LENGTH,
+        'Expected session length',
+      );
       if (next.sessionZero.textChatExpectations.trim().length === 0) {
         throw new CampaignValidationError('Text-chat expectations are required for Session Zero.');
       }

@@ -68,6 +68,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await page.getByTestId('group-decision-unanimous_consent').click();
     await page.getByTestId('reaction-window').fill('15');
     await page.getByTestId('session-tone').selectOption('grim');
+    await page.getByTestId('session-length').fill('3–5 sessions');
     await page.getByTestId('complete-session-zero').click();
     await expect(page.getByTestId('settings-notice')).toContainText(
       /Session Zero (recorded|updated)/i,
@@ -92,7 +93,9 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('chronicle-entry').first()).toContainText('created this campaign');
 
     await page.getByTestId('dock-tab-rules_desk').click();
-    await expect(page.getByTestId('rules-desk-notice')).toContainText(/Browse the structured SRD|never changes the table/i);
+    await expect(page.getByTestId('rules-desk-notice')).toContainText(
+      /Browse the SRD|does not make rulings|never changes the table/i,
+    );
 
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-composer')).toBeVisible();

@@ -298,7 +298,7 @@ export function defaultCampaignSettingsFields(): Omit<
       romancePolicy: 'fade_to_black',
       lethalityPreference: 'standard',
       directorDiscretionLevel: 'moderate_bounded',
-      expectedSessionLength: '3–5 sessions',
+      expectedSessionLength: '',
       dropInOutPolicy: 'flexible',
       textChatExpectations: 'Party Chat is the in-product table talk surface.',
       externalVoiceNote: '',

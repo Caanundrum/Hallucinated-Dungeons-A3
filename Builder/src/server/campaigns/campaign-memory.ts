@@ -144,55 +144,101 @@ async function requireOwnSeat(
   }
 }
 
+function asNonNegativeInt(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return 0;
+}
+
 async function readTableStateVersion(firestore: Firestore, campaignId: string): Promise<number> {
-  const [tableSnapshot, seatSnapshot, eventSnapshot] = await Promise.all([
-    firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId).get(),
-    firestore
-      .collection(COLLECTIONS.campaignSeats)
-      .where('campaignId', '==', campaignId)
-      .limit(12)
-      .get(),
-    firestore
-      .collection(COLLECTIONS.campaignEvents)
-      .where('campaignId', '==', campaignId)
-      .limit(200)
-      .get(),
-  ]);
+  const tableSnapshot = await firestore
+    .collection(COLLECTIONS.campaignTableProjections)
+    .doc(campaignId)
+    .get();
+
   let checkpoint = 0;
   if (tableSnapshot.exists) {
     const data = tableSnapshot.data() as {
-      stateVersion?: number;
-      lastEventSequence?: number;
+      stateVersion?: unknown;
+      lastEventSequence?: unknown;
     };
     checkpoint = Math.max(
-      typeof data.stateVersion === 'number' ? data.stateVersion : 0,
-      typeof data.lastEventSequence === 'number' ? data.lastEventSequence : 0,
+      asNonNegativeInt(data.stateVersion),
+      asNonNegativeInt(data.lastEventSequence),
     );
   }
-  for (const doc of seatSnapshot.docs) {
-    const seat = doc.data() as { lastAcknowledgedEventSequence?: number };
-    checkpoint = Math.max(
-      checkpoint,
-      typeof seat.lastAcknowledgedEventSequence === 'number'
-        ? seat.lastAcknowledgedEventSequence
-        : 0,
-    );
+
+  // Isolate optional queries so a missing index / empty collection cannot zero out
+  // a known projection version (PQA-087).
+  try {
+    const seatSnapshot = await firestore
+      .collection(COLLECTIONS.campaignSeats)
+      .where('campaignId', '==', campaignId)
+      .limit(12)
+      .get();
+    for (const doc of seatSnapshot.docs) {
+      const seat = doc.data() as { lastAcknowledgedEventSequence?: unknown };
+      checkpoint = Math.max(checkpoint, asNonNegativeInt(seat.lastAcknowledgedEventSequence));
+    }
+  } catch {
+    // Seat ack sequences are optional signal only.
   }
-  // Legacy/migrated tables may omit projection versions; chronicle activity still
-  // leaves event sequences we can use for a honest suspend checkpoint (PQA-087).
-  for (const doc of eventSnapshot.docs) {
-    const event = doc.data() as {
-      eventSequence?: number;
-      resultStateVersion?: number;
-      priorStateVersion?: number;
-    };
-    checkpoint = Math.max(
-      checkpoint,
-      typeof event.eventSequence === 'number' ? event.eventSequence : 0,
-      typeof event.resultStateVersion === 'number' ? event.resultStateVersion : 0,
-      typeof event.priorStateVersion === 'number' ? event.priorStateVersion : 0,
-    );
+
+  try {
+    const eventSnapshot = await firestore
+      .collection(COLLECTIONS.campaignEvents)
+      .where('campaignId', '==', campaignId)
+      .limit(200)
+      .get();
+    for (const doc of eventSnapshot.docs) {
+      const event = doc.data() as {
+        eventSequence?: unknown;
+        resultStateVersion?: unknown;
+        priorStateVersion?: unknown;
+      };
+      checkpoint = Math.max(
+        checkpoint,
+        asNonNegativeInt(event.eventSequence),
+        asNonNegativeInt(event.resultStateVersion),
+        asNonNegativeInt(event.priorStateVersion),
+      );
+    }
+  } catch {
+    // Event history is optional signal only.
   }
+
+  try {
+    const commandSnapshot = await firestore
+      .collection(COLLECTIONS.campaignCommands)
+      .where('campaignId', '==', campaignId)
+      .limit(200)
+      .get();
+    for (const doc of commandSnapshot.docs) {
+      const command = doc.data() as { expectedStateVersion?: unknown };
+      // A committed command at expected N implies the table reached at least N+1.
+      checkpoint = Math.max(checkpoint, asNonNegativeInt(command.expectedStateVersion) + 1);
+    }
+  } catch {
+    // Command history is optional signal only.
+  }
+
+  try {
+    const encounterSnapshot = await firestore
+      .collection(COLLECTIONS.campaignEncounters)
+      .doc(campaignId)
+      .get();
+    if (encounterSnapshot.exists) {
+      const encounter = encounterSnapshot.data() as { stateVersion?: unknown };
+      checkpoint = Math.max(checkpoint, asNonNegativeInt(encounter.stateVersion));
+    }
+  } catch {
+    // Encounter version is optional signal only.
+  }
+
   return checkpoint;
 }
 
