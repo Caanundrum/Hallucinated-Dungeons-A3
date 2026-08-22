@@ -18,6 +18,7 @@ test('table command gateway accepts tactical and Phase 3 rules commands', () => 
   assert.ok(TABLE_COMMAND_TYPES.includes('table.sync'));
   assert.ok(TABLE_COMMAND_TYPES.includes('table.move'));
   assert.ok(TABLE_COMMAND_TYPES.includes('table.open_door'));
+  assert.ok(TABLE_COMMAND_TYPES.includes('table.build_scene'));
   assert.ok(TABLE_COMMAND_TYPES.includes('encounter.begin'));
   assert.ok(TABLE_COMMAND_TYPES.includes('combat.attack'));
   assert.ok(TABLE_COMMAND_TYPES.includes('combat.cast_spell'));

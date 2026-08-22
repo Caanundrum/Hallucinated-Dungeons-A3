@@ -24,6 +24,7 @@ import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
 import { loadMapRuntime, type StoredMapRuntime } from './map-runtime.js';
+import { mergeRuntimeEdges } from './scene-builder.js';
 import { visibleSquaresFrom } from './path-validator.js';
 
 export class MapProjectionError extends Error {
@@ -283,11 +284,12 @@ export function buildAuthoritativeMapBundle(options: {
   const isBlankTable = (options.adventureTemplateId ?? null) === null && scene === null;
   const cells = scene !== null ? [...scene.cells] : isBlankTable ? buildBlankOpenCells() : buildStarterCells();
   const baseEdges = scene !== null ? scene.edges : isBlankTable ? [] : buildStarterInteriorWalls();
+  const mergedEdges = mergeRuntimeEdges(baseEdges, runtime.runtimeEdges ?? []);
   return {
     campaignId,
     mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : isBlankTable ? `blank:${campaignId}` : `starter:${campaignId}`,
     mapVersion: 1 + movementRevision(runtime),
-    title: presentation?.title ?? (isBlankTable ? 'Blank table' : 'Local starter chamber'),
+    title: runtime.sceneTitle ?? presentation?.title ?? (isBlankTable ? 'Blank table' : 'Local starter chamber'),
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,
@@ -297,7 +299,7 @@ export function buildAuthoritativeMapBundle(options: {
       pixelsPerSquare: PIXELS_PER_SQUARE,
     },
     cells,
-    edges: applyDoorOverrides(baseEdges, runtime),
+    edges: applyDoorOverrides(mergedEdges, runtime),
     tokens: buildTokens(seats, runtime, {
       adventureTemplateId: options.adventureTemplateId ?? null,
       currentChapterId: options.currentChapterId ?? null,

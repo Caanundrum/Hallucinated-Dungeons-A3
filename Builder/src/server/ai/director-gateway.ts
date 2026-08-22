@@ -49,6 +49,7 @@ import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
+import { proposeDoorSceneAhead } from '../table/scene-builder.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -422,9 +423,34 @@ export async function interpretNaturalLanguageIntent(options: {
       summary =
         'There is a door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.';
     } else {
-      proposedCommandType = 'table.sync';
-      summary =
-        'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+      let blankBuild: ReturnType<typeof proposeDoorSceneAhead> | null = null;
+      try {
+        const map = await fetchCampaignMap({
+          firestore: options.firestore,
+          accountId: options.accountId,
+          campaignId: options.campaignId,
+        });
+        const isBlankTable = map.mapBundleId.startsWith('blank:');
+        const ownToken =
+          map.viewerSeatId === null
+            ? map.tokens[0]
+            : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+        if (isBlankTable && map.edges.length === 0 && ownToken !== undefined) {
+          blankBuild = proposeDoorSceneAhead({ tokenAnchor: ownToken.footprint.anchor });
+        }
+      } catch {
+        blankBuild = null;
+      }
+      if (blankBuild !== null) {
+        proposedCommandType = 'table.build_scene';
+        edgeId = blankBuild.doorEdgeId;
+        summary =
+          'Ready to raise a wall and wooden door ahead of you on this blank table. Confirm to build the scene and open the door.';
+      } else {
+        proposedCommandType = 'table.sync';
+        summary =
+          'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+      }
     }
   } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
     const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;

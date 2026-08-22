@@ -6,7 +6,7 @@
 
 import type { Firestore } from 'firebase-admin/firestore';
 
-import type { DoorState, MapSquareCoordinate } from '../../shared/map-contract.js';
+import type { DoorState, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
 import { squareId } from '../../shared/map-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 
@@ -21,6 +21,10 @@ export interface StoredMapRuntime {
   readonly tokenPositions: StoredTokenPosition[];
   /** edgeId → door state overrides for mutable doors */
   readonly doorStates: Record<string, DoorState>;
+  /** Player-confirmed improvised walls/doors on blank tables (PQA-145). */
+  readonly runtimeEdges?: readonly MapEdgeRecord[];
+  /** Optional title override after scene construction. */
+  readonly sceneTitle?: string | null;
   /** accountId → explored square ids */
   readonly exploredByAccount: Record<string, string[]>;
 }
@@ -30,6 +34,8 @@ export function emptyMapRuntime(campaignId: string): StoredMapRuntime {
     campaignId,
     tokenPositions: [],
     doorStates: {},
+    runtimeEdges: [],
+    sceneTitle: null,
     exploredByAccount: {},
   };
 }
@@ -47,6 +53,8 @@ export async function loadMapRuntime(
     campaignId,
     tokenPositions: Array.isArray(data.tokenPositions) ? data.tokenPositions : [],
     doorStates: data.doorStates ?? {},
+    runtimeEdges: Array.isArray(data.runtimeEdges) ? data.runtimeEdges : [],
+    sceneTitle: typeof data.sceneTitle === 'string' ? data.sceneTitle : null,
     exploredByAccount: data.exploredByAccount ?? {},
   };
 }

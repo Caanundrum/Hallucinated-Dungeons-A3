@@ -28,6 +28,7 @@ export const ACTIVE_TURN_PERMITTED_COMMANDS = [
   'table.sync',
   'table.move',
   'table.open_door',
+  'table.build_scene',
   'encounter.begin',
   'initiative.roll',
   'encounter.next_turn',

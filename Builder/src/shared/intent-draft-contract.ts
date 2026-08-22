@@ -10,6 +10,7 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'table.sync',
   'table.move',
   'table.open_door',
+  'table.build_scene',
   'combat.attack',
   'combat.cast_spell',
   'inventory.use_item',
