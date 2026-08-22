@@ -156,4 +156,35 @@ test.describe('PQA layout and playability batch 3', () => {
       .evaluate((node) => node.getBoundingClientRect().width);
     expect(afterFit).toBeCloseTo(beforeZoom, 0);
   });
+
+  test('PQA-146/147: persisted chamber declaration sees committed geometry', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'PersistScene');
+    await page.getByTestId('open-campaign-table').click();
+    const declaration =
+      'I walk to the far wall, open the wooden door, and enter the room beyond.';
+    await page.getByTestId('player-action-input').fill(declaration);
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
+    await page.getByTestId('confirm-intent-intercept').click();
+    await expect(page.getByTestId('map-bundle-meta')).toContainText(/improvised chamber/i, {
+      timeout: 15000,
+    });
+    await expect(page.locator('[data-testid="table-stage-svg"] line[data-edge]')).toHaveCount(3);
+    await page.reload();
+    await expect(page.getByTestId('map-bundle-meta')).toContainText(/improvised chamber/i);
+    await expect(page.locator('[data-testid="table-stage-svg"] line[data-edge]')).toHaveCount(3);
+    await page.getByTestId('player-action-input').fill(declaration);
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(/open floor/i);
+    await expect(page.getByTestId('dm-play-thread')).toContainText(
+      /already through|already open|move toward|walls and structural|Improvised chamber/i,
+    );
+    await expect(page.getByTestId('door-recovery-panel')).toHaveCount(0);
+  });
 });

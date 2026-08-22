@@ -49,8 +49,7 @@ import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
-import { nextStepTowardOpenDoor } from '../table/move-planner.js';
-import { proposeDoorSceneAhead } from '../table/scene-builder.js';
+import { resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -399,86 +398,46 @@ export async function interpretNaturalLanguageIntent(options: {
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
   if (mentionsDoorIntent(text)) {
-    let resolvedEdgeId: string | undefined;
-    let doorCount = 0;
     try {
       const map = await fetchCampaignMap({
         firestore: options.firestore,
         accountId: options.accountId,
         campaignId: options.campaignId,
       });
-      const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
-      doorCount = closedDoors.length;
       const ownToken =
         map.viewerSeatId === null
           ? map.tokens[0]
           : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
-      const adjacent = closedDoors.find((edge) => {
-        if (ownToken === undefined) {
-          return false;
+      if (ownToken !== undefined) {
+        const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
+        if (persisted !== null) {
+          proposedCommandType = persisted.proposedCommandType;
+          summary = persisted.summary;
+          if (persisted.path !== undefined) {
+            path = [...persisted.path];
+          }
+          if (persisted.edgeId !== undefined) {
+            edgeId = persisted.edgeId;
+          }
+        } else {
+          const blankBuild = resolveBlankTableDoorBuild(map, ownToken.footprint.anchor, text);
+          if (blankBuild !== null) {
+            proposedCommandType = blankBuild.proposedCommandType;
+            summary = blankBuild.summary;
+            if (blankBuild.edgeId !== undefined) {
+              edgeId = blankBuild.edgeId;
+            }
+          } else {
+            proposedCommandType = 'table.sync';
+            summary =
+              'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+          }
         }
-        const anchor = ownToken.footprint.anchor;
-        return (
-          (edge.orientation === 'east' &&
-            edge.row === anchor.row &&
-            (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
-          (edge.orientation === 'north' &&
-            edge.column === anchor.column &&
-            (edge.row === anchor.row || edge.row === anchor.row - 1))
-        );
-      });
-      resolvedEdgeId = adjacent?.edgeId;
+      }
     } catch {
-      resolvedEdgeId = undefined;
-    }
-
-    if (resolvedEdgeId !== undefined) {
-      proposedCommandType = 'table.open_door';
-      edgeId = resolvedEdgeId;
-      summary = 'Ready to open the door beside you. Confirm to commit it on the map.';
-    } else if (doorCount > 0) {
       proposedCommandType = 'table.sync';
       summary =
-        'There is a door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.';
-    } else {
-      let blankBuild: ReturnType<typeof proposeDoorSceneAhead> | null = null;
-      let approachStep: { column: number; row: number } | null = null;
-      try {
-        const map = await fetchCampaignMap({
-          firestore: options.firestore,
-          accountId: options.accountId,
-          campaignId: options.campaignId,
-        });
-        const ownToken =
-          map.viewerSeatId === null
-            ? map.tokens[0]
-            : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
-        if (ownToken !== undefined && mentionsMovementIntent(text)) {
-          approachStep = nextStepTowardOpenDoor(ownToken.footprint.anchor, map);
-        }
-        const isBlankTable = map.mapBundleId.startsWith('blank:');
-        if (isBlankTable && map.edges.length === 0 && ownToken !== undefined) {
-          blankBuild = proposeDoorSceneAhead({ tokenAnchor: ownToken.footprint.anchor });
-        }
-      } catch {
-        blankBuild = null;
-        approachStep = null;
-      }
-      if (approachStep !== null) {
-        proposedCommandType = 'table.move';
-        path = [approachStep];
-        summary = `Ready to move toward column ${approachStep.column}, row ${approachStep.row}. Confirm to commit the step.`;
-      } else if (blankBuild !== null) {
-        proposedCommandType = 'table.build_scene';
-        edgeId = blankBuild.doorEdgeId;
-        summary = mentionsMovementIntent(text)
-          ? 'Ready to raise a wall and wooden door ahead on this blank table, then you can walk to it and enter. Confirm to build the scene first.'
-          : 'Ready to raise a wall and wooden door ahead of you on this blank table. Confirm to build the scene and open the door.';
-      } else {
-        proposedCommandType = 'table.sync';
-        summary =
-          'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
-      }
+        'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
     }
   } else if (mentionsMovementIntent(text) && options.moveTarget) {
     let legalStep = false;
