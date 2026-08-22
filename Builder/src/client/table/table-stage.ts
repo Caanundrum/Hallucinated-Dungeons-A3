@@ -300,21 +300,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function fitMapToViewport(): void {
+    // CSS max-width/max-height already fit the SVG at zoomScale 1; zoom buttons
+    // apply transform on top of that baseline. Fit resets to the fitted view.
+    applyZoom(1);
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
-    if (viewport === null || currentMap === null) {
-      applyZoom(1);
-      return;
-    }
-    const { columns, rows, pixelsPerSquare } = currentMap.coordinateSpace;
-    const mapWidth = columns * pixelsPerSquare;
-    const mapHeight = rows * pixelsPerSquare;
-    const fitScale = Math.min(
-      viewport.clientWidth / Math.max(mapWidth, 1),
-      viewport.clientHeight / Math.max(mapHeight, 1),
-      2.4,
-    );
-    applyZoom(Math.max(0.6, fitScale));
-    viewport.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    viewport?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   }
 
   function bindToolbar(): void {

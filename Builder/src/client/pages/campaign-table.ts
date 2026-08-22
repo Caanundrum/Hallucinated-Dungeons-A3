@@ -434,6 +434,72 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
+  async function resumeCompoundDeclarationAfterBuild(declaration: string): Promise<void> {
+    if (candidate === null || !/\b(walk|go|step|approach|enter|room beyond)\b/i.test(declaration)) {
+      return;
+    }
+    const maxSteps = 12;
+    for (let step = 0; step < maxSteps; step += 1) {
+      if (candidate === null || tableState === null) {
+        break;
+      }
+      const moveTargetForInterpret =
+        moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+          ? moveTarget
+          : undefined;
+      let interpreted: Awaited<ReturnType<typeof interpretNaturalLanguage>>;
+      try {
+        interpreted = await interpretNaturalLanguage({
+          candidateId: candidate.candidateId,
+          campaignId,
+          text: declaration,
+          ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
+        });
+      } catch {
+        break;
+      }
+      if (
+        interpreted.proposedCommandType !== 'table.move' &&
+        interpreted.proposedCommandType !== 'table.open_door'
+      ) {
+        break;
+      }
+      if (
+        interpreted.proposedCommandType === 'table.move' &&
+        (interpreted.path === undefined || interpreted.path.length === 0)
+      ) {
+        break;
+      }
+      try {
+        const accepted = await submitTableCommand({
+          candidateId: candidate.candidateId,
+          campaignId,
+          requestId: crypto.randomUUID(),
+          commandType: interpreted.proposedCommandType,
+          expectedStateVersion: tableState.stateVersion,
+          ...(explorationMode() || timingAuthority === null
+            ? {}
+            : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+          ...(interpreted.path !== undefined ? { path: interpreted.path } : {}),
+          ...(interpreted.edgeId !== undefined ? { edgeId: interpreted.edgeId } : {}),
+        });
+        tableState = accepted.table;
+        mapBundle = await fetchCampaignMap(campaignId);
+        stageHandle?.renderMap(mapBundle);
+        const summary =
+          accepted.event.summary?.trim() ||
+          `Action committed · version ${accepted.table.stateVersion}.`;
+        appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
+        if (shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
+          await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
+        }
+      } catch {
+        break;
+      }
+    }
+    patchDmPlayThread();
+  }
+
   function fieldsFromIntentDraft(draft: ActionDraftSuggestion): RulesCommandFields {
     const seatedCombatant = ownCombatant();
     if (draft.proposedCommandType === 'combat.cast_spell' && draft.spellId === 'burning-hands') {
@@ -3040,6 +3106,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           busy = true;
           error = null;
+          const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
           render();
           try {
             const accepted = await submitTableCommand({
@@ -3067,6 +3134,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               void narrateIntoDmThread(summary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();
+            }
+            if (resumeAfterSceneBuild && lastSubmittedDeclaration.trim().length > 0) {
+              await resumeCompoundDeclarationAfterBuild(lastSubmittedDeclaration.trim());
             }
           } catch (failure) {
             const raw =

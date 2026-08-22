@@ -142,14 +142,18 @@ test.describe('PQA layout and playability batch 3', () => {
       .first()
       .evaluate((node) => Number(node.getAttribute('font-size') ?? '0'));
     expect(tokenLabelSize).toBeGreaterThan(12);
-    const beforeFit = await page
+    const beforeZoom = await page
       .locator('[data-testid="table-stage-svg"]')
       .evaluate((node) => node.getBoundingClientRect().width);
-    await page.getByRole('button', { name: 'Zoom out' }).click();
-    await page.getByRole('button', { name: 'Fit map' }).click();
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    const afterZoomIn = await page
+      .locator('[data-testid="table-stage-svg"]')
+      .evaluate((node) => node.getBoundingClientRect().width);
+    expect(afterZoomIn).toBeGreaterThan(beforeZoom);
+    await page.locator('[data-map-zoom="fit"]').click();
     const afterFit = await page
       .locator('[data-testid="table-stage-svg"]')
       .evaluate((node) => node.getBoundingClientRect().width);
-    expect(afterFit).not.toBeCloseTo(beforeFit, 0);
+    expect(afterFit).toBeCloseTo(beforeZoom, 0);
   });
 });
