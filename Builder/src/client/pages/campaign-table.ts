@@ -186,8 +186,53 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   /** "original_phase5_starter_v1" -> "original phase5 starter v1", never a fabricated art label. */
-  function humanizeArtProvenance(provenance: string): string {
+  function humanizeArtProvenance(provenance: string, title?: string): string {
+    if (title === 'Blank table' || provenance === 'blank_table' || provenance === 'none') {
+      return '';
+    }
     return provenance.replace(/_/g, ' ');
+  }
+
+  function formatEncounterStatus(): string {
+    if (encounter === null) {
+      return 'Not begun';
+    }
+    if (encounter.status === 'ended') {
+      return `Encounter ended · round ${encounter.round}`;
+    }
+    if (encounter.status === 'setup') {
+      return 'Setup — roll initiative to begin';
+    }
+    const current = encounter;
+    const activeName =
+      current.combatants.find((combatant) => combatant.combatantId === current.activeCombatantId)
+        ?.name ?? 'none';
+    return `Round ${current.round} · ${activeName}'s turn`;
+  }
+
+  function formatTimingCredential(): string {
+    if (timingAuthority === null) {
+      return encounter?.status === 'active'
+        ? 'Waiting for your turn in initiative order.'
+        : 'Waiting for initiative order.';
+    }
+    if (timingAuthority.timingAuthorityId === 'held-by-other') {
+      return 'Another adventurer holds the active combat turn.';
+    }
+    const expiresLabel = (() => {
+      const date = new Date(timingAuthority.expiresAt);
+      return Number.isNaN(date.getTime()) ? '' : ` · until ${date.toLocaleTimeString()}`;
+    })();
+    if (timingAuthority.opportunityClass === 'reaction') {
+      return `You may spend a reaction${expiresLabel}.`;
+    }
+    if (timingAuthority.opportunityClass === 'decision') {
+      return `A decision window is open for you${expiresLabel}.`;
+    }
+    if (isOwnCombatTurn()) {
+      return 'Initiative gave you the active combat turn.';
+    }
+    return `You hold the active turn${expiresLabel}.`;
   }
 
   function newThreadMessage(
@@ -583,26 +628,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (explorationMode()) {
       return 'Exploration — move freely until the Game Director calls for initiative.';
     }
-    if (timingAuthority === null) {
-      return encounter?.status === 'active'
-        ? 'Waiting for your turn in initiative order.'
-        : 'Waiting for initiative order.';
-    }
-    if (timingAuthority.timingAuthorityId === 'held-by-other') {
-      return 'Another adventurer holds the active combat turn.';
-    }
-    // Reaction / Decision credentials outrank the active-turn banner — Ready
-    // issues a reaction window while you still hold the combat turn.
-    if (timingAuthority.opportunityClass === 'reaction') {
-      return `Reaction window credential active · expires ${timingAuthority.expiresAt}`;
-    }
-    if (timingAuthority.opportunityClass === 'decision') {
-      return `Decision window credential active · expires ${timingAuthority.expiresAt}`;
-    }
-    if (isOwnCombatTurn()) {
-      return 'Initiative gave you the active combat turn.';
-    }
-    return `Combat turn credential active · expires ${timingAuthority.expiresAt}`;
+    return formatTimingCredential();
   }
 
   function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
@@ -1173,15 +1199,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     ) {
       selectedSpellId = availableSpells[0]!.id;
     }
-    const targets = encounter?.combatants.filter((combatant) => !combatant.deathSaves.dead) ?? [];
-    if (
-      targets.length > 0 &&
-      !targets.some((combatant) => combatant.combatantId === selectedCombatantId)
-    ) {
-      selectedCombatantId =
-        targets.find((combatant) => combatant.side === 'foe')?.combatantId ??
-        targets[0]!.combatantId;
-    }
     const ownTurn =
       encounter?.status === 'active' &&
       encounter.activeCombatantId === seatedCombatant?.combatantId;
@@ -1193,9 +1210,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       seatedCombatant.deathSaves.stable !== true &&
       seatedCombatant.actionEconomy.deathSaveAvailable === true;
     const longRestAvailable =
-      ownTurn &&
-      seatedCombatant?.deathSaves.dead !== true &&
-      (actionAvailable || seatedCombatant?.currentHitPoints === 0);
+      encounter !== null &&
+      encounter.status !== 'active' &&
+      encounter.status !== 'setup' &&
+      seatedCombatant?.deathSaves.dead !== true;
+    const shortRestAvailable =
+      longRestAvailable && (seatedCombatant?.hitDiceRemaining ?? 0) > 0;
+    const outOfCombatProgression =
+      encounter === null || (encounter.status !== 'active' && encounter.status !== 'setup');
+    const xpAwardAvailable =
+      outOfCombatProgression && encounter !== null && encounter.status === 'ended';
     const openWindow = encounter?.decisionWindows.find(
       (window) =>
         window.state === 'open' &&
@@ -1203,6 +1227,37 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     );
     const disable = busy || tableState === null;
     const combatDisabled = disable || (encounter?.status === 'active' && !ownTurn);
+    const livingFoeTargets =
+      encounter?.combatants.filter(
+        (combatant) =>
+          combatant.side === 'foe' &&
+          combatant.currentHitPoints > 0 &&
+          !combatant.deathSaves.dead &&
+          !combatant.conditions.some((condition) => condition.conditionId === 'unconscious'),
+      ) ?? [];
+    const attackTargets =
+      encounter?.combatants.filter(
+        (combatant) =>
+          combatant.combatantId !== seatedCombatant?.combatantId &&
+          !combatant.deathSaves.dead &&
+          (combatant.side !== 'foe' ||
+            (combatant.currentHitPoints > 0 &&
+              !combatant.conditions.some((condition) => condition.conditionId === 'unconscious'))),
+      ) ?? [];
+    const targets = attackTargets;
+    if (
+      attackTargets.length > 0 &&
+      !attackTargets.some((combatant) => combatant.combatantId === selectedCombatantId)
+    ) {
+      selectedCombatantId =
+        livingFoeTargets[0]?.combatantId ?? attackTargets[0]!.combatantId;
+    }
+    const potionCount =
+      seatedCombatant?.inventory.find((entry) => entry.itemId === 'healing-potion')?.quantity ?? 0;
+    const potionUsable =
+      actionAvailable &&
+      potionCount > 0 &&
+      (seatedCombatant?.currentHitPoints ?? 0) < (seatedCombatant?.maxHitPoints ?? 0);
     return `
       <section class="rules-encounter" aria-labelledby="rules-encounter-heading" data-testid="rules-encounter">
         <div class="rules-heading-row">
@@ -1217,15 +1272,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             </p>
           </div>
           <p class="record-meta" data-testid="encounter-meta">
-            ${
-              encounter === null
-                ? 'Not begun'
-                : `${escapeHtml(encounter.status)} · round ${encounter.round} · active ${escapeHtml(
-                    encounter.combatants.find(
-                      (combatant) => combatant.combatantId === encounter?.activeCombatantId,
-                    )?.name ?? 'none',
-                  )}`
-            }
+            ${escapeHtml(formatEncounterStatus())}
           </p>
         </div>
         ${
@@ -1244,6 +1291,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       } · AC ${combatant.armorClass}</span>
                       <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(combatant.side)}</span>
                       <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${combatant.conditions.length === 0 ? 'No conditions' : combatant.conditions.map((condition) => escapeHtml(condition.label)).join(', ')}</span>
+                      ${
+                        combatant.seatId !== null && combatant.inventory.length > 0
+                          ? `<span data-testid="own-combatant-inventory">${combatant.inventory
+                              .map((item) => `${escapeHtml(item.label)} ×${item.quantity}`)
+                              .join(' · ')}</span>`
+                          : ''
+                      }
                     </li>`,
                   )
                   .join('')}
@@ -1295,19 +1349,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" data-rules-command="combat.reaction" data-testid="rules-reaction"
             aria-disabled="${combatDisabled || openWindow === undefined}" aria-describedby="composer-gate-hint">Spend Reaction</button>
           <button type="button" data-rules-command="inventory.use_item" data-testid="rules-use-potion"
-            aria-disabled="${combatDisabled || !actionAvailable}" aria-describedby="composer-gate-hint">Use healing potion</button>
+            aria-disabled="${combatDisabled || !potionUsable}" aria-describedby="composer-gate-hint">Use healing potion${potionCount > 0 ? ` (${potionCount})` : ''}</button>
           <button type="button" data-rules-command="combat.death_save" data-testid="rules-death-save"
             aria-disabled="${combatDisabled || !deathSaveAvailable}" aria-describedby="composer-gate-hint">Death Save</button>
           <button type="button" data-rules-command="combat.training_drop" data-testid="rules-training-drop"
             aria-disabled="${combatDisabled || !actionAvailable || seatedCombatant?.currentHitPoints === 0}" aria-describedby="composer-gate-hint">Training: drop to 0 HP</button>
           <button type="button" data-rules-command="combat.short_rest" data-testid="rules-short-rest"
-            aria-disabled="${combatDisabled || !actionAvailable}">Short Rest</button>
+            aria-disabled="${disable || !shortRestAvailable}">Short Rest</button>
           <button type="button" data-rules-command="combat.long_rest" data-testid="rules-long-rest"
-            aria-disabled="${combatDisabled || !longRestAvailable}">Long Rest</button>
+            aria-disabled="${disable || !longRestAvailable}">Long Rest</button>
           <button type="button" data-rules-command="progression.award_xp" data-testid="rules-award-xp"
-            aria-disabled="${disable}">Award 300 XP</button>
+            aria-disabled="${disable || !xpAwardAvailable}">Award 300 XP</button>
           <button type="button" data-rules-command="progression.level_up" data-testid="rules-level-up"
-            aria-disabled="${disable || progression?.levelUpAvailable !== true}">Level Up</button>
+            aria-disabled="${disable || !outOfCombatProgression || progression?.levelUpAvailable !== true}">Level Up</button>
         </div>
         <p class="record-meta" data-testid="rules-last-result">
           ${escapeHtml(encounter?.log.at(-1)?.summary ?? 'Server dice and results will appear here.')}
@@ -1400,8 +1454,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const syncDisabled =
       busy || candidate === null || !seated || tableState === null || (needsAuthority && !ownAuthority);
     const interpretDisabled =
-      busy || candidate === null || !seated || (needsAuthority && !ownAuthority);
+      busy ||
+      candidate === null ||
+      !seated ||
+      (needsAuthority && !ownAuthority) ||
+      (encounter?.status === 'active' &&
+        (() => {
+          const own = ownCombatant();
+          if (own === null) return true;
+          if (own.currentHitPoints <= 0 || own.deathSaves.dead) return true;
+          if (encounter.activeCombatantId !== own.combatantId) return true;
+          return own.actionEconomy.actionAvailable !== true;
+        })());
     const gateHint = composerGateHint();
+    const hasClosedDoor =
+      mapBundle !== null &&
+      mapBundle.edges.some((edge) => edge.kind === 'door' && edge.doorState !== 'open');
     return `
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
       <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
@@ -1435,7 +1503,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${busy ? 'Moving…' : 'Commit move'}
         </button>
         <button type="button" data-testid="open-adjacent-door"
-          aria-disabled="${syncDisabled}"
+          aria-disabled="${syncDisabled || !hasClosedDoor}"
           aria-describedby="composer-gate-hint">
           Open adjacent door
         </button>
@@ -2161,8 +2229,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               moveTarget,
             });
             intentDraft = draftFromInterpret(interpreted);
-            appendDmThread('player', 'You', nlIntentText.trim(), 'declaration');
-            appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
             shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
           } catch (failure) {
             error =
@@ -2349,7 +2415,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           const declaration = playerActionDraft.trim();
           busy = true;
           error = null;
-          appendDmThread('player', 'You', declaration, 'declaration');
           playerActionDraft = '';
           render();
           try {
@@ -2360,7 +2425,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               moveTarget,
             });
             intentDraft = draftFromInterpret(interpreted);
-            appendDmThread('dm', directorIdentityLabel, interpreted.summary, 'ruling_hint');
             shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
           } catch (failure) {
             error =
@@ -2485,11 +2549,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ) {
             return;
           }
-          const door = mapBundle.edges.find(
-            (edge) => edge.kind === 'door' && edge.doorState !== 'open',
-          );
+          const ownToken = mapBundle.tokens.find((token) => token.seatId === ownSeatId);
+          const door = mapBundle.edges.find((edge) => {
+            if (edge.kind !== 'door' || edge.doorState === 'open') {
+              return false;
+            }
+            if (ownToken === undefined) {
+              return true;
+            }
+            const anchor = ownToken.footprint.anchor;
+            const adjacent =
+              (edge.orientation === 'east' &&
+                edge.row === anchor.row &&
+                (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
+              (edge.orientation === 'north' &&
+                edge.column === anchor.column &&
+                (edge.row === anchor.row || edge.row === anchor.row - 1));
+            return adjacent;
+          });
           if (door === undefined) {
-            error = 'No closed door is visible on your map projection.';
+            error =
+              mapBundle.edges.some((edge) => edge.kind === 'door' && edge.doorState !== 'open')
+                ? 'No closed door is adjacent to your token.'
+                : 'No closed door is visible on your map projection.';
             render();
             return;
           }
@@ -2538,17 +2620,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             interceptState: 'awaiting_confirmation',
             createdAt: new Date().toISOString(),
           };
-        } else {
-          intentDraft = {
-            draftId: crypto.randomUUID(),
-            source: 'action_composer_interpret',
-            campaignId,
-            proposedCommandType: 'table.sync',
-            summary: 'Intent Intercept draft: commit a table sync (no move target selected).',
-            interceptState: 'awaiting_confirmation',
-            createdAt: new Date().toISOString(),
-          };
+          render();
+          return;
         }
+        error = 'Select a destination square on the map before planning a move.';
+        intentDraft = null;
         render();
       });
 
@@ -2587,6 +2663,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             return;
           }
           if (!explorationMode() && (timingAuthority === null || !holdsOwnAuthority())) {
+            return;
+          }
+          const own = ownCombatant();
+          if (
+            encounter?.status === 'active' &&
+            own !== null &&
+            (own.currentHitPoints <= 0 ||
+              own.deathSaves.dead ||
+              own.conditions.some((condition) => condition.conditionId === 'unconscious'))
+          ) {
+            error = 'Your character is incapacitated and cannot confirm that action.';
+            render();
             return;
           }
           const draft = intentDraft;
@@ -2752,7 +2840,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const mapMeta =
       mapBundle === null
         ? 'Map projection pending.'
-        : `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square · art: ${escapeHtml(humanizeArtProvenance(mapBundle.artProvenance))}`;
+        : (() => {
+            const art = humanizeArtProvenance(mapBundle.artProvenance, mapBundle.title);
+            const base = `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square`;
+            return art.length === 0 ? base : `${base} · ${escapeHtml(art)}`;
+          })();
 
     heading.innerHTML = `
       <div class="table-header-main">

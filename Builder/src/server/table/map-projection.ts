@@ -90,6 +90,23 @@ export function buildStarterCells(): MapCellRecord[] {
   return cells;
 }
 
+/** Open floor grid for blank campaigns — no walls, doors, or starter chamber story. */
+export function buildBlankOpenCells(): MapCellRecord[] {
+  const cells: MapCellRecord[] = [];
+  for (let row = 0; row < STARTER_ROWS; row += 1) {
+    for (let column = 0; column < STARTER_COLUMNS; column += 1) {
+      cells.push({
+        column,
+        row,
+        terrain: 'floor',
+        elevationFeet: 0,
+        known: true,
+      });
+    }
+  }
+  return cells;
+}
+
 export function buildStarterInteriorWalls(): MapEdgeRecord[] {
   const edges: MapEdgeRecord[] = [];
   for (const row of [2, 3, 4, 5]) {
@@ -263,13 +280,14 @@ export function buildAuthoritativeMapBundle(options: {
     options.currentChapterId ?? null,
   );
   const scene = presentation?.scene ?? null;
-  const cells = scene !== null ? [...scene.cells] : buildStarterCells();
-  const baseEdges = scene !== null ? scene.edges : buildStarterInteriorWalls();
+  const isBlankTable = (options.adventureTemplateId ?? null) === null && scene === null;
+  const cells = scene !== null ? [...scene.cells] : isBlankTable ? buildBlankOpenCells() : buildStarterCells();
+  const baseEdges = scene !== null ? scene.edges : isBlankTable ? [] : buildStarterInteriorWalls();
   return {
     campaignId,
-    mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : `starter:${campaignId}`,
+    mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : isBlankTable ? `blank:${campaignId}` : `starter:${campaignId}`,
     mapVersion: 1 + movementRevision(runtime),
-    title: presentation?.title ?? 'Local starter chamber',
+    title: presentation?.title ?? (isBlankTable ? 'Blank table' : 'Local starter chamber'),
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,
@@ -285,8 +303,8 @@ export function buildAuthoritativeMapBundle(options: {
       currentChapterId: options.currentChapterId ?? null,
     }),
     artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
-    sceneBanner: presentation?.sceneBanner ?? DEFAULT_SCENE_BANNER,
-    notableFeatures: presentation?.notableFeatures ?? DEFAULT_NOTABLE_FEATURES,
+    sceneBanner: presentation?.sceneBanner ?? (isBlankTable ? 'An empty table with no seeded chapters or map story.' : DEFAULT_SCENE_BANNER),
+    notableFeatures: presentation?.notableFeatures ?? (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES),
     viewerSeatId: null,
     exploredSquareIds: [],
     visibleSquareIds: [],

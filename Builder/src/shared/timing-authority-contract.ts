@@ -37,6 +37,7 @@ export const ACTIVE_TURN_PERMITTED_COMMANDS = [
   'combat.short_rest',
   'combat.long_rest',
   'combat.ready',
+  'combat.reaction',
   'combat.training_drop',
   'progression.award_xp',
   'progression.level_up',

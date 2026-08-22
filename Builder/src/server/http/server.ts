@@ -106,6 +106,7 @@ import {
   createCampaign,
   createInvitation,
   createSeat,
+  leaveSeat,
   listCampaigns,
   previewInvitation,
   readCampaignDetail,
@@ -1707,6 +1708,16 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
       const seatCreateMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/seats$/.exec(path);
       if (seatCreateMatch !== null) {
+        if (method === 'DELETE') {
+          await leaveSeat({
+            firestore,
+            accountId,
+            campaignId: seatCreateMatch[1]!,
+          });
+          response.writeHead(204);
+          response.end();
+          return;
+        }
         if (method !== 'POST') {
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
           return;

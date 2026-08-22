@@ -392,6 +392,14 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           render();
           return;
         }
+        const sessionLength = draft.sessionZero.expectedSessionLength.trim();
+        if (/^0(\s|$)|zero\s+session/i.test(sessionLength) || sessionLength === '0 sessions') {
+          error = 'Expected session length must describe at least one session (for example, “3–5 sessions”).';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
         if (draft.sessionZero.textChatExpectations.trim().length === 0) {
           error = 'Text-chat expectations are required for Session Zero.';
           notice = null;

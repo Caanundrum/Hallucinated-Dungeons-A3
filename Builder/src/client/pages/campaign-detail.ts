@@ -13,6 +13,7 @@ import {
   ApiFailure,
   createCampaignInvitation,
   createCampaignSeat,
+  leaveCampaignSeat,
   fetchCampaignDetail,
   fetchCampaignMemory,
   fetchPersonalRecap,
@@ -187,6 +188,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   let detail: CampaignDetailProjection | null = null;
   let error: string | null = null;
   let unavailable = false;
+  let loadingDetail = true;
   let busy = false;
   const seatCharacterFromQuery = new URLSearchParams(window.location.search).get('seatCharacter');
   let selectedCharacterId: string | null =
@@ -204,6 +206,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   const mountToken = beginPageMount(container);
 
   function renderSignedIn(): void {
+    if (loadingDetail && detail === null && !unavailable) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaign-detail-heading">Loading campaign…</h1>
+          <p class="tagline">Opening your campaign details.</p>
+        </div>`;
+      return;
+    }
     if (unavailable || detail === null) {
       container.innerHTML = `
         <div class="page">
@@ -273,6 +283,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           · Content profile: ${escapeHtml(detail.settings.contentProfileLabel)}
           · Group decisions: ${escapeHtml(detail.settings.groupDecisionPolicyLabel)}
         </p>
+        ${
+          detail.settings.sessionZero.completed
+            ? ''
+            : `<p class="message notice" data-testid="session-zero-gate-notice">
+                 Record Session Zero in Campaign settings before treating the table as a live social contract.
+                 Training tools remain available so you can learn the table.
+               </p>`
+        }
         ${
           ownSeat === null &&
           selectedCharacterId !== null &&
@@ -374,9 +392,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  </div>
                  <p class="record-meta" data-testid="chapter-travel-hint">
                    ${
-                     ownSeat === null
-                       ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
-                       : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower).'
+                     memorySnapshot?.adventureTemplateId === null ||
+                     memorySnapshot?.adventureTemplateId === undefined
+                       ? ownSeat === null
+                         ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
+                         : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
+                       : ownSeat === null
+                         ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
+                         : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
                    }
                  </p>`
           }
@@ -438,11 +461,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                       (seat) => `
                     <li data-testid="seat-item">
                       <span class="record-note">${escapeHtml(seat.characterName)}</span>
-                      <span class="record-meta">
-                        Seat ${escapeHtml(seat.seatId.slice(0, 8))}…
-                        · character ${escapeHtml(seat.characterId.slice(0, 8))}…
-                        · event sequence ${seat.lastAcknowledgedEventSequence}
-                      </span>
+                      <span class="record-meta">Seated player</span>
                     </li>`,
                     )
                     .join('')}
@@ -453,7 +472,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             ownSeat !== null
               ? `<p class="message success" data-testid="own-seat">
                    You are seated as <strong>${escapeHtml(ownSeat.characterName)}</strong>.
-                 </p>`
+                 </p>
+                 <div class="actions">
+                   <button type="button" class="secondary" data-testid="leave-seat" aria-disabled="${busy}">
+                     ${busy ? 'Leaving…' : 'Leave seat'}
+                   </button>
+                 </div>`
               : ownCharacters.length === 0
                 ? `<p class="record-meta" data-testid="seat-need-character">
                      Create a character you own in the Character Vault before seating.
@@ -597,6 +621,41 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           } catch (failure) {
             error =
               failure instanceof ApiFailure ? failure.message : 'The seat could not be created.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="leave-seat"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || ownSeat === null) {
+            return;
+          }
+          const confirmed = await confirmInApp({
+            title: 'Leave seat?',
+            body: `Leave the table as ${ownSeat.characterName}? You can seat another character afterward.`,
+            confirmLabel: 'Leave seat',
+          });
+          if (!confirmed) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await leaveCampaignSeat({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            detail = await fetchCampaignDetail(campaignId);
+            shell.announce('You left your seat.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The seat could not be left.';
           } finally {
             busy = false;
             render();
@@ -777,15 +836,18 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
 
   async function load(): Promise<void> {
     if (getAccount() === null) {
+      loadingDetail = false;
       render();
       return;
     }
+    loadingDetail = true;
     unavailable = false;
     error = null;
     render();
     try {
       detail = await fetchCampaignDetail(campaignId);
       shell.setDocumentTitle(detail.campaign.name);
+      unavailable = false;
     } catch (failure) {
       detail = null;
       unavailable = true;
@@ -797,6 +859,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         error =
           failure instanceof ApiFailure ? failure.message : 'This campaign could not be loaded.';
       }
+    } finally {
+      loadingDetail = false;
     }
     if (detail !== null) {
       memoryError = null;

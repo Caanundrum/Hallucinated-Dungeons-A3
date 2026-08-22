@@ -28,6 +28,8 @@ export interface StoredProgression {
   readonly experiencePoints: number;
   readonly level: number;
   readonly updatedAt: string;
+  /** Encounter that already granted an XP award, if any. */
+  readonly lastAwardedEncounterId?: string | null;
 }
 
 export async function loadEncounter(

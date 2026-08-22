@@ -362,6 +362,12 @@ export async function updateCampaignSettings(options: {
         EXPECTED_SESSION_LENGTH_MAX_LENGTH,
         'Expected session length',
       );
+      const length = next.sessionZero.expectedSessionLength.trim();
+      if (/^0(\s|$)|zero\s+session/i.test(length) || length === '0 sessions') {
+        throw new CampaignValidationError(
+          'Expected session length must describe at least one session (for example, “3–5 sessions”).',
+        );
+      }
     }
     if (zero.dropInOutPolicy !== undefined) {
       if (!isDropInOutPolicy(zero.dropInOutPolicy)) {

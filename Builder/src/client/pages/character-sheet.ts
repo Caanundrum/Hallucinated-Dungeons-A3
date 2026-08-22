@@ -67,7 +67,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             : ''
         }
         ${renderCharacterSheet(character.sheet)}
-        <p class="record-meta">Created from rules version ${escapeHtml(character.rulesVersion)}.</p>
+        <p class="record-meta">Built from the SRD 5.2.1 character creation rules.</p>
         <p><a href="/characters" data-link data-testid="back-to-vault">Back to the Character Vault</a></p>
       </div>`;
   }

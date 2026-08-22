@@ -28,6 +28,10 @@ import { ERROR_CODES } from '../../shared/contract.js';
 import type { RulesCommandFields } from '../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import {
+  assertSessionAllowsPlay,
+  CampaignMemoryError,
+} from '../campaigns/campaign-memory.js';
+import {
   RULES_COMMAND_TYPES,
   acceptRulesCommand,
 } from '../rules/engine/rules-commands.js';
@@ -418,6 +422,15 @@ export async function acceptTableCommand(options: {
     itemId,
   } = options;
 
+  try {
+    await assertSessionAllowsPlay(firestore, campaignId);
+  } catch (error) {
+    if (error instanceof CampaignMemoryError) {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, error.message);
+    }
+    throw error;
+  }
+
   if ((RULES_COMMAND_TYPES as readonly string[]).includes(commandType)) {
     return acceptRulesCommand({
       firestore,
@@ -468,6 +481,21 @@ export async function acceptTableCommand(options: {
   await assertCampaignMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
   const encounter = await loadEncounter(firestore, campaignId);
+
+  if (commandType !== 'table.sync' && encounter !== null && encounter.status === 'active') {
+    const ownCombatant = encounter.combatants.find((combatant) => combatant.seatId === seat.seatId);
+    if (
+      ownCombatant !== undefined &&
+      (ownCombatant.currentHitPoints <= 0 ||
+        ownCombatant.conditions.some((condition) => condition.conditionId === 'unconscious') ||
+        ownCombatant.deathSaves.dead)
+    ) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Your character is incapacitated and cannot commit table actions.',
+      );
+    }
+  }
 
   const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
   const idempotencyKey = `${campaignId}:${accountId}:${requestId}`;
@@ -765,6 +793,9 @@ export async function acceptTableCommand(options: {
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {
       lastAcknowledgedEventSequence: nextSequence,
       deviceSessionId,
+    });
+    transaction.update(firestore.collection(COLLECTIONS.campaigns).doc(campaignId), {
+      updatedAt: committedAt,
     });
 
     return {

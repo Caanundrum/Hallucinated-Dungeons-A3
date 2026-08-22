@@ -537,6 +537,24 @@ function deriveAttacks(
   const archery = hasFightingStyle(choices, 'archery');
   const dueling = hasFightingStyle(choices, 'dueling');
 
+  if (weapons.length === 0) {
+    const ability: Ability =
+      modifiers.dexterity > modifiers.strength ? 'dexterity' : 'strength';
+    return [
+      {
+        name: 'Unarmed Strike',
+        attackBonus: value([
+          { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
+          { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
+        ]),
+        damage: `1+${modifiers[ability]}`,
+        damageType: 'bludgeoning',
+        properties: ['Unarmed'],
+        ruleId: 'weapon.unarmed-strike',
+      },
+    ];
+  }
+
   return weapons.map((weapon) => {
     const ranged = weapon.category.endsWith('ranged');
     const finesse = weapon.properties.includes('Finesse');

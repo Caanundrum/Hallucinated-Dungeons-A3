@@ -34,6 +34,10 @@ import {
   rollAbilityScorePool,
   validateChoices,
 } from '../rules/character-rules.js';
+import {
+  type StoredProgression,
+} from '../rules/engine/encounter-runtime.js';
+import { recomputeSheetForLevel } from '../rules/engine/xp-progression.js';
 
 /** A draft that has not been touched for this long is still resumable; drafts do not expire in Phase 1. */
 interface StoredDraft {
@@ -119,10 +123,13 @@ function projectDraft(stored: StoredDraft): DraftProjection {
   };
 }
 
-function projectCharacter(stored: StoredCharacter): CharacterProjection {
+function projectCharacter(
+  stored: StoredCharacter,
+  progression: StoredProgression | null = null,
+): CharacterProjection {
   const choices = normalizeChoices(stored.choices);
-  const sheet = deriveSheet(choices);
-  if (sheet === null) {
+  const baseSheet = deriveSheet(choices);
+  if (baseSheet === null) {
     // A committed character always has Class, Background, and Species, since
     // commitment requires a clean validation. Reaching here means the stored
     // record is impossible under the current rules version (Section 6.5's
@@ -130,6 +137,13 @@ function projectCharacter(stored: StoredCharacter): CharacterProjection {
     throw new Error(`Stored character ${stored.characterId} cannot be derived under ${RULES_VERSION}`);
   }
   const labels = describeChoices(choices);
+  const level = progression?.level ?? baseSheet.level;
+  const experiencePoints = progression?.experiencePoints ?? baseSheet.experiencePoints;
+  const classId = progression?.classId ?? choices.classId;
+  const sheet =
+    progression !== null && classId !== null
+      ? recomputeSheetForLevel(baseSheet, classId, level, experiencePoints)
+      : baseSheet;
   return {
     characterId: stored.characterId,
     rulesVersion: stored.rulesVersion,
@@ -377,7 +391,14 @@ export async function readCharacter(options: {
   if (stored.ownerAccountId !== accountId) {
     throw new CharacterNotFoundError();
   }
-  return projectCharacter(stored);
+  const progressionSnap = await firestore
+    .collection(COLLECTIONS.characterProgressions)
+    .doc(characterId)
+    .get();
+  const progression = progressionSnap.exists
+    ? (progressionSnap.data() as StoredProgression)
+    : null;
+  return projectCharacter(stored, progression);
 }
 
 /** The account's Character Vault: committed characters plus any open draft. */
@@ -400,19 +421,28 @@ export async function readVault(options: {
       .get(),
   ]);
 
-  const characters = charactersSnapshot.docs.map((doc) => {
-    const stored = doc.data() as StoredCharacter;
-    const labels = describeChoices(stored.choices);
-    return {
-      characterId: stored.characterId,
-      name: stored.choices.identity.name,
-      classLabel: labels.classLabel,
-      speciesLabel: labels.speciesLabel,
-      backgroundLabel: labels.backgroundLabel,
-      level: 1,
-      createdAt: toIso(stored.createdAt),
-    };
-  });
+  const characters = await Promise.all(
+    charactersSnapshot.docs.map(async (doc) => {
+      const stored = doc.data() as StoredCharacter;
+      const labels = describeChoices(stored.choices);
+      const progressionSnap = await firestore
+        .collection(COLLECTIONS.characterProgressions)
+        .doc(stored.characterId)
+        .get();
+      const progression = progressionSnap.exists
+        ? (progressionSnap.data() as StoredProgression)
+        : null;
+      return {
+        characterId: stored.characterId,
+        name: stored.choices.identity.name,
+        classLabel: labels.classLabel,
+        speciesLabel: labels.speciesLabel,
+        backgroundLabel: labels.backgroundLabel,
+        level: progression?.level ?? 1,
+        createdAt: toIso(stored.createdAt),
+      };
+    }),
+  );
 
   const drafts = draftsSnapshot.docs.map((doc) => {
     const stored = doc.data() as StoredDraft;

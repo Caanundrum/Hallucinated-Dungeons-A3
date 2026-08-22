@@ -352,6 +352,16 @@ export async function createCampaignSeat(options: {
   })) as SeatProjection;
 }
 
+export async function leaveCampaignSeat(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  await request(`/api/campaigns/${options.campaignId}/seats`, {
+    method: 'DELETE',
+    candidateId: options.candidateId,
+  });
+}
+
 export async function fetchCampaignSettings(campaignId: string): Promise<CampaignSettingsProjection> {
   return (await request(`/api/campaigns/${campaignId}/settings`)) as CampaignSettingsProjection;
 }
