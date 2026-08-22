@@ -145,12 +145,17 @@ async function requireOwnSeat(
 }
 
 async function readTableStateVersion(firestore: Firestore, campaignId: string): Promise<number> {
-  const [tableSnapshot, seatSnapshot] = await Promise.all([
+  const [tableSnapshot, seatSnapshot, eventSnapshot] = await Promise.all([
     firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId).get(),
     firestore
       .collection(COLLECTIONS.campaignSeats)
       .where('campaignId', '==', campaignId)
       .limit(12)
+      .get(),
+    firestore
+      .collection(COLLECTIONS.campaignEvents)
+      .where('campaignId', '==', campaignId)
+      .limit(200)
       .get(),
   ]);
   let checkpoint = 0;
@@ -159,11 +164,34 @@ async function readTableStateVersion(firestore: Firestore, campaignId: string): 
       stateVersion?: number;
       lastEventSequence?: number;
     };
-    checkpoint = Math.max(data.stateVersion ?? 0, data.lastEventSequence ?? 0);
+    checkpoint = Math.max(
+      typeof data.stateVersion === 'number' ? data.stateVersion : 0,
+      typeof data.lastEventSequence === 'number' ? data.lastEventSequence : 0,
+    );
   }
   for (const doc of seatSnapshot.docs) {
     const seat = doc.data() as { lastAcknowledgedEventSequence?: number };
-    checkpoint = Math.max(checkpoint, seat.lastAcknowledgedEventSequence ?? 0);
+    checkpoint = Math.max(
+      checkpoint,
+      typeof seat.lastAcknowledgedEventSequence === 'number'
+        ? seat.lastAcknowledgedEventSequence
+        : 0,
+    );
+  }
+  // Legacy/migrated tables may omit projection versions; chronicle activity still
+  // leaves event sequences we can use for a honest suspend checkpoint (PQA-087).
+  for (const doc of eventSnapshot.docs) {
+    const event = doc.data() as {
+      eventSequence?: number;
+      resultStateVersion?: number;
+      priorStateVersion?: number;
+    };
+    checkpoint = Math.max(
+      checkpoint,
+      typeof event.eventSequence === 'number' ? event.eventSequence : 0,
+      typeof event.resultStateVersion === 'number' ? event.resultStateVersion : 0,
+      typeof event.priorStateVersion === 'number' ? event.priorStateVersion : 0,
+    );
   }
   return checkpoint;
 }

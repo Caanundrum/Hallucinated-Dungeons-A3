@@ -98,12 +98,10 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
     await expect(page.getByTestId('close-chapter')).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('chapter-travel-hint')).toContainText(/encounter/i);
-    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'false');
-    await page.getByTestId('suspend-session').click();
-    await expect(page.getByTestId('campaign-detail-error')).toContainText(/encounter/i);
+    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  test('PQA-085/088/089/090/107: suspended notice, presence, art, NPCs, move select', async ({
+  test('PQA-085/087/088/089/090/107: suspended notice, checkpoint, presence, art, NPCs, move select', async ({
     page,
   }) => {
     await page.goto('/');
@@ -112,6 +110,8 @@ test.describe('PQA batch 2 regressions', () => {
     await seatFreshCampaign(page, 'Batch2 TableUX');
     await page.getByTestId('open-campaign-table').click();
     await openTableAdvancedControls(page);
+    await page.getByTestId('commit-table-sync').click();
+    await expect(page.getByTestId('table-state-meta')).toContainText(/version [1-9]/i);
     await expect(page.getByTestId('move-destination-select')).toBeVisible();
     await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-empty')).toBeVisible();
@@ -122,6 +122,8 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('table-back').click();
     await page.getByTestId('suspend-session').click();
     await expect(page.getByTestId('campaign-time')).toContainText(/suspended/i);
+    await expect(page.getByTestId('session-action-message')).toContainText(/checkpoint [1-9]/i);
+    await expect(page.getByTestId('session-action-message')).not.toContainText('checkpoint 0');
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-suspended-notice')).toBeVisible();
     await expect(page.getByTestId('table-turn-title')).toContainText(/suspended/i);

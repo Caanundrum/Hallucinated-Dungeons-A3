@@ -349,9 +349,47 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
       });
     });
 
+    // Keep draft.sessionZero.expectedSessionLength aligned with keystrokes so a
+    // cleared field cannot fall back to the previous default on Record (PQA-108).
+    container
+      .querySelector<HTMLInputElement>('[data-testid="session-length"]')
+      ?.addEventListener('input', () => {
+        syncText();
+      });
+
     const save = async (completeSessionZero: boolean): Promise<void> => {
       if (candidate === null || draft === null || busy) return;
       syncText();
+      if (completeSessionZero) {
+        const lengthField = container.querySelector<HTMLInputElement>('[data-testid="session-length"]');
+        // Prefer the live DOM value so an uncleared draft default cannot mask a blank field (PQA-108).
+        const liveLength = (lengthField?.value ?? '').trim();
+        if (liveLength.length === 0) {
+          error = 'Expected session length is required for Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+        draft = {
+          ...draft,
+          sessionZero: { ...draft.sessionZero, expectedSessionLength: liveLength },
+        };
+        if (/^0(\s|$)|zero\s+session/i.test(liveLength) || liveLength === '0 sessions') {
+          error = 'Expected session length must describe at least one session (for example, “3–5 sessions”).';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+        if (draft.sessionZero.textChatExpectations.trim().length === 0) {
+          error = 'Text-chat expectations are required for Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+      }
       const reactionSeconds = draft.reactionWindowSeconds;
       if (
         !Number.isInteger(reactionSeconds) ||
@@ -383,35 +421,6 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         shell.announce(error);
         render();
         return;
-      }
-      if (completeSessionZero) {
-        const lengthField = container.querySelector<HTMLInputElement>('[data-testid="session-length"]');
-        const liveLength = (lengthField?.value ?? draft.sessionZero.expectedSessionLength).trim();
-        if (liveLength.length === 0) {
-          error = 'Expected session length is required for Session Zero.';
-          notice = null;
-          shell.announce(error);
-          render();
-          return;
-        }
-        draft = {
-          ...draft,
-          sessionZero: { ...draft.sessionZero, expectedSessionLength: liveLength },
-        };
-        if (/^0(\s|$)|zero\s+session/i.test(liveLength) || liveLength === '0 sessions') {
-          error = 'Expected session length must describe at least one session (for example, “3–5 sessions”).';
-          notice = null;
-          shell.announce(error);
-          render();
-          return;
-        }
-        if (draft.sessionZero.textChatExpectations.trim().length === 0) {
-          error = 'Text-chat expectations are required for Session Zero.';
-          notice = null;
-          shell.announce(error);
-          render();
-          return;
-        }
       }
       const payload: Record<string, unknown> = {
         contentProfile: draft.contentProfile,

@@ -253,7 +253,9 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       ownSeat !== null &&
       !encounterActive;
     const canSuspendSession =
-      memorySnapshot !== null && memorySnapshot.session.state !== 'suspended';
+      memorySnapshot !== null &&
+      memorySnapshot.session.state !== 'suspended' &&
+      !encounterActive;
     const canSeatCharacter = sessionZeroComplete;
 
     const nextStep =
