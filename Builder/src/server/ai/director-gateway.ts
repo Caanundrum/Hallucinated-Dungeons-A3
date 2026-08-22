@@ -86,6 +86,27 @@ function looksMechanical(text: string): boolean {
   );
 }
 
+function mentionsDoorIntent(text: string): boolean {
+  return (
+    /(open|unlock|push).*(door|gate|entry)/.test(text) ||
+    /(door|gate|entryway).*(open|unlock|ahead|beyond|enter)/.test(text) ||
+    /\b(door|gate|entryway)\b/.test(text)
+  );
+}
+
+function mentionsMovementIntent(text: string): boolean {
+  return /(move|walk|go|step|approach)/.test(text);
+}
+
+function isOneStepFrom(
+  anchor: { readonly column: number; readonly row: number },
+  target: { readonly column: number; readonly row: number },
+): boolean {
+  const columnDelta = Math.abs(anchor.column - target.column);
+  const rowDelta = Math.abs(anchor.row - target.row);
+  return columnDelta <= 1 && rowDelta <= 1 && (columnDelta + rowDelta > 0);
+}
+
 export class AiDirectorUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -376,11 +397,7 @@ export async function interpretNaturalLanguageIntent(options: {
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
-  if (/(move|walk|go|step|approach)/.test(text) && options.moveTarget) {
-    proposedCommandType = 'table.move';
-    path = [options.moveTarget];
-    summary = `Ready to move toward column ${options.moveTarget.column}, row ${options.moveTarget.row}. Confirm to commit the step.`;
-  } else if (/(open|unlock|push).*(door|gate)/.test(text) || /(door|gate).*(open|unlock|push)/.test(text)) {
+  if (mentionsDoorIntent(text)) {
     let resolvedEdgeId: string | undefined;
     let doorCount = 0;
     try {
@@ -444,13 +461,43 @@ export async function interpretNaturalLanguageIntent(options: {
       if (blankBuild !== null) {
         proposedCommandType = 'table.build_scene';
         edgeId = blankBuild.doorEdgeId;
-        summary =
-          'Ready to raise a wall and wooden door ahead of you on this blank table. Confirm to build the scene and open the door.';
+        summary = mentionsMovementIntent(text)
+          ? 'Ready to raise a wall and wooden door ahead on this blank table, then you can walk to it and enter. Confirm to build the scene first.'
+          : 'Ready to raise a wall and wooden door ahead of you on this blank table. Confirm to build the scene and open the door.';
       } else {
         proposedCommandType = 'table.sync';
         summary =
           'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
       }
+    }
+  } else if (mentionsMovementIntent(text) && options.moveTarget) {
+    let legalStep = false;
+    try {
+      const map = await fetchCampaignMap({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      });
+      const ownToken =
+        map.viewerSeatId === null
+          ? map.tokens[0]
+          : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+      if (ownToken !== undefined) {
+        legalStep = isOneStepFrom(ownToken.footprint.anchor, options.moveTarget);
+      } else if (!mentionsDoorIntent(text)) {
+        legalStep = true;
+      }
+    } catch {
+      legalStep = !mentionsDoorIntent(text);
+    }
+    if (legalStep) {
+      proposedCommandType = 'table.move';
+      path = [options.moveTarget];
+      summary = `Ready to move toward column ${options.moveTarget.column}, row ${options.moveTarget.row}. Confirm to commit the step.`;
+    } else {
+      proposedCommandType = 'table.sync';
+      summary =
+        'That destination is not a legal next step from where you stand. Pick an adjacent square on the map, or declare a door or scene action instead.';
     }
   } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
     const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
@@ -510,10 +557,17 @@ export async function interpretNaturalLanguageIntent(options: {
     }
   }
 
-  const liveSummary = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent summary for the player in one or two sentences. Do not name internal command types or tool ids. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action or mechanical outcome. Do not invent doors or walls that are not on the map.`,
-    userPrompt: `Player said: ${rawText}\nDeterministic summary: ${summary}`,
-  });
+  const skipLiveRewrite =
+    proposedCommandType === 'table.build_scene' ||
+    proposedCommandType === 'table.sync' ||
+    proposedCommandType === 'table.move' ||
+    proposedCommandType === 'table.open_door';
+  const liveSummary = skipLiveRewrite
+    ? null
+    : await tryLiveProse(options, {
+        systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} Rewrite the Intent summary for the player in one or two sentences. Do not name internal command types or tool ids. Do not change the proposed command type ${proposedCommandType}. Do not invent a different action or mechanical outcome. Do not invent doors, walls, or entryways that are not on the map.`,
+        userPrompt: `Player said: ${rawText}\nDeterministic summary: ${summary}`,
+      });
   if (liveSummary !== null) {
     summary = liveSummary;
   }
