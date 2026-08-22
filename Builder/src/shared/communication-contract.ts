@@ -71,6 +71,23 @@ export interface ChronicleEntryProjection {
   readonly sequence: number;
 }
 
+/**
+ * Strip false "Table checkpoint 0 at suspend" diagnostics from Story so far
+ * bodies (PQA-087). Applies to historical rows and any accidental new writes.
+ */
+export function scrubChronicleCheckpointZero(body: string): string {
+  return body
+    .replace(/\s*Table\s+checkpoint\s+0\s+at\s+suspend\.?/gi, '')
+    .replace(/\s*Table\s+checkpoint\s*:\s*0\s*(at\s+suspend)?\.?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** True when a Story body still claims the broken checkpoint-0 suspend note. */
+export function chronicleBodyClaimsCheckpointZero(body: string): boolean {
+  return /Table\s+checkpoint\s*:?\s*0(\s+at\s+suspend)?/i.test(body);
+}
+
 export interface ChronicleFeedProjection {
   readonly campaignId: string;
   readonly entries: readonly ChronicleEntryProjection[];

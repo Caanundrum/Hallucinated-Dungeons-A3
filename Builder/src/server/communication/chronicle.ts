@@ -9,10 +9,12 @@ import { randomUUID } from 'node:crypto';
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
-import type {
-  ChronicleEntryKind,
-  ChronicleEntryProjection,
-  ChronicleFeedProjection,
+import {
+  chronicleBodyClaimsCheckpointZero,
+  scrubChronicleCheckpointZero,
+  type ChronicleEntryKind,
+  type ChronicleEntryProjection,
+  type ChronicleFeedProjection,
 } from '../../shared/communication-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 
@@ -30,11 +32,14 @@ function toIso(value: Timestamp | Date): string {
 }
 
 function projectEntry(stored: StoredChronicleEntry): ChronicleEntryProjection {
+  // Historical suspend lines recorded "checkpoint 0" even after table play (PQA-087).
+  // Story so far must not keep presenting that false diagnostic — scrub every body.
+  const body = scrubChronicleCheckpointZero(stored.body);
   return {
     entryId: stored.entryId,
     campaignId: stored.campaignId,
     kind: stored.kind,
-    body: stored.body,
+    body,
     createdAt: toIso(stored.createdAt),
     sequence: stored.sequence,
   };
@@ -62,7 +67,8 @@ export async function appendChronicleEntry(options: {
   readonly kind: ChronicleEntryKind;
   readonly body: string;
 }): Promise<ChronicleEntryProjection> {
-  const { firestore, campaignId, kind, body } = options;
+  const { firestore, campaignId, kind } = options;
+  const body = scrubChronicleCheckpointZero(options.body);
   const sequence = await nextSequence(firestore, campaignId);
   const entry: StoredChronicleEntry = {
     entryId: randomUUID(),
@@ -85,8 +91,30 @@ export async function listChronicleEntries(options: {
     .where('campaignId', '==', options.campaignId)
     .limit(200)
     .get();
+
+  // Persist scrubbed bodies so older hosted rows stop reintroducing checkpoint 0
+  // even if a stale client renders raw stored text (PQA-087).
+  const rewrites: Array<Promise<unknown>> = [];
+  for (const doc of snapshot.docs) {
+    const stored = doc.data() as StoredChronicleEntry;
+    if (!chronicleBodyClaimsCheckpointZero(stored.body)) {
+      continue;
+    }
+    const scrubbed = scrubChronicleCheckpointZero(stored.body);
+    if (scrubbed !== stored.body) {
+      rewrites.push(doc.ref.update({ body: scrubbed }));
+    }
+  }
+  if (rewrites.length > 0) {
+    await Promise.allSettled(rewrites);
+  }
+
   const entries = snapshot.docs
-    .map((doc) => projectEntry(doc.data() as StoredChronicleEntry))
+    .map((doc) => {
+      const stored = doc.data() as StoredChronicleEntry;
+      const scrubbed = scrubChronicleCheckpointZero(stored.body);
+      return projectEntry({ ...stored, body: scrubbed });
+    })
     .sort(
       (left: ChronicleEntryProjection, right: ChronicleEntryProjection) =>
         left.sequence - right.sequence,

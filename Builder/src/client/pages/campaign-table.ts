@@ -18,6 +18,7 @@ import {
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KIND_LABELS,
+  scrubChronicleCheckpointZero,
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
@@ -1004,7 +1005,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     .map(
                       (entry) => `
                     <li data-testid="chronicle-entry">
-                      <span class="record-note">${escapeHtml(entry.body)}</span>
+                      <span class="record-note">${escapeHtml(
+                        scrubChronicleCheckpointZero(entry.body),
+                      )}</span>
                       <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
                     </li>`,
                     )

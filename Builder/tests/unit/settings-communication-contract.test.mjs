@@ -9,6 +9,8 @@ import {
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KIND_LABELS,
+  chronicleBodyClaimsCheckpointZero,
+  scrubChronicleCheckpointZero,
   isDockTab,
   isPartyChatMode,
 } from '../../dist/shared/communication-contract.js';
@@ -24,6 +26,21 @@ import {
   isGroupDecisionPolicy,
 } from '../../dist/shared/settings-contract.js';
 import { campaignRouteFromPath } from '../../dist/shared/routes.js';
+
+test('PQA-087: Story so far scrub removes table checkpoint 0 diagnostics', () => {
+  const raw = 'The session was suspended. Table checkpoint 0 at suspend.';
+  assert.equal(chronicleBodyClaimsCheckpointZero(raw), true);
+  assert.equal(scrubChronicleCheckpointZero(raw), 'The session was suspended.');
+  assert.equal(
+    scrubChronicleCheckpointZero('The session was suspended: wrap early. Table checkpoint 0 at suspend'),
+    'The session was suspended: wrap early.',
+  );
+  assert.equal(
+    scrubChronicleCheckpointZero('The session was suspended. Table checkpoint 12 at suspend.'),
+    'The session was suspended. Table checkpoint 12 at suspend.',
+  );
+  assert.equal(chronicleBodyClaimsCheckpointZero('The session was suspended.'), false);
+});
 
 test('dock tabs are peer destinations including Director Address', () => {
   assert.deepEqual([...DOCK_TABS], ['chronicle', 'party_chat', 'rules_desk', 'director_address']);
