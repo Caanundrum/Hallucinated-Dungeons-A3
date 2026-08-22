@@ -48,6 +48,7 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
+import { proposeDoorSceneAhead } from './scene-builder.js';
 import { requireTableCommandTimingAuthority, TimingAuthorityError } from './timing-authority.js';
 
 export { TimingAuthorityError };
@@ -239,7 +240,7 @@ export function classifyExplorationConflict(options: {
     actorSeatId,
     encounterActive,
   } = options;
-  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door')) {
+  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.build_scene')) {
     return {
       reason: 'scene_lock',
       message:
@@ -456,7 +457,8 @@ export async function acceptTableCommand(options: {
   if (
     commandType !== 'table.sync' &&
     commandType !== 'table.move' &&
-    commandType !== 'table.open_door'
+    commandType !== 'table.open_door' &&
+    commandType !== 'table.build_scene'
   ) {
     throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That table command type is not supported.');
   }
@@ -547,6 +549,8 @@ export async function acceptTableCommand(options: {
   // Pre-validate movement / door outside the transaction using current runtime.
   let movePath: readonly { readonly column: number; readonly row: number }[] | undefined;
   let openEdgeId: string | undefined;
+  let buildSceneEdges: StoredMapRuntime['runtimeEdges'] | undefined;
+  let buildSceneTitle: string | null | undefined;
   let eventType: TableEventType = 'table.state_synced';
   let syncVisionSquares: { column: number; row: number }[] = [];
 
@@ -636,6 +640,46 @@ export async function acceptTableCommand(options: {
     eventType = 'table.door_opened';
   }
 
+  if (commandType === 'table.build_scene') {
+    const map = buildAuthoritativeMapBundle({
+      campaignId,
+      seats: mapContext.seats,
+      runtime: mapContext.runtime,
+      adventureTemplateId: mapContext.adventureTemplateId,
+      currentChapterId: mapContext.currentChapterId,
+    });
+    if (!map.mapBundleId.startsWith('blank:')) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Scene construction is only available on blank tables.',
+      );
+    }
+    if ((mapContext.runtime.runtimeEdges ?? []).length > 0 || map.edges.length > 0) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'This table already has scene geometry.',
+      );
+    }
+    const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+    if (token === undefined) {
+      throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
+    }
+    const proposal = proposeDoorSceneAhead({ tokenAnchor: token.footprint.anchor });
+    buildSceneEdges = proposal.edges;
+    buildSceneTitle = proposal.sceneTitle;
+    if (typeof edgeId === 'string' && edgeId.length > 0) {
+      const doorEdge = proposal.edges.find((entry) => entry.edgeId === edgeId);
+      if (doorEdge === undefined || doorEdge.kind !== 'door') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That door could not be placed on the improvised scene.',
+        );
+      }
+      openEdgeId = edgeId;
+    }
+    eventType = 'table.scene_built';
+  }
+
   if (commandType === 'table.sync') {
     const map = buildAuthoritativeMapBundle({
       campaignId,
@@ -721,6 +765,8 @@ export async function acceptTableCommand(options: {
 
     let tokenPositions = current.tokenPositions ?? [];
     let doorStates = { ...(current.doorStates ?? {}) };
+    let runtimeEdges = [...(current.runtimeEdges ?? [])];
+    let sceneTitle = current.sceneTitle ?? null;
     let exploredByAccount = { ...(current.exploredByAccount ?? {}) };
 
     if (commandType === 'table.move' && movePath !== undefined && movePath.length > 0) {
@@ -739,6 +785,14 @@ export async function acceptTableCommand(options: {
 
     if (commandType === 'table.open_door' && openEdgeId !== undefined) {
       doorStates[openEdgeId] = 'open';
+    }
+
+    if (commandType === 'table.build_scene' && buildSceneEdges !== undefined) {
+      runtimeEdges = [...buildSceneEdges];
+      sceneTitle = buildSceneTitle ?? sceneTitle;
+      if (openEdgeId !== undefined) {
+        doorStates[openEdgeId] = 'open';
+      }
     }
 
     if (commandType === 'table.sync' && syncVisionSquares.length > 0) {
@@ -787,6 +841,8 @@ export async function acceptTableCommand(options: {
       updatedAt: committedAt,
       tokenPositions,
       doorStates,
+      runtimeEdges,
+      sceneTitle,
       exploredByAccount,
       npcSpotlight: current.npcSpotlight ?? null,
     };
