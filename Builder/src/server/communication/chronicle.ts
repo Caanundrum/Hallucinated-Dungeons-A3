@@ -30,11 +30,20 @@ function toIso(value: Timestamp | Date): string {
 }
 
 function projectEntry(stored: StoredChronicleEntry): ChronicleEntryProjection {
+  let body = stored.body;
+  // Historical suspend lines recorded "checkpoint 0" even after table play (PQA-087).
+  // Story so far must not keep presenting that false diagnostic.
+  if (stored.kind === 'session_suspended') {
+    body = body
+      .replace(/\s*Table checkpoint 0 at suspend\.?/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
   return {
     entryId: stored.entryId,
     campaignId: stored.campaignId,
     kind: stored.kind,
-    body: stored.body,
+    body,
     createdAt: toIso(stored.createdAt),
     sequence: stored.sequence,
   };

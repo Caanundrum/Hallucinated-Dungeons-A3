@@ -151,7 +151,34 @@ function asNonNegativeInt(value: unknown): number {
   if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
     return Number(value.trim());
   }
+  if (value !== null && typeof value === 'object') {
+    const record = value as { integerValue?: unknown; toNumber?: () => number };
+    if (typeof record.toNumber === 'function') {
+      return asNonNegativeInt(record.toNumber());
+    }
+    if (record.integerValue !== undefined) {
+      return asNonNegativeInt(record.integerValue);
+    }
+  }
   return 0;
+}
+
+function toMillis(value: unknown): number | null {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as { toDate?: () => Date }).toDate === 'function'
+  ) {
+    return (value as { toDate: () => Date }).toDate().getTime();
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 async function readTableStateVersion(firestore: Firestore, campaignId: string): Promise<number> {
@@ -237,6 +264,28 @@ async function readTableStateVersion(firestore: Firestore, campaignId: string): 
     }
   } catch {
     // Encounter version is optional signal only.
+  }
+
+  // Seating, table commands, and settings bump campaigns.updatedAt. If the campaign
+  // document moved after creation, treat that as at least checkpoint 1 so Story so far
+  // never claims "checkpoint 0" after real campaign activity (PQA-087).
+  if (checkpoint === 0) {
+    try {
+      const campaignSnapshot = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+      if (campaignSnapshot.exists) {
+        const campaign = campaignSnapshot.data() as {
+          createdAt?: unknown;
+          updatedAt?: unknown;
+        };
+        const createdMs = toMillis(campaign.createdAt);
+        const updatedMs = toMillis(campaign.updatedAt);
+        if (createdMs !== null && updatedMs !== null && updatedMs > createdMs + 500) {
+          checkpoint = 1;
+        }
+      }
+    } catch {
+      // Campaign timestamps are optional signal only.
+    }
   }
 
   return checkpoint;
@@ -648,7 +697,12 @@ export async function recordSessionSuspend(
   }
 
   const tableStateVersion = await readTableStateVersion(firestore, campaignId);
-  const tableStateVersionNote = `Table checkpoint ${tableStateVersion} at suspend.`;
+  // Never publish "checkpoint 0" into Story so far — it reads as a false diagnostic
+  // after play when the projection version was missing (PQA-087).
+  const tableStateVersionNote =
+    tableStateVersion > 0
+      ? `Table checkpoint ${tableStateVersion} at suspend.`
+      : 'Table state preserved at suspend.';
 
   const now = new Date();
   const note =

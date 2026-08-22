@@ -1004,7 +1004,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     .map(
                       (entry) => `
                     <li data-testid="chronicle-entry">
-                      <span class="record-note">${escapeHtml(entry.body)}</span>
+                      <span class="record-note">${escapeHtml(
+                        entry.kind === 'session_suspended'
+                          ? entry.body
+                              .replace(/\s*Table checkpoint 0 at suspend\.?/gi, '')
+                              .replace(/\s{2,}/g, ' ')
+                              .trim()
+                          : entry.body,
+                      )}</span>
                       <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
                     </li>`,
                     )
