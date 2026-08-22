@@ -385,15 +385,20 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         return;
       }
       if (completeSessionZero) {
-        if (draft.sessionZero.expectedSessionLength.trim().length === 0) {
+        const lengthField = container.querySelector<HTMLInputElement>('[data-testid="session-length"]');
+        const liveLength = (lengthField?.value ?? draft.sessionZero.expectedSessionLength).trim();
+        if (liveLength.length === 0) {
           error = 'Expected session length is required for Session Zero.';
           notice = null;
           shell.announce(error);
           render();
           return;
         }
-        const sessionLength = draft.sessionZero.expectedSessionLength.trim();
-        if (/^0(\s|$)|zero\s+session/i.test(sessionLength) || sessionLength === '0 sessions') {
+        draft = {
+          ...draft,
+          sessionZero: { ...draft.sessionZero, expectedSessionLength: liveLength },
+        };
+        if (/^0(\s|$)|zero\s+session/i.test(liveLength) || liveLength === '0 sessions') {
           error = 'Expected session length must describe at least one session (for example, “3–5 sessions”).';
           notice = null;
           shell.announce(error);

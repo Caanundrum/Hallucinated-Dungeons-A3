@@ -218,6 +218,18 @@ export async function ensureCampaignSettings(
   return created;
 }
 
+export async function assertSessionZeroRecorded(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<void> {
+  const stored = await ensureCampaignSettings(firestore, campaignId);
+  if (!stored.sessionZero.completed) {
+    throw new CampaignValidationError(
+      'Record Session Zero in Campaign settings before seating characters or starting live play.',
+    );
+  }
+}
+
 export async function readCampaignSettings(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
@@ -363,6 +375,11 @@ export async function updateCampaignSettings(options: {
         'Expected session length',
       );
       const length = next.sessionZero.expectedSessionLength.trim();
+      if (length.length === 0) {
+        throw new CampaignValidationError(
+          'Expected session length is required. Enter a duration such as “3–5 sessions”.',
+        );
+      }
       if (/^0(\s|$)|zero\s+session/i.test(length) || length === '0 sessions') {
         throw new CampaignValidationError(
           'Expected session length must describe at least one session (for example, “3–5 sessions”).',

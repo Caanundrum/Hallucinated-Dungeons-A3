@@ -57,6 +57,7 @@ import {
   ensureCampaignSettings,
   projectCampaignSettings,
   seedCampaignSettings,
+  assertSessionZeroRecorded,
 } from '../settings/campaign-settings.js';
 
 export {
@@ -750,6 +751,7 @@ export async function createSeat(options: {
   const { firestore, accountId, campaignId, characterId, deviceSessionId } = options;
   await requireMembership(firestore, campaignId, accountId);
   await loadCampaign(firestore, campaignId);
+  await assertSessionZeroRecorded(firestore, campaignId);
 
   const existingSeats = await firestore
     .collection(COLLECTIONS.campaignSeats)

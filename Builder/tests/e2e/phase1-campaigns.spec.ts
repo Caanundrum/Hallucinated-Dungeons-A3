@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterAccountFromShell, readCandidate} from './arena-page.js';
+import { recordDefaultSessionZero, enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1e: campaign creation with locked Director configuration,
@@ -107,6 +107,7 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     const invitePath = (await ownerPage.getByTestId('invite-path').innerText()).trim();
     expect(invitePath).toMatch(/^\/invite\/[A-Za-z0-9]{8,32}$/);
 
+    await recordDefaultSessionZero(ownerPage);
     const ownerSeatSelect = ownerPage.getByTestId('seat-character-select');
     const ownerCharacterId = await ownerSeatSelect.locator('option').nth(1).getAttribute('value');
     expect(ownerCharacterId).toBeTruthy();

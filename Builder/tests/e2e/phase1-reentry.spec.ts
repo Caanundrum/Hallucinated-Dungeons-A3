@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterAccountFromShell, readCandidate} from './arena-page.js';
+import {enterAccountFromShell, readCandidate, recordDefaultSessionZero} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1g: certified player reentry journey.
@@ -92,6 +92,8 @@ test.describe('Phase 1 reentry journey', () => {
       'Reentry Continuity Table',
     );
     await createQuickCharacter(guestPage, 'Reentry Guest Scout');
+    // Owner must record Session Zero before anyone can seat (PQA-086).
+    await recordDefaultSessionZero(ownerPage);
     await guestPage.goto(`/campaigns/${campaignId}`);
     const guestSeatSelect = guestPage.getByTestId('seat-character-select');
     const guestCharacterId = await guestSeatSelect.locator('option').nth(1).getAttribute('value');
@@ -105,7 +107,7 @@ test.describe('Phase 1 reentry journey', () => {
     await ownerPage.getByTestId('content-profile-custom_restricted').click();
     await ownerPage.getByTestId('safety-boundaries').fill('Reentry lines and veils.');
     await ownerPage.getByTestId('complete-session-zero').click();
-    await expect(ownerPage.getByTestId('settings-notice')).toContainText('Session Zero recorded');
+    await expect(ownerPage.getByTestId('settings-notice')).toContainText(/Session Zero (recorded|updated)/);
 
     // Owner seats their character for continuity proof.
     await ownerPage.getByTestId('settings-back').click();

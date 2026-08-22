@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, openTableAdvancedControls } from './arena-page.js';
+import {
+  enterAccountFromShell,
+  openTableAdvancedControls,
+  openTablePresencePanel,
+  recordDefaultSessionZero,
+} from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -27,6 +32,9 @@ async function seatFreshCampaign(page: Page, name: string): Promise<void> {
   await page.getByTestId('create-campaign-submit').click();
   await expect(page.getByTestId('campaign-detail-heading')).not.toHaveText('Campaign unavailable');
   await expect(page.getByTestId('campaign-detail-heading')).toContainText(`${name} Camp`);
+  await expect(page.getByTestId('session-zero-gate-notice')).toBeVisible();
+  await expect(page.getByTestId('create-seat')).toHaveAttribute('aria-disabled', 'true');
+  await recordDefaultSessionZero(page);
   const seatSelect = page.getByTestId('seat-character-select');
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
   await seatSelect.selectOption(characterId!);
@@ -36,7 +44,7 @@ async function seatFreshCampaign(page: Page, name: string): Promise<void> {
 }
 
 test.describe('PQA batch 2 regressions', () => {
-  test('PQA-062/063/064: campaign detail loads without ID leak and can leave seat', async ({
+  test('PQA-062/063/064/086: campaign detail loads, Session Zero gates seating, leave seat', async ({
     page,
   }) => {
     await page.goto('/');
@@ -50,7 +58,9 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('create-seat')).toBeVisible();
   });
 
-  test('PQA-065/066/073/074/075: combat UI and out-of-combat gates', async ({ page }) => {
+  test('PQA-065/066/073/074/075/082: combat UI, out-of-combat gates, end encounter', async ({
+    page,
+  }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
@@ -68,9 +78,56 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('rules-award-xp')).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('rules-level-up')).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByTestId('own-combatant-inventory')).toContainText(/Potion/i);
+    await expect(page.getByTestId('end-encounter')).toBeVisible();
+    await page.getByTestId('end-encounter').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText(/ended/i);
   });
 
-  test('PQA-105: blank table does not advertise Emberferry chamber art', async ({ page }) => {
+  test('PQA-081/084: close chapter and suspend disabled during combat with feedback', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatFreshCampaign(page, 'Batch2 Suspend');
+    await page.getByTestId('open-campaign-table').click();
+    await openTableAdvancedControls(page);
+    await page.getByTestId('begin-encounter').click();
+    await page.getByTestId('roll-initiative').click();
+    await page.getByTestId('table-back').click();
+    await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
+    await expect(page.getByTestId('close-chapter')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'true');
+    await page.getByTestId('suspend-session').click();
+    await expect(page.getByTestId('campaign-detail-error')).toContainText(/encounter/i);
+  });
+
+  test('PQA-085/088/089/090/107: suspended notice, presence, art, NPCs, move select', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatFreshCampaign(page, 'Batch2 TableUX');
+    await page.getByTestId('open-campaign-table').click();
+    await openTableAdvancedControls(page);
+    await expect(page.getByTestId('move-destination-select')).toBeVisible();
+    await expect(page.getByTestId('table-npc-empty')).toBeVisible();
+    await openTablePresencePanel(page);
+    await expect(page.getByTestId('presence-meta')).toContainText(/online \d+/);
+    await expect(page.getByTestId('presence-meta')).not.toContainText('devices/tabs');
+    await expect(page.locator('body')).not.toContainText('original phase5 starter v1');
+    await page.getByTestId('table-back').click();
+    await page.getByTestId('suspend-session').click();
+    await expect(page.getByTestId('campaign-time')).toContainText(/suspended/i);
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('table-suspended-notice')).toBeVisible();
+    await expect(page.getByTestId('table-turn-title')).toContainText(/suspended/i);
+    await openTableAdvancedControls(page);
+    await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
+  });
+
+  test('PQA-105/108: blank table copy; empty Session Zero length rejected', async ({ page }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
@@ -83,6 +140,14 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('personality-seasoned_host').click();
     await page.getByTestId('create-campaign-submit').click();
     await expect(page.getByTestId('chapter-travel-hint')).not.toContainText('Mist Dock');
+    await page.getByTestId('open-campaign-settings').click();
+    await page.getByTestId('session-length').fill('');
+    await page.getByTestId('complete-session-zero').click();
+    await expect(page.getByTestId('settings-error')).toContainText(/session length/i);
+    await page.getByTestId('session-length').fill('3–5 sessions');
+    await page.getByTestId('complete-session-zero').click();
+    await expect(page.getByTestId('settings-notice')).toContainText(/Session Zero recorded/i);
+    await page.getByTestId('settings-back').click();
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table/i);
     await expect(page.locator('body')).not.toContainText('Local starter chamber');

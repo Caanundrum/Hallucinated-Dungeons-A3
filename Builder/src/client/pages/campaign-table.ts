@@ -187,8 +187,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   /** "original_phase5_starter_v1" -> "original phase5 starter v1", never a fabricated art label. */
   function humanizeArtProvenance(provenance: string, title?: string): string {
-    if (title === 'Blank table' || provenance === 'blank_table' || provenance === 'none') {
+    if (
+      title === 'Blank table' ||
+      provenance === 'blank_table' ||
+      provenance === 'none' ||
+      provenance === 'procedural_local_placeholder'
+    ) {
       return '';
+    }
+    if (provenance === 'original_phase5_starter_v1') {
+      return 'Emberferry starter presentation';
     }
     return provenance.replace(/_/g, ' ');
   }
@@ -322,6 +330,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       commandType === 'table.move' ||
       commandType === 'table.open_door'
     );
+  }
+
+  let narrationChain: Promise<void> = Promise.resolve();
+
+  function enqueueNarration(mechanicsSummary: string, rolls: readonly number[] = []): void {
+    narrationChain = narrationChain
+      .then(() => narrateIntoDmThread(mechanicsSummary, rolls))
+      .catch(() => {
+        // Keep the queue alive after a narration failure.
+      });
+  }
+
+  function sessionIsSuspended(): boolean {
+    return memory?.session.state === 'suspended';
   }
 
   function markIntentDraftStale(reason: string): void {
@@ -606,7 +628,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function canMoveOnMap(): boolean {
-    if (!seated || mapBundle === null) {
+    if (!seated || mapBundle === null || sessionIsSuspended()) {
       return false;
     }
     if (explorationMode()) {
@@ -632,6 +654,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function turnBanner(): { readonly title: string; readonly detail: string; readonly tone: 'waiting' | 'yours' | 'spectator' | 'exploration' } {
+    if (sessionIsSuspended()) {
+      return {
+        tone: 'spectator',
+        title: 'Session suspended',
+        detail: 'Resume the campaign from the campaign page before playing at this table.',
+      };
+    }
     if (!seated) {
       return {
         tone: 'spectator',
@@ -731,21 +760,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                ${escapeHtml(currentChapter.planSummary)}
              </p>`
       }
+      <h3 class="preview-subheading">NPCs encountered</h3>
+      <p class="empty-state" data-testid="table-npc-empty">None yet — declare an action that involves someone to record a meeting.</p>
       ${
-        memory.npcs.length === 0
-          ? '<p class="empty-state" data-testid="table-npc-empty">No NPCs recorded yet.</p>'
-          : `<h3 class="preview-subheading">NPCs encountered</h3>
-             <ul class="record-list compact" data-testid="npc-list">
-               ${memory.npcs
-                 .map(
-                   (npc) => `
-                 <li data-testid="npc-item">
-                   <span class="record-note">${escapeHtml(npc.name)} — ${escapeHtml(npc.role)}</span>
-                   <span class="record-meta">${escapeHtml(npc.knowledge)}</span>
-                 </li>`,
-                 )
-                 .join('')}
-             </ul>`
+        memory.npcs.some((npc) => npc.audience === 'public')
+          ? `<p class="record-meta" data-testid="npc-roster-note">This adventure’s cast is introduced in chapter briefs and Story so far as you meet them.</p>`
+          : ''
       }
       ${
         memory.quests.length === 0
@@ -913,10 +933,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             : status === 'offline'
               ? 'Offline'
               : 'Away';
-    if (deviceCount <= 1) {
-      return base;
-    }
-    return `${base} · ${deviceCount} devices/tabs`;
+    // Multi-tab heartbeats are one person — do not inflate the label with device counts.
+    void deviceCount;
+    return base;
   }
 
   function presenceBody(): string {
@@ -947,23 +966,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const primary = [...group.devices].sort(
           (left, right) => presenceStatusRank(left.status) - presenceStatusRank(right.status),
         )[0]!;
-        const detail = group.devices
-          .map(
-            (device) =>
-              `${device.status}${device.seatId !== null ? ' · seated' : ' · no seat'}`,
-          )
-          .join('; ');
         return `
-        <li data-testid="presence-device" title="${escapeHtml(detail)}">
+        <li data-testid="presence-device">
           <strong>${escapeHtml(group.displayLabel)}</strong>
           · ${escapeHtml(presenceStatusLabel(primary.status, group.devices.length))}
         </li>`;
       })
       .join('');
+    const onlineCount = [...byAccount.values()].filter((group) =>
+      group.devices.some((device) => device.status === 'online' || device.status === 'spectator'),
+    ).length;
+    const reconnectingCount = [...byAccount.values()].filter(
+      (group) =>
+        group.devices.some((device) => device.status === 'grace') &&
+        !group.devices.some((device) => device.status === 'online'),
+    ).length;
     return `
       <div data-testid="presence-panel">
         <p class="record-meta" data-testid="presence-meta">
-          Who is here · online ${presence.onlineAccountIds.length} · reconnecting ${presence.graceAccountIds.length}
+          Who is here · online ${onlineCount}${reconnectingCount > 0 ? ` · reconnecting ${reconnectingCount}` : ''}
         </p>
         <ul class="record-list" data-testid="presence-list">${rows || '<li>No one at the table yet.</li>'}</ul>
       </div>`;
@@ -1225,7 +1246,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         window.state === 'open' &&
         window.eligibleCombatantId === seatedCombatant?.combatantId,
     );
-    const disable = busy || tableState === null;
+    const disable = busy || tableState === null || sessionIsSuspended();
     const combatDisabled = disable || (encounter?.status === 'active' && !ownTurn);
     const livingFoeTargets =
       encounter?.combatants.filter(
@@ -1340,6 +1361,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             aria-disabled="${disable || encounter?.status !== 'setup'}" aria-describedby="composer-gate-hint">Roll initiative</button>
           <button type="button" data-rules-command="encounter.next_turn" data-testid="next-encounter-turn"
             aria-disabled="${disable || encounter?.status !== 'active'}" aria-describedby="composer-gate-hint">Next turn</button>
+          <button type="button" data-rules-command="encounter.end" data-testid="end-encounter"
+            aria-disabled="${disable || encounter === null || encounter.status === 'ended'}" aria-describedby="composer-gate-hint">End encounter</button>
           <button type="button" data-rules-command="combat.attack" data-testid="rules-attack"
             aria-disabled="${combatDisabled || !actionAvailable || selectedCombatantId === null}" aria-describedby="composer-gate-hint">Attack selected</button>
           <button type="button" data-rules-command="combat.cast_spell" data-testid="rules-cast-spell"
@@ -1372,8 +1395,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function playerActionBar(): string {
     seedDmThreadIfNeeded();
     const banner = turnBanner();
-    const showEndTurn = isOwnCombatTurn();
-    const canDescribeTurn = seated && (explorationMode() || isOwnCombatTurn());
+    const showEndTurn = isOwnCombatTurn() && !sessionIsSuspended();
+    const canDescribeTurn =
+      seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
@@ -1452,11 +1476,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const ownAuthority = holdsOwnAuthority();
     const needsAuthority = !explorationMode();
     const syncDisabled =
-      busy || candidate === null || !seated || tableState === null || (needsAuthority && !ownAuthority);
+      busy ||
+      candidate === null ||
+      !seated ||
+      tableState === null ||
+      sessionIsSuspended() ||
+      (needsAuthority && !ownAuthority);
     const interpretDisabled =
       busy ||
       candidate === null ||
       !seated ||
+      sessionIsSuspended() ||
       (needsAuthority && !ownAuthority) ||
       (encounter?.status === 'active' &&
         (() => {
@@ -1466,13 +1496,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           if (encounter.activeCombatantId !== own.combatantId) return true;
           return own.actionEconomy.actionAvailable !== true;
         })());
-    const gateHint = composerGateHint();
+    const gateHint = sessionIsSuspended()
+      ? 'Session suspended — resume from the campaign page before playing.'
+      : composerGateHint();
     const hasClosedDoor =
       mapBundle !== null &&
       mapBundle.edges.some((edge) => edge.kind === 'door' && edge.doorState !== 'open');
+    const moveDestinations =
+      mapBundle === null || !seated
+        ? []
+        : mapBundle.cells
+            .filter((cell) => cell.terrain !== 'blocked' && cell.known)
+            .slice(0, 96)
+            .map((cell) => ({ column: cell.column, row: cell.row }));
     return `
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
       <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
+      ${
+        sessionIsSuspended()
+          ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
+          : ''
+      }
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
         <p class="record-meta" data-testid="table-presentation-meta">${escapeHtml(presentationMeta())}</p>
         <label class="option compact">
@@ -1488,6 +1532,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>
       ${encounterBody()}
       <div class="action-composer-controls">
+        <label class="field compact">
+          <span>Move destination (square)</span>
+          <select data-testid="move-destination-select" ${syncDisabled || !canMoveOnMap() ? 'disabled' : ''}>
+            <option value="">Choose a square…</option>
+            ${moveDestinations
+              .map(
+                (square) =>
+                  `<option value="${square.column},${square.row}" ${
+                    moveTarget?.column === square.column && moveTarget?.row === square.row
+                      ? 'selected'
+                      : ''
+                  }>Column ${square.column}, row ${square.row}</option>`,
+              )
+              .join('')}
+          </select>
+        </label>
         <button type="button" data-testid="refresh-table-projection"
           aria-disabled="${busy || candidate === null}">
           Refresh table projection
@@ -1513,13 +1573,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${escapeHtml(ACTION_COMPOSER_STRUCTURE.interpretActionLabel)}
         </button>
         <button type="button" data-testid="request-narration"
-          aria-disabled="${busy || candidate === null || !seated}">
+          aria-disabled="${busy || candidate === null || !seated || sessionIsSuspended()}">
           Request Director narration
         </button>
       </div>
       <label class="field">
         <span>Describe your action</span>
-        <textarea data-testid="nl-intent-input" rows="2" placeholder="Example: I open the door carefully and listen.">${escapeHtml(nlIntentText)}</textarea>
+        <textarea data-testid="nl-intent-input" rows="2" placeholder="Example: I open the door carefully and listen." ${sessionIsSuspended() ? 'disabled' : ''}>${escapeHtml(nlIntentText)}</textarea>
       </label>
       <button type="button" data-testid="interpret-nl-intent"
         aria-disabled="${interpretDisabled}"
@@ -1803,7 +1863,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       if (summary) {
         appendDmThread('system', 'Table', summary, 'mechanics');
         if (shouldAutoNarrateRulesCommand(commandType)) {
-          void narrateIntoDmThread(summary, rolls);
+          enqueueNarration(summary, rolls);
         } else {
           patchDmPlayThread();
         }
@@ -2491,6 +2551,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             render();
           }
         })();
+      });
+
+    root
+      .querySelector<HTMLSelectElement>('[data-testid="move-destination-select"]')
+      ?.addEventListener('change', (event) => {
+        if (!(event.target instanceof HTMLSelectElement) || !canMoveOnMap()) {
+          return;
+        }
+        const value = event.target.value;
+        if (value === '') {
+          moveTarget = null;
+          movePreviewNote = null;
+          stageHandle?.setMoveTarget(null);
+          render();
+          return;
+        }
+        const [columnText, rowText] = value.split(',');
+        const column = Number(columnText);
+        const row = Number(rowText);
+        if (!Number.isInteger(column) || !Number.isInteger(row)) {
+          return;
+        }
+        void onSquareSelected({ column, row });
       });
 
     root

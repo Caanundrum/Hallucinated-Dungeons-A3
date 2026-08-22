@@ -78,6 +78,27 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
   await expect(page.getByTestId('record-submit')).toHaveAttribute('aria-disabled', 'false');
 }
 
+/**
+ * Records Session Zero with defaults from the campaign detail page.
+ * Required before seating or opening the table dock (PQA-086).
+ */
+export async function recordDefaultSessionZero(page: Page): Promise<void> {
+  const summary = page.getByTestId('session-zero-summary');
+  if (await summary.isVisible().catch(() => false)) {
+    const text = await summary.innerText();
+    if (text.includes('recorded') && !text.includes('not recorded')) {
+      return;
+    }
+  }
+  await page.getByTestId('open-campaign-settings').click();
+  await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
+  await page.getByTestId('complete-session-zero').click();
+  await expect(page.getByTestId('settings-notice')).toContainText(/Session Zero recorded/i);
+  await page.getByTestId('settings-back').click();
+  await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
+  await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
+}
+
 /** Opens training / developer controls on the campaign table dashboard. */
 export async function openTableAdvancedControls(page: Page): Promise<void> {
   await page.getByTestId('table-info-tab-tools').click();

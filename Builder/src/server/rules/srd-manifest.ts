@@ -811,7 +811,7 @@ export const CLASSES: readonly ClassRecord[] = [
     equipmentOptions: [
       weaponKit('fighter-a', "Chain Mail, Greatsword, Javelin (4), Dungeoneer's Pack, 4 GP", [{ name: 'Chain Mail', quantity: 1 }, { name: 'Greatsword', quantity: 1 }, { name: 'Javelin', quantity: 4 }, { name: "Dungeoneer's Pack", quantity: 1 }], 4, ['chain-mail'], ['greatsword', 'javelin']),
       weaponKit('fighter-b', "Studded Leather Armor, Scimitar, Shortsword, Longbow, Arrows (20), Dungeoneer's Pack, 11 GP", [{ name: 'Studded Leather Armor', quantity: 1 }, { name: 'Scimitar', quantity: 1 }, { name: 'Shortsword', quantity: 1 }, { name: 'Longbow', quantity: 1 }, { name: 'Arrows', quantity: 20 }, { name: "Dungeoneer's Pack", quantity: 1 }], 11, ['studded-leather'], ['scimitar', 'shortsword', 'longbow']),
-      weaponKit('fighter-c', '155 GP', [], 155, [], []),
+      weaponKit('fighter-c', 'Longsword, Leather Armor, Explorer\'s Pack, 140 GP (cash purchase)', [{ name: 'Longsword', quantity: 1 }, { name: 'Leather Armor', quantity: 1 }, { name: "Explorer's Pack", quantity: 1 }], 140, ['leather'], ['longsword']),
     ],
   },
   {
