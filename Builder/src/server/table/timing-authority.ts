@@ -245,8 +245,10 @@ export async function fetchActiveTimingAuthority(options: {
   const own = available
     .filter((stored) => stored.accountId === options.accountId)
     .sort((left, right) => {
+      // Prefer active_turn over a dangling ready-reaction credential so End turn
+      // and next_turn stay usable after Ready (PQA-096).
       const priority = (opportunityClass: TimingOpportunityClass) =>
-        opportunityClass === 'reaction' ? 0 : opportunityClass === 'decision' ? 1 : 2;
+        opportunityClass === 'active_turn' ? 0 : opportunityClass === 'decision' ? 1 : 2;
       return priority(left.opportunityClass) - priority(right.opportunityClass);
     })[0];
   if (own !== undefined) {

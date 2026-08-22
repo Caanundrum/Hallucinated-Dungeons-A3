@@ -787,6 +787,7 @@ export async function createSeat(options: {
     lastAcknowledgedEventSequence: 0,
   };
   await firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).set(seat);
+  await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).update({ updatedAt: now });
   await appendChronicleEntry({
     firestore,
     campaignId,
@@ -794,4 +795,36 @@ export async function createSeat(options: {
     body: `${character.identity.name} was seated at the table.`,
   });
   return projectSeat(seat);
+}
+
+/** Removes the caller's own seat so they can reseat another character. */
+export async function leaveSeat(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  const { firestore, accountId, campaignId } = options;
+  await requireMembership(firestore, campaignId, accountId);
+  await loadCampaign(firestore, campaignId);
+
+  const existingSeats = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('campaignId', '==', campaignId)
+    .where('ownerAccountId', '==', accountId)
+    .limit(1)
+    .get();
+  if (existingSeats.empty) {
+    throw new CampaignValidationError('You are not seated in this campaign.');
+  }
+  const seat = existingSeats.docs[0]!.data() as StoredSeat;
+  await firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).delete();
+  await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).update({
+    updatedAt: new Date(),
+  });
+  await appendChronicleEntry({
+    firestore,
+    campaignId,
+    kind: 'seat_left',
+    body: `${seat.characterName} left their seat at the table.`,
+  });
 }

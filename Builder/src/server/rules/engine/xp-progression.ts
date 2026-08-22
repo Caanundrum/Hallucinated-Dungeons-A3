@@ -203,6 +203,19 @@ export function recomputeSheetForLevel(
     },
     hitPoints: { value: derived.maxHitPoints, components: hitPointComponents },
     hitDice: derived.hitDice,
+    features: [
+      ...baseSheet.features.filter(
+        (feature) =>
+          !derived.classFeatures.some(
+            (label) => feature.name === label || feature.name.startsWith(`${label} `),
+          ),
+      ),
+      ...derived.classFeatures.map((label) => ({
+        name: label,
+        source: `class.${classId}`,
+        summary: `Granted at character level ${level}.`,
+      })),
+    ],
     savingThrows: Object.fromEntries(
       Object.entries(baseSheet.savingThrows).map(([ability, value]) => [
         ability,

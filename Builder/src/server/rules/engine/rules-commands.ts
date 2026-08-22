@@ -36,6 +36,7 @@ import {
   resolveAttack,
   resolveDeathSave,
   resolveSavingThrow,
+  type AttackResolution,
 } from './adjudication.js';
 import { applyCondition, expireConditions, removeCondition } from './conditions.js';
 import { createSeededRandom, rollD20, rollDamage, type RandomSource } from './dice.js';
@@ -437,6 +438,78 @@ function requireEncounter(encounter: EncounterProjection | null): EncounterProje
   return encounter;
 }
 
+/** Rests, XP awards, and level-ups belong outside active initiative. */
+function requireOutOfCombat(
+  encounter: EncounterProjection | null,
+  actionLabel: string,
+): void {
+  if (encounter !== null && (encounter.status === 'active' || encounter.status === 'setup')) {
+    throw new RulesCommandError(
+      ERROR_CODES.BAD_REQUEST,
+      `${actionLabel} is unavailable while an encounter is in progress. End combat first.`,
+    );
+  }
+}
+
+function livingFoes(encounter: EncounterProjection): readonly CombatantProjection[] {
+  return encounter.combatants.filter(
+    (combatant) =>
+      combatant.side === 'foe' &&
+      combatant.currentHitPoints > 0 &&
+      !combatant.deathSaves.dead,
+  );
+}
+
+function endEncounterIfFoesDefeated(
+  encounter: EncounterProjection,
+): EncounterProjection {
+  if (encounter.status !== 'active') {
+    return encounter;
+  }
+  if (livingFoes(encounter).length > 0) {
+    return encounter;
+  }
+  return {
+    ...encounter,
+    status: 'ended',
+    activeCombatantId: null,
+    decisionWindows: encounter.decisionWindows.map((window) =>
+      window.state === 'open' ? { ...window, state: 'expired' } : window,
+    ),
+  };
+}
+
+function formatAttackSummary(options: {
+  readonly attackerName: string;
+  readonly targetName: string;
+  readonly attackLabel: string;
+  readonly attackBonus: number;
+  readonly armorClass: number;
+  readonly resolution: AttackResolution;
+  readonly attackRolls: readonly number[];
+}): string {
+  const {
+    attackerName,
+    targetName,
+    attackLabel,
+    attackBonus,
+    armorClass,
+    resolution,
+    attackRolls,
+  } = options;
+  const natural = attackRolls[0];
+  const rollPart =
+    typeof natural === 'number'
+      ? ` (d20 ${natural}${attackBonus >= 0 ? '+' : ''}${attackBonus}=${resolution.attackTotal} vs AC ${armorClass})`
+      : ` (total ${resolution.attackTotal} vs AC ${armorClass})`;
+  if (!resolution.hit) {
+    return `${attackerName} missed ${targetName} with ${attackLabel}${rollPart}.`;
+  }
+  return `${attackerName} hit ${targetName} with ${attackLabel}${rollPart} for ${resolution.damage} damage${
+    resolution.critical ? ' (critical hit)' : ''
+  }.`;
+}
+
 function requireActiveActor(encounter: EncounterProjection, seatId: string): CombatantProjection {
   if (encounter.status !== 'active') {
     throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Roll initiative before taking combat actions.');
@@ -748,71 +821,141 @@ function mutateRules(options: {
     if (current.status !== 'active' || current.initiativeOrder.length === 0) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No active initiative order can advance.');
     }
-    const turnIndex = (current.turnIndex + 1) % current.initiativeOrder.length;
-    const round = turnIndex === 0 ? current.round + 1 : current.round;
-    const activeCombatantId = current.initiativeOrder[turnIndex]!;
-    let combatants = current.combatants.map((combatant) => {
-      const expired = expireConditions(combatant.conditions, round);
-      if (combatant.combatantId !== activeCombatantId) {
-        return { ...combatant, conditions: expired };
-      }
-      const shieldExpired = expired.some((condition) => condition.conditionId === 'shielded');
-      return {
-        ...combatant,
-        armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
-        conditions: removeCondition(expired, 'shielded'),
-        actionEconomy:
-          combatant.currentHitPoints === 0
-            ? dyingActionEconomy(true)
-            : actionEconomy(),
-        ready: null,
-      };
-    });
-    let active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
-    summary = `Round ${round}: ${active.name} is active.`;
-    affectedCombatantIds = [activeCombatantId];
-    if (active.side === 'foe' && active.currentHitPoints > 0) {
-      const partyTarget = combatants.find(
-        (combatant) =>
-          combatant.side === 'party' &&
-          combatant.currentHitPoints > 0 &&
-          !combatant.deathSaves.dead,
+    const livingOrder = current.initiativeOrder.filter((combatantId) => {
+      const combatant = current.combatants.find((entry) => entry.combatantId === combatantId);
+      return (
+        combatant !== undefined &&
+        combatant.currentHitPoints > 0 &&
+        !combatant.deathSaves.dead
       );
-      if (partyTarget !== undefined) {
-        const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
-        rolls.push(...attack.rolls);
-        active = spendAction(active);
-        // Training auto-attacks stay nonlethal so the integrated journey remains
-        // playable; intentional 0 HP practice uses combat.training_drop.
-        const nonlethalTarget =
-          attack.target.currentHitPoints === 0
-            ? {
-                ...attack.target,
-                currentHitPoints: 1,
-                conditions: removeCondition(attack.target.conditions, 'unconscious'),
-                deathSaves: emptyDeathSaves(),
-              }
-            : attack.target;
-        combatants = combatants.map((combatant) =>
-          combatant.combatantId === active.combatantId
-            ? active
-            : combatant.combatantId === partyTarget.combatantId
-              ? nonlethalTarget
-              : combatant,
+    });
+    if (livingOrder.length === 0 || livingFoes(current).length === 0) {
+      encounter = {
+        ...current,
+        status: 'ended',
+        activeCombatantId: null,
+        decisionWindows: current.decisionWindows.map((window) =>
+          window.state === 'open' ? { ...window, state: 'expired' as const } : window,
+        ),
+      };
+      summary =
+        livingFoes(current).length === 0
+          ? 'Encounter ended — all foes are defeated.'
+          : 'Encounter ended — no living combatants remain in initiative.';
+      affectedCombatantIds = [];
+    } else {
+      const previousActive = current.activeCombatantId;
+      const previousLivingIndex =
+        previousActive === null ? -1 : livingOrder.indexOf(previousActive);
+      const nextLivingIndex = (previousLivingIndex + 1) % livingOrder.length;
+      const advancedRound =
+        previousLivingIndex >= 0 && nextLivingIndex <= previousLivingIndex
+          ? current.round + 1
+          : Math.max(1, current.round);
+      const activeCombatantId = livingOrder[nextLivingIndex]!;
+      let combatants = current.combatants.map((combatant) => {
+        const expired = expireConditions(combatant.conditions, advancedRound);
+        if (combatant.combatantId !== activeCombatantId) {
+          return {
+            ...combatant,
+            conditions: expired,
+            ready: combatant.combatantId === previousActive ? null : combatant.ready,
+          };
+        }
+        const shieldExpired = expired.some((condition) => condition.conditionId === 'shielded');
+        return {
+          ...combatant,
+          armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
+          conditions: removeCondition(expired, 'shielded'),
+          actionEconomy: actionEconomy(),
+          ready: null,
+        };
+      });
+      const decisionWindows = current.decisionWindows.map((window) =>
+        window.state === 'open' && window.eligibleCombatantId === previousActive
+          ? { ...window, state: 'expired' as const }
+          : window,
+      );
+      let active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
+      summary = `Round ${advancedRound}: ${active.name} is active.`;
+      affectedCombatantIds = [activeCombatantId];
+      if (active.side === 'foe' && active.currentHitPoints > 0) {
+        const partyTarget = combatants.find(
+          (combatant) =>
+            combatant.side === 'party' &&
+            combatant.currentHitPoints > 0 &&
+            !combatant.deathSaves.dead,
         );
-        summary += attack.hit
-          ? ` ${active.name} automatically made a nonlethal training attack against ${partyTarget.name} for ${attack.damage} damage.`
-          : ` ${active.name} automatically attacked ${partyTarget.name} and missed.`;
-        affectedCombatantIds.push(partyTarget.combatantId);
+        if (partyTarget !== undefined) {
+          const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
+          rolls.push(...attack.rolls);
+          active = spendAction(active);
+          const foeAttack = active.attacks[0]!;
+          const nonlethalTarget =
+            attack.target.currentHitPoints === 0
+              ? {
+                  ...attack.target,
+                  currentHitPoints: 1,
+                  conditions: removeCondition(attack.target.conditions, 'unconscious'),
+                  deathSaves: emptyDeathSaves(),
+                }
+              : attack.target;
+          combatants = combatants.map((combatant) =>
+            combatant.combatantId === active.combatantId
+              ? active
+              : combatant.combatantId === partyTarget.combatantId
+                ? nonlethalTarget
+                : combatant,
+          );
+          summary += ` ${formatAttackSummary({
+            attackerName: active.name,
+            targetName: partyTarget.name,
+            attackLabel: `${foeAttack.label} (nonlethal training)`,
+            attackBonus: foeAttack.attackBonus,
+            armorClass: partyTarget.armorClass,
+            resolution: { ...attack, target: nonlethalTarget },
+            attackRolls: attack.rolls,
+          })}`;
+          if (
+            attack.target.currentHitPoints === 0 &&
+            nonlethalTarget.currentHitPoints === 1
+          ) {
+            summary +=
+              ' Training safeguard: damage that would drop the character to 0 instead leaves them at 1 Hit Point.';
+          }
+          affectedCombatantIds.push(partyTarget.combatantId);
+        }
+      }
+      encounter = endEncounterIfFoesDefeated({
+        ...current,
+        turnIndex: nextLivingIndex,
+        round: advancedRound,
+        activeCombatantId,
+        combatants,
+        decisionWindows,
+        initiativeOrder: livingOrder,
+      });
+      if (encounter.status === 'ended') {
+        summary += ' Encounter ended — all foes are defeated.';
       }
     }
-    encounter = { ...current, turnIndex, round, activeCombatantId, combatants };
   } else if (commandType === 'combat.attack') {
     const current = requireEncounter(encounter);
     const actor = requireActiveActor(current, seat.seatId);
     const target = targetById(current, fields.targetCombatantId);
     if (target.side === actor.side) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'An attack must target the opposing side.');
+    }
+    if (target.currentHitPoints <= 0 || target.conditions.some((c) => c.conditionId === 'unconscious')) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        `${target.name} is already defeated. Choose another target or end the encounter.`,
+      );
+    }
+    const chosenAttack =
+      actor.attacks.find((entry) => entry.attackId === fields.attackId) ?? actor.attacks[0];
+    if (chosenAttack === undefined) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No attack is available.');
     }
     const resolution = resolveAttack({
       attacker: actor,
@@ -821,11 +964,22 @@ function mutateRules(options: {
       rng,
     });
     const concentration = resolveConcentration(target, resolution.target, resolution.damage, rng);
-    encounter = replaceCombatants(current, [spendAction(actor), concentration.combatant]);
+    encounter = endEncounterIfFoesDefeated(
+      replaceCombatants(current, [spendAction(actor), concentration.combatant]),
+    );
     rolls.push(...resolution.rolls, ...concentration.rolls);
-    summary = resolution.hit
-      ? `${actor.name} hit ${target.name} for ${resolution.damage} damage${resolution.critical ? ' (critical hit)' : ''}.`
-      : `${actor.name} missed ${target.name} with an attack total of ${resolution.attackTotal}.`;
+    summary = formatAttackSummary({
+      attackerName: actor.name,
+      targetName: target.name,
+      attackLabel: chosenAttack.label,
+      attackBonus: chosenAttack.attackBonus,
+      armorClass: target.armorClass,
+      resolution,
+      attackRolls: resolution.rolls,
+    });
+    if (encounter.status === 'ended') {
+      summary += ' Encounter ended — all foes are defeated.';
+    }
     affectedCombatantIds = [actor.combatantId, target.combatantId];
   } else if (commandType === 'combat.cast_spell') {
     const current = requireEncounter(encounter);
@@ -1021,46 +1175,47 @@ function mutateRules(options: {
     summary = `${actor.name} used the training control to drop to 0 Hit Points for Death Save practice.`;
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.short_rest') {
+    requireOutOfCombat(encounter, 'A Short Rest');
     const current = requireEncounter(encounter);
-    const actor = requireActiveActor(current, seat.seatId);
+    const actor = findActor(current, seat.seatId);
     if (actor.hitDiceRemaining < 1) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No Hit Dice remain for a Short Rest.');
     }
+    if (actor.deathSaves.dead) {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Short Rest.');
+    }
     const hitDie = Number(/d(\d+)/.exec(projectProgression(source, progression).derived.hitDice)?.[1] ?? 8);
     const healingRoll = rollDamage(`1d${hitDie}`, rng);
-    const healing = healingRoll.total + baseSheetFor(source).abilityModifiers.constitution;
+    const healing = Math.max(0, healingRoll.total + baseSheetFor(source).abilityModifiers.constitution);
     rolls.push(...healingRoll.rolls);
-    const rested = spendAction({
-      ...applyHealing(actor, Math.max(0, healing)),
+    const beforeHp = actor.currentHitPoints;
+    const healed = applyHealing(actor, healing);
+    const effective = healed.currentHitPoints - beforeHp;
+    const rested = {
+      ...healed,
       hitDiceRemaining: actor.hitDiceRemaining - 1,
-    });
+    };
     encounter = replaceCombatants(current, [rested]);
-    summary = `${actor.name} completed a Short Rest and recovered ${Math.max(0, healing)} Hit Points.`;
+    summary =
+      effective === healing
+        ? `${actor.name} completed a Short Rest and recovered ${effective} Hit Points.`
+        : `${actor.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum).`;
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.long_rest') {
+    requireOutOfCombat(encounter, 'A Long Rest');
     const current = requireEncounter(encounter);
     const actor = findActor(current, seat.seatId);
-    if (current.status !== 'active') {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Roll initiative before taking combat actions.');
-    }
-    if (current.activeCombatantId !== actor.combatantId) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'It is not your combatant’s turn.');
-    }
     if (actor.deathSaves.dead) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Long Rest.');
     }
-    // Dying/stable combatants may Long Rest to clear 0 HP without spending an action.
-    if (
-      actor.currentHitPoints > 0 &&
-      !actor.actionEconomy.actionAvailable
-    ) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'This combatant has already spent its action.');
-    }
-    const restored = spendAction({
+    const restored = {
       ...actor,
       currentHitPoints: actor.maxHitPoints,
       temporaryHitPoints: 0,
-      hitDiceRemaining: Math.min(actor.level, actor.hitDiceRemaining + Math.max(1, Math.floor(actor.level / 2))),
+      hitDiceRemaining: Math.min(
+        actor.level,
+        actor.hitDiceRemaining + Math.max(1, Math.floor(actor.level / 2)),
+      ),
       conditions: removeCondition(
         removeCondition(actor.conditions, 'exhaustion'),
         'unconscious',
@@ -1072,7 +1227,7 @@ function mutateRules(options: {
       },
       concentrationSpellId: null,
       actionEconomy: actionEconomy(),
-    });
+    };
     encounter = replaceCombatants(current, [restored]);
     summary = `${actor.name} completed a Long Rest, restoring Hit Points, Hit Dice, and spell slots.`;
     affectedCombatantIds = [actor.combatantId];
@@ -1088,7 +1243,6 @@ function mutateRules(options: {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'An Opportunity Attack targets an opposing combatant.');
     }
     const decisionWindowId = `decision:${idSource}`;
-    const timingAuthorityId = `reaction:${idSource}`;
     const trigger = fields.readyTrigger?.trim() || (reactionKind === 'shield' ? 'When hit by an attack' : 'When the target moves out of reach');
     const decisionWindow: DecisionWindowProjection = {
       decisionWindowId,
@@ -1108,7 +1262,6 @@ function mutateRules(options: {
       ...replaceCombatants(current, [readyActor]),
       decisionWindows: [...current.decisionWindows, decisionWindow],
     };
-    reactionAuthority = { timingAuthorityId, decisionWindowId };
     summary = `${actor.name} readied ${reactionKind === 'shield' ? 'Shield' : 'an Opportunity Attack'}: ${trigger}.`;
     affectedCombatantIds = [actor.combatantId, target.combatantId];
   } else if (commandType === 'combat.reaction') {
@@ -1177,17 +1330,32 @@ function mutateRules(options: {
       ),
     };
   } else if (commandType === 'progression.award_xp') {
+    requireOutOfCombat(encounter, 'Awarding XP');
+    if (encounter === null || encounter.status !== 'ended') {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Award XP after the encounter ends (all foes defeated).',
+      );
+    }
     const amount = fields.xpAmount ?? 300;
     if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100_000) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'XP award must be an integer from 1 to 100,000.');
+    }
+    if (progression.lastAwardedEncounterId === encounter.encounterId) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'XP for this encounter was already awarded. Resolve a new beat before awarding again.',
+      );
     }
     progression = {
       ...progression,
       experiencePoints: progression.experiencePoints + amount,
       updatedAt: now.toISOString(),
+      lastAwardedEncounterId: encounter.encounterId,
     };
     summary = `${source.choices.identity.name} gained ${amount} XP (${progression.experiencePoints} total).`;
   } else if (commandType === 'progression.level_up') {
+    requireOutOfCombat(encounter, 'Leveling up');
     const earnedLevel = levelForExperience(progression.experiencePoints);
     if (earnedLevel <= progression.level || progression.level >= 20) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'The character has not earned another level.');
@@ -1231,21 +1399,36 @@ function mutateRules(options: {
         ? actor
         : targetById(current, fields.targetCombatantId);
     const target = selectedTarget;
+    if (target.currentHitPoints >= target.maxHitPoints) {
+      throw new RulesCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        `${target.name} is already at full Hit Points. A Potion of Healing cannot be used.`,
+      );
+    }
     const healingRoll = rollDamage('2d4+2', rng);
     rolls.push(...healingRoll.rolls);
+    const beforeHp = target.currentHitPoints;
     const inventory = actor.inventory
       .map((entry) =>
         entry.itemId === 'healing-potion' ? { ...entry, quantity: entry.quantity - 1 } : entry,
       )
       .filter((entry) => entry.quantity > 0);
     const spentActor = spendAction({ ...actor, inventory });
+    const healedTarget =
+      target.combatantId === actor.combatantId
+        ? applyHealing(spentActor, healingRoll.total)
+        : applyHealing(target, healingRoll.total);
+    const effective = healedTarget.currentHitPoints - beforeHp;
     encounter = replaceCombatants(
       current,
       target.combatantId === actor.combatantId
-        ? [applyHealing(spentActor, healingRoll.total)]
-        : [spentActor, applyHealing(target, healingRoll.total)],
+        ? [healedTarget]
+        : [spentActor, healedTarget],
     );
-    summary = `${actor.name} used a Potion of Healing on ${target.name}, restoring ${healingRoll.total} Hit Points.`;
+    summary =
+      effective === healingRoll.total
+        ? `${actor.name} used a Potion of Healing on ${target.name}, restoring ${effective} Hit Points.`
+        : `${actor.name} used a Potion of Healing on ${target.name}, restoring ${effective} Hit Points (rolled ${healingRoll.total}; capped at maximum).`;
     affectedCombatantIds = [actor.combatantId, target.combatantId];
   }
 
@@ -1475,6 +1658,9 @@ export async function acceptRulesCommand(options: {
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {
       lastAcknowledgedEventSequence: nextSequence,
       deviceSessionId,
+    });
+    transaction.update(firestore.collection(COLLECTIONS.campaigns).doc(campaignId), {
+      updatedAt: committedAt,
     });
     if (mutation.reactionAuthority !== undefined && nextEncounter !== null) {
       const expiresAt = new Date(committedAt.getTime() + 5 * 60 * 1000);

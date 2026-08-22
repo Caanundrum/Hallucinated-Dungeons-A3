@@ -149,9 +149,14 @@ async function readTableStateVersion(firestore: Firestore, campaignId: string): 
     .collection(COLLECTIONS.campaignTableProjections)
     .doc(campaignId)
     .get();
-  return tableSnapshot.exists
-    ? ((tableSnapshot.data() as { stateVersion?: number }).stateVersion ?? 0)
-    : 0;
+  if (!tableSnapshot.exists) {
+    return 0;
+  }
+  const data = tableSnapshot.data() as {
+    stateVersion?: number;
+    lastEventSequence?: number;
+  };
+  return Math.max(data.stateVersion ?? 0, data.lastEventSequence ?? 0);
 }
 
 /** Resolves the starter pack for a stored campaign's pack id, or null for a blank table. */
@@ -428,10 +433,23 @@ export async function appendChapterSummary(
   // Traveling to the next Emberferry scene reseats tokens on that scene's
   // spawn anchors — prior dock coordinates are not meaningful in the caves.
   if (nextChapter !== null) {
-    await firestore
+    const projectionRef = firestore
       .collection(COLLECTIONS.campaignTableProjections)
-      .doc(campaignId)
-      .set(emptyMapRuntime(campaignId));
+      .doc(campaignId);
+    const priorSnap = await projectionRef.get();
+    const prior = priorSnap.exists ? (priorSnap.data() as Record<string, unknown>) : {};
+    await projectionRef.set({
+      ...prior,
+      ...emptyMapRuntime(campaignId),
+      // Preserve command/event continuity across chapter travel (PQA-087).
+      stateVersion: typeof prior.stateVersion === 'number' ? prior.stateVersion : 0,
+      lastEventSequence:
+        typeof prior.lastEventSequence === 'number' ? prior.lastEventSequence : 0,
+      lastEventId: typeof prior.lastEventId === 'string' ? prior.lastEventId : null,
+      updatedAt: now,
+    });
+    // End any carried encounter so combat does not persist across chapters (PQA-081–083).
+    await firestore.collection(COLLECTIONS.campaignEncounters).doc(campaignId).delete();
   }
   await appendChronicleEntry({
     firestore,
@@ -480,6 +498,19 @@ export async function closeCurrentChapter(
       'Play at the table before closing this chapter. Open the table, seat tokens, and take at least one action first.',
     );
   }
+  const encounterSnap = await firestore
+    .collection(COLLECTIONS.campaignEncounters)
+    .doc(campaignId)
+    .get();
+  if (encounterSnap.exists) {
+    const encounter = encounterSnap.data() as { status?: string };
+    if (encounter.status === 'active' || encounter.status === 'setup') {
+      throw new CampaignMemoryError(
+        'BAD_REQUEST',
+        'End the current encounter before closing this chapter and traveling.',
+      );
+    }
+  }
   const recordedSummary =
     options.recordedSummary !== undefined && options.recordedSummary.trim().length > 0
       ? options.recordedSummary.trim().slice(0, 480)
@@ -517,6 +548,20 @@ export async function recordSessionSuspend(
       'SESSION_ALREADY_SUSPENDED',
       'This campaign session is already suspended. Resume it before suspending again.',
     );
+  }
+
+  const encounterSnap = await firestore
+    .collection(COLLECTIONS.campaignEncounters)
+    .doc(campaignId)
+    .get();
+  if (encounterSnap.exists) {
+    const encounter = encounterSnap.data() as { status?: string };
+    if (encounter.status === 'active' || encounter.status === 'setup') {
+      throw new CampaignMemoryError(
+        'BAD_REQUEST',
+        'End the current encounter before suspending the session.',
+      );
+    }
   }
 
   const tableStateVersion = await readTableStateVersion(firestore, campaignId);
@@ -614,7 +659,19 @@ export async function readPersonalRecap(
   return buildPersonalRecap(memory, accountId);
 }
 
-/** Resumes a suspended session and returns the personal recap for the returning account. */
+/** Throws when the session is suspended and play must not continue (PQA-085). */
+export async function assertSessionAllowsPlay(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<void> {
+  const session = await loadStoredSession(firestore, campaignId);
+  if (session.state === 'suspended') {
+    throw new CampaignMemoryError(
+      'BAD_REQUEST',
+      'This campaign session is suspended. Resume it from the campaign page before playing.',
+    );
+  }
+}
 export async function resumeSession(
   firestore: Firestore,
   campaignId: string,
