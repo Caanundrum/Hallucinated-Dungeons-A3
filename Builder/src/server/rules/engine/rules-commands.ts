@@ -219,9 +219,9 @@ function tableProjection(
 ): TableStateProjection {
   return {
     campaignId,
-    stateVersion: stored.stateVersion,
-    lastEventSequence: stored.lastEventSequence,
-    lastEventId: stored.lastEventId,
+    stateVersion: stored.stateVersion ?? 0,
+    lastEventSequence: stored.lastEventSequence ?? 0,
+    lastEventId: stored.lastEventId ?? null,
     updatedAt: toIso(stored.updatedAt),
     recentEvents: events,
     npcSpotlight: stored.npcSpotlight ?? null,
@@ -238,6 +238,26 @@ function emptyTableProjection(campaignId: string): StoredTableProjection {
     tokenPositions: [],
     doorStates: {},
     exploredByAccount: {},
+  };
+}
+
+/** Coalesce legacy/migrated table docs that omit version fields (PQA-082/083). */
+function normalizeStoredTableProjection(
+  campaignId: string,
+  stored: Partial<StoredTableProjection> | null | undefined,
+): StoredTableProjection {
+  const empty = emptyTableProjection(campaignId);
+  if (stored === null || stored === undefined) {
+    return empty;
+  }
+  return {
+    ...empty,
+    ...stored,
+    campaignId,
+    stateVersion: typeof stored.stateVersion === 'number' ? stored.stateVersion : 0,
+    lastEventSequence:
+      typeof stored.lastEventSequence === 'number' ? stored.lastEventSequence : 0,
+    lastEventId: typeof stored.lastEventId === 'string' ? stored.lastEventId : null,
   };
 }
 
@@ -1553,9 +1573,10 @@ export async function acceptRulesCommand(options: {
     if (!eventSnap.exists) {
       throw new RulesCommandError(ERROR_CODES.UPSTREAM_UNAVAILABLE, 'A prior command commit could not be recovered.');
     }
-    const table = tableSnap.exists
-      ? (tableSnap.data() as StoredTableProjection)
-      : emptyTableProjection(campaignId);
+    const table = normalizeStoredTableProjection(
+      campaignId,
+      tableSnap.exists ? (tableSnap.data() as StoredTableProjection) : null,
+    );
     return {
       duplicate: true,
       commandId: command.commandId,
@@ -1599,9 +1620,10 @@ export async function acceptRulesCommand(options: {
         'This retry raced with the original command; reload the table state.',
       );
     }
-    const currentTable = tableSnap.exists
-      ? (tableSnap.data() as StoredTableProjection)
-      : emptyTableProjection(campaignId);
+    const currentTable = normalizeStoredTableProjection(
+      campaignId,
+      tableSnap.exists ? (tableSnap.data() as StoredTableProjection) : null,
+    );
     if (currentTable.stateVersion !== expectedStateVersion) {
       throw new RulesCommandError(
         ERROR_CODES.STALE_STATE_VERSION,
