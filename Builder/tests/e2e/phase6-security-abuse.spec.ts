@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import {enterAccountFromShell, readCandidate} from './arena-page.js';
+import { recordDefaultSessionZero, enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 6 security / privacy hardening:
@@ -60,7 +60,8 @@ async function seatOwnCharacter(page: Page): Promise<void> {
   const seatSelect = page.getByTestId('seat-character-select');
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
   expect(characterId).toBeTruthy();
-  await seatSelect.selectOption(characterId!);
+    await recordDefaultSessionZero(page);
+    await seatSelect.selectOption(characterId!);
   await page.getByTestId('create-seat').click();
   await expect(page.getByTestId('own-seat')).toBeVisible();
 }

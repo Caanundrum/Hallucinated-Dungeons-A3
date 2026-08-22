@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell } from './arena-page.js';
+import { recordDefaultSessionZero,  enterAccountFromShell } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -59,6 +59,7 @@ test.describe('PQA residual regressions', () => {
     await page.getByTestId('create-campaign-submit').click();
     const seatSelect = page.getByTestId('seat-character-select');
     const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
+    await recordDefaultSessionZero(page);
     await seatSelect.selectOption(characterId!);
     await page.getByTestId('create-seat').click();
     await page.getByTestId('open-campaign-table').click();

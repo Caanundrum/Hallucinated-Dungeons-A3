@@ -17,6 +17,7 @@ import {
   fetchCampaignDetail,
   fetchCampaignMemory,
   fetchPersonalRecap,
+  fetchRulesState,
   resumeCampaignSession,
   revokeCampaignInvitation,
   suspendCampaignSession,
@@ -203,6 +204,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
   let recap: PersonalRecapProjection | null = null;
   let sessionBusy = false;
   let sessionMessage: string | null = null;
+  let encounterActive = false;
   const mountToken = beginPageMount(container);
 
   function renderSignedIn(): void {
@@ -244,19 +246,26 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         : (memorySnapshot.chapters.find(
             (chapter) => chapter.chapterId === memorySnapshot.currentChapterId,
           ) ?? null);
+    const sessionZeroComplete = detail.settings.sessionZero.completed;
     const canCloseChapter =
       currentMemoryChapter !== null &&
       currentMemoryChapter.recordedSummary === null &&
-      ownSeat !== null;
+      ownSeat !== null &&
+      !encounterActive;
+    const canSuspendSession =
+      memorySnapshot !== null && memorySnapshot.session.state !== 'suspended';
+    const canSeatCharacter = sessionZeroComplete;
 
     const nextStep =
-      ownSeat === null
-        ? campaign.isCampaignOwner
-          ? 'Next: seat a character you own, then invite friends or open the table to play.'
-          : 'Next: seat a character you own to join this table.'
-        : campaign.isCampaignOwner && members.length < 2
-          ? 'Next: share an invite link so another player can join, or open the table to play.'
-          : 'Your seat is ready. Open the table to play the current chapter.';
+      !sessionZeroComplete
+        ? 'Next: record Session Zero in Campaign settings before seating a character or starting live play.'
+        : ownSeat === null
+          ? campaign.isCampaignOwner
+            ? 'Next: seat a character you own, then invite friends or open the table to play.'
+            : 'Next: seat a character you own to join this table.'
+          : campaign.isCampaignOwner && members.length < 2
+            ? 'Next: share an invite link so another player can join, or open the table to play.'
+            : 'Your seat is ready. Open the table to play the current chapter.';
 
     container.innerHTML = `
       <div class="page">
@@ -271,12 +280,16 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         <p class="message notice" data-testid="campaign-next-step">${escapeHtml(nextStep)}</p>
         <div class="actions">
           <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="open-campaign-settings">Campaign settings</a>
-          <a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>
+          ${
+            sessionZeroComplete
+              ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>`
+              : `<span class="record-meta" data-testid="open-campaign-table-gated">Open table after Session Zero is recorded</span>`
+          }
         </div>
         <p class="record-meta" data-testid="session-zero-summary">
           Session Zero:
           ${
-            detail.settings.sessionZero.completed
+            sessionZeroComplete
               ? 'recorded'
               : 'not recorded yet'
           }
@@ -284,11 +297,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           · Group decisions: ${escapeHtml(detail.settings.groupDecisionPolicyLabel)}
         </p>
         ${
-          detail.settings.sessionZero.completed
+          sessionZeroComplete
             ? ''
             : `<p class="message notice" data-testid="session-zero-gate-notice">
-                 Record Session Zero in Campaign settings before treating the table as a live social contract.
-                 Training tools remain available so you can learn the table.
+                 Record Session Zero in Campaign settings before seating a character or starting combat.
                </p>`
         }
         ${
@@ -375,7 +387,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               ? ''
               : `<div class="actions">
                    <button type="button" data-testid="suspend-session"
-                     aria-disabled="${sessionBusy || memory.session.state === 'suspended' ? 'true' : 'false'}">
+                     aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
                      ${sessionBusy ? 'Working…' : 'Suspend session'}
                    </button>
                    <button type="button" class="secondary" data-testid="resume-session"
@@ -392,14 +404,16 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  </div>
                  <p class="record-meta" data-testid="chapter-travel-hint">
                    ${
-                     memorySnapshot?.adventureTemplateId === null ||
-                     memorySnapshot?.adventureTemplateId === undefined
-                       ? ownSeat === null
-                         ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
-                         : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
-                       : ownSeat === null
-                         ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
-                         : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
+                     encounterActive
+                       ? 'End the active encounter on the table before closing this chapter or suspending the session.'
+                       : memorySnapshot?.adventureTemplateId === null ||
+                           memorySnapshot?.adventureTemplateId === undefined
+                         ? ownSeat === null
+                           ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
+                           : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
+                         : ownSeat === null
+                           ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
+                           : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
                    }
                  </p>`
           }
@@ -500,8 +514,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                        </select>
                      </label>
                      <button type="button" data-testid="create-seat"
-                       aria-disabled="${busy || selectedCharacterId === null}">
-                       ${busy ? 'Seating…' : 'Create seat'}
+                       aria-disabled="${busy || selectedCharacterId === null || !canSeatCharacter}">
+                       ${busy ? 'Seating…' : canSeatCharacter ? 'Create seat' : 'Record Session Zero first'}
                      </button>
                    </div>`
           }
@@ -603,6 +617,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           if (candidate === null || busy || selectedCharacterId === null) {
             return;
           }
+          if (detail !== null && !detail.settings.sessionZero.completed) {
+            error = 'Record Session Zero in Campaign settings before seating a character.';
+            render();
+            return;
+          }
           busy = true;
           error = null;
           render();
@@ -676,6 +695,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           if (candidate === null || sessionBusy || memory?.session.state === 'suspended') {
             return;
           }
+          if (encounterActive) {
+            error = 'End the current encounter before suspending the session.';
+            sessionMessage = null;
+            render();
+            return;
+          }
           sessionBusy = true;
           error = null;
           render();
@@ -690,6 +715,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           } catch (failure) {
             error =
               failure instanceof ApiFailure ? failure.message : 'The session could not be suspended.';
+            sessionMessage = null;
+            shell.announce(error);
           } finally {
             sessionBusy = false;
             render();
@@ -870,6 +897,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         memory = null;
         memoryError =
           failure instanceof ApiFailure ? failure.message : 'Campaign memory could not be loaded.';
+      }
+      try {
+        const rules = await fetchRulesState(campaignId);
+        encounterActive =
+          rules.encounter !== null &&
+          (rules.encounter.status === 'active' || rules.encounter.status === 'setup');
+      } catch {
+        encounterActive = false;
       }
     }
     render();

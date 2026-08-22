@@ -57,6 +57,7 @@ export const RULES_COMMAND_TYPES = [
   'encounter.begin',
   'initiative.roll',
   'encounter.next_turn',
+  'encounter.end',
   'combat.attack',
   'combat.cast_spell',
   'combat.death_save',
@@ -75,6 +76,7 @@ const EVENT_FOR_COMMAND: Record<RulesCommandType, TableEventType> = {
   'encounter.begin': 'encounter.started',
   'initiative.roll': 'initiative.rolled',
   'encounter.next_turn': 'encounter.turn_advanced',
+  'encounter.end': 'encounter.ended',
   'combat.attack': 'combat.attack_resolved',
   'combat.cast_spell': 'combat.spell_resolved',
   'combat.death_save': 'combat.death_save_resolved',
@@ -552,7 +554,11 @@ function requireActiveCombatantForEndTurn(
   }
 }
 
-const RULES_SETUP_COMMANDS = new Set<RulesCommandType>(['encounter.begin', 'initiative.roll']);
+const RULES_SETUP_COMMANDS = new Set<RulesCommandType>([
+  'encounter.begin',
+  'initiative.roll',
+  'encounter.end',
+]);
 
 async function requireRulesCommandTimingAuthority(options: {
   readonly firestore: Firestore;
@@ -742,6 +748,8 @@ function mutateRules(options: {
   let reactionAuthority: RulesMutation['reactionAuthority'];
 
   if (commandType === 'encounter.begin') {
+    // Session Zero must be recorded before live combat training starts.
+    // Soft exploration at the table remains available before seating gates apply.
     if (encounter !== null && encounter.status !== 'ended') {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'An encounter is already in progress.');
     }
@@ -939,6 +947,21 @@ function mutateRules(options: {
         summary += ' Encounter ended — all foes are defeated.';
       }
     }
+  } else if (commandType === 'encounter.end') {
+    const current = requireEncounter(encounter);
+    if (current.status === 'ended') {
+      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'This encounter is already ended.');
+    }
+    encounter = {
+      ...current,
+      status: 'ended',
+      activeCombatantId: null,
+      decisionWindows: current.decisionWindows.map((window) =>
+        window.state === 'open' ? { ...window, state: 'expired' as const } : window,
+      ),
+    };
+    summary = 'Encounter ended by the table. Combatants remain for recovery and rests.';
+    affectedCombatantIds = current.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'combat.attack') {
     const current = requireEncounter(encounter);
     const actor = requireActiveActor(current, seat.seatId);
@@ -1491,6 +1514,17 @@ export async function acceptRulesCommand(options: {
     throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'expectedStateVersion must be a non-negative integer.');
   }
   await assertCampaignMember(firestore, accountId, campaignId);
+  if (commandType === 'encounter.begin') {
+    try {
+      const { assertSessionZeroRecorded } = await import('../../settings/campaign-settings.js');
+      await assertSessionZeroRecorded(firestore, campaignId);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'CampaignValidationError') {
+        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, error.message);
+      }
+      throw error;
+    }
+  }
   const seat = await loadOwnSeat(firestore, accountId, campaignId);
   const source = await loadCharacterRulesSource(firestore, seat.characterId);
   if (source.ownerAccountId !== accountId) {

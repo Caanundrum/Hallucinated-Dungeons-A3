@@ -145,18 +145,27 @@ async function requireOwnSeat(
 }
 
 async function readTableStateVersion(firestore: Firestore, campaignId: string): Promise<number> {
-  const tableSnapshot = await firestore
-    .collection(COLLECTIONS.campaignTableProjections)
-    .doc(campaignId)
-    .get();
-  if (!tableSnapshot.exists) {
-    return 0;
+  const [tableSnapshot, seatSnapshot] = await Promise.all([
+    firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId).get(),
+    firestore
+      .collection(COLLECTIONS.campaignSeats)
+      .where('campaignId', '==', campaignId)
+      .limit(12)
+      .get(),
+  ]);
+  let checkpoint = 0;
+  if (tableSnapshot.exists) {
+    const data = tableSnapshot.data() as {
+      stateVersion?: number;
+      lastEventSequence?: number;
+    };
+    checkpoint = Math.max(data.stateVersion ?? 0, data.lastEventSequence ?? 0);
   }
-  const data = tableSnapshot.data() as {
-    stateVersion?: number;
-    lastEventSequence?: number;
-  };
-  return Math.max(data.stateVersion ?? 0, data.lastEventSequence ?? 0);
+  for (const doc of seatSnapshot.docs) {
+    const seat = doc.data() as { lastAcknowledgedEventSequence?: number };
+    checkpoint = Math.max(checkpoint, seat.lastAcknowledgedEventSequence ?? 0);
+  }
+  return checkpoint;
 }
 
 /** Resolves the starter pack for a stored campaign's pack id, or null for a blank table. */

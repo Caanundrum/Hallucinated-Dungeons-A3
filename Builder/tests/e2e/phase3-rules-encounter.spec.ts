@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
-import {enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
+import { recordDefaultSessionZero, enterAccountFromShell, readCandidate, openTableAdvancedControls} from './arena-page.js';
 
 async function signIn(page: Page): Promise<void> {
   await page.goto('/');
@@ -36,7 +36,8 @@ async function createCampaignAndSeat(page: Page): Promise<string> {
   const seatSelect = page.getByTestId('seat-character-select');
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
   expect(characterId).toBeTruthy();
-  await seatSelect.selectOption(characterId!);
+    await recordDefaultSessionZero(page);
+    await seatSelect.selectOption(characterId!);
   await page.getByTestId('create-seat').click();
   await expect(page.getByTestId('own-seat')).toBeVisible();
   return page.url().split('/').pop()!;

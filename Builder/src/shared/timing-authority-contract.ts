@@ -31,6 +31,7 @@ export const ACTIVE_TURN_PERMITTED_COMMANDS = [
   'encounter.begin',
   'initiative.roll',
   'encounter.next_turn',
+  'encounter.end',
   'combat.attack',
   'combat.cast_spell',
   'combat.death_save',

@@ -115,7 +115,7 @@ function classFeaturesForLevel(classId: string, level: number): readonly string[
   const features: string[] = [];
   if (classId === 'fighter') {
     if (level >= 1) features.push('Second Wind', 'Weapon Mastery');
-    if (level >= 2) features.push('Action Surge');
+    if (level >= 2) features.push('Action Surge', 'Tactical Mind');
     if (level >= 3) features.push('Fighter Subclass');
     if (level >= 5) features.push('Extra Attack');
     if (level >= 9) features.push('Indomitable');

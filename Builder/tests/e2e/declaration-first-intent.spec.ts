@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, openTableAdvancedControls } from './arena-page.js';
+import { recordDefaultSessionZero,  enterAccountFromShell, openTableAdvancedControls } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -30,7 +30,8 @@ async function seedMageAtTable(page: Page): Promise<void> {
   await page.getByTestId('create-campaign-submit').click();
   const seatSelect = page.getByTestId('seat-character-select');
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-  await seatSelect.selectOption(characterId!);
+    await recordDefaultSessionZero(page);
+    await seatSelect.selectOption(characterId!);
   await page.getByTestId('create-seat').click();
   await page.getByTestId('open-campaign-table').click();
 }
