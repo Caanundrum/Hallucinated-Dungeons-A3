@@ -1403,6 +1403,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+          ${
+            sessionIsSuspended()
+              ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
+              : ''
+          }
           ${initiativeStrip()}
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
           ${
@@ -1511,10 +1516,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             .map((cell) => ({ column: cell.column, row: cell.row }));
     return `
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
-      <p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>
       ${
         sessionIsSuspended()
-          ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
+          ? ''
+          : `<p class="composer-gate-hint" role="status" id="composer-gate-hint" data-testid="composer-gate-hint">${escapeHtml(gateHint)}</p>`
+      }
+      ${
+        sessionIsSuspended()
+          ? `<p class="message notice" data-testid="table-tools-suspended-hint">Session suspended — table tools stay read-only until you resume.</p>`
           : ''
       }
       <div class="table-a11y-panel" data-testid="table-a11y-panel">
@@ -1798,7 +1807,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     commandType: string,
     fields: RulesCommandFields = {},
   ): Promise<void> {
-    const setupCommand = commandType === 'encounter.begin' || commandType === 'initiative.roll';
+    const setupCommand =
+      commandType === 'encounter.begin' ||
+      commandType === 'initiative.roll' ||
+      commandType === 'encounter.end';
     if (candidate === null || tableState === null) {
       return;
     }

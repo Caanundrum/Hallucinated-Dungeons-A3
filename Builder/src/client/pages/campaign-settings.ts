@@ -434,6 +434,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           complete: completeSessionZero,
         },
       };
+      const sessionZeroAlreadyRecorded = draft.sessionZero.completed;
       busy = true;
       error = null;
       notice = null;
@@ -445,7 +446,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         });
         draft = structuredClone(settings);
         notice = completeSessionZero
-          ? settings.sessionZero.completed
+          ? sessionZeroAlreadyRecorded
             ? 'Session Zero updated and settings saved.'
             : 'Session Zero recorded and settings saved.'
           : 'Campaign settings saved.';

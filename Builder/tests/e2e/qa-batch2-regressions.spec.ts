@@ -97,7 +97,8 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('table-back').click();
     await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
     await expect(page.getByTestId('close-chapter')).toHaveAttribute('aria-disabled', 'true');
-    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('chapter-travel-hint')).toContainText(/encounter/i);
+    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'false');
     await page.getByTestId('suspend-session').click();
     await expect(page.getByTestId('campaign-detail-error')).toContainText(/encounter/i);
   });
@@ -112,6 +113,7 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('open-campaign-table').click();
     await openTableAdvancedControls(page);
     await expect(page.getByTestId('move-destination-select')).toBeVisible();
+    await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-empty')).toBeVisible();
     await openTablePresencePanel(page);
     await expect(page.getByTestId('presence-meta')).toContainText(/online \d+/);

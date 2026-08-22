@@ -253,9 +253,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       ownSeat !== null &&
       !encounterActive;
     const canSuspendSession =
-      memorySnapshot !== null &&
-      memorySnapshot.session.state !== 'suspended' &&
-      !encounterActive;
+      memorySnapshot !== null && memorySnapshot.session.state !== 'suspended';
     const canSeatCharacter = sessionZeroComplete;
 
     const nextStep =
@@ -407,7 +405,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  <p class="record-meta" data-testid="chapter-travel-hint">
                    ${
                      encounterActive
-                       ? 'End the active encounter on the table before closing this chapter.'
+                       ? 'End the active encounter on the table before closing this chapter or suspending the session.'
                        : memorySnapshot?.adventureTemplateId === null ||
                            memorySnapshot?.adventureTemplateId === undefined
                          ? ownSeat === null
