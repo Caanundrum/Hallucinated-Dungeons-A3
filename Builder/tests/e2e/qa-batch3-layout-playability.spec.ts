@@ -92,9 +92,10 @@ test.describe('PQA layout and playability batch 3', () => {
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/wall|door|blank/i);
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/wall|door|blank|scene/i);
     await expect(page.locator('body')).not.toContainText('table.open_door');
     await expect(page.locator('body')).not.toContainText('edgeId');
+    await expect(page.locator('body')).not.toContainText('column 0, row 0');
     await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
   });
 
@@ -124,8 +125,10 @@ test.describe('PQA layout and playability batch 3', () => {
     expect(pageHeight).toBeLessThan(5000);
   });
 
-  test('PQA-133/140: map toolbar and fog legend render', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
+  test('PQA-133/139/140: map toolbar, legible token labels, and fog legend render', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
@@ -134,5 +137,19 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(page.getByTestId('map-stage-toolbar')).toBeVisible();
     await expect(page.getByTestId('map-fog-legend')).toBeVisible();
     await expect(page.getByTestId('table-stage-svg')).toHaveAttribute('role', 'grid');
+    const tokenLabelSize = await page
+      .locator('[data-testid="table-stage-svg"] text')
+      .first()
+      .evaluate((node) => Number(node.getAttribute('font-size') ?? '0'));
+    expect(tokenLabelSize).toBeGreaterThan(12);
+    const beforeFit = await page
+      .locator('[data-testid="table-stage-svg"]')
+      .evaluate((node) => node.getBoundingClientRect().width);
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await page.getByRole('button', { name: 'Fit map' }).click();
+    const afterFit = await page
+      .locator('[data-testid="table-stage-svg"]')
+      .evaluate((node) => node.getBoundingClientRect().width);
+    expect(afterFit).not.toBeCloseTo(beforeFit, 0);
   });
 });

@@ -112,8 +112,15 @@ function tokenPixelBox(
   };
 }
 
-function tokenLabelFontSize(pixelsPerSquare: number): number {
-  return Math.max(10, Math.min(16, Math.round(pixelsPerSquare * 0.26)));
+function tokenLabelFontSize(
+  pixelsPerSquare: number,
+  hostWidth: number,
+  mapPixelWidth: number,
+): number {
+  const displayScale = hostWidth > 0 && mapPixelWidth > 0 ? hostWidth / mapPixelWidth : 1;
+  const minCssPx = 11;
+  const minSvgUnits = minCssPx / Math.max(displayScale, 0.35);
+  return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.34));
 }
 
 function paintSemanticSvg(
@@ -132,8 +139,7 @@ function paintSemanticSvg(
   const height = rows * pixelsPerSquare;
   const reduceMotion = prefersReducedMotion() || lowEffects;
   const nextBoxes = new Map<string, { x: number; y: number }>();
-
-  const labelSize = tokenLabelFontSize(pixelsPerSquare);
+  const labelSize = tokenLabelFontSize(pixelsPerSquare, host.clientWidth, width);
 
   const cells = map.cells
     .map((cell) => {
@@ -293,6 +299,24 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
   }
 
+  function fitMapToViewport(): void {
+    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    if (viewport === null || currentMap === null) {
+      applyZoom(1);
+      return;
+    }
+    const { columns, rows, pixelsPerSquare } = currentMap.coordinateSpace;
+    const mapWidth = columns * pixelsPerSquare;
+    const mapHeight = rows * pixelsPerSquare;
+    const fitScale = Math.min(
+      viewport.clientWidth / Math.max(mapWidth, 1),
+      viewport.clientHeight / Math.max(mapHeight, 1),
+      2.4,
+    );
+    applyZoom(Math.max(0.6, fitScale));
+    viewport.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }
+
   function bindToolbar(): void {
     host.querySelectorAll<HTMLButtonElement>('[data-map-zoom]').forEach((button) => {
       button.onclick = () => {
@@ -302,7 +326,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         } else if (mode === 'out') {
           applyZoom(zoomScale - 0.15);
         } else if (mode === 'fit') {
-          applyZoom(1);
+          fitMapToViewport();
         } else if (mode === 'center') {
           const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
           viewport?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
@@ -439,7 +463,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         text: token.label,
         style: {
           fill: 0x1a1208,
-          fontSize: tokenLabelFontSize(map.coordinateSpace.pixelsPerSquare),
+          fontSize: tokenLabelFontSize(
+            map.coordinateSpace.pixelsPerSquare,
+            host.clientWidth,
+            map.coordinateSpace.columns * map.coordinateSpace.pixelsPerSquare,
+          ),
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontWeight: '700',
         },

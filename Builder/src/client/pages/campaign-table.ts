@@ -117,6 +117,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let infoRailCollapsed = false;
   let commsRailCollapsed = false;
   let doorRecoveryVisible = false;
+  let lastSubmittedDeclaration = '';
   let activeTab: DockTab = 'party_chat';
   let memory: CampaignMemoryProjection | null = null;
   let tableNotes = '';
@@ -1514,6 +1515,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       : intentDraft.interceptState === 'failed'
                         ? `<p class="message error" data-testid="intent-intercept-failed">That action could not be completed. Edit your declaration and try again.</p>
                          <div class="action-composer-controls">
+                           <button type="button" data-testid="edit-failed-declaration" aria-disabled="${busy}">Edit declaration</button>
+                           <button type="button" data-testid="retry-failed-intent" aria-disabled="${busy}">Retry</button>
                            <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss</button>
                          </div>`
                         : intentDraft.proposedCommandType === 'table.sync' &&
@@ -2657,16 +2660,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             return;
           }
           const declaration = playerActionDraft.trim();
+          lastSubmittedDeclaration = declaration;
           busy = true;
           error = null;
           playerActionDraft = '';
           render();
           try {
+            const moveTargetForInterpret =
+              moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+                ? moveTarget
+                : undefined;
             const interpreted = await interpretNaturalLanguage({
               candidateId: candidate.candidateId,
               campaignId,
               text: declaration,
-              moveTarget,
+              ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
             });
             appendDmThread('player', 'You', declaration, 'declaration');
             const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
@@ -2926,6 +2934,57 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('click', () => {
         intentDraft = null;
         render();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="edit-failed-declaration"]')
+      ?.addEventListener('click', () => {
+        playerActionDraft = lastSubmittedDeclaration;
+        intentDraft = null;
+        error = null;
+        render();
+        const composer = root.querySelector<HTMLTextAreaElement>('[data-testid="player-action-input"]');
+        composer?.focus();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="retry-failed-intent"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || lastSubmittedDeclaration.trim().length === 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const declaration = lastSubmittedDeclaration.trim();
+            const moveTargetForInterpret =
+              moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+                ? moveTarget
+                : undefined;
+            const interpreted = await interpretNaturalLanguage({
+              candidateId: candidate.candidateId,
+              campaignId,
+              text: declaration,
+              ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
+            });
+            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            intentDraft = draftFromInterpret({
+              ...interpreted,
+              summary: scrubbedSummary,
+            });
+            shell.announce(`${directorIdentityLabel} prepared a fresh draft — confirm to resolve it.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? scrubPlayerFacingIntentCopy(failure.message)
+                : `${directorIdentityLabel} could not interpret that action right now.`;
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
       });
 
     root

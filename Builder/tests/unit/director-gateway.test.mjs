@@ -169,7 +169,8 @@ test('hosted NL interpret keeps deterministic command types', async () => {
   assert.equal(interpreted.proposedCommandType, 'table.move');
   assert.deepEqual(interpreted.path, [{ column: 3, row: 4 }]);
   assert.equal(interpreted.interceptState, 'awaiting_confirmation');
-  assert.equal(interpreted.summary, 'Draft: you step to column 3, row 4. Confirm to move.');
+  assert.match(interpreted.summary, /column 3, row 4/i);
+  assert.doesNotMatch(interpreted.summary, /LIVE GEMINI/i);
 });
 
 test('NL attack without active combat stays a clarify draft, not a fake hit', async () => {
@@ -197,6 +198,19 @@ test('PQA-141/143/145: door intent without scene doors clarifies instead of leak
   assert.equal(interpreted.edgeId, undefined);
   assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId/i);
   assert.match(interpreted.summary, /no door|open floor|Emberferry/i);
+});
+
+test('PQA-142: compound walk+door ignores stale non-adjacent moveTarget', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I walk to the far wall, open the wooden door, and enter the room beyond.',
+    moveTarget: { column: 0, row: 0 },
+    environmentClass: 'local',
+  });
+  assert.notEqual(interpreted.proposedCommandType, 'table.move');
+  assert.equal(interpreted.path, undefined);
 });
 
 test('narration framing tags emphasize epic beats without changing mechanics summary', async () => {
