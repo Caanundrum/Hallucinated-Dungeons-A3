@@ -478,12 +478,6 @@ a.account-chip-label:focus-visible {
   align-items: stretch;
 }
 
-.table-action-bar-inner.table-action-bar-dm {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: stretch;
-}
-
 .dm-play-thread {
   max-height: min(28vh, 16rem);
   overflow: auto;
