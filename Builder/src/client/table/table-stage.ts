@@ -112,11 +112,16 @@ function tokenPixelBox(
   };
 }
 
+function tokenLabelFontSize(pixelsPerSquare: number): number {
+  return Math.max(10, Math.min(16, Math.round(pixelsPerSquare * 0.26)));
+}
+
 function paintSemanticSvg(
   host: HTMLElement,
   map: MapBundleProjection,
   moveTarget: MapSquareCoordinate | null,
   priorTokenBoxes: Map<string, { x: number; y: number }>,
+  zoomScale: number,
 ): Map<string, { x: number; y: number }> {
   const lowEffects =
     document.documentElement.classList.contains('hd-low-effects') ||
@@ -127,6 +132,8 @@ function paintSemanticSvg(
   const height = rows * pixelsPerSquare;
   const reduceMotion = prefersReducedMotion() || lowEffects;
   const nextBoxes = new Map<string, { x: number; y: number }>();
+
+  const labelSize = tokenLabelFontSize(pixelsPerSquare);
 
   const cells = map.cells
     .map((cell) => {
@@ -141,7 +148,8 @@ function paintSemanticSvg(
         moveTarget.row === cell.row
           ? ' map-square-selected'
           : '';
-      return `<rect data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${fogClass}${selected}" />`;
+      const blocked = cell.terrain === 'blocked';
+      return `<rect role="gridcell" tabindex="0" aria-label="Square ${cell.column + 1}, ${cell.row + 1}${blocked ? ', blocked' : cell.terrain === 'difficult' ? ', difficult' : ''}${cell.known ? '' : ', unexplored'}" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${fogClass}${selected}" />`;
     })
     .join('');
   const gridLines: string[] = [];
@@ -197,7 +205,7 @@ function paintSemanticSvg(
         : 'translate(0px, 0px)';
       return `<g data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
         <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="8" fill="#f0c043" stroke="#1a1208" stroke-width="2" />
-        <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="12" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
+        <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="${labelSize}" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
       </g>`;
     })
     .join('');
@@ -220,14 +228,29 @@ function paintSemanticSvg(
     wrap.className = 'table-stage-semantic';
     host.appendChild(wrap);
   }
-  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
-    <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
-    <g data-layer="terrain_art">${cells}</g>
-    <g data-layer="grid_reference">${gridLines.join('')}</g>
-    <g data-layer="structural_underlays">${edges}</g>
-    <g data-layer="tokens_entities">${tokens}</g>
-    <g data-layer="overhead_environment" data-testid="table-stage-notable-features">${features}</g>
-  </svg>`;
+  wrap.innerHTML = `
+    <div class="table-stage-toolbar" data-testid="map-stage-toolbar">
+      <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
+      <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" data-map-zoom="fit" aria-label="Fit map">Fit</button>
+      <button type="button" data-map-zoom="center" aria-label="Center map">Center</button>
+    </div>
+    <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" style="transform: scale(${zoomScale}); transform-origin: center center;">
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
+        <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
+        <g data-layer="terrain_art">${cells}</g>
+        <g data-layer="grid_reference">${gridLines.join('')}</g>
+        <g data-layer="structural_underlays">${edges}</g>
+        <g data-layer="tokens_entities">${tokens}</g>
+        <g data-layer="overhead_environment" data-testid="table-stage-notable-features">${features}</g>
+      </svg>
+    </div>
+    <div class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend">
+      <span><span class="swatch" style="background:#2a241c"></span> Floor</span>
+      <span><span class="swatch" style="background:#3a3328"></span> Difficult</span>
+      <span><span class="swatch" style="background:#1a1410"></span> Blocked</span>
+      <span><span class="swatch" style="background:#050403"></span> Unexplored</span>
+    </div>`;
 
   if (!reduceMotion) {
     requestAnimationFrame(() => {
@@ -259,6 +282,34 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let root: Container | null = null;
   let layers: Record<WebGlRenderLayer, Container> | null = null;
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
+  let zoomScale = 1;
+
+  function applyZoom(next: number): void {
+    zoomScale = Math.max(0.6, Math.min(2.4, next));
+    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    if (viewport !== null) {
+      viewport.style.transform = `scale(${zoomScale})`;
+      viewport.style.transformOrigin = 'center center';
+    }
+  }
+
+  function bindToolbar(): void {
+    host.querySelectorAll<HTMLButtonElement>('[data-map-zoom]').forEach((button) => {
+      button.onclick = () => {
+        const mode = button.getAttribute('data-map-zoom');
+        if (mode === 'in') {
+          applyZoom(zoomScale + 0.15);
+        } else if (mode === 'out') {
+          applyZoom(zoomScale - 0.15);
+        } else if (mode === 'fit') {
+          applyZoom(1);
+        } else if (mode === 'center') {
+          const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+          viewport?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        }
+      };
+    });
+  }
 
   function bindSquareClicks(): void {
     host.querySelectorAll<SVGRectElement>('rect[data-square]').forEach((rect) => {
@@ -272,6 +323,27 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         const row = Number(rowText);
         if (!Number.isInteger(column) || !Number.isInteger(row)) return;
         squareClickHandler({ column, row });
+      };
+      rect.onkeydown = (event) => {
+        const raw = rect.getAttribute('data-square');
+        if (raw === null) return;
+        const [columnText, rowText] = raw.split(',');
+        let column = Number(columnText);
+        let row = Number(rowText);
+        if (!Number.isInteger(column) || !Number.isInteger(row)) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          squareClickHandler?.({ column, row });
+          return;
+        }
+        if (event.key === 'ArrowLeft') column -= 1;
+        else if (event.key === 'ArrowRight') column += 1;
+        else if (event.key === 'ArrowUp') row -= 1;
+        else if (event.key === 'ArrowDown') row += 1;
+        else return;
+        event.preventDefault();
+        const next = host.querySelector<SVGRectElement>(`rect[data-square="${column},${row}"]`);
+        next?.focus();
       };
     });
   }
@@ -367,7 +439,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         text: token.label,
         style: {
           fill: 0x1a1208,
-          fontSize: 12,
+          fontSize: tokenLabelFontSize(map.coordinateSpace.pixelsPerSquare),
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontWeight: '700',
         },
@@ -405,9 +477,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   function paint(map: MapBundleProjection): void {
     currentMap = map;
-    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, priorTokenBoxes);
+    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, priorTokenBoxes, zoomScale);
     paintPixi(map);
     bindSquareClicks();
+    bindToolbar();
   }
 
   try {

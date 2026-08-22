@@ -311,6 +311,19 @@ a.account-chip-label:focus-visible {
   align-items: stretch;
 }
 
+.table-dashboard-body.table-focus-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.table-dashboard-body.table-focus-mode .table-info-rail.is-collapsed,
+.table-dashboard-body.table-focus-mode .table-comms-rail.is-collapsed {
+  display: none;
+}
+
+.table-dashboard-body.table-focus-mode .table-stage-frame {
+  min-height: min(68vh, 38rem);
+}
+
 .table-info-rail,
 .table-comms-rail {
   display: flex;
@@ -326,6 +339,21 @@ a.account-chip-label:focus-visible {
 .table-comms-rail.is-collapsed {
   max-height: none;
   overflow: visible;
+  min-width: 0;
+  padding: var(--space-2);
+}
+
+.table-focus-restore {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.table-focus-restore button {
+  font-size: 0.82rem;
+  padding: var(--space-1) var(--space-2);
+  min-height: 32px;
 }
 
 .table-rail-collapse {
@@ -362,9 +390,11 @@ a.account-chip-label:focus-visible {
   border: var(--border-weight) solid transparent;
   color: var(--text-secondary);
   border-radius: var(--radius-control);
-  padding: var(--space-2) var(--space-3);
-  min-height: 36px;
-  font-size: 0.88rem;
+  padding: var(--space-1) var(--space-2);
+  min-height: 32px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .info-rail-tab:hover {
@@ -424,11 +454,9 @@ a.account-chip-label:focus-visible {
   flex-shrink: 0;
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  position: sticky;
-  bottom: 0;
+  position: relative;
   z-index: 4;
-  background: color-mix(in srgb, var(--obsidian-surface) 92%, transparent);
-  backdrop-filter: blur(6px);
+  background: var(--obsidian-surface);
 }
 
 .table-action-bar-inner {
@@ -450,14 +478,14 @@ a.account-chip-label:focus-visible {
   align-items: stretch;
 }
 
-@media (min-width: 1101px) {
-  .table-action-bar-inner.table-action-bar-dm {
-    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
-  }
+.table-action-bar-inner.table-action-bar-dm {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: stretch;
 }
 
 .dm-play-thread {
-  max-height: 140px;
+  max-height: min(28vh, 16rem);
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -723,8 +751,8 @@ a.account-chip-label:focus-visible {
 
   .table-action-bar {
     order: 2;
-    position: sticky;
-    bottom: env(safe-area-inset-bottom, 0px);
+    position: relative;
+    bottom: auto;
   }
 
   .table-comms-rail {
@@ -2039,8 +2067,11 @@ html.hd-low-effects .map-square-fog,
   border: var(--border-weight) solid transparent;
   color: var(--text-secondary);
   border-radius: var(--radius-control);
-  padding: var(--space-2) var(--space-4);
-  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  min-height: 36px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .dock-tab:hover {
@@ -2135,11 +2166,48 @@ html.hd-low-effects .map-square-fog,
 }
 
 .table-character-sheet-panel {
-  margin: var(--space-4) 0;
+  margin: 0;
   border: var(--border-weight) solid var(--structural-border);
   border-radius: var(--radius-panel);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: var(--obsidian-surface);
+}
+
+.table-character-compact {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.table-character-sheet-panel .sheet-layout {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-character-sheet-panel .sheet-column {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .table-character-sheet-panel:not([open]) + .table-character-compact {
+    margin-bottom: 0;
+  }
+}
+
+.door-recovery-panel {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px dashed var(--structural-border);
+  border-radius: var(--radius-control);
+}
+
+.door-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .table-character-sheet-panel summary {
@@ -2354,11 +2422,57 @@ html.hd-low-effects .map-square-fog,
 .table-stage-semantic {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-2);
   pointer-events: auto;
   z-index: 2;
+}
+
+.table-stage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+  flex-shrink: 0;
+}
+
+.table-stage-toolbar button {
+  font-size: 0.78rem;
+  padding: var(--space-1) var(--space-2);
+  min-height: 30px;
+}
+
+.table-stage-svg-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+}
+
+.map-fog-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.map-fog-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.map-fog-legend .swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--structural-border) 80%, transparent);
 }
 
 .table-stage-semantic svg {
@@ -2371,6 +2485,12 @@ html.hd-low-effects .map-square-fog,
 .table-stage-semantic rect[data-square] {
   pointer-events: auto;
   cursor: pointer;
+  outline: none;
+}
+
+.table-stage-semantic rect[data-square]:focus-visible {
+  stroke: var(--focus-cyan, #6cf);
+  stroke-width: 2;
 }
 
 .table-stage-semantic rect.map-square-selected {

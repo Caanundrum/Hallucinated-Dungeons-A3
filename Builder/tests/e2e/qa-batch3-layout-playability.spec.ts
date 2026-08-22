@@ -76,14 +76,14 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(page.getByTestId('collapse-comms-rail')).toBeVisible();
   });
 
-  test('PQA-141/143/145: blank-table door declaration clarifies without command leak', async ({
+  test('PQA-141/143/145: blank-table door declaration offers build_scene draft', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
-    await seatBlankCampaign(page, 'DoorClarify');
+    await seatBlankCampaign(page, 'DoorBuild');
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table|no seeded/i);
     await page.getByTestId('player-action-input').fill(
@@ -91,9 +91,48 @@ test.describe('PQA layout and playability batch 3', () => {
     );
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
-    await expect(page.getByTestId('dm-play-thread')).toContainText(/no door|open floor|Emberferry/i);
+    await expect(page.getByTestId('intent-intercept')).toBeVisible();
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/wall|door|blank/i);
     await expect(page.locator('body')).not.toContainText('table.open_door');
     await expect(page.locator('body')).not.toContainText('edgeId');
-    await expect(page.getByTestId('confirm-intent-intercept')).toHaveCount(0);
+    await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
+  });
+
+  test('PQA-130/151: phone composer does not overlap map; compact character sheet', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'PhoneLayout');
+    await page.getByTestId('open-campaign-table').click();
+    const stage = page.getByTestId('table-stage-slot');
+    const composer = page.getByTestId('table-player-turn-composer');
+    await expect(stage).toBeVisible();
+    await expect(composer).toBeVisible();
+    const stageBox = await stage.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(stageBox).toBeTruthy();
+    expect(composerBox).toBeTruthy();
+    expect(composerBox!.y).toBeGreaterThanOrEqual(stageBox!.y + stageBox!.height - 4);
+
+    await page.getByTestId('table-info-tab-character').click();
+    await expect(page.getByTestId('table-character-compact')).toBeVisible();
+    await expect(page.getByTestId('table-character-sheet-panel')).not.toHaveAttribute('open', '');
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(pageHeight).toBeLessThan(5000);
+  });
+
+  test('PQA-133/140: map toolbar and fog legend render', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'MapUx');
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-stage-toolbar')).toBeVisible();
+    await expect(page.getByTestId('map-fog-legend')).toBeVisible();
+    await expect(page.getByTestId('table-stage-svg')).toHaveAttribute('role', 'grid');
   });
 });
