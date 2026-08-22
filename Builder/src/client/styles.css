@@ -563,6 +563,11 @@ a.account-chip-label:focus-visible {
   width: 100%;
 }
 
+.table-action-bar .table-player-turn-composer [data-testid='action-channel-hint'] {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .table-action-bar .table-action-field {
   margin: 0;
   min-width: 0;

@@ -1504,6 +1504,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ${
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
+                <p class="record-meta" data-testid="action-channel-hint">
+                  This is the play channel — declarations can change the table. Chat stays social; Ask the Director is advice only.
+                </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="2"
@@ -1523,10 +1526,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       : ''
                   }
                 </div>
-              </div>
-              <p class="record-meta" data-testid="action-channel-hint">
-                This is the play channel — declarations can change the table. Chat stays social; Ask the Director is advice only.
-              </p>`
+              </div>`
             : `<div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
                 <p class="record-meta">${
                   seated

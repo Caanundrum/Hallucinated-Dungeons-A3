@@ -32,7 +32,8 @@ async function seatBlankCampaign(page: Page, name: string): Promise<void> {
   const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
   await seatSelect.selectOption(characterId!);
   await page.getByTestId('create-seat').click();
-  await expect(page.getByTestId('seat-row')).toBeVisible();
+  await expect(page.getByTestId('own-seat')).toBeVisible();
+  await expect(page.getByTestId('leave-seat')).toBeVisible();
 }
 
 test.describe('PQA layout and playability batch 3', () => {
