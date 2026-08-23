@@ -616,8 +616,50 @@ export function mountCharacterCreatePage(host: PageHost): void {
               .join('')}
           </div>`,
           )
-          .join('')}`
+          .join('')}${
+        state.draft.choices.speciesId === 'human' && state.options.originFeatOptions !== null
+          ? `
+        <h3>Versatile — choose an Origin feat</h3>
+        <p class="step-helper">Humans gain one additional Origin feat from the SRD roster.</p>
+        ${optionList({
+          name: 'origin-feat',
+          testId: 'origin-feat-options',
+          entries: state.options.originFeatOptions,
+          selected: state.draft.choices.chosenOriginFeatId,
+        })}`
+          : ''
+      }`
       }`;
+  }
+
+  function renderMagicInitiateSection(options: {
+    readonly title: string;
+    readonly testIdPrefix: string;
+    readonly detail: NonNullable<DraftResponse['options']['backgroundFeatDetail']>;
+    readonly cantripIds: readonly string[];
+    readonly spellIds: readonly string[];
+    readonly cantripName: string;
+    readonly spellName: string;
+  }): string {
+    return `
+      <h3>${escapeHtml(options.title)}</h3>
+      <p>Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list.</p>
+      <h4>Cantrips</h4>
+      ${checkboxList({
+        name: options.cantripName,
+        testId: `${options.testIdPrefix}-cantrip-options`,
+        entries: options.detail.cantripOptions,
+        selected: options.cantripIds,
+        maxChoose: options.detail.cantripsKnown,
+      })}
+      <h4>Level 1 spell</h4>
+      ${checkboxList({
+        name: options.spellName,
+        testId: `${options.testIdPrefix}-spell-options`,
+        entries: options.detail.spellOptions,
+        selected: options.spellIds,
+        maxChoose: options.detail.spellsKnown,
+      })}`;
   }
 
   function renderAbilitiesStep(): string {
@@ -828,6 +870,32 @@ export function mountCharacterCreatePage(host: PageHost): void {
           .join('')}
       </ul>
       ${classChoices}
+      ${
+        state.options.backgroundFeatDetail === null
+          ? ''
+          : renderMagicInitiateSection({
+              title: `${state.options.backgroundFeatDetail.label} (Background)`,
+              testIdPrefix: 'background-feat',
+              detail: state.options.backgroundFeatDetail,
+              cantripIds: state.draft.choices.backgroundFeatCantripIds,
+              spellIds: state.draft.choices.backgroundFeatSpellIds,
+              cantripName: 'background-feat-cantrip',
+              spellName: 'background-feat-spell',
+            })
+      }
+      ${
+        state.options.originFeatDetail === null
+          ? ''
+          : renderMagicInitiateSection({
+              title: `${state.options.originFeatDetail.label} (Versatile)`,
+              testIdPrefix: 'origin-feat',
+              detail: state.options.originFeatDetail,
+              cantripIds: state.draft.choices.originFeatCantripIds,
+              spellIds: state.draft.choices.originFeatSpellIds,
+              cantripName: 'origin-feat-cantrip',
+              spellName: 'origin-feat-spell',
+            })
+      }
       ${spells}`;
   }
 
@@ -1195,10 +1263,21 @@ export function mountCharacterCreatePage(host: PageHost): void {
             backgroundId: value,
             backgroundAbilityBonuses: {},
             backgroundEquipmentOptionId: null,
+            backgroundFeatCantripIds: [],
+            backgroundFeatSpellIds: [],
           };
         },
       ],
-      ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {} })],
+      [
+        'origin-feat',
+        (value) => ({
+          ...latestChoices(),
+          chosenOriginFeatId: value,
+          originFeatCantripIds: [],
+          originFeatSpellIds: [],
+        }),
+      ],
+      ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {}, chosenOriginFeatId: null, originFeatCantripIds: [], originFeatSpellIds: [] })],
       ['class-equipment', (value) => ({ ...latestChoices(), classEquipmentOptionId: value })],
       [
         'background-equipment',
@@ -1266,6 +1345,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     for (const [name, key, maxOf] of [
       ['cantrip', 'cantripIds', () => state.options.classDetail?.spellcasting?.cantripsKnown],
       ['spell', 'spellIds', () => state.options.classDetail?.spellcasting?.spellsAvailable],
+      ['background-feat-cantrip', 'backgroundFeatCantripIds', () => state.options.backgroundFeatDetail?.cantripsKnown],
+      ['background-feat-spell', 'backgroundFeatSpellIds', () => state.options.backgroundFeatDetail?.spellsKnown],
+      ['origin-feat-cantrip', 'originFeatCantripIds', () => state.options.originFeatDetail?.cantripsKnown],
+      ['origin-feat-spell', 'originFeatSpellIds', () => state.options.originFeatDetail?.spellsKnown],
     ] as const) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
         input.addEventListener('change', () => {

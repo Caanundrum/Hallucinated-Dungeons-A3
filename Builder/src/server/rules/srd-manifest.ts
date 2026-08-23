@@ -972,6 +972,11 @@ export interface QuickStartTemplate {
   readonly backgroundEquipmentOptionId: string;
   readonly cantripIds: readonly string[];
   readonly spellIds: readonly string[];
+  readonly chosenOriginFeatId?: string | null;
+  readonly backgroundFeatCantripIds?: readonly string[];
+  readonly backgroundFeatSpellIds?: readonly string[];
+  readonly originFeatCantripIds?: readonly string[];
+  readonly originFeatSpellIds?: readonly string[];
 }
 
 export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
@@ -996,6 +1001,9 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     speciesChoiceIds: { 'human-skillful': 'athletics' }, classChoiceIds: { 'divine-order': ['protector'] },
     classEquipmentOptionId: 'cleric-a', backgroundEquipmentOptionId: 'acolyte-kit',
     cantripIds: ['guidance', 'sacred-flame', 'light'], spellIds: ['cure-wounds', 'bless', 'guiding-bolt', 'healing-word'],
+    chosenOriginFeatId: 'Tough',
+    backgroundFeatCantripIds: ['thaumaturgy', 'spare-the-dying'],
+    backgroundFeatSpellIds: ['command'],
   },
   {
     id: 'shadow-scout', label: 'Shadow Scout',
@@ -1019,8 +1027,39 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     classEquipmentOptionId: 'wizard-a', backgroundEquipmentOptionId: 'sage-kit',
     cantripIds: ['fire-bolt', 'mage-hand', 'prestidigitation'],
     spellIds: ['burning-hands', 'shield', 'magic-missile', 'sleep'],
+    backgroundFeatCantripIds: ['ray-of-frost', 'shocking-grasp'],
+    backgroundFeatSpellIds: ['detect-magic'],
   },
 ];
+
+/** Every distinct Origin feat granted by a Background on the SRD roster. */
+export const ORIGIN_FEAT_OPTIONS: readonly { readonly id: string; readonly label: string; readonly summary: string }[] =
+  Array.from(new Set(BACKGROUNDS.map((entry) => entry.originFeat)))
+    .sort((a, b) => a.localeCompare(b))
+    .map((label) => ({
+      id: label,
+      label,
+      summary: label.startsWith('Magic Initiate')
+        ? 'Learn two cantrips and one level 1 spell from the listed spell list.'
+        : 'Origin feat granted by a Background on the SRD roster.',
+    }));
+
+export const MAGIC_INITIATE_CANTRIPS_KNOWN = 2;
+export const MAGIC_INITIATE_SPELLS_KNOWN = 1;
+
+/** Spell list id for Magic Initiate (Wizard|Cleric|Druid), or null when not a MI feat. */
+export function magicInitiateSpellListId(originFeat: string | null): string | null {
+  if (originFeat === 'Magic Initiate (Wizard)') {
+    return 'wizard';
+  }
+  if (originFeat === 'Magic Initiate (Cleric)') {
+    return 'cleric';
+  }
+  if (originFeat === 'Magic Initiate (Druid)') {
+    return 'druid';
+  }
+  return null;
+}
 
 export function findQuickStartTemplate(id: string): QuickStartTemplate | null {
   return QUICK_START_TEMPLATES.find((entry) => entry.id === id) ?? null;

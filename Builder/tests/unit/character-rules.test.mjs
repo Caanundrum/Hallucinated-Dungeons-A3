@@ -16,6 +16,7 @@ import {
   CLASSES,
   SPECIES,
   findClass,
+  magicInitiateSpellListId,
   spellsForList,
 } from '../../dist/server/rules/srd-manifest.js';
 import { STANDARD_ARRAY, abilityModifier } from '../../dist/shared/character-contract.js';
@@ -32,8 +33,10 @@ import { STANDARD_ARRAY, abilityModifier } from '../../dist/shared/character-con
 /** Builds a complete, legal character for the named class. */
 function legalCharacterFor(classId, overrides = {}) {
   const classRecord = findClass(classId);
-  const background = BACKGROUNDS[0];
-  const species = SPECIES.find((entry) => entry.id === 'human');
+  const background = BACKGROUNDS.find((entry) => entry.id === overrides.backgroundId) ?? BACKGROUNDS[0];
+  const species =
+    SPECIES.find((entry) => entry.id === overrides.speciesId) ??
+    SPECIES.find((entry) => entry.id === 'human');
 
   const skillPool =
     classRecord.skillChoiceIds.length === 0
@@ -66,7 +69,21 @@ function legalCharacterFor(classId, overrides = {}) {
     ? []
     : spellsForList(casting.spellListId, 1).slice(0, casting.spellsAvailable).map((spell) => spell.id);
 
-  return {
+  const backgroundMagicListId = magicInitiateSpellListId(background.originFeat);
+  const backgroundFeatCantripIds =
+    backgroundMagicListId === null
+      ? []
+      : spellsForList(backgroundMagicListId, 0).slice(0, 2).map((spell) => spell.id);
+  const backgroundFeatSpellIds =
+    backgroundMagicListId === null
+      ? []
+      : spellsForList(backgroundMagicListId, 1).slice(0, 1).map((spell) => spell.id);
+
+  const chosenOriginFeatId =
+    species.id === 'human' ? (overrides.chosenOriginFeatId ?? 'Tough') : null;
+  const humanMagicListId = magicInitiateSpellListId(chosenOriginFeatId);
+
+  const base = {
     ...emptyChoices(),
     classId,
     backgroundId: background.id,
@@ -87,9 +104,26 @@ function legalCharacterFor(classId, overrides = {}) {
     backgroundEquipmentOptionId: background.equipmentOptions[0].id,
     cantripIds,
     spellIds,
+    chosenOriginFeatId,
+    backgroundFeatCantripIds,
+    backgroundFeatSpellIds,
+    originFeatCantripIds:
+      humanMagicListId === null ? [] : spellsForList(humanMagicListId, 0).slice(0, 2).map((spell) => spell.id),
+    originFeatSpellIds:
+      humanMagicListId === null ? [] : spellsForList(humanMagicListId, 1).slice(0, 1).map((spell) => spell.id),
     classChoiceIds,
     identity: { name: 'Test Character', pronouns: 'they/them', appearance: '', concept: '' },
-    ...overrides,
+  };
+  const merged = { ...base, ...overrides };
+  const finalSpecies = SPECIES.find((entry) => entry.id === merged.speciesId) ?? species;
+  return {
+    ...merged,
+    chosenOriginFeatId:
+      finalSpecies.id !== 'human'
+        ? null
+        : 'chosenOriginFeatId' in overrides
+          ? overrides.chosenOriginFeatId ?? null
+          : merged.chosenOriginFeatId ?? 'Tough',
   };
 }
 
@@ -363,6 +397,51 @@ test('background-granted class skills are dropped so wizard plus sage stays lega
     !repairedProblems.some((problem) => problem.step === 'class'),
     'class skill overlap and count should be resolved after sanitization',
   );
+});
+
+test('magic initiate backgrounds require feat cantrip and spell picks', () => {
+  const incomplete = {
+    ...emptyChoices(),
+    classId: 'wizard',
+    backgroundId: 'sage',
+    speciesId: 'dwarf',
+    classSkillIds: ['insight', 'investigation'],
+    backgroundAbilityBonuses: { intelligence: 2, constitution: 1 },
+    classEquipmentOptionId: 'wizard-a',
+    backgroundEquipmentOptionId: 'sage-kit',
+    cantripIds: ['fire-bolt', 'mage-hand', 'prestidigitation'],
+    spellIds: ['burning-hands', 'shield', 'magic-missile', 'sleep'],
+  };
+  const problems = validateChoices(incomplete);
+  assert.ok(problems.some((problem) => problem.code === 'BACKGROUND_FEAT_CANTRIP_COUNT'));
+  assert.ok(problems.some((problem) => problem.code === 'BACKGROUND_FEAT_SPELL_COUNT'));
+
+  const complete = {
+    ...incomplete,
+    backgroundFeatCantripIds: ['ray-of-frost', 'shocking-grasp'],
+    backgroundFeatSpellIds: ['detect-magic'],
+    identity: { name: 'Sage Wizard', pronouns: 'they/them', appearance: '', concept: '' },
+    baseAbilityScores: {
+      strength: 8,
+      dexterity: 14,
+      constitution: 13,
+      intelligence: 15,
+      wisdom: 12,
+      charisma: 10,
+    },
+  };
+  assert.ok(
+    !validateChoices(complete).some((problem) => problem.code.startsWith('BACKGROUND_FEAT_')),
+    'background magic initiate picks should satisfy feat validation',
+  );
+});
+
+test('humans must choose a versatile origin feat', () => {
+  const incomplete = legalCharacterFor('fighter', { speciesId: 'human', chosenOriginFeatId: null });
+  assert.ok(validateChoices(incomplete).some((problem) => problem.code === 'ORIGIN_FEAT_REQUIRED'));
+
+  const withFeat = legalCharacterFor('fighter', { speciesId: 'human', chosenOriginFeatId: 'Tough' });
+  assert.ok(!validateChoices(withFeat).some((problem) => problem.code === 'ORIGIN_FEAT_REQUIRED'));
 });
 
 test('spells must come from the class list, in the right number', () => {

@@ -437,6 +437,11 @@ export async function updateCampaignSettings(options: {
       if (next.sessionZero.textChatExpectations.trim().length === 0) {
         throw new CampaignValidationError('Text-chat expectations are required for Session Zero.');
       }
+      if (next.safetyBoundaries.trim().length === 0) {
+        throw new CampaignValidationError(
+          'Record at least one line, veil, or safety boundary before recording Session Zero.',
+        );
+      }
       if (!next.sessionZero.completed) {
         next.sessionZero.completed = true;
         next.sessionZero.completedAt = new Date();

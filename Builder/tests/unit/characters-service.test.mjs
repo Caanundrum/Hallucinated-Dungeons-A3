@@ -27,6 +27,11 @@ function choicesFromTemplate(template) {
     backgroundEquipmentOptionId: template.backgroundEquipmentOptionId,
     cantripIds: template.cantripIds,
     spellIds: template.spellIds,
+    chosenOriginFeatId: template.chosenOriginFeatId ?? null,
+    backgroundFeatCantripIds: template.backgroundFeatCantripIds ?? [],
+    backgroundFeatSpellIds: template.backgroundFeatSpellIds ?? [],
+    originFeatCantripIds: template.originFeatCantripIds ?? [],
+    originFeatSpellIds: template.originFeatSpellIds ?? [],
     identity: {
       name: `${template.label} Test`,
       pronouns: 'they/them',

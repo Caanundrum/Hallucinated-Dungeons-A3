@@ -96,6 +96,11 @@ function normalizeChoices(choices: CharacterChoices): CharacterChoices {
     classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
     cantripIds: choices.cantripIds ?? base.cantripIds,
     spellIds: choices.spellIds ?? base.spellIds,
+    chosenOriginFeatId: choices.chosenOriginFeatId ?? base.chosenOriginFeatId,
+    backgroundFeatCantripIds: choices.backgroundFeatCantripIds ?? base.backgroundFeatCantripIds,
+    backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
+    originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
+    originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
     identity: choices.identity ?? base.identity,
     rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
     abilityRollAttempts:
@@ -313,6 +318,11 @@ export async function applyQuickStart(options: {
     backgroundEquipmentOptionId: template.backgroundEquipmentOptionId,
     cantripIds: template.cantripIds,
     spellIds: template.spellIds,
+    chosenOriginFeatId: template.chosenOriginFeatId ?? null,
+    backgroundFeatCantripIds: template.backgroundFeatCantripIds ?? [],
+    backgroundFeatSpellIds: template.backgroundFeatSpellIds ?? [],
+    originFeatCantripIds: template.originFeatCantripIds ?? [],
+    originFeatSpellIds: template.originFeatSpellIds ?? [],
     // Identity is intentionally left empty: the player supplies it at the
     // final review step, exactly as the custom path requires.
     identity: stored.choices.identity,

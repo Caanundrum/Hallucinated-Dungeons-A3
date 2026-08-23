@@ -1314,7 +1314,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dock-pane" data-testid="party-chat-pane">
         ${
           spotlight === null
-            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is open — Speak as Character and name them (for example Lysa Quill).</p>'
+            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is for in-character roleplay. Messages here are player-authored, not Director canon — name an NPC (for example Lysa Quill) when you Speak as Character.</p>'
             : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
                 <p data-testid="npc-spotlight-meta">
                   Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:

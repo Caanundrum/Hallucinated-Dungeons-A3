@@ -519,7 +519,12 @@ export async function interpretNaturalLanguageIntent(options: {
       if (self !== null) targetCombatantId = self.combatantId;
       summary = `Ready to cast ${matchedSpell.label} on yourself. Confirm to resolve with the engine.`;
     } else if (target === null) {
-      summary = `Ready to cast ${matchedSpell.label}, but name which foe (for example Training Dummy or Practice Goblin).`;
+      const foeHint =
+        foes
+          .slice(0, 2)
+          .map((foe) => foe.name)
+          .join(' or ') || 'a foe in the encounter';
+      summary = `Ready to cast ${matchedSpell.label}, but name which foe (for example ${foeHint}).`;
       proposedCommandType = 'table.sync';
     } else {
       proposedCommandType = 'combat.cast_spell';
@@ -534,7 +539,12 @@ export async function interpretNaturalLanguageIntent(options: {
         'That sounds like an attack, but combat is not active. Begin encounter and roll initiative, then declare the attack again.';
       proposedCommandType = 'table.sync';
     } else if (target === null) {
-      summary = 'Say who you attack (Training Dummy or Practice Goblin), then declare again.';
+      const foeHint =
+        foes
+          .slice(0, 2)
+          .map((foe) => foe.name)
+          .join(' or ') || 'a foe in the encounter';
+      summary = `Say who you attack (${foeHint}), then declare again.`;
       proposedCommandType = 'table.sync';
     } else {
       proposedCommandType = 'combat.attack';

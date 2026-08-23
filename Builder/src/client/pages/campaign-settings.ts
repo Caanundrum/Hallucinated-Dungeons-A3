@@ -110,7 +110,8 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           </ul>
           <label class="field">
             <span>Lines, veils, and safety boundaries</span>
-            <textarea data-testid="safety-boundaries" rows="3" ${disabled ? 'disabled' : ''}>${escapeHtml(draft.safetyBoundaries)}</textarea>
+            <textarea data-testid="safety-boundaries" rows="3" placeholder="Example: No harm to children on screen. Fade to black for romance." ${disabled ? 'disabled' : ''}>${escapeHtml(draft.safetyBoundaries)}</textarea>
+            <span class="record-meta">Required when you record Session Zero. List at least one line, veil, or boundary your table agrees on.</span>
           </label>
         </section>
 
@@ -160,6 +161,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <input type="number" data-testid="reaction-window"
               min="${REACTION_WINDOW_SECONDS_MIN}" max="${REACTION_WINDOW_SECONDS_MAX}"
               value="${draft.reactionWindowSeconds}" ${disabled ? 'disabled' : ''} />
+            <span class="record-meta">Allowed range ${REACTION_WINDOW_SECONDS_MIN}–${REACTION_WINDOW_SECONDS_MAX} seconds. Example: 6 seconds gives one beat to declare a reaction before play moves on.</span>
           </label>
           <p class="record-meta">Rules transparency: ${escapeHtml(draft.rulesTransparencyLabel)} (locked default).</p>
           <ul class="option-list compact" data-testid="enemy-health-list">
@@ -390,6 +392,13 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         }
         if (draft.sessionZero.textChatExpectations.trim().length === 0) {
           error = 'Text-chat expectations are required for Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
+        if (draft.safetyBoundaries.trim().length === 0) {
+          error = 'Record at least one line, veil, or safety boundary before recording Session Zero.';
           notice = null;
           shell.announce(error);
           render();

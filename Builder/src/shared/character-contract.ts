@@ -122,6 +122,16 @@ export interface CharacterChoices {
   /** Cantrip and level-1 spell ids, for classes that cast at level 1. */
   readonly cantripIds: readonly string[];
   readonly spellIds: readonly string[];
+  /** Human Versatile — chosen Origin feat id (background feats use backgroundDetail). */
+  readonly chosenOriginFeatId: string | null;
+  /** Magic Initiate cantrips from the Background Origin feat. */
+  readonly backgroundFeatCantripIds: readonly string[];
+  /** Magic Initiate level-1 spells from the Background Origin feat. */
+  readonly backgroundFeatSpellIds: readonly string[];
+  /** Magic Initiate cantrips from the Human Versatile Origin feat. */
+  readonly originFeatCantripIds: readonly string[];
+  /** Magic Initiate level-1 spells from the Human Versatile Origin feat. */
+  readonly originFeatSpellIds: readonly string[];
   /** Class-specific level-1 choices, keyed by the choice id in the manifest. */
   readonly classChoiceIds: Readonly<Record<string, readonly string[]>>;
   readonly identity: CharacterIdentity;
@@ -354,6 +364,21 @@ export interface DraftOptions {
     readonly skillLabels: readonly string[];
     readonly toolProficiency: string;
     readonly equipmentOptions: readonly EquipmentOptionView[];
+  } | null;
+  readonly originFeatOptions: readonly SelectableOption[] | null;
+  readonly backgroundFeatDetail: {
+    readonly label: string;
+    readonly cantripsKnown: number;
+    readonly spellsKnown: number;
+    readonly cantripOptions: readonly SelectableOption[];
+    readonly spellOptions: readonly SelectableOption[];
+  } | null;
+  readonly originFeatDetail: {
+    readonly label: string;
+    readonly cantripsKnown: number;
+    readonly spellsKnown: number;
+    readonly cantripOptions: readonly SelectableOption[];
+    readonly spellOptions: readonly SelectableOption[];
   } | null;
 }
 
