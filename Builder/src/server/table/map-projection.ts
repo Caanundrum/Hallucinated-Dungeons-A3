@@ -285,6 +285,15 @@ export function buildAuthoritativeMapBundle(options: {
   const cells = scene !== null ? [...scene.cells] : isBlankTable ? buildBlankOpenCells() : buildStarterCells();
   const baseEdges = scene !== null ? scene.edges : isBlankTable ? [] : buildStarterInteriorWalls();
   const mergedEdges = mergeRuntimeEdges(baseEdges, runtime.runtimeEdges ?? []);
+  const improvisedTitle = runtime.sceneTitle?.trim();
+  const hasRuntimeGeometry = (runtime.runtimeEdges ?? []).length > 0;
+  const sceneBanner =
+    improvisedTitle !== undefined && improvisedTitle.length > 0
+      ? `${improvisedTitle} — walls and doorways are committed on this table.`
+      : hasRuntimeGeometry
+        ? 'Improvised scene geometry is committed on this table.'
+        : (presentation?.sceneBanner ??
+          (isBlankTable ? 'An empty table with no seeded chapters or map story.' : DEFAULT_SCENE_BANNER));
   return {
     campaignId,
     mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : isBlankTable ? `blank:${campaignId}` : `starter:${campaignId}`,
@@ -305,7 +314,7 @@ export function buildAuthoritativeMapBundle(options: {
       currentChapterId: options.currentChapterId ?? null,
     }),
     artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
-    sceneBanner: presentation?.sceneBanner ?? (isBlankTable ? 'An empty table with no seeded chapters or map story.' : DEFAULT_SCENE_BANNER),
+    sceneBanner,
     notableFeatures: presentation?.notableFeatures ?? (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES),
     viewerSeatId: null,
     exploredSquareIds: [],

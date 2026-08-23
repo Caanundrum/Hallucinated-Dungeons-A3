@@ -9,6 +9,7 @@ import {
   PROVIDER_COMPLIANCE_REGISTRY,
 } from '../../dist/server/ai/director-gateway.js';
 import { scrubPlayerFacingIntentCopy } from '../../dist/shared/ai-director-contract.js';
+import { formatDirectorProse } from '../../dist/shared/communication-contract.js';
 import {
   GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
   sanitizeDirectorProse,
@@ -94,7 +95,7 @@ test('Local Arena Director Address stays on the simulator', async () => {
   assert.equal(answered.mutatesState, false);
   assert.equal(answered.directorIdentityLabel, 'Veyra');
   assert.equal(answered.consultMode, 'scene');
-  assert.match(answered.body, /visible scene|Actions thread|Veyra/i);
+  assert.match(answered.body, /visible scene|play channel|Veyra/i);
   assert.equal(answered.body.includes('LIVE GEMINI'), false);
 });
 
@@ -109,7 +110,7 @@ test('Ask the DM arbiter mode engages for feasibility questions', async () => {
   assert.equal(answered.mutatesState, false);
   assert.equal(answered.consultMode, 'arbiter');
   assert.equal(answered.manifest.role, 'bounded_ruling');
-  assert.match(answered.body, /Veyra|sheet|Actions thread/i);
+  assert.match(answered.body, /Veyra|sheet|play channel/i);
 });
 
 test('Milestone Director Address uses the live client and still cannot mutate', async () => {
@@ -149,6 +150,38 @@ test('Gemini failure falls back to the simulator for narration', async () => {
   assert.match(narration.body, /You hit the dummy for 4 damage/);
   assert.equal(narration.mechanicsFirstSummary, 'You hit the dummy for 4 damage.');
   assert.equal(narration.directorIdentityLabel, 'Veyra');
+});
+
+test('PQA-162: formatDirectorProse strips Markdown punctuation', () => {
+  assert.equal(
+    formatDirectorProse('Use **Guidance** before you `declare` it.'),
+    'Use Guidance before you declare it.',
+  );
+  assert.equal(formatDirectorProse('***Bold italic*** line'), 'Bold italic line');
+});
+
+test('PQA-152/153: trap/lock declarations produce confirmable skill-check sync drafts', async () => {
+  const trapLock = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I carefully inspect the doorway for traps, then pick the lock with my thieves tools.',
+    environmentClass: 'local',
+  });
+  assert.equal(trapLock.proposedCommandType, 'table.sync');
+  assert.match(trapLock.summary, /^Ready to /i);
+  assert.equal(trapLock.edgeId, undefined);
+  assert.equal(trapLock.path, undefined);
+
+  const lockOnly = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I try to pick the lock on the wooden door.',
+    environmentClass: 'local',
+  });
+  assert.equal(lockOnly.proposedCommandType, 'table.sync');
+  assert.match(lockOnly.summary, /^Ready to attempt the lock/i);
 });
 
 test('hosted NL interpret keeps deterministic command types', async () => {

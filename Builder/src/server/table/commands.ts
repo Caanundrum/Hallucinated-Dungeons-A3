@@ -27,6 +27,7 @@ import {
 import { ERROR_CODES } from '../../shared/contract.js';
 import type { RulesCommandFields } from '../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { appendChronicleEntry } from '../communication/chronicle.js';
 import {
   assertSessionAllowsPlay,
   CampaignMemoryError,
@@ -105,6 +106,7 @@ interface StoredSeat {
   readonly campaignId: string;
   readonly ownerAccountId: string;
   readonly characterId: string;
+  readonly characterName?: string;
   readonly deviceSessionId: string;
   lastAcknowledgedEventSequence: number;
 }
@@ -871,6 +873,36 @@ export async function acceptTableCommand(options: {
   const withEvent = recentEvents.some((entry) => entry.eventId === eventProjection.eventId)
     ? recentEvents
     : [...recentEvents, eventProjection];
+
+  if (!committed.duplicate) {
+    if (eventType === 'table.scene_built') {
+      const title = buildSceneTitle?.trim();
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'scene_built',
+        body:
+          title !== undefined && title.length > 0
+            ? `${seat.characterName || 'A player'} built ${title} on the table.`
+            : `${seat.characterName || 'A player'} built an improvised chamber on the table.`,
+      });
+    } else if (eventType === 'table.door_opened' && openEdgeId !== undefined) {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'door_opened',
+        body: `${seat.characterName || 'A player'} opened a door on the table.`,
+      });
+    } else if (eventType === 'table.token_moved' && movePath !== undefined && movePath.length > 0) {
+      const destination = movePath[movePath.length - 1]!;
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'token_moved',
+        body: `${seat.characterName || 'A player'} moved to column ${destination.column + 1}, row ${destination.row + 1}.`,
+      });
+    }
+  }
 
   return {
     duplicate: committed.duplicate,

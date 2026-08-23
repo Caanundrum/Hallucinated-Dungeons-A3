@@ -17,10 +17,29 @@ import {
   WEBGL_LAYER_Z_INDEX,
   WEBGL_RENDER_LAYERS,
   type MapBundleProjection,
+  type MapEdgeRecord,
   type MapSquareCoordinate,
   type WebGlRenderLayer,
 } from '../../shared/map-contract.js';
 import { escapeHtml } from '../dom-utils.js';
+
+function edgeAccessibleLabel(edge: MapEdgeRecord): string {
+  const column = edge.column + 1;
+  const row = edge.row + 1;
+  const facing =
+    edge.orientation === 'north'
+      ? 'north'
+      : edge.orientation === 'south'
+        ? 'south'
+        : edge.orientation === 'east'
+          ? 'east'
+          : 'west';
+  if (edge.kind === 'door') {
+    const state = edge.doorState === 'open' ? 'open' : 'closed';
+    return `Wooden door (${state}) facing ${facing} at column ${column}, row ${row}`;
+  }
+  return `Wall facing ${facing} at column ${column}, row ${row}`;
+}
 
 export interface TableStageHandle {
   readonly destroy: () => void;
@@ -194,7 +213,7 @@ function paintSemanticSvg(
       } else {
         x2 = x + pixelsPerSquare;
       }
-      return `<line data-edge="${escapeHtml(edge.edgeId)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" />`;
+      return `<line role="img" tabindex="0" aria-label="${escapeHtml(edgeAccessibleLabel(edge))}" data-edge="${escapeHtml(edge.edgeId)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" />`;
     })
     .join('');
   const tokens = map.tokens
@@ -209,7 +228,7 @@ function paintSemanticSvg(
       const transform = animate
         ? `translate(${prior.x - box.x}px, ${prior.y - box.y}px)`
         : 'translate(0px, 0px)';
-      return `<g data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
+      return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token at column ${token.footprint.anchor.column + 1}, row ${token.footprint.anchor.row + 1}" data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
         <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="8" fill="#f0c043" stroke="#1a1208" stroke-width="2" />
         <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="${labelSize}" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
       </g>`;
@@ -256,6 +275,9 @@ function paintSemanticSvg(
       <span><span class="swatch" style="background:#3a3328"></span> Difficult</span>
       <span><span class="swatch" style="background:#1a1410"></span> Blocked</span>
       <span><span class="swatch" style="background:#050403"></span> Unexplored</span>
+      <span><span class="swatch" style="background:#f0c043"></span> Party token</span>
+      <span><span class="swatch" style="background:#b86b2b"></span> Door</span>
+      <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
     </div>`;
 
   if (!reduceMotion) {
