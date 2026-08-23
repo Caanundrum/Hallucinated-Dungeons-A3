@@ -350,6 +350,7 @@ export interface DraftOptions {
     readonly label: string;
     readonly abilityOptions: readonly Ability[];
     readonly originFeat: string;
+    readonly skillIds: readonly string[];
     readonly skillLabels: readonly string[];
     readonly toolProficiency: string;
     readonly equipmentOptions: readonly EquipmentOptionView[];

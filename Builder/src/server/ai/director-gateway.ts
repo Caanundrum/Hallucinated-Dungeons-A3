@@ -52,6 +52,7 @@ import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
 import { resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
+import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -380,6 +381,7 @@ export async function interpretNaturalLanguageIntent(options: {
   let projectionVersionAtIssue: number | undefined;
 
   let encounter: EncounterProjection | null = null;
+  let seatedSheet: import('../../shared/character-contract.js').DerivedCharacterSheet | null = null;
   try {
     const [rules, table] = await Promise.all([
       fetchRulesState({
@@ -394,9 +396,11 @@ export async function interpretNaturalLanguageIntent(options: {
       }),
     ]);
     encounter = rules.encounter;
+    seatedSheet = rules.progression?.sheet ?? null;
     projectionVersionAtIssue = table.stateVersion;
   } catch {
     encounter = null;
+    seatedSheet = null;
   }
 
   const combatActive = encounter !== null && encounter.status === 'active';
@@ -409,10 +413,7 @@ export async function interpretNaturalLanguageIntent(options: {
 
   if (mentionsSkillCheckIntent(text)) {
     proposedCommandType = 'table.sync';
-    summary =
-      /(trap|disarm)/.test(text)
-        ? 'Ready to search the doorway for traps, then attempt the lock if it looks safe. Confirm to commit this skill attempt on the table.'
-        : 'Ready to attempt the lock or inspection using a relevant skill and tools from your sheet. Confirm to commit this attempt on the table.';
+    summary = buildSkillCheckDraftSummary(seatedSheet, text);
   } else if (mentionsDoorIntent(text)) {
     try {
       const map = await fetchCampaignMap({

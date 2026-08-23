@@ -427,12 +427,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
-          Extra skills lock once you hit that count.
+          Skills your Background already grants are omitted so you do not lose a class pick (PQA-196).
         </p>
         ${checkboxList({
           name: 'class-skill',
           testId: 'class-skill-options',
-          entries: detail.skillOptions,
+          entries: detail.skillOptions.filter(
+            (skill) =>
+              !(state.options.backgroundDetail?.skillIds ?? []).includes(skill.id),
+          ),
           selected: state.draft.choices.classSkillIds,
           maxChoose: detail.skillChoiceCount,
         })}`
@@ -847,7 +850,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
         state.draft.unresolved.some((item) => item.step !== 'identity')
           ? `<p class="message notice" data-testid="final-review-incomplete">
               Mechanics are still incomplete. Finish earlier steps before treating this sheet as final.
-            </p>`
+            </p>
+            <ul class="record-list" data-testid="final-review-unresolved">
+              ${state.draft.unresolved
+                .filter((item) => item.step !== 'identity')
+                .map(
+                  (item) =>
+                    `<li data-testid="final-review-unresolved-item">${escapeHtml(item.message)}</li>`,
+                )
+                .join('')}
+            </ul>`
           : ''
       }
       ${

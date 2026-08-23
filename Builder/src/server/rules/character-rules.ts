@@ -933,6 +933,7 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
             label: backgroundRecord.label,
             abilityOptions: backgroundRecord.abilityOptions,
             originFeat: backgroundRecord.originFeat,
+            skillIds: backgroundRecord.skillIds,
             skillLabels: backgroundRecord.skillIds
               .map((id) => findSkill(id)?.label ?? id)
               .filter((label) => label.length > 0),
