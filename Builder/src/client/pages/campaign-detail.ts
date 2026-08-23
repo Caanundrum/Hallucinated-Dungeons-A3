@@ -263,6 +263,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       memorySnapshot.session.state !== 'suspended' &&
       !encounterActive;
     const canSeatCharacter = sessionZeroComplete;
+    const canInvitePlayers = sessionZeroComplete && campaign.isCampaignOwner;
 
     const nextStep =
       !sessionZeroComplete
@@ -438,9 +439,13 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             sign-in, expires after 48 hours, and can be revoked.
           </p>
           ${
-            invitePath === null
+            !sessionZeroComplete
+              ? `<p class="message notice" data-testid="invite-session-zero-gate">
+                   Record Session Zero in Campaign settings before creating invite links.
+                 </p>`
+              : invitePath === null
               ? `<div class="actions">
-                   <button type="button" data-testid="create-invite" aria-disabled="${busy}">
+                   <button type="button" data-testid="create-invite" aria-disabled="${busy || !canInvitePlayers}">
                      ${busy ? 'Creating…' : 'Create invite link'}
                    </button>
                  </div>`
@@ -460,10 +465,10 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                    <button type="button" data-testid="copy-invite" aria-disabled="${busy}">
                      Copy invite URL
                    </button>
-                   <button type="button" class="secondary" data-testid="create-invite" aria-disabled="${busy}">
+                   <button type="button" class="secondary" data-testid="create-invite" aria-disabled="${busy || !canInvitePlayers}">
                      ${busy ? 'Working…' : 'Refresh invite'}
                    </button>
-                   <button type="button" class="secondary" data-testid="revoke-invite" aria-disabled="${busy}">
+                   <button type="button" class="secondary" data-testid="revoke-invite" aria-disabled="${busy || !canInvitePlayers}">
                      Revoke invite
                    </button>
                  </div>`
@@ -537,6 +542,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       ?.addEventListener('click', () => {
         void (async () => {
           if (candidate === null || busy) {
+            return;
+          }
+          if (detail !== null && !detail.settings.sessionZero.completed) {
+            error = 'Record Session Zero in Campaign settings before creating invite links.';
+            render();
             return;
           }
           busy = true;

@@ -499,6 +499,7 @@ export async function submitTableCommand(options: {
   readonly readyTrigger?: string;
   readonly xpAmount?: number;
   readonly itemId?: string;
+  readonly summary?: string;
 }): Promise<TableCommandAcceptResponse> {
   return (await request(`/api/campaigns/${options.campaignId}/commands`, {
     method: 'POST',
@@ -527,6 +528,7 @@ export async function submitTableCommand(options: {
       ...(options.readyTrigger !== undefined ? { readyTrigger: options.readyTrigger } : {}),
       ...(options.xpAmount !== undefined ? { xpAmount: options.xpAmount } : {}),
       ...(options.itemId !== undefined ? { itemId: options.itemId } : {}),
+      ...(options.summary !== undefined ? { summary: options.summary } : {}),
     }),
   })) as TableCommandAcceptResponse;
 }

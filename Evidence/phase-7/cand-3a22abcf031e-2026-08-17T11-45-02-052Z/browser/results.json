@@ -1,0 +1,3595 @@
+{
+  "config": {
+    "argv": [
+      "/exec-daemon/node",
+      "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/node_modules/.bin/playwright",
+      "test"
+    ],
+    "configFile": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/playwright.config.ts",
+    "rootDir": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 45000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/results.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/html",
+          "open": "never"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "phase0-self-play.spec.ts",
+      "file": "phase0-self-play.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 0 player journey",
+          "file": "phase0-self-play.spec.ts",
+          "line": 22,
+          "column": 6,
+          "specs": [
+            {
+              "title": "a full pass: enter, write, read, refresh, and recover the same state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1429,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:24.811Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-cec4e1307c83d31423cf",
+              "file": "phase0-self-play.spec.ts",
+              "line": 23,
+              "column": 3
+            },
+            {
+              "title": "failure and retry: a lost response does not commit the note twice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2141,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:26.358Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-53a695a727f4f79e6d2b",
+              "file": "phase0-self-play.spec.ts",
+              "line": 56,
+              "column": 3
+            },
+            {
+              "title": "validation failure is explained on the page and writes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1660,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:28.505Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-2ac3a5ee1c92deefa08f",
+              "file": "phase0-self-play.spec.ts",
+              "line": 95,
+              "column": 3
+            },
+            {
+              "title": "records are owned by one account and are not visible to another",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1706,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:30.173Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-9578ead860f96efdf3af",
+              "file": "phase0-self-play.spec.ts",
+              "line": 114,
+              "column": 3
+            },
+            {
+              "title": "a stale page cannot commit into a different candidate",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1240,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:31.889Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-a336b4764b8c9c16f6fa",
+              "file": "phase0-self-play.spec.ts",
+              "line": 135,
+              "column": 3
+            },
+            {
+              "title": "a request from another origin is refused",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 363,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:33.137Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-c285eb916118bb1b28c9",
+              "file": "phase0-self-play.spec.ts",
+              "line": 160,
+              "column": 3
+            },
+            {
+              "title": "direct navigation to an unknown route exposes no account state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 299,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:33.507Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-76149d4705d327ba301d",
+              "file": "phase0-self-play.spec.ts",
+              "line": 182,
+              "column": 3
+            },
+            {
+              "title": "the unauthenticated API refuses to return records",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 75,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:33.813Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-1301a06913d1c98c97de",
+              "file": "phase0-self-play.spec.ts",
+              "line": 203,
+              "column": 3
+            },
+            {
+              "title": "leaving the arena ends the session but preserves the stored records",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1722,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:33.895Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-0da024b06c8a1dc123a3",
+              "file": "phase0-self-play.spec.ts",
+              "line": 211,
+              "column": 3
+            },
+            {
+              "title": "the journey is operable by keyboard alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 355,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:35.625Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5bb6111e3c0cf7c906c4-dfb7fc381b19f6b80486",
+              "file": "phase0-self-play.spec.ts",
+              "line": 230,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-account.spec.ts",
+      "file": "phase1-account.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 account projection",
+          "file": "phase1-account.spec.ts",
+          "line": 17,
+          "column": 6,
+          "specs": [
+            {
+              "title": "shell sign-in projects a development account without visiting diagnostics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 365,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:35.998Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "07f3b1e622a3e19802e2-14aaf342fb4deae074cf",
+              "file": "phase1-account.spec.ts",
+              "line": 18,
+              "column": 3
+            },
+            {
+              "title": "Character Vault offers in-page sign-in instead of a diagnostics detour",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 240,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:36.369Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "07f3b1e622a3e19802e2-af7addcd33d5e1d0749e",
+              "file": "phase1-account.spec.ts",
+              "line": 37,
+              "column": 3
+            },
+            {
+              "title": "after shell sign-in, character creation works without opening diagnostics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 849,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:36.616Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "07f3b1e622a3e19802e2-a9671d9ecfd31e853433",
+              "file": "phase1-account.spec.ts",
+              "line": 50,
+              "column": 3
+            },
+            {
+              "title": "unauthenticated API still refuses account-owned reads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 216,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:37.472Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "07f3b1e622a3e19802e2-5261129e9bdd927d9a72",
+              "file": "phase1-account.spec.ts",
+              "line": 71,
+              "column": 3
+            },
+            {
+              "title": "diagnostics enter/leave still syncs the shell account chip",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 703,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:37.694Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "07f3b1e622a3e19802e2-8b8c34372a5152308ce8",
+              "file": "phase1-account.spec.ts",
+              "line": 80,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-campaigns.spec.ts",
+      "file": "phase1-campaigns.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 campaigns, Director lock, invitations, and seats",
+          "file": "phase1-campaigns.spec.ts",
+          "line": 70,
+          "column": 6,
+          "specs": [
+            {
+              "title": "create locks Director config, invites a second account, and seats owned characters only",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3807,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:38.414Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a9de4d7df56a565633e7-c10a338d3ce69c90e154",
+              "file": "phase1-campaigns.spec.ts",
+              "line": 71,
+              "column": 3
+            },
+            {
+              "title": "Seasoned Host is recommended but never silently selected",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 519,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:42.228Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a9de4d7df56a565633e7-5fe926d9179a999c3bb7",
+              "file": "phase1-campaigns.spec.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "foreign account cannot read another account campaign",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3909,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:42.756Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a9de4d7df56a565633e7-71e97511ed1a33e48b60",
+              "file": "phase1-campaigns.spec.ts",
+              "line": 192,
+              "column": 3
+            },
+            {
+              "title": "campaign title input enables Create without blur, and seat return soft-nav keeps the query",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3645,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:46.674Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a9de4d7df56a565633e7-96bec8bb3794f66dc6e7",
+              "file": "phase1-campaigns.spec.ts",
+              "line": 216,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-characters.spec.ts",
+      "file": "phase1-characters.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 character creation and Character Vault",
+          "file": "phase1-characters.spec.ts",
+          "line": 83,
+          "column": 6,
+          "specs": [
+            {
+              "title": "home and nav reach an empty Character Vault after entering the Local Arena",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 492,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:50.338Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-46f41b6002c7d1c4a267",
+              "file": "phase1-characters.spec.ts",
+              "line": 84,
+              "column": 3
+            },
+            {
+              "title": "quick-start creates an owned character visible in the vault and sheet",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 960,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:50.837Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-06f7af02f9c3d8d7c5ae",
+              "file": "phase1-characters.spec.ts",
+              "line": 97,
+              "column": 3
+            },
+            {
+              "title": "custom creation walks identity-last steps and resumes one draft",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4608,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:51.805Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-a21138377edefcbb1768",
+              "file": "phase1-characters.spec.ts",
+              "line": 136,
+              "column": 3
+            },
+            {
+              "title": "ability rolls are capped at three and replace the previous pool",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1647,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:56.420Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-ed800ed6144cc4e94215",
+              "file": "phase1-characters.spec.ts",
+              "line": 224,
+              "column": 3
+            },
+            {
+              "title": "wizard prevents illegal over-selects instead of only coaching afterward",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1494,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:58.074Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-649f0abc805f7917c2a9",
+              "file": "phase1-characters.spec.ts",
+              "line": 272,
+              "column": 3
+            },
+            {
+              "title": "another account cannot read a character by id or see it in the vault",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1151,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:45:59.575Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "12b84ac46e853c9a0741-f32d0fb1da72067aa03a",
+              "file": "phase1-characters.spec.ts",
+              "line": 325,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-reentry.spec.ts",
+      "file": "phase1-reentry.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 reentry journey",
+          "file": "phase1-reentry.spec.ts",
+          "line": 53,
+          "column": 6,
+          "specs": [
+            {
+              "title": "full pack journey recovers character, campaign, lock, seat, and settings after reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7845,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:00.741Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "652847ee22952ab6686f-8329f5a953e383f352b6",
+              "file": "phase1-reentry.spec.ts",
+              "line": 54,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-settings-dock.spec.ts",
+      "file": "phase1-settings-dock.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 settings and Communication Dock structure",
+          "file": "phase1-settings-dock.spec.ts",
+          "line": 50,
+          "column": 6,
+          "specs": [
+            {
+              "title": "owner configures settings and Session Zero; dock keeps Party Chat separate from Action Composer",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4435,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:08.601Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2f6080ee65bb1232dfa0-366094faf6eef9112dc7",
+              "file": "phase1-settings-dock.spec.ts",
+              "line": 51,
+              "column": 3
+            },
+            {
+              "title": "account reduced-motion preference persists and speech prefs stay optional defaults",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 584,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:13.043Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2f6080ee65bb1232dfa0-243f5299d2b96b724e1a",
+              "file": "phase1-settings-dock.spec.ts",
+              "line": 127,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-shell.spec.ts",
+      "file": "phase1-shell.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 1 shell, navigation, opening sequence, and legal routes",
+          "file": "phase1-shell.spec.ts",
+          "line": 30,
+          "column": 6,
+          "specs": [
+            {
+              "title": "the opening sequence renders real semantic text and is skippable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 221,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:13.646Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-f612875a7d02eaa620f0",
+              "file": "phase1-shell.spec.ts",
+              "line": 31,
+              "column": 3
+            },
+            {
+              "title": "the opening sequence honors prefers-reduced-motion",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 229,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:13.874Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-799ede94a3ddfcef14ed",
+              "file": "phase1-shell.spec.ts",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "the opening sequence does not replay on in-app navigation, only on a fresh load",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 408,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:14.111Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-bf95852f15c049d70b33",
+              "file": "phase1-shell.spec.ts",
+              "line": 59,
+              "column": 3
+            },
+            {
+              "title": "primary navigation moves between pages without a full page reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 303,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:14.525Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-a115753614beabf74bdd",
+              "file": "phase1-shell.spec.ts",
+              "line": 76,
+              "column": 3
+            },
+            {
+              "title": "the footer links to every legal document and opens each in a new tab",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 340,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:14.842Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-fd269e0bd03f12d1f138",
+              "file": "phase1-shell.spec.ts",
+              "line": 103,
+              "column": 3
+            },
+            {
+              "title": "each legal document shows its version, dates, working anchors, and a way back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 290,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:15.189Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-0c45c892b101d429ad46",
+              "file": "phase1-shell.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "an unregistered legal-looking path is a real 404, not a fabricated document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 84,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:15.487Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-3d449fba1c4c48ad3d08",
+              "file": "phase1-shell.spec.ts",
+              "line": 155,
+              "column": 3
+            },
+            {
+              "title": "legal pages carry the same hardening headers as the rest of the site",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 57,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:15.577Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-c7060cf4cb5c09258c27",
+              "file": "phase1-shell.spec.ts",
+              "line": 164,
+              "column": 3
+            },
+            {
+              "title": "a legal document is a complete, readable page even without running the client script",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 108,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:15.639Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-2d7d5641db41870d1a40",
+              "file": "phase1-shell.spec.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "an unlinked path inside the running application shows the honest not-found page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 384,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:15.752Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-272704f1f57ff74cb7d9",
+              "file": "phase1-shell.spec.ts",
+              "line": 183,
+              "column": 3
+            },
+            {
+              "title": "the shell is fully operable by keyboard, and the skip link is the first stop",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 193,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:16.142Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-b370f126d86e115ff15f",
+              "file": "phase1-shell.spec.ts",
+              "line": 208,
+              "column": 3
+            },
+            {
+              "title": "activating the nav links and skip-intro control works from the keyboard alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 212,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:16.341Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-2f9c70df54243bf8fc54",
+              "file": "phase1-shell.spec.ts",
+              "line": 223,
+              "column": 3
+            },
+            {
+              "title": "focus moves to the new page heading after a navigation, for screen-reader users",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 255,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:16.559Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-e3376aa8a9019b60aef6",
+              "file": "phase1-shell.spec.ts",
+              "line": 241,
+              "column": 3
+            },
+            {
+              "title": "the build info in the footer names the running candidate and blueprint version",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 216,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:16.821Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "185b2479b8f2f95efc1b-d78b54a9b162e6c26857",
+              "file": "phase1-shell.spec.ts",
+              "line": 256,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-map-stage.spec.ts",
+      "file": "phase2-map-stage.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2b map schemas and Pixi stage",
+          "file": "phase2-map-stage.spec.ts",
+          "line": 63,
+          "column": 6,
+          "specs": [
+            {
+              "title": "server map projection mounts a Vanilla Pixi canvas with seated token metadata",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4220,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:17.056Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "052e1cb6d59fbd8da23c-d1d33bbbb6bf7779be77",
+              "file": "phase2-map-stage.spec.ts",
+              "line": 64,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-movement.spec.ts",
+      "file": "phase2-movement.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2c movement, collision, and visibility",
+          "file": "phase2-movement.spec.ts",
+          "line": 55,
+          "column": 6,
+          "specs": [
+            {
+              "title": "legal move commits; illegal door cross rejects; fog fields are present",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2520,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:21.291Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "4395cdb87327dac048f3-85f79a67112ec019f730",
+              "file": "phase2-movement.spec.ts",
+              "line": 56,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-table-a11y.spec.ts",
+      "file": "phase2-table-a11y.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2 table a11y presentation",
+          "file": "phase2-table-a11y.spec.ts",
+          "line": 58,
+          "column": 6,
+          "specs": [
+            {
+              "title": "reduced motion and low effects apply on the tactical table without voice UI",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2522,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:23.825Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2a1abb6fd095dfb52dcc-7d7189cce976e67d1396",
+              "file": "phase2-table-a11y.spec.ts",
+              "line": 59,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-table-commands.spec.ts",
+      "file": "phase2-table-commands.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2a table command gateway",
+          "file": "phase2-table-commands.spec.ts",
+          "line": 80,
+          "column": 6,
+          "specs": [
+            {
+              "title": "seated member claims turn, commits sync; Party Chat stays separate; Interpret Action uses intercept",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2503,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:26.361Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "85548cb5abcbf44b9687-1831d333c0432c07505d",
+              "file": "phase2-table-commands.spec.ts",
+              "line": 81,
+              "column": 3
+            },
+            {
+              "title": "API rejects missing Timing Authority, recovers duplicates, and requires a seat",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1856,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:28.871Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "85548cb5abcbf44b9687-3a1e963ce457ee9a86de",
+              "file": "phase2-table-commands.spec.ts",
+              "line": 129,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-timing-authority.spec.ts",
+      "file": "phase2-timing-authority.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2d Timing Authority",
+          "file": "phase2-timing-authority.spec.ts",
+          "line": 59,
+          "column": 6,
+          "specs": [
+            {
+              "title": "claim unlocks commands; end turn revokes; Party Chat never mutates table",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2410,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:30.739Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "188e5aacdeae1652a03d-aa868653e7e70be9303a",
+              "file": "phase2-timing-authority.spec.ts",
+              "line": 60,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-two-client-sync.spec.ts",
+      "file": "phase2-two-client-sync.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 2e two-client sync and recovery",
+          "file": "phase2-two-client-sync.spec.ts",
+          "line": 59,
+          "column": 6,
+          "specs": [
+            {
+              "title": "guest recovers owner sync/move via poll and both match after reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8038,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:33.162Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7599636914828b22a70e-bc23e46da44c51f50438",
+              "file": "phase2-two-client-sync.spec.ts",
+              "line": 60,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase3-rules-encounter.spec.ts",
+      "file": "phase3-rules-encounter.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 3 deterministic rules encounter",
+          "file": "phase3-rules-encounter.spec.ts",
+          "line": 82,
+          "column": 6,
+          "specs": [
+            {
+              "title": "rendered journey covers initiative, combat, area spell, reaction, recovery, XP, and level-up",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6934,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:41.218Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6f19d04a4165ad2ca18c-494d0fedeccdd22d538f",
+              "file": "phase3-rules-encounter.spec.ts",
+              "line": 83,
+              "column": 3
+            },
+            {
+              "title": "illegal mechanical command fails closed without advancing state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2724,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:48.158Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6f19d04a4165ad2ca18c-8760f34118687284132e",
+              "file": "phase3-rules-encounter.spec.ts",
+              "line": 145,
+              "column": 3
+            },
+            {
+              "title": "rendered death and recovery path: 0 HP enables Death Save then Long Rest clears dying",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4474,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:50.889Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6f19d04a4165ad2ca18c-c3d5235b5cdddac50ac6",
+              "file": "phase3-rules-encounter.spec.ts",
+              "line": 194,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase4-realtime-ai.spec.ts",
+      "file": "phase4-realtime-ai.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 4 presence, Admin, AI, speech",
+          "file": "phase4-realtime-ai.spec.ts",
+          "line": 60,
+          "column": 6,
+          "specs": [
+            {
+              "title": "ordinary account is denied Admin; Google emulator bootstrap admin can toggle kill switch",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 601,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:55.377Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "076df5531a0176474fb2-00111ce0eecf6f716465",
+              "file": "phase4-realtime-ai.spec.ts",
+              "line": 61,
+              "column": 3
+            },
+            {
+              "title": "table presence, Director Address, NL Intent Intercept, and speech prefs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2921,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:55.985Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "076df5531a0176474fb2-d30615bbe600e2f9b103",
+              "file": "phase4-realtime-ai.spec.ts",
+              "line": 93,
+              "column": 3
+            },
+            {
+              "title": "four simultaneous local players share presence and social surfaces",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9063,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:46:58.912Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "076df5531a0176474fb2-accc65c06c725f896f4a",
+              "file": "phase4-realtime-ai.spec.ts",
+              "line": 140,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase5-starter-resume.spec.ts",
+      "file": "phase5-starter-resume.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 5 starter campaign, memory, and session resume",
+          "file": "phase5-starter-resume.spec.ts",
+          "line": 71,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Emberferry Crossing seeds memory, and suspend/resume preserves chapter and campaign-time continuity",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4053,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:07.991Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ddae2d347caf73c18b2-0c3edf71791178d81f64",
+              "file": "phase5-starter-resume.spec.ts",
+              "line": 72,
+              "column": 3
+            },
+            {
+              "title": "closing a chapter travels to the Mist-Cut Caves map scene",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2263,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:12.058Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ddae2d347caf73c18b2-5a6b6da932efde5c0ef4",
+              "file": "phase5-starter-resume.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "narration density on Account applies to Director narration length on the table",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2935,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:14.335Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5ddae2d347caf73c18b2-bf81116055e8a165778e",
+              "file": "phase5-starter-resume.spec.ts",
+              "line": 184,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-a11y-wcag.spec.ts",
+      "file": "phase6-a11y-wcag.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 6 core-loop a11y (automated WCAG)",
+          "file": "phase6-a11y-wcag.spec.ts",
+          "line": 78,
+          "column": 6,
+          "specs": [
+            {
+              "title": "landmarks, keyboard Characters path, reduced motion/low effects, high zoom, named controls",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12474,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveClass\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('html')\nExpected pattern: \u001b[32m/hd-reduced-motion/\u001b[39m\nReceived string:  \u001b[31m\"\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveClass\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('html')\u001b[22m\n\u001b[2m    24 × locator resolved to <html class=\"\" lang=\"en\" data-low-effects=\"false\" data-reduced-motion=\"false\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveClass\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('html')\nExpected pattern: \u001b[32m/hd-reduced-motion/\u001b[39m\nReceived string:  \u001b[31m\"\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveClass\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('html')\u001b[22m\n\u001b[2m    24 × locator resolved to <html class=\"\" lang=\"en\" data-low-effects=\"false\" data-reduced-motion=\"false\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n\n    at /workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e/phase6-a11y-wcag.spec.ts:107:40",
+                        "location": {
+                          "file": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e/phase6-a11y-wcag.spec.ts",
+                          "column": 40,
+                          "line": 107
+                        },
+                        "snippet": "  105 |\n  106 |     await page.getByTestId('table-reduced-motion').check();\n> 107 |     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);\n      |                                        ^\n  108 |     await page.getByTestId('table-low-effects').check();\n  109 |     await expect(page.locator('html')).toHaveClass(/hd-low-effects/);\n  110 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e/phase6-a11y-wcag.spec.ts",
+                            "column": 40,
+                            "line": 107
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveClass\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('html')\nExpected pattern: \u001b[32m/hd-reduced-motion/\u001b[39m\nReceived string:  \u001b[31m\"\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveClass\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('html')\u001b[22m\n\u001b[2m    24 × locator resolved to <html class=\"\" lang=\"en\" data-low-effects=\"false\" data-reduced-motion=\"false\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"\"\u001b[22m\n\n\n  105 |\n  106 |     await page.getByTestId('table-reduced-motion').check();\n> 107 |     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);\n      |                                        ^\n  108 |     await page.getByTestId('table-low-effects').check();\n  109 |     await expect(page.locator('html')).toHaveClass(/hd-low-effects/);\n  110 |\n    at /workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e/phase6-a11y-wcag.spec.ts:107:40"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:17.294Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/test-failed-5.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/test-failed-3.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/test-failed-2.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/test-failed-4.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/workspace/Evidence/phase-7/cand-3a22abcf031e-2026-08-17T11-45-02-052Z/browser/artifacts/phase6-a11y-wcag-Phase-6-c-853d3-ts-high-zoom-named-controls-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/workspace/Runtime/candidates/cand-3a22abcf031e/Builder/tests/e2e/phase6-a11y-wcag.spec.ts",
+                        "column": 40,
+                        "line": 107
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "abeab98aba5b860fd16d-e95d199cdee879d97f78",
+              "file": "phase6-a11y-wcag.spec.ts",
+              "line": 79,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-chaos-recovery.spec.ts",
+      "file": "phase6-chaos-recovery.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 6 chaos and recovery",
+          "file": "phase6-chaos-recovery.spec.ts",
+          "line": 88,
+          "column": 6,
+          "specs": [
+            {
+              "title": "reload after sync keeps seat/authority path; duplicate requestId; foreign origin; Director Address is non-mutating",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3203,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:30.923Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "0509cd430c71b0ddb1f1-9d75b40323d59350824a",
+              "file": "phase6-chaos-recovery.spec.ts",
+              "line": 89,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-longitudinal.spec.ts",
+      "file": "phase6-longitudinal.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 6 longitudinal Emberferry multi-session journey",
+          "file": "phase6-longitudinal.spec.ts",
+          "line": 67,
+          "column": 6,
+          "specs": [
+            {
+              "title": "chapter travel, suspend/resume, caves table move, Bell Tower climax continuity",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3165,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:34.248Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b68a5b97dab9c22e7275-fc4f6049604253761a75",
+              "file": "phase6-longitudinal.spec.ts",
+              "line": 68,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-security-abuse.spec.ts",
+      "file": "phase6-security-abuse.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 6 security and privacy hardening",
+          "file": "phase6-security-abuse.spec.ts",
+          "line": 68,
+          "column": 6,
+          "specs": [
+            {
+              "title": "foreign Origin on a mutating table command is refused",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1496,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:37.426Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5347a77cb3c2f64e6118-43c626b6d8dbf9ef6554",
+              "file": "phase6-security-abuse.spec.ts",
+              "line": 69,
+              "column": 3
+            },
+            {
+              "title": "rapid-fire party chat eventually returns RATE_LIMITED",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1912,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:38.929Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5347a77cb3c2f64e6118-c1c2ff7d9f5b829253d1",
+              "file": "phase6-security-abuse.spec.ts",
+              "line": 95,
+              "column": 3
+            },
+            {
+              "title": "ordinary user cannot open Admin kill switch",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 379,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:40.846Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5347a77cb3c2f64e6118-fa3d536f1e7d65e8d563",
+              "file": "phase6-security-abuse.spec.ts",
+              "line": 128,
+              "column": 3
+            },
+            {
+              "title": "account deletion request is visible on Account page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 409,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:41.232Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5347a77cb3c2f64e6118-426d8cc56cbf6dce6008",
+              "file": "phase6-security-abuse.spec.ts",
+              "line": 136,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase7-gold-master.spec.ts",
+      "file": "phase7-gold-master.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 7 Gold Master release packaging",
+          "file": "phase7-gold-master.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [
+            {
+              "title": "home states certified browsers honestly, including Safari not yet certified",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 223,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:41.657Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9ba0444c4e155883c647-fa1caa82c629fc31b5ef",
+              "file": "phase7-gold-master.spec.ts",
+              "line": 13,
+              "column": 3
+            },
+            {
+              "title": "legal V2 documents name Google hosted identity and Local Arena-only development identities",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 107,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:41.887Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9ba0444c4e155883c647-7488e3864615a98493b3",
+              "file": "phase7-gold-master.spec.ts",
+              "line": 30,
+              "column": 3
+            },
+            {
+              "title": "QA harness is available on this Local Arena surface and Gold Master package is NOT_DEPLOYED",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 63,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:42.000Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9ba0444c4e155883c647-dc444eea81fa46013ae1",
+              "file": "phase7-gold-master.spec.ts",
+              "line": 40,
+              "column": 3
+            },
+            {
+              "title": "signed-in player can record legal acceptance of current V2 documents",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 380,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:42.070Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9ba0444c4e155883c647-acc995cbb0d0f062e545",
+              "file": "phase7-gold-master.spec.ts",
+              "line": 64,
+              "column": 3
+            },
+            {
+              "title": "Google emulator sign-in projects google_sign_in identity mode",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1119,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:42.456Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9ba0444c4e155883c647-c53587fda63425e2f7ea",
+              "file": "phase7-gold-master.spec.ts",
+              "line": 75,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "qa-regressions.spec.ts",
+      "file": "qa-regressions.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "QA regression coverage",
+          "file": "qa-regressions.spec.ts",
+          "line": 33,
+          "column": 6,
+          "specs": [
+            {
+              "title": "P0-QA-001: a session that ends mid-use is explained on the page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1555,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:43.592Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-23e0244e37a89ebe0749",
+              "file": "qa-regressions.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-001: reloading with a dead session explains itself rather than emptying quietly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1578,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:45.153Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-cf67a7335a99fe8ff728",
+              "file": "qa-regressions.spec.ts",
+              "line": 50,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-002: signing out is confirmed on screen",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1171,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:46.737Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-bd91bc5a5bbb75ec61b7",
+              "file": "qa-regressions.spec.ts",
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-003: the live region survives re-rendering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1263,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:47.916Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-a46b7eefae7b51ded3e1",
+              "file": "qa-regressions.spec.ts",
+              "line": 77,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-004: a failure replaces the previous success announcement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1530,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:49.185Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-b8e382fc263b6d3acd93",
+              "file": "qa-regressions.spec.ts",
+              "line": 99,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-005: keyboard focus is preserved across an action",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 371,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:50.722Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-4ce73944ff95e2e735b3",
+              "file": "qa-regressions.spec.ts",
+              "line": 113,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-009: focus moves to the explanation when the focused control is removed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 429,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:51.100Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-a801ec15322d8958d723",
+              "file": "qa-regressions.spec.ts",
+              "line": 135,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-006: a partial list says how many records exist",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 826,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:51.535Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-ab5f7d58cff2ff85e86c",
+              "file": "qa-regressions.spec.ts",
+              "line": 167,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-007: an oversized body is refused without stalling the connection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 292,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:52.368Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-fb11afb89d77aea42681",
+              "file": "qa-regressions.spec.ts",
+              "line": 194,
+              "column": 3
+            },
+            {
+              "title": "P0-QA-008: server responses carry their hardening headers",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 66,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:52.667Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b6725041e366a20b20e6-206797b42a0057d34c0c",
+              "file": "qa-regressions.spec.ts",
+              "line": 257,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "smoke-spine.spec.ts",
+      "file": "smoke-spine.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Permanent smoke spine",
+          "file": "smoke-spine.spec.ts",
+          "line": 25,
+          "column": 6,
+          "specs": [
+            {
+              "title": "startup: the page loads and reports its candidate and environment",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 175,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:52.752Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-7098273d93ca51b263cf",
+              "file": "smoke-spine.spec.ts",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "development identity: the server mints an identity the page renders",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 258,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:52.934Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-ef0c1538f73f5c72cf2a",
+              "file": "smoke-spine.spec.ts",
+              "line": 34,
+              "column": 3
+            },
+            {
+              "title": "canonical write and read: a submitted note is persisted and rendered back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1281,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:53.200Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-ed617f9405ba18baf5fd",
+              "file": "smoke-spine.spec.ts",
+              "line": 42,
+              "column": 3
+            },
+            {
+              "title": "character continuity: quick-start creates a vault character owned by this account",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1468,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:54.487Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-4c3482605effee1e39f9",
+              "file": "smoke-spine.spec.ts",
+              "line": 58,
+              "column": 3
+            },
+            {
+              "title": "campaign continuity: create, configure settings, reload, and recover the same campaign",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3410,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:55.967Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-559c4ba23fe0f2ec3ca9",
+              "file": "smoke-spine.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "tactical interaction: claim Active Turn, sync, and commit a legal move",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4360,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:47:59.383Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-9ce7d303a1ab3a6233a6",
+              "file": "smoke-spine.spec.ts",
+              "line": 134,
+              "column": 3
+            },
+            {
+              "title": "rules action: begin a training encounter, roll initiative, and resolve one attack",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2816,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:48:03.750Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-3ef34b9c67419d7374e3",
+              "file": "smoke-spine.spec.ts",
+              "line": 203,
+              "column": 3
+            },
+            {
+              "title": "multiplayer and AI: presence, Director Address, and Party Chat stay isolated from commands",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5615,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:48:06.576Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-efa89024260e422f5fed",
+              "file": "smoke-spine.spec.ts",
+              "line": 255,
+              "column": 3
+            },
+            {
+              "title": "campaign resume: suspend and resume restores chapter continuity",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5440,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:48:12.199Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-e7aea9dc4b12759bb210",
+              "file": "smoke-spine.spec.ts",
+              "line": 298,
+              "column": 3
+            },
+            {
+              "title": "public identity and legal: Gold Master package is local, legal V2 names Google Sign-In",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 280,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T11:48:17.646Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c94812395f0528904d12-eda6c39aa3bb022913c4",
+              "file": "smoke-spine.spec.ts",
+              "line": 341,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-17T11:45:23.927Z",
+    "duration": 174139.403,
+    "expected": 89,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}
