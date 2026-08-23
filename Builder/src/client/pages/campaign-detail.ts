@@ -37,13 +37,18 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-function renderMemoryPanel(memory: CampaignMemoryProjection): string {
+function renderMemoryPanel(memory: CampaignMemoryProjection, sessionZeroComplete: boolean): string {
   const currentChapter =
     memory.chapters.find((chapter) => chapter.chapterId === memory.currentChapterId) ?? null;
+  const sessionLabel = !sessionZeroComplete
+    ? 'Not started'
+    : memory.session.state === 'suspended'
+      ? 'suspended'
+      : 'active';
   return `
     <p class="record-meta" data-testid="campaign-time">
       ${escapeHtml(memory.campaignTime.label)} ·
-      Session ${memory.session.state === 'suspended' ? 'suspended' : 'active'}
+      Session ${sessionLabel}
       ${
         memory.session.state === 'suspended' && memory.session.suspendedAt !== null
           ? `· suspended ${escapeHtml(formatTimestamp(memory.session.suspendedAt))}`
@@ -253,6 +258,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       ownSeat !== null &&
       !encounterActive;
     const canSuspendSession =
+      sessionZeroComplete &&
       memorySnapshot !== null &&
       memorySnapshot.session.state !== 'suspended' &&
       !encounterActive;
@@ -377,7 +383,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               ? `<p class="message error" role="alert" data-testid="campaign-memory-error">${escapeHtml(memoryError)}</p>`
               : memory === null
                 ? '<p class="empty-state" data-testid="campaign-memory-empty">Campaign memory is loading…</p>'
-                : renderMemoryPanel(memory)
+                : renderMemoryPanel(memory, sessionZeroComplete)
           }
           ${
             sessionMessage === null

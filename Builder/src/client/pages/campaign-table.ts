@@ -18,6 +18,8 @@ import {
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KIND_LABELS,
+  formatDirectorProse,
+  PLAY_CHANNEL_LABEL,
   scrubChronicleCheckpointZero,
   type DockTab,
   type PartyChatMode,
@@ -88,6 +90,19 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+/** table.sync clarifications stay in-thread; skill-check drafts start with "Ready to". */
+function isSyncClarificationOnly(
+  interpreted: import('../../shared/ai-director-contract.js').IntentInterpretResponse,
+  scrubbedSummary: string,
+): boolean {
+  return (
+    interpreted.proposedCommandType === 'table.sync' &&
+    interpreted.edgeId === undefined &&
+    interpreted.path === undefined &&
+    !/^Ready to /i.test(scrubbedSummary)
+  );
+}
+
 /** Distinct short tone per cue kind so table events are at least audibly distinguishable. */
 const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   attack_hit: 440,
@@ -105,6 +120,9 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
 
 /** Non-authoritative private notes preference for the current tab session. */
 const tableNotesPreferences = new Map<string, string>();
+
+/** Non-authoritative DM play-thread cache for the current tab session (PQA-157/158). */
+const dmThreadPreferences = new Map<string, DmThreadMessage[]>();
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
@@ -150,6 +168,36 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let askDmThread: DmThreadMessage[] = [];
   let dmThread: DmThreadMessage[] = [];
   let dmThreadSeeded = false;
+  let dmThreadHydrated = false;
+
+  function dmThreadStorageKey(): string {
+    return campaignId;
+  }
+
+  function loadDmThreadFromStorage(): DmThreadMessage[] | null {
+    const stored = dmThreadPreferences.get(dmThreadStorageKey());
+    return stored !== undefined && stored.length > 0 ? stored : null;
+  }
+
+  function persistDmThread(): void {
+    if (dmThread.length === 0) {
+      dmThreadPreferences.delete(dmThreadStorageKey());
+      return;
+    }
+    dmThreadPreferences.set(dmThreadStorageKey(), [...dmThread]);
+  }
+
+  function hydrateDmThreadFromStorage(): void {
+    if (dmThreadHydrated) {
+      return;
+    }
+    dmThreadHydrated = true;
+    const stored = loadDmThreadFromStorage();
+    if (stored !== null && stored.length > 0) {
+      dmThread = stored;
+      dmThreadSeeded = true;
+    }
+  }
   let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
@@ -266,6 +314,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function seedDmThreadIfNeeded(): void {
+    hydrateDmThreadFromStorage();
     if (dmThreadSeeded || !seated) {
       return;
     }
@@ -279,6 +328,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ),
     ];
     dmThreadSeeded = true;
+    persistDmThread();
   }
 
   function appendDmThread(
@@ -288,6 +338,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     kind: DmThreadMessage['kind'],
   ): void {
     dmThread = [...dmThread, newThreadMessage(speaker, speakerLabel, body, kind)];
+    persistDmThread();
   }
 
   function appendAskDmThread(
@@ -319,7 +370,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               : 'dm-thread-message';
           return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="${testId}">
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
-            <p>${escapeHtml(message.body)}</p>
+            <p>${escapeHtml(formatDirectorProse(message.body))}</p>
             <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
           </li>`;
         })
@@ -1424,7 +1475,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <div>
             <h3 id="rules-encounter-heading">Training encounter</h3>
             <p class="record-meta" data-testid="rules-tools-secondary-note">
-              Prefer declaring what you do in the Actions thread. These controls are training shortcuts.
+              Prefer declaring what you do in the ${PLAY_CHANNEL_LABEL}. These controls are training shortcuts.
             </p>
             <p class="record-meta" data-testid="progression-meta">
               Level ${progression?.level ?? 1} · ${progression?.experiencePoints ?? 0} XP
@@ -1802,7 +1853,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               <div data-testid="table-action-slot"></div>
             </section>
           </main>
-          <aside class="table-comms-rail panel communication-dock" aria-label="At the table" data-testid="communication-dock">
+          <aside class="table-comms-rail panel communication-dock" aria-label="Conversation dock" data-testid="communication-dock">
             <div data-testid="table-comms-slot"></div>
           </aside>
         </div>
@@ -2155,10 +2206,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: 'Raise a wall and wooden door ahead on this blank table.',
             });
             const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
-            const clarificationOnly =
-              interpreted.proposedCommandType === 'table.sync' &&
-              interpreted.edgeId === undefined &&
-              interpreted.path === undefined;
+            const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             doorRecoveryVisible = false;
             if (clarificationOnly) {
               intentDraft = null;
@@ -2762,10 +2810,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             });
             appendDmThread('player', 'You', declaration, 'declaration');
             const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
-            const clarificationOnly =
-              interpreted.proposedCommandType === 'table.sync' &&
-              interpreted.edgeId === undefined &&
-              interpreted.path === undefined;
+            const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
               intentDraft = null;
               doorRecoveryVisible =
@@ -3343,7 +3388,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${presenceBody()}
         </section>
         <p class="record-meta" data-testid="table-state-meta">
-          Table state version ${tableState?.stateVersion ?? 0} · last event sequence ${tableState?.lastEventSequence ?? 0}
+          ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
         </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
         ${

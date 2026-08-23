@@ -36,6 +36,7 @@ import type {
   ProviderComplianceEntry,
 } from '../../shared/ai-director-contract.js';
 import { scrubPlayerFacingIntentCopy } from '../../shared/ai-director-contract.js';
+import { PLAY_CHANNEL_LABEL } from '../../shared/communication-contract.js';
 import {
   deriveEpicFramingTags,
   type IntentDraftCommandType,
@@ -81,8 +82,16 @@ const NARRATOR_CONSTITUTION = [
 ].join(' ');
 
 function looksMechanical(text: string): boolean {
-  return /(can i|could i|would it|action economy|bonus action|reaction|spell slot|magic missile|climb|athletics|acrobatics|check|save|attack|cast|legal|rules|how many|do i have|proficiency)/i.test(
+  return /(can i|could i|would it|action economy|bonus action|reaction|spell slot|magic missile|climb|athletics|acrobatics|check|save|attack|cast|legal|rules|how many|do i have|proficiency|trap|disarm|lockpick|thieves)/i.test(
     text,
+  );
+}
+
+function mentionsSkillCheckIntent(text: string): boolean {
+  return (
+    (/(trap|disarm|investigat|perception|search|examine|inspect)/.test(text) &&
+      /(door|lock|way|trap|entry|gate)/.test(text)) ||
+    /(pick|unlock|thieves|lockpick|lock\s*pick)/.test(text)
   );
 }
 
@@ -293,7 +302,7 @@ const DIRECTOR_SAFETY_RULES = [
   'You never change table state, move tokens, open doors, roll dice, or invent mechanical outcomes.',
   'You never invent hidden facts, secret NPC motives, or information the speaking player cannot see.',
   'Party Chat and out-of-character table talk are not available to you.',
-  'If the player describes a consequential action in Ask-the-DM, tell them what it would take and that they must declare it in the Actions thread to resolve it. Do not treat the consult as a completed command.',
+  'If the player describes a consequential action in Ask-the-DM, tell them what it would take and that they must declare it in the play channel to resolve it. Do not treat the consult as a completed command.',
 ].join(' ');
 
 async function tryLiveProse(
@@ -397,7 +406,13 @@ export async function interpretNaturalLanguageIntent(options: {
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
-  if (mentionsDoorIntent(text)) {
+  if (mentionsSkillCheckIntent(text)) {
+    proposedCommandType = 'table.sync';
+    summary =
+      /(trap|disarm)/.test(text)
+        ? 'Ready to search the doorway for traps, then attempt the lock if it looks safe. Confirm to commit this skill attempt on the table.'
+        : 'Ready to attempt the lock or inspection using a relevant skill and tools from your sheet. Confirm to commit this attempt on the table.';
+  } else if (mentionsDoorIntent(text)) {
     try {
       const map = await fetchCampaignMap({
         firestore: options.firestore,
@@ -657,8 +672,8 @@ export async function answerDirectorAddress(options: {
         context.text.includes('Active character')
           ? 'If a spell, skill, or action spend is missing from your sheet or the scene has not established the target, say so before you declare the action.'
           : 'Seat a character so the arbiter can read your sheet.'
-      } Declare the action in the Actions thread when you are ready — this consult does not resolve it.`
-    : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the DM. Use the Actions thread to declare what you do.`;
+      } Declare the action in the ${PLAY_CHANNEL_LABEL} when you are ready — this consult does not resolve it.`
+    : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the Director. Use the ${PLAY_CHANNEL_LABEL} to declare what you do.`;
 
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${

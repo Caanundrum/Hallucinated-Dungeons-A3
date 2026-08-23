@@ -46,6 +46,9 @@ export const CHRONICLE_ENTRY_KINDS = [
   'session_suspended',
   'session_resumed',
   'chapter_closed',
+  'scene_built',
+  'door_opened',
+  'token_moved',
 ] as const;
 export type ChronicleEntryKind = (typeof CHRONICLE_ENTRY_KINDS)[number];
 
@@ -60,6 +63,9 @@ export const CHRONICLE_ENTRY_KIND_LABELS: Record<ChronicleEntryKind, string> = {
   session_suspended: 'Session suspended',
   session_resumed: 'Session resumed',
   chapter_closed: 'Chapter closed',
+  scene_built: 'Scene built',
+  door_opened: 'Door opened',
+  token_moved: 'Token moved',
 };
 
 export interface ChronicleEntryProjection {
@@ -137,6 +143,20 @@ export const DIRECTOR_ADDRESS_NOTICE =
   'Ask the Game Director whether a plan is legal or feasible — action economy, skills, spells on your sheet, and what the scene allows. Only you see this consult. The Game Director never moves pieces or rolls dice from here.';
 
 export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
+
+/** Player-facing label for the declaration composer (PQA-163). */
+export const PLAY_CHANNEL_LABEL = 'play channel';
+
+/** Strip lightweight Markdown from Director prose before HTML escape (PQA-162). */
+export function formatDirectorProse(body: string): string {
+  return body
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[-*]\s+/gm, '• ')
+    .trim();
+}
 
 /** Local rolling DM play-thread message kinds (Action Composer). */
 export const DM_THREAD_SPEAKERS = ['dm', 'player', 'system'] as const;

@@ -226,9 +226,12 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
     if (adminItem === null) {
       return;
     }
+    if (!isAccountHydrated()) {
+      adminItem.hidden = true;
+      return;
+    }
     const account = getAccount();
-    // Hosted gold_master: Admin only for bootstrap admins. Local Arena keeps the link for QA.
-    const showAdmin = hostedGoldMaster
+    const showAdmin = isHostedPlayerSurface(candidate)
       ? account?.isBootstrapAdmin === true
       : true;
     adminItem.hidden = !showAdmin;
