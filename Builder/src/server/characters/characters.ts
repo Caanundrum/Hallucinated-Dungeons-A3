@@ -32,6 +32,7 @@ import {
   describeChoices,
   emptyChoices,
   rollAbilityScorePool,
+  sanitizeChoices,
   validateChoices,
 } from '../rules/character-rules.js';
 import {
@@ -85,7 +86,7 @@ export class AbilityRollsExhaustedError extends Error {
  */
 function normalizeChoices(choices: CharacterChoices): CharacterChoices {
   const base = emptyChoices();
-  return {
+  return sanitizeChoices({
     ...base,
     ...choices,
     baseAbilityScores: choices.baseAbilityScores ?? base.baseAbilityScores,
@@ -101,7 +102,7 @@ function normalizeChoices(choices: CharacterChoices): CharacterChoices {
       typeof choices.abilityRollAttempts === 'number' && Number.isInteger(choices.abilityRollAttempts)
         ? Math.max(0, choices.abilityRollAttempts)
         : 0,
-  };
+  });
 }
 
 function toIso(value: Timestamp | Date): string {

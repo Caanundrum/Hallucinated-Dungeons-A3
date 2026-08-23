@@ -8,6 +8,7 @@ import {
   deriveSheet,
   emptyChoices,
   rollAbilityScorePool,
+  sanitizeChoices,
   validateChoices,
 } from '../../dist/server/rules/character-rules.js';
 import {
@@ -332,6 +333,36 @@ test('a skill outside the class list is refused rather than silently accepted', 
 test('duplicate skill selections are refused', () => {
   const choices = legalCharacterFor('barbarian', { classSkillIds: ['athletics', 'athletics'] });
   assert.ok(validateChoices(choices).some((problem) => problem.code === 'CLASS_SKILL_DUPLICATE'));
+});
+
+test('background-granted class skills are dropped so wizard plus sage stays legal', () => {
+  const overlapping = {
+    ...emptyChoices(),
+    classId: 'wizard',
+    backgroundId: 'sage',
+    classSkillIds: ['arcana', 'investigation'],
+  };
+  const sanitized = sanitizeChoices(overlapping);
+  assert.deepEqual(sanitized.classSkillIds, ['investigation']);
+  assert.ok(
+  !validateChoices(sanitized).some((problem) => problem.code === 'CLASS_SKILL_BACKGROUND_OVERLAP'),
+    'overlap should be removed, not reported as a blocker',
+  );
+  assert.ok(
+    validateChoices(sanitized).some((problem) => problem.code === 'CLASS_SKILL_COUNT'),
+    'one class pick remains after arcana is granted by sage',
+  );
+
+  const repaired = sanitizeChoices({
+    ...overlapping,
+    classSkillIds: ['arcana', 'investigation', 'insight'],
+  });
+  assert.deepEqual(repaired.classSkillIds, ['investigation', 'insight']);
+  const repairedProblems = validateChoices(repaired);
+  assert.ok(
+    !repairedProblems.some((problem) => problem.step === 'class'),
+    'class skill overlap and count should be resolved after sanitization',
+  );
 });
 
 test('spells must come from the class list, in the right number', () => {

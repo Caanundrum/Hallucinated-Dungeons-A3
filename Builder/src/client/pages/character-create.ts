@@ -226,6 +226,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
         draftId: current.draft.draftId,
         choices: next,
       });
+      const firstIncomplete = WIZARD_STEPS.find(
+        (step) => !current?.draft.completedSteps.includes(step),
+      );
+      if (firstIncomplete !== undefined) {
+        const incompleteIndex = WIZARD_STEPS.indexOf(firstIncomplete);
+        const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+        if (incompleteIndex < activeIndex) {
+          activeStep = firstIncomplete;
+        }
+      }
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
@@ -366,13 +376,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
     /** When set, unchecked options disable once this many are selected. */
     readonly maxChoose?: number;
   }): string {
+    const visibleSelected = options.selected.filter((id) =>
+      options.entries.some((entry) => entry.id === id),
+    );
     const atCap =
-      options.maxChoose !== undefined && options.selected.length >= options.maxChoose;
+      options.maxChoose !== undefined && visibleSelected.length >= options.maxChoose;
     return `
       <div class="option-list compact" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
           .map((entry) => {
-            const isSelected = options.selected.includes(entry.id);
+            const isSelected = visibleSelected.includes(entry.id);
             const disabled = busy || (atCap && !isSelected);
             return `
           <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
@@ -427,7 +440,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
-          Skills your Background already grants are omitted so you do not lose a class pick (PQA-196).
+          Skills your Background already grants are omitted so you do not lose a class pick.
         </p>
         ${checkboxList({
           name: 'class-skill',
@@ -1009,13 +1022,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
         const target = button.dataset.step as WizardStep;
         const targetIndex = WIZARD_STEPS.indexOf(target);
         const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+        const targetComplete = current?.draft.completedSteps.includes(target) === true;
+        const goingBackOrCurrent = targetIndex <= activeIndex;
         const priorComplete =
-          targetIndex <= activeIndex ||
           targetIndex === 0 ||
           WIZARD_STEPS.slice(0, targetIndex).every(
             (prior) => current?.draft.completedSteps.includes(prior) === true,
           );
-        if (!priorComplete) {
+        if (!goingBackOrCurrent && !targetComplete && !priorComplete) {
           error = 'Finish earlier steps before jumping ahead on the step train.';
           render();
           return;

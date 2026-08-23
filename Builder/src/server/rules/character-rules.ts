@@ -80,6 +80,23 @@ export function emptyChoices(): CharacterChoices {
   };
 }
 
+/**
+ * Drops class skill picks that duplicate a Background grant so the player
+ * keeps every class proficiency slot after changing Background.
+ */
+export function sanitizeChoices(choices: CharacterChoices): CharacterChoices {
+  const backgroundRecord = findBackground(choices.backgroundId);
+  if (backgroundRecord === null || choices.classSkillIds.length === 0) {
+    return choices;
+  }
+  const backgroundSkills = new Set(backgroundRecord.skillIds);
+  const classSkillIds = choices.classSkillIds.filter((id) => !backgroundSkills.has(id));
+  if (classSkillIds.length === choices.classSkillIds.length) {
+    return choices;
+  }
+  return { ...choices, classSkillIds };
+}
+
 /** One Ability Score: 4d6, drop the lowest die. */
 export function rollOneAbilityScore(rollDie: () => number = () => randomInt(1, 7)): number {
   const dice = [rollDie(), rollDie(), rollDie(), rollDie()].sort((a, b) => a - b);
