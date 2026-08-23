@@ -226,6 +226,19 @@ export interface DerivedCharacterSheet {
     readonly level1SlotsRemaining: number;
     readonly preparationStyle: 'prepared' | 'known';
   } | null;
+  /** Fighter-style subclass or fighting-style label for level-1 heroes. */
+  readonly subclassLabel?: string | null;
+  /** Weapon mastery assignments derived from starting weapons. */
+  readonly weaponMasteries?: readonly { readonly name: string; readonly property: string }[];
+  /** Spendable class resources such as Second Wind or Action Surge. */
+  readonly classResources?: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly summary: string;
+    readonly remaining: number;
+    readonly maximum: number;
+    readonly recharge: string;
+  }[];
 }
 
 /** One unresolved requirement blocking creation, named in player-facing terms. */
@@ -279,6 +292,8 @@ export interface CharacterSummary {
   readonly backgroundLabel: string;
   readonly level: number;
   readonly createdAt: string;
+  /** Campaign names where this character currently holds a seat, if any. */
+  readonly seatedCampaignNames?: readonly string[];
 }
 
 export interface DraftSummary {

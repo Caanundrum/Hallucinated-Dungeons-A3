@@ -33,7 +33,7 @@ import type {
 import { RULES_CATALOG_CATEGORY_LABELS } from '../../shared/rules-catalog-contract.js';
 import type { CampaignPresenceProjection } from '../../shared/presence-contract.js';
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
-import type { MapBundleProjection } from '../../shared/map-contract.js';
+import type { MapBundleProjection, MapEdgeRecord } from '../../shared/map-contract.js';
 import type {
   PresentationCueKind,
   PresentationCuePlanProjection,
@@ -54,6 +54,7 @@ import {
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
+  claimTimingAuthority,
   fetchCampaignDetail,
   fetchCampaignMemory,
   fetchCampaignMap,
@@ -131,14 +132,31 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-/** Non-authoritative private notes preference stored via browser-preferences. */
-const dmThreadPreferences = new Map<string, DmThreadMessage[]>();
+function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
+  const column = edge.column + 1;
+  const row = edge.row + 1;
+  const facing =
+    edge.orientation === 'north'
+      ? 'north'
+      : edge.orientation === 'south'
+        ? 'south'
+        : edge.orientation === 'east'
+          ? 'east'
+          : 'west';
+  if (edge.kind === 'door') {
+    const state = edge.doorState === 'open' ? 'open' : 'closed';
+    return `Wooden door (${state}) facing ${facing} at column ${column}, row ${row}`;
+  }
+  return `Wall facing ${facing} at column ${column}, row ${row}`;
+}
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Campaign table');
 
   let campaignName = 'Campaign';
+  let sessionZeroComplete = false;
+  let sessionZeroGateActive = false;
   let directorIdentityLabel = 'the Game Director';
   type InfoTab = 'character' | 'notes' | 'people' | 'tools';
   let activeInfoTab: InfoTab = 'character';
@@ -174,41 +192,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let ownSeatId: string | null = null;
   let moveTarget: { column: number; row: number } | null = null;
   let movePreviewNote: string | null = null;
+  let undoMoveAnchor: { column: number; row: number } | null = null;
+  let selectedEdgeId: string | null = null;
   let draft = '';
   let directorDraft = '';
   let askDmThread: DmThreadMessage[] = [];
   let dmThread: DmThreadMessage[] = [];
-  let dmThreadSeeded = false;
-  let dmThreadHydrated = false;
-
-  function dmThreadStorageKey(): string {
-    return campaignId;
-  }
-
-  function loadDmThreadFromStorage(): DmThreadMessage[] | null {
-    const stored = dmThreadPreferences.get(dmThreadStorageKey());
-    return stored !== undefined && stored.length > 0 ? stored : null;
-  }
-
-  function persistDmThread(): void {
-    if (dmThread.length === 0) {
-      dmThreadPreferences.delete(dmThreadStorageKey());
-      return;
-    }
-    dmThreadPreferences.set(dmThreadStorageKey(), [...dmThread]);
-  }
-
-  function hydrateDmThreadFromStorage(): void {
-    if (dmThreadHydrated) {
-      return;
-    }
-    dmThreadHydrated = true;
-    const stored = loadDmThreadFromStorage();
-    if (stored !== null && stored.length > 0) {
-      dmThread = stored;
-      dmThreadSeeded = true;
-    }
-  }
+  let dmThreadOptimistic: DmThreadMessage[] = [];
+  let lastChronicleSyncCount = 0;
   let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
@@ -328,19 +319,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
-  function seedDmThreadIfNeeded(): void {
-    hydrateDmThreadFromStorage();
-    if (dmThreadSeeded || !seated) {
+  function syncDmThreadFromChronicle(): void {
+    if (!seated) {
       return;
     }
     const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
-    dmThread = dmThreadFromChronicleEntries({
+    const fromChronicle = dmThreadFromChronicleEntries({
       entries: chronicle?.entries ?? [],
       directorLabel: directorIdentityLabel,
       sceneBanner: scene,
     });
-    dmThreadSeeded = true;
-    persistDmThread();
+    const entryCount = chronicle?.entries.length ?? 0;
+    if (entryCount > lastChronicleSyncCount) {
+      dmThreadOptimistic = [];
+      lastChronicleSyncCount = entryCount;
+    }
+    dmThread = [...fromChronicle, ...dmThreadOptimistic];
+  }
+
+  function seedDmThreadIfNeeded(): void {
+    syncDmThreadFromChronicle();
   }
 
   function appendDmThread(
@@ -349,8 +347,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     body: string,
     kind: DmThreadMessage['kind'],
   ): void {
-    dmThread = [...dmThread, newThreadMessage(speaker, speakerLabel, body, kind)];
-    persistDmThread();
+    const message = newThreadMessage(speaker, speakerLabel, body, kind);
+    dmThreadOptimistic = [...dmThreadOptimistic, message];
+    dmThread = [...dmThread, message];
   }
 
   function appendAskDmThread(
@@ -411,11 +410,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const dest = path[path.length - 1] ?? start;
     const squares = path.length;
     const feet = squares * map.coordinateSpace.feetPerSquare;
-    const pathLabel =
-      path.length <= 4
-        ? path.map((step) => `(${step.column},${step.row})`).join(' → ')
-        : `(${start.column},${start.row}) → … (${dest.column},${dest.row})`;
-    return `From (${start.column}, ${start.row}) to (${dest.column}, ${dest.row}) · ${squares} square${squares === 1 ? '' : 's'} (${feet} ft) · path ${pathLabel}`;
+    const startLabel = `column ${start.column + 1}, row ${start.row + 1}`;
+    const destLabel = `column ${dest.column + 1}, row ${dest.row + 1}`;
+    return `Moved from ${startLabel} to ${destLabel} · ${squares} square${squares === 1 ? '' : 's'} (${feet} ft)`;
   }
 
   let narrationChain: Promise<void> = Promise.resolve();
@@ -476,6 +473,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   ): ActionDraftSuggestion {
     const projectionVersionAtIssue =
       interpreted.projectionVersionAtIssue ?? tableState?.stateVersion;
+    if (interpreted.edgeId !== undefined) {
+      selectedEdgeId = interpreted.edgeId;
+      stageHandle?.setSelectedEdge(interpreted.edgeId);
+    }
     return {
       draftId: interpreted.draftId,
       source: 'action_composer_interpret',
@@ -890,7 +891,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `${compact}
       <details class="table-character-sheet-panel" data-testid="table-character-sheet-panel">
         <summary>Full character sheet</summary>
-        <div data-testid="table-character-sheet">${renderCharacterSheet(sheet)}</div>
+        <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, { compact: true })}</div>
       </details>`;
   }
 
@@ -971,8 +972,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     const currentChapter =
       memory.chapters.find((chapter) => chapter.chapterId === memory!.currentChapterId) ?? null;
+    const sceneContext =
+      mapBundle?.sceneBanner?.trim() ||
+      mapBundle?.title?.trim() ||
+      (mapBundle?.notableFeatures.length
+        ? mapBundle.notableFeatures.map((feature) => feature.label).join(', ')
+        : '');
     return `
       <p class="record-meta" data-testid="table-people-time">${escapeHtml(memory.campaignTime.label)}</p>
+      ${
+        sceneContext.length > 0
+          ? `<p data-testid="table-scene-context"><strong>Current scene:</strong> ${escapeHtml(sceneContext)}</p>`
+          : ''
+      }
       ${
         currentChapter === null
           ? '<p class="empty-state">No current chapter yet.</p>'
@@ -1063,7 +1075,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </button>
       ${
         infoRailCollapsed
-          ? ''
+          ? `<button type="button" class="table-rail-restore" data-testid="expand-info-rail-inline">Open reference panel</button>`
           : `<div class="info-rail-tabs" role="tablist" aria-label="Table reference">
         ${tabs
           .map(
@@ -1089,7 +1101,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </button>
       ${
         commsRailCollapsed
-          ? ''
+          ? `<button type="button" class="table-rail-restore" data-testid="expand-comms-rail-inline">Open chat panel</button>`
           : `<div class="dock-tabs" role="tablist" aria-label="Table conversations">
         ${PLAYER_DOCK_TAB_ORDER.map(
           (tab) => `
@@ -1812,8 +1824,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             .filter((cell) => cell.terrain !== 'blocked' && cell.known)
             .slice(0, 96)
             .map((cell) => ({ column: cell.column, row: cell.row }));
+    const canClaimActiveTurn =
+      seated &&
+      explorationMode() &&
+      candidate !== null &&
+      !sessionIsSuspended() &&
+      (timingAuthority === null ||
+        timingAuthority.timingAuthorityId === 'held-by-other' ||
+        timingAuthority.state !== 'issued');
     return `
       <p class="record-meta" data-testid="timing-authority-meta">${escapeHtml(authorityMeta())}</p>
+      ${
+        canClaimActiveTurn
+          ? `<div class="action-composer-authority">
+               <button type="button" data-testid="claim-active-turn"
+                 aria-disabled="${busy || candidate === null ? 'true' : 'false'}">
+                 Claim active turn
+               </button>
+               <p class="record-meta">Take the action window when you are ready to move or declare.</p>
+             </div>`
+          : ''
+      }
       ${
         sessionIsSuspended()
           ? ''
@@ -1868,6 +1899,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-disabled="${syncDisabled || moveTarget === null}"
           aria-describedby="composer-gate-hint">
           ${busy ? 'Moving…' : 'Commit move'}
+        </button>
+        <button type="button" data-testid="undo-last-move"
+          aria-disabled="${syncDisabled || undoMoveAnchor === null}"
+          aria-describedby="composer-gate-hint">
+          Undo last move
         </button>
         <button type="button" data-testid="open-adjacent-door"
           aria-disabled="${syncDisabled || !hasClosedDoor}"
@@ -1960,8 +1996,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
         stageHandle.setMoveTarget(moveTarget);
+        stageHandle.setSelectedEdge(selectedEdgeId);
         stageHandle.setSquareClickHandler((square) => {
           void onSquareSelected(square);
+        });
+        stageHandle.setEdgeClickHandler((edgeId) => {
+          selectedEdgeId = edgeId;
+          const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
+          if (edge !== null) {
+            movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+          }
+          render();
         });
       }
       return;
@@ -1978,8 +2023,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       if (mapBundle !== null) {
         stageHandle.renderMap(mapBundle);
         stageHandle.setMoveTarget(moveTarget);
+        stageHandle.setSelectedEdge(selectedEdgeId);
         stageHandle.setSquareClickHandler((square) => {
           void onSquareSelected(square);
+        });
+        stageHandle.setEdgeClickHandler((edgeId) => {
+          selectedEdgeId = edgeId;
+          const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
+          if (edge !== null) {
+            movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+          }
+          render();
         });
       }
     } catch (failure) {
@@ -2074,6 +2128,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       tableState = accepted.table;
       mapBundle = await fetchCampaignMap(campaignId);
+      undoMoveAnchor = start;
       moveTarget = null;
       movePreviewNote = null;
       stageHandle?.setMoveTarget(null);
@@ -2243,6 +2298,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
+      .querySelector<HTMLButtonElement>('[data-testid="expand-info-rail-inline"]')
+      ?.addEventListener('click', () => {
+        infoRailCollapsed = false;
+        render();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="expand-comms-rail-inline"]')
+      ?.addEventListener('click', () => {
+        commsRailCollapsed = false;
+        render();
+      });
+
+    root
       .querySelector<HTMLButtonElement>('[data-testid="expand-info-rail"]')
       ?.addEventListener('click', () => {
         infoRailCollapsed = false;
@@ -2254,6 +2323,47 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('click', () => {
         commsRailCollapsed = false;
         render();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const claimed = await claimTimingAuthority({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            timingAuthority = claimed.authority;
+            shell.announce('You claimed the active turn.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The active turn could not be claimed.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="undo-last-move"]')
+      ?.addEventListener('click', () => {
+        if (undoMoveAnchor === null || mapBundle === null || ownSeatId === null) {
+          return;
+        }
+        const target = undoMoveAnchor;
+        undoMoveAnchor = null;
+        moveTarget = target;
+        void onSquareSelected(target);
       });
 
     root
@@ -3480,6 +3590,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           data-event-sequence="${tableState?.lastEventSequence ?? 0}">
           ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
         </p>
+        ${
+          mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
+            ? `<p class="record-meta" data-testid="blank-table-start-hint">
+                 This blank table starts fully unexplored. Declare what you do or use training tools to place your first chamber.
+               </p>`
+            : ''
+        }
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
         ${
           mapBundle === null || mapBundle.notableFeatures.length === 0
@@ -3591,6 +3708,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       return;
     }
+    if (sessionZeroGateActive) {
+      stopProjectionPoll();
+      stageHandle?.destroy();
+      stageHandle = null;
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaign-table-heading">Campaign table</h1>
+          <p class="message notice" data-testid="table-session-zero-gate">
+            Record Session Zero in Campaign settings before opening the tactical table. You can still review campaign
+            settings and seat characters from the campaign page afterward.
+          </p>
+          <div class="actions">
+            <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-session-zero-settings">Campaign settings</a>
+            <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-session-zero-campaign">Campaign overview</a>
+          </div>
+        </div>`;
+      return;
+    }
     renderTable();
   }
 
@@ -3665,6 +3800,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt ||
       nextSpotlightKey !== priorSpotlightKey;
     if (changed) {
+      if (chronicleFeed.entries.length !== priorChronicleCount) {
+        syncDmThreadFromChronicle();
+      }
       render();
     } else if (mapBundle !== null && stageHandle !== null) {
       stageHandle.renderMap(mapBundle);
@@ -3758,6 +3896,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     try {
       const detail = await fetchCampaignDetail(campaignId);
       campaignName = detail.campaign.name;
+      sessionZeroComplete = detail.settings.sessionZero.completed;
+      sessionZeroGateActive = !sessionZeroComplete;
       directorIdentityLabel = detail.campaign.director.identityLabel;
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;

@@ -2176,6 +2176,29 @@ html.hd-low-effects .map-square-fog,
   min-width: 0;
 }
 
+.sheet-layout-compact {
+  display: block;
+}
+
+.sheet-layout-compact .sheet-column {
+  width: 100%;
+}
+
+.sheet-layout-compact .sheet-panel {
+  margin-bottom: var(--space-2);
+}
+
+.map-edge-hit-target.map-edge-selected line {
+  stroke: #f0c043 !important;
+  stroke-width: 6 !important;
+  filter: drop-shadow(0 0 4px rgba(240, 192, 67, 0.8));
+}
+
+.table-rail-restore {
+  width: 100%;
+  margin: var(--space-2) 0;
+}
+
 @media (max-width: 760px) {
   .table-character-sheet-panel:not([open]) + .table-character-compact {
     margin-bottom: 0;

@@ -91,6 +91,12 @@ export function mountCharactersPage(host: PageHost): void {
                         Level ${character.level} ${escapeHtml(character.speciesLabel)} ${escapeHtml(character.classLabel)}
                         · ${escapeHtml(character.backgroundLabel)}
                         · created ${escapeHtml(formatTimestamp(character.createdAt))}
+                        ${
+                          character.seatedCampaignNames !== undefined &&
+                          character.seatedCampaignNames.length > 0
+                            ? ` · seated in ${escapeHtml(character.seatedCampaignNames.join(', '))}`
+                            : ' · not seated in a campaign'
+                        }
                       </span>
                     </li>`,
                     )

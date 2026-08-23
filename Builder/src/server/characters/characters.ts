@@ -438,6 +438,24 @@ export async function readVault(options: {
       const progression = progressionSnap.exists
         ? (progressionSnap.data() as StoredProgression)
         : null;
+      const seatSnapshots = await firestore
+        .collection(COLLECTIONS.campaignSeats)
+        .where('characterId', '==', stored.characterId)
+        .limit(8)
+        .get();
+      const seatedCampaignNames = await Promise.all(
+        seatSnapshots.docs.map(async (seatDoc) => {
+          const seat = seatDoc.data() as { campaignId?: string };
+          if (seat.campaignId === undefined) {
+            return null;
+          }
+          const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).get();
+          if (!campaignSnap.exists) {
+            return null;
+          }
+          return (campaignSnap.data() as { name?: string }).name ?? null;
+        }),
+      );
       return {
         characterId: stored.characterId,
         name: stored.choices.identity.name,
@@ -446,6 +464,7 @@ export async function readVault(options: {
         backgroundLabel: labels.backgroundLabel,
         level: progression?.level ?? 1,
         createdAt: toIso(stored.createdAt),
+        seatedCampaignNames: seatedCampaignNames.filter((name): name is string => name !== null && name.length > 0),
       };
     }),
   );

@@ -985,6 +985,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return `
       <h3>Identity & final review</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
+      <p class="record-meta" data-testid="identity-autosave-notice">
+        Identity fields save automatically after you pause typing. While a save is in flight, controls may
+        briefly show <strong>Working…</strong> — your draft is still safe on the server.
+      </p>
       <label for="character-name">Name</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
         maxlength="${CHARACTER_NAME_MAX_LENGTH}"

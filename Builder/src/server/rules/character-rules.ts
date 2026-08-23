@@ -1132,6 +1132,54 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     initiativeComponents.push({ label: 'Alert', amount: 5, ruleId: 'feat.alert.initiative' });
   }
   const hitPoints = value(hitPointComponents);
+  const attacks = deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices);
+  const fightingStyle = features.find((feature) => feature.name.startsWith('Fighting Style:'));
+  const subclassLabel =
+    fightingStyle !== undefined
+      ? `${fightingStyle.name.replace('Fighting Style: ', '')} (fighting style)`
+      : classRecord.id === 'fighter'
+        ? 'Subclass unlocks at level 3'
+        : null;
+  const masteryCount = classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
+    ? classRecord.id === 'fighter'
+      ? 3
+      : 2
+    : 0;
+  const weaponMasteries =
+    masteryCount === 0
+      ? []
+      : attacks.slice(0, masteryCount).map((attack) => ({
+          name: attack.name,
+          property: attack.properties[0] ?? 'Mastery',
+        }));
+  const classResources: Array<{
+    id: string;
+    label: string;
+    summary: string;
+    remaining: number;
+    maximum: number;
+    recharge: string;
+  }> = [];
+  if (classRecord.features.some((feature) => feature.name === 'Second Wind')) {
+    classResources.push({
+      id: 'second-wind',
+      label: 'Second Wind',
+      summary: 'Bonus Action to regain 1d10 + level Hit Points.',
+      remaining: 1,
+      maximum: 1,
+      recharge: 'Short rest',
+    });
+  }
+  if (classRecord.features.some((feature) => feature.name === 'Action Surge')) {
+    classResources.push({
+      id: 'action-surge',
+      label: 'Action Surge',
+      summary: 'Take one additional Action on your turn.',
+      remaining: 1,
+      maximum: 1,
+      recharge: 'Short rest',
+    });
+  }
 
   return {
     level: STARTING_LEVEL,
@@ -1153,10 +1201,13 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     proficiencies,
     languages: ['Common'],
     features,
-    attacks: deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices),
+    attacks,
     equipment,
     currencyGold: (classEquipment?.gold ?? 0) + (backgroundEquipment?.gold ?? 0),
     spellcasting,
+    subclassLabel,
+    weaponMasteries,
+    classResources,
   };
 }
 

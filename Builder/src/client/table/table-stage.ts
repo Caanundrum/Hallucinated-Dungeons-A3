@@ -66,7 +66,9 @@ export interface TableStageHandle {
   readonly setSquareClickHandler: (
     handler: ((square: { column: number; row: number }) => void) | null,
   ) => void;
+  readonly setEdgeClickHandler: (handler: ((edgeId: string) => void) | null) => void;
   readonly setMoveTarget: (square: MapSquareCoordinate | null) => void;
+  readonly setSelectedEdge: (edgeId: string | null) => void;
 }
 
 function layerContainer(name: WebGlRenderLayer): Container {
@@ -189,6 +191,7 @@ function paintSemanticSvg(
   host: HTMLElement,
   map: MapBundleProjection,
   moveTarget: MapSquareCoordinate | null,
+  selectedEdgeId: string | null,
   priorTokenBoxes: Map<string, { x: number; y: number }>,
   zoomScale: number,
 ): Map<string, { x: number; y: number }> {
@@ -257,7 +260,8 @@ function paintSemanticSvg(
       }
       const hit = edgeHitBox(edge, pixelsPerSquare);
       const label = edgeAccessibleLabel(edge);
-      return `<g role="button" tabindex="0" aria-label="${escapeHtml(label)}" data-edge="${escapeHtml(edge.edgeId)}" class="map-edge-hit-target">
+      const selected = selectedEdgeId === edge.edgeId ? ' map-edge-selected' : '';
+      return `<g role="button" tabindex="0" aria-label="${escapeHtml(label)}" data-edge="${escapeHtml(edge.edgeId)}" class="map-edge-hit-target${selected}" aria-pressed="${selectedEdgeId === edge.edgeId ? 'true' : 'false'}">
         <rect x="${hit.x}" y="${hit.y}" width="${hit.w}" height="${hit.h}" fill="transparent" stroke="none" />
         <line aria-hidden="true" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" pointer-events="none" />
       </g>`;
@@ -355,7 +359,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   let currentMap: MapBundleProjection | null = null;
   let moveTarget: MapSquareCoordinate | null = null;
+  let selectedEdgeId: string | null = null;
   let squareClickHandler: ((square: { column: number; row: number }) => void) | null = null;
+  let edgeClickHandler: ((edgeId: string) => void) | null = null;
   let application: Application | null = null;
   let root: Container | null = null;
   let layers: Record<WebGlRenderLayer, Container> | null = null;
@@ -409,6 +415,25 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         const row = Number(rowText);
         if (!Number.isInteger(column) || !Number.isInteger(row)) return;
         squareClickHandler({ column, row });
+      };
+    });
+  }
+
+  function bindEdgeClicks(): void {
+    host.querySelectorAll<SVGGElement>('g[data-edge]').forEach((group) => {
+      group.style.cursor = 'pointer';
+      const activate = (): void => {
+        if (edgeClickHandler === null) return;
+        const edgeId = group.getAttribute('data-edge');
+        if (edgeId === null) return;
+        edgeClickHandler(edgeId);
+      };
+      group.onclick = activate;
+      group.onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
+        }
       };
     });
   }
@@ -546,9 +571,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   function paint(map: MapBundleProjection): void {
     currentMap = map;
-    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, priorTokenBoxes, zoomScale);
+    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, selectedEdgeId, priorTokenBoxes, zoomScale);
     paintPixi(map);
     bindSquareClicks();
+    bindEdgeClicks();
     bindToolbar();
   }
 
@@ -610,8 +636,18 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       squareClickHandler = handler;
       bindSquareClicks();
     },
+    setEdgeClickHandler(handler) {
+      edgeClickHandler = handler;
+      bindEdgeClicks();
+    },
     setMoveTarget(square) {
       moveTarget = square;
+      if (currentMap !== null) {
+        paint(currentMap);
+      }
+    },
+    setSelectedEdge(edgeId) {
+      selectedEdgeId = edgeId;
       if (currentMap !== null) {
         paint(currentMap);
       }

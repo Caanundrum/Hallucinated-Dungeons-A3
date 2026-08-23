@@ -548,16 +548,45 @@ export async function updateCampaign(options: {
 }): Promise<CampaignProjection> {
   const { firestore, accountId, campaignId } = options;
 
-  if (options.directorIdentity !== undefined || options.directorPersonality !== undefined) {
-    throw new DirectorConfigLockedError();
-  }
-
   const membership = await requireMembership(firestore, campaignId, accountId);
   if (membership.role !== 'owner') {
     throw new CampaignNotFoundError();
   }
 
   const stored = await loadCampaign(firestore, campaignId);
+  const settings = await ensureCampaignSettings(firestore, campaignId);
+
+  let directorIdentity = stored.directorIdentity;
+  let directorPersonality = stored.directorPersonality;
+  let directorAvatarKey = stored.directorAvatarKey;
+
+  if (options.directorIdentity !== undefined || options.directorPersonality !== undefined) {
+    if (settings.sessionZero.completed) {
+      throw new DirectorConfigLockedError();
+    }
+    const nextIdentity =
+      options.directorIdentity === undefined ? directorIdentity : options.directorIdentity;
+    const nextPersonality =
+      options.directorPersonality === undefined ? directorPersonality : options.directorPersonality;
+    if (!isDirectorIdentity(nextIdentity)) {
+      throw new CampaignValidationError('Choose Veyra or Garrick as the Game Director identity.');
+    }
+    if (!isDirectorPersonality(nextPersonality)) {
+      throw new CampaignValidationError('Choose one approved Game Director personality.');
+    }
+    const director = resolveDirectorConfiguration({
+      identity: nextIdentity,
+      personality: nextPersonality,
+      lockedAt:
+        stored.directorLockedAt instanceof Date
+          ? stored.directorLockedAt
+          : (stored.directorLockedAt as Timestamp).toDate(),
+    });
+    directorIdentity = director.identity;
+    directorPersonality = director.personality;
+    directorAvatarKey = director.avatarKey;
+  }
+
   const name = options.name === undefined ? stored.name : validateName(options.name);
   const summary =
     options.summary === undefined ? stored.summary : validateSummary(options.summary);
@@ -566,6 +595,9 @@ export async function updateCampaign(options: {
     ...stored,
     name,
     summary,
+    directorIdentity,
+    directorPersonality,
+    directorAvatarKey,
     updatedAt: new Date(),
   };
   await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).set(updated);

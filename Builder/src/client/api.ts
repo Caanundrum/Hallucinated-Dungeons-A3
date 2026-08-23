@@ -323,6 +323,28 @@ export async function fetchCampaignDetail(campaignId: string): Promise<CampaignD
   )) as CampaignDetailProjection;
 }
 
+export async function updateCampaign(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly name?: string;
+  readonly summary?: string;
+  readonly directorIdentity?: string;
+  readonly directorPersonality?: string;
+}): Promise<CampaignProjection> {
+  return (await request<CampaignProjection>(`/api/campaigns/${options.campaignId}`, {
+    method: 'PATCH',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      ...(options.name !== undefined ? { name: options.name } : {}),
+      ...(options.summary !== undefined ? { summary: options.summary } : {}),
+      ...(options.directorIdentity !== undefined ? { directorIdentity: options.directorIdentity } : {}),
+      ...(options.directorPersonality !== undefined
+        ? { directorPersonality: options.directorPersonality }
+        : {}),
+    }),
+  })) as CampaignProjection;
+}
+
 export async function createCampaignInvitation(options: {
   readonly candidateId: string;
   readonly campaignId: string;
