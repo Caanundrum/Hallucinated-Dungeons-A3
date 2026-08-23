@@ -126,8 +126,8 @@ test.describe('Phase 2d exploration and initiative turns', () => {
 
     const origin = new URL(page.url()).origin;
     const candidate = await readCandidate(page);
-    const stateText = await page.getByTestId('table-state-meta').innerText();
-    const stateVersion = Number(/Table state version (\d+)/.exec(stateText)?.[1]);
+    const stateText = await page.getByTestId('table-state-meta').getAttribute('data-state-version');
+    const stateVersion = Number(stateText);
     const rejected = await page.request.post(`/api/campaigns/${campaignId}/commands`, {
       headers: {
         origin,

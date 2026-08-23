@@ -44,6 +44,7 @@ import {
 import type { NarrationDensity } from '../../shared/settings-contract.js';
 import type { EncounterProjection } from '../../shared/rules-combat-contract.js';
 import { getAiKillSwitch } from '../admin/admin-service.js';
+import { appendChronicleEntry } from '../communication/chronicle.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { fetchRulesState } from '../rules/engine/rules-commands.js';
 import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
@@ -556,6 +557,22 @@ export async function interpretNaturalLanguageIntent(options: {
     summary = liveSummary;
   }
   summary = scrubPlayerFacingIntentCopy(summary);
+
+  const declaration = rawText.trim().slice(0, 500);
+  if (declaration.length > 0) {
+    await appendChronicleEntry({
+      firestore: options.firestore,
+      campaignId: options.campaignId,
+      kind: 'play_declaration',
+      body: declaration,
+    });
+    await appendChronicleEntry({
+      firestore: options.firestore,
+      campaignId: options.campaignId,
+      kind: 'director_ruling',
+      body: summary,
+    });
+  }
 
   const createdAt = new Date().toISOString();
   const manifest = buildManifest({

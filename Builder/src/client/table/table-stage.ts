@@ -41,6 +41,25 @@ function edgeAccessibleLabel(edge: MapEdgeRecord): string {
   return `Wall facing ${facing} at column ${column}, row ${row}`;
 }
 
+function edgeHitBox(
+  edge: MapEdgeRecord,
+  pixelsPerSquare: number,
+): { readonly x: number; readonly y: number; readonly w: number; readonly h: number } {
+  const pad = 12;
+  const x = edge.column * pixelsPerSquare;
+  const y = edge.row * pixelsPerSquare;
+  if (edge.orientation === 'east') {
+    return { x: x + pixelsPerSquare - pad / 2, y, w: pad, h: pixelsPerSquare };
+  }
+  if (edge.orientation === 'west') {
+    return { x: x - pad / 2, y, w: pad, h: pixelsPerSquare };
+  }
+  if (edge.orientation === 'south') {
+    return { x, y: y + pixelsPerSquare - pad / 2, w: pixelsPerSquare, h: pad };
+  }
+  return { x, y: y - pad / 2, w: pixelsPerSquare, h: pad };
+}
+
 export interface TableStageHandle {
   readonly destroy: () => void;
   readonly renderMap: (map: MapBundleProjection) => void;
@@ -213,7 +232,12 @@ function paintSemanticSvg(
       } else {
         x2 = x + pixelsPerSquare;
       }
-      return `<line role="img" tabindex="0" aria-label="${escapeHtml(edgeAccessibleLabel(edge))}" data-edge="${escapeHtml(edge.edgeId)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" />`;
+      const hit = edgeHitBox(edge, pixelsPerSquare);
+      const label = edgeAccessibleLabel(edge);
+      return `<g role="button" tabindex="0" aria-label="${escapeHtml(label)}" data-edge="${escapeHtml(edge.edgeId)}" class="map-edge-hit-target">
+        <rect x="${hit.x}" y="${hit.y}" width="${hit.w}" height="${hit.h}" fill="transparent" stroke="none" />
+        <line aria-hidden="true" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" pointer-events="none" />
+      </g>`;
     })
     .join('');
   const tokens = map.tokens

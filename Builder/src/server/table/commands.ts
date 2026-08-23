@@ -402,6 +402,8 @@ export async function acceptTableCommand(options: {
   readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  /** Player-facing beat summary for Chronicle (table commands only). */
+  readonly summary?: string;
 } & RulesCommandFields): Promise<TableCommandAcceptResponse> {
   const {
     firestore,
@@ -423,7 +425,13 @@ export async function acceptTableCommand(options: {
     readyTrigger,
     xpAmount,
     itemId,
+    summary: playBeatSummary,
   } = options;
+
+  const trimmedPlaySummary =
+    typeof playBeatSummary === 'string' && playBeatSummary.trim().length > 0
+      ? playBeatSummary.trim().slice(0, 500)
+      : undefined;
 
   try {
     await assertSessionAllowsPlay(firestore, campaignId);
@@ -833,6 +841,7 @@ export async function acceptTableCommand(options: {
       committedAt,
       ...(movePath !== undefined ? { path: movePath } : {}),
       ...(openEdgeId !== undefined ? { edgeId: openEdgeId } : {}),
+      ...(trimmedPlaySummary !== undefined ? { summary: trimmedPlaySummary } : {}),
     };
 
     const nextProjection: StoredProjection = {
@@ -900,6 +909,14 @@ export async function acceptTableCommand(options: {
         campaignId,
         kind: 'token_moved',
         body: `${seat.characterName || 'A player'} moved to column ${destination.column + 1}, row ${destination.row + 1}.`,
+      });
+    }
+    if (trimmedPlaySummary !== undefined) {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_resolved',
+        body: trimmedPlaySummary,
       });
     }
   }

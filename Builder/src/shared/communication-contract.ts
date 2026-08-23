@@ -49,6 +49,9 @@ export const CHRONICLE_ENTRY_KINDS = [
   'scene_built',
   'door_opened',
   'token_moved',
+  'play_declaration',
+  'director_ruling',
+  'play_resolved',
 ] as const;
 export type ChronicleEntryKind = (typeof CHRONICLE_ENTRY_KINDS)[number];
 
@@ -66,6 +69,9 @@ export const CHRONICLE_ENTRY_KIND_LABELS: Record<ChronicleEntryKind, string> = {
   scene_built: 'Scene built',
   door_opened: 'Door opened',
   token_moved: 'Token moved',
+  play_declaration: 'Declaration',
+  director_ruling: 'Director ruling',
+  play_resolved: 'Resolved on table',
 };
 
 export interface ChronicleEntryProjection {
@@ -169,6 +175,68 @@ export interface DmThreadMessage {
   readonly body: string;
   readonly createdAt: string;
   readonly kind: 'prompt' | 'declaration' | 'ruling_hint' | 'narration' | 'mechanics' | 'system';
+}
+
+const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
+  'play_declaration',
+  'director_ruling',
+  'play_resolved',
+  'scene_built',
+  'door_opened',
+  'token_moved',
+]);
+
+/** Rebuild the DM play thread from trusted Chronicle play beats (PQA-157/158/159). */
+export function dmThreadFromChronicleEntries(options: {
+  readonly entries: readonly ChronicleEntryProjection[];
+  readonly directorLabel: string;
+  readonly sceneBanner: string;
+}): DmThreadMessage[] {
+  const playEntries = options.entries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind));
+  if (playEntries.length === 0) {
+    const scene = options.sceneBanner.trim() || 'The table is ready.';
+    return [
+      {
+        messageId: 'opening-prompt',
+        speaker: 'dm',
+        speakerLabel: options.directorLabel,
+        body: `${scene} What do you do?`,
+        createdAt: new Date().toISOString(),
+        kind: 'prompt',
+      },
+    ];
+  }
+  return playEntries.map((entry) => {
+    const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
+    if (entry.kind === 'play_declaration') {
+      return {
+        messageId: entry.entryId,
+        speaker: 'player',
+        speakerLabel: 'You',
+        body,
+        createdAt: entry.createdAt,
+        kind: 'declaration',
+      };
+    }
+    if (entry.kind === 'director_ruling') {
+      return {
+        messageId: entry.entryId,
+        speaker: 'dm',
+        speakerLabel: options.directorLabel,
+        body,
+        createdAt: entry.createdAt,
+        kind: 'ruling_hint',
+      };
+    }
+    return {
+      messageId: entry.entryId,
+      speaker: 'system',
+      speakerLabel: 'Table',
+      body,
+      createdAt: entry.createdAt,
+      kind: 'mechanics',
+    };
+  });
 }
 
 export function isDockTab(value: unknown): value is DockTab {

@@ -26,7 +26,7 @@ test('PQA-141: scrub strips internal command identifiers from player-facing copy
 function fakeFirestore(options = { killSwitch: false }) {
   return {
     collection(name) {
-      return {
+      const collectionApi = {
         doc() {
           return {
             async get() {
@@ -53,7 +53,19 @@ function fakeFirestore(options = { killSwitch: false }) {
             },
           };
         },
+        where() {
+          return {
+            limit() {
+              return {
+                async get() {
+                  return { empty: true, docs: [] };
+                },
+              };
+            },
+          };
+        },
       };
+      return collectionApi;
     },
   };
 }

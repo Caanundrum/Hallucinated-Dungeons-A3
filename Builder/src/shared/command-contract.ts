@@ -78,6 +78,8 @@ export interface TableCommandRequest {
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   /** Door edge id (table.open_door). */
   readonly edgeId?: string;
+  /** Player-facing beat summary stored on the event and Chronicle. */
+  readonly summary?: string;
   /** Phase 3 mechanical payload. Outcomes remain server-authored. */
   readonly targetCombatantId?: string;
   readonly attackId?: string;

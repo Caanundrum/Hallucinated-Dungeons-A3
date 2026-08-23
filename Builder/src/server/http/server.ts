@@ -2313,6 +2313,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           readyTrigger?: unknown;
           xpAmount?: unknown;
           itemId?: unknown;
+          summary?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
@@ -2352,6 +2353,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             : {}),
           ...(typeof payload.xpAmount === 'number' ? { xpAmount: payload.xpAmount } : {}),
           ...(typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
+          ...(typeof payload.summary === 'string' ? { summary: payload.summary } : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;

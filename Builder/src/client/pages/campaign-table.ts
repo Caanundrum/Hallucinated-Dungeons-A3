@@ -18,6 +18,7 @@ import {
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KIND_LABELS,
+  dmThreadFromChronicleEntries,
   formatDirectorProse,
   PLAY_CHANNEL_LABEL,
   scrubChronicleCheckpointZero,
@@ -319,14 +320,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
-    dmThread = [
-      newThreadMessage(
-        'dm',
-        directorIdentityLabel,
-        `${scene} What do you do?`,
-        'prompt',
-      ),
-    ];
+    dmThread = dmThreadFromChronicleEntries({
+      entries: chronicle?.entries ?? [],
+      directorLabel: directorIdentityLabel,
+      sceneBanner: scene,
+    });
     dmThreadSeeded = true;
     persistDmThread();
   }
@@ -539,7 +537,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         stageHandle?.renderMap(mapBundle);
         const summary =
           accepted.event.summary?.trim() ||
-          `Action committed · version ${accepted.table.stateVersion}.`;
+          'Action committed on the table.';
         appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
         if (shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
           await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
@@ -2872,7 +2870,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             shell.announce(
               accepted.duplicate
                 ? 'Prior table sync recovered (same request).'
-                : `Table sync committed · version ${accepted.table.stateVersion}.`,
+                : 'Table sync committed.',
             );
           } catch (failure) {
             error =
@@ -2957,7 +2955,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 start,
               });
             }
-            shell.announce(`Move committed · version ${accepted.table.stateVersion}.`);
+            shell.announce('Move committed on the table.');
           } catch (failure) {
             error = failure instanceof ApiFailure ? failure.message : 'Move could not be committed.';
           } finally {
@@ -3024,7 +3022,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
-            shell.announce(`Door opened · version ${accepted.table.stateVersion}.`);
+            shell.announce('Door opened on the table.');
           } catch (failure) {
             error =
               failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
@@ -3185,12 +3183,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               ...(draft.path !== undefined ? { path: draft.path } : {}),
               ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
+              ...(draft.summary.trim().length > 0 ? { summary: draft.summary.trim() } : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
             const summary =
               accepted.event.summary?.trim() ||
-              `Action committed · version ${accepted.table.stateVersion}.`;
+              'Action committed on the table.';
             appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
             shell.announce('Action confirmed on the table.');
             intentDraft = null;
@@ -3387,7 +3386,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <h2 id="presence-heading">Who is connected</h2>
           ${presenceBody()}
         </section>
-        <p class="record-meta" data-testid="table-state-meta">
+        <p class="record-meta" data-testid="table-state-meta"
+          data-state-version="${tableState?.stateVersion ?? 0}"
+          data-event-sequence="${tableState?.lastEventSequence ?? 0}">
           ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
         </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
