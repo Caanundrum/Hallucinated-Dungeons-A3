@@ -49,6 +49,11 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
+import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
+import {
+  baseSheetFor,
+  loadCharacterRulesSource,
+} from '../rules/engine/encounter-runtime.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 import { requireTableCommandTimingAuthority, TimingAuthorityError } from './timing-authority.js';
 
@@ -563,6 +568,7 @@ export async function acceptTableCommand(options: {
   let buildSceneTitle: string | null | undefined;
   let eventType: TableEventType = 'table.state_synced';
   let syncVisionSquares: { column: number; row: number }[] = [];
+  let skillResolution: { summary: string; rolls: readonly number[] } | null = null;
 
   if (commandType === 'table.move') {
     if (!Array.isArray(path) || path.length === 0) {
@@ -706,6 +712,16 @@ export async function acceptTableCommand(options: {
         map.coordinateSpace,
       );
     }
+    if (trimmedPlaySummary !== undefined && /^Ready to /i.test(trimmedPlaySummary)) {
+      let sheet = null;
+      try {
+        const source = await loadCharacterRulesSource(firestore, seat.characterId);
+        sheet = baseSheetFor(source);
+      } catch {
+        sheet = null;
+      }
+      skillResolution = resolveSkillAttemptFromSummary(sheet, trimmedPlaySummary);
+    }
   }
 
   const committed = await firestore.runTransaction(async (transaction) => {
@@ -841,7 +857,11 @@ export async function acceptTableCommand(options: {
       committedAt,
       ...(movePath !== undefined ? { path: movePath } : {}),
       ...(openEdgeId !== undefined ? { edgeId: openEdgeId } : {}),
-      ...(trimmedPlaySummary !== undefined ? { summary: trimmedPlaySummary } : {}),
+      ...(skillResolution !== null
+        ? { summary: skillResolution.summary, rolls: [...skillResolution.rolls] }
+        : trimmedPlaySummary !== undefined
+          ? { summary: trimmedPlaySummary }
+          : {}),
     };
 
     const nextProjection: StoredProjection = {
@@ -911,7 +931,14 @@ export async function acceptTableCommand(options: {
         body: `${seat.characterName || 'A player'} moved to column ${destination.column + 1}, row ${destination.row + 1}.`,
       });
     }
-    if (trimmedPlaySummary !== undefined) {
+    if (skillResolution !== null) {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_resolved',
+        body: skillResolution.summary,
+      });
+    } else if (trimmedPlaySummary !== undefined) {
       await appendChronicleEntry({
         firestore,
         campaignId,

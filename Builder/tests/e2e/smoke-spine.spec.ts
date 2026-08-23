@@ -321,15 +321,17 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('suspend-session').click();
     await expect(page.getByTestId('session-action-message')).toContainText('Session suspended');
-    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
 
     await page.getByTestId('resume-session').click();
     await expect(page.getByTestId('session-action-message')).toContainText('Session resumed');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
+    await expect(page.getByTestId('personal-recap-panel')).toHaveCount(0);
+    await page.getByTestId('view-recap').click();
     await expect(page.getByTestId('recap-headline')).toBeVisible();
 
     await page.reload();
-    await expect(page.getByTestId('campaign-time')).toContainText('Day 2');
+    await expect(page.getByTestId('campaign-time')).toContainText('Day 1');
     await expect(page.getByTestId('current-chapter')).toContainText('Dockside at Emberferry');
   });
 

@@ -561,6 +561,10 @@ export async function appendChapterSummary(
     updatedAt: now,
   };
   updated = reconcileFinaleState(updated, now);
+  updated = {
+    ...updated,
+    campaignTime: nextCampaignTime(updated.campaignTime),
+  };
   await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated);
   // Traveling to the next Emberferry scene reseats tokens on that scene's
   // spawn anchors — prior dock coordinates are not meaningful in the caves.
@@ -660,9 +664,8 @@ function nextCampaignTime(current: CampaignTimeProjection): CampaignTimeProjecti
 }
 
 /**
- * Suspends the current session. Campaign time advances by one in-game day only
- * when the table has actually been played (state version > 0). Pausing an
- * untouched session keeps Day 1.
+ * Suspends the current session. Campaign time does not advance on suspend —
+ * day changes come from rest or chapter travel, not pausing the table (PQA-166).
  */
 export async function recordSessionSuspend(
   firestore: Firestore,
@@ -709,9 +712,7 @@ export async function recordSessionSuspend(
     typeof options.note === 'string' && options.note.trim().length > 0
       ? options.note.trim().slice(0, 280)
       : null;
-  const nextTime =
-    tableStateVersion > 0 ? nextCampaignTime(memory.campaignTime) : memory.campaignTime;
-  const updatedMemory: StoredCampaignMemory = { ...memory, campaignTime: nextTime, updatedAt: now };
+  const updatedMemory: StoredCampaignMemory = { ...memory, updatedAt: now };
   const updatedSession: StoredSessionState = {
     ...session,
     state: 'suspended',

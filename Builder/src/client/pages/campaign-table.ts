@@ -91,9 +91,13 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-/** table.sync clarifications stay in-thread; skill-check drafts start with "Ready to". */
+/** Clarification-only sync drafts stay Got-it; skill checks start with Ready to. */
 function isSyncClarificationOnly(
-  interpreted: import('../../shared/ai-director-contract.js').IntentInterpretResponse,
+  interpreted: {
+    readonly proposedCommandType: string;
+    readonly edgeId?: string;
+    readonly path?: readonly unknown[];
+  },
   scrubbedSummary: string,
 ): boolean {
   return (
@@ -838,7 +842,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function initiativeStrip(): string {
-    if (encounter === null || encounter.initiativeOrder.length === 0) {
+    // Only show initiative while combat is active (PQA-172).
+    if (encounter === null || encounter.status !== 'active' || encounter.initiativeOrder.length === 0) {
       return '';
     }
     const items = encounter.initiativeOrder
@@ -1634,9 +1639,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                            <button type="button" data-testid="retry-failed-intent" aria-disabled="${busy}">Retry</button>
                            <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss</button>
                          </div>`
-                        : intentDraft.proposedCommandType === 'table.sync' &&
-                            intentDraft.edgeId === undefined &&
-                            intentDraft.path === undefined
+                        : isSyncClarificationOnly(intentDraft, intentDraft.summary)
                           ? `<div class="action-composer-controls">
                            <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Got it</button>
                          </div>`
@@ -3194,7 +3197,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             shell.announce('Action confirmed on the table.');
             intentDraft = null;
             doorRecoveryVisible = false;
-            if (shouldAutoNarrateRulesCommand(draft.proposedCommandType)) {
+            if (
+              shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
+              /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(summary)
+            ) {
               void narrateIntoDmThread(summary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();

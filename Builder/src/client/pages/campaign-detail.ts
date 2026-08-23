@@ -758,7 +758,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               campaignId,
             });
             memory = result.memory;
-            recap = result.recap;
+            recap = null;
             sessionMessage = 'Session resumed.';
             shell.announce('Campaign session resumed.');
           } catch (failure) {

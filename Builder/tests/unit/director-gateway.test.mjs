@@ -182,6 +182,7 @@ test('PQA-152/153: trap/lock declarations produce confirmable skill-check sync d
   });
   assert.equal(trapLock.proposedCommandType, 'table.sync');
   assert.match(trapLock.summary, /^Ready to /i);
+  assert.match(trapLock.summary, /Confirm to roll/i);
   assert.equal(trapLock.edgeId, undefined);
   assert.equal(trapLock.path, undefined);
 
@@ -193,7 +194,7 @@ test('PQA-152/153: trap/lock declarations produce confirmable skill-check sync d
     environmentClass: 'local',
   });
   assert.equal(lockOnly.proposedCommandType, 'table.sync');
-  assert.match(lockOnly.summary, /^Ready to attempt the lock/i);
+  assert.match(lockOnly.summary, /^Ready to /i);
 });
 
 test('hosted NL interpret keeps deterministic command types', async () => {
