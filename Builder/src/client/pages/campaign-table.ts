@@ -76,8 +76,16 @@ import {
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { readTableNotesPreference, writeTableNotesPreference } from '../browser-preferences.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  bindLegalPlayGatePage,
+  isLegalPlayBlocked,
+  loadLegalPlayAcceptance,
+  renderLegalPlayGatePage,
+  type LegalAcceptanceProjection,
+} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
@@ -123,7 +131,7 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-/** Non-authoritative private notes preference stored in localStorage per campaign. */
+/** Non-authoritative private notes preference stored via browser-preferences. */
 const dmThreadPreferences = new Map<string, DmThreadMessage[]>();
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -212,6 +220,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
+  let legalGateBusy = false;
+  let legalGateError: string | null = null;
+  let legalGateLoading = false;
   let stageHandle: TableStageHandle | null = null;
   let stageMounting = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -540,7 +552,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const summary =
           accepted.event.summary?.trim() ||
           'Action committed on the table.';
-        appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
+        appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
         if (shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
           await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
         }
@@ -882,24 +894,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </details>`;
   }
 
-  function tableNotesStorageKey(): string {
-    return `hd-a3-table-notes-${campaignId}`;
-  }
-
   function loadTableNotesPreference(): string {
-    try {
-      return localStorage.getItem(tableNotesStorageKey()) ?? '';
-    } catch {
-      return '';
-    }
+    return readTableNotesPreference(campaignId);
   }
 
   function saveTableNotesPreference(value: string): void {
-    try {
-      localStorage.setItem(tableNotesStorageKey(), value);
-    } catch {
-      // Non-authoritative scratch notes — ignore storage failures.
-    }
+    writeTableNotesPreference(campaignId, value);
   }
 
   function scrubTrainingFoeCopy(text: string): string {
@@ -1270,9 +1270,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (activeTab === 'rules_desk') {
       const categoryEntries =
         rulesCatalog?.entries.filter((entry) => entry.category === selectedRulesCategory) ?? [];
+      const search = rulesSearchQuery.trim().toLowerCase();
+      const filteredEntries =
+        search.length === 0
+          ? categoryEntries
+          : categoryEntries.filter(
+              (entry) =>
+                entry.title.toLowerCase().includes(search) ||
+                entry.summary.toLowerCase().includes(search),
+            );
       const selectedEntry =
-        categoryEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
-        categoryEntries[0] ??
+        filteredEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
+        filteredEntries[0] ??
         null;
       if (selectedEntry !== null && selectedRulesEntryId !== selectedEntry.entryId) {
         selectedRulesEntryId = selectedEntry.entryId;
@@ -1288,6 +1297,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             }
           </p>
           <label class="field">
+            <span>Search rules</span>
+            <input type="search" data-testid="rules-catalog-search" placeholder="Filter by title or summary"
+              value="${escapeHtml(rulesSearchQuery)}" />
+          </label>
+          <label class="field">
             <span>Category</span>
             <select data-testid="rules-catalog-category">
               ${(rulesCatalog?.categories ?? [])
@@ -1302,10 +1316,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </label>
           <div class="rules-catalog-entries" data-testid="rules-catalog-entries">
             ${
-              categoryEntries.length === 0
-                ? '<p class="record-meta">No entries in this category yet.</p>'
+              filteredEntries.length === 0
+                ? '<p class="record-meta">No entries match this search in this category.</p>'
                 : `<ul class="record-list compact">
-                    ${categoryEntries
+                    ${filteredEntries
                       .map(
                         (entry) => `
                       <li>
@@ -1543,7 +1557,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </div>
         ${
           encounter === null
-            ? '<p>Begin a local rules encounter against a Training Dummy and Practice Goblin.</p>'
+            ? `<p>${
+                trainingToolsVisible()
+                  ? 'Begin a local rules encounter against a Training Dummy and Practice Goblin.'
+                  : 'Begin a local rules encounter against practice foes.'
+              }</p>`
             : `<ul class="combatant-grid" data-testid="combatant-list">
                 ${encounter.combatants
                   .map(
@@ -1551,12 +1569,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     <li class="combatant-card${encounter?.activeCombatantId === combatant.combatantId ? ' active' : ''}"
                       data-testid="combatant-${escapeHtml(combatant.combatantId)}"
                       ${combatant.seatId !== null ? 'data-own-combatant="true"' : ''}>
-                      <strong>${escapeHtml(combatant.name)}</strong>
+                      <strong>${escapeHtml(formatCombatantLabel(combatant.name, combatant.combatantId))}</strong>
                       <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${
                         combatant.temporaryHitPoints > 0 ? ` +${combatant.temporaryHitPoints} temp` : ''
                       } · AC ${combatant.armorClass}</span>
                       <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(combatant.side)}</span>
-                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${combatant.conditions.length === 0 ? 'No conditions' : combatant.conditions.map((condition) => escapeHtml(condition.label)).join(', ')}</span>
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${escapeHtml(formatCombatantConditions(combatant.conditions))}</span>
                       ${
                         combatant.seatId !== null && combatant.inventory.length > 0
                           ? `<span data-testid="own-combatant-inventory">${combatant.inventory
@@ -1578,7 +1596,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   (combatant) =>
                     `<option value="${escapeHtml(combatant.combatantId)}" ${
                       selectedCombatantId === combatant.combatantId ? 'selected' : ''
-                    }>${escapeHtml(combatant.name)}</option>`,
+                    }>${escapeHtml(formatCombatantLabel(combatant.name, combatant.combatantId))}</option>`,
                 )
                 .join('')}
             </select>
@@ -1632,7 +1650,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             aria-disabled="${disable || !outOfCombatProgression || progression?.levelUpAvailable !== true}">Level Up</button>
         </div>
         <p class="record-meta" data-testid="rules-last-result">
-          ${escapeHtml(encounter?.log.at(-1)?.summary ?? 'Server dice and results will appear here.')}
+          ${escapeHtml(
+            playerFacingMechanicsCopy(
+              encounter?.log.at(-1)?.summary ?? 'Server dice and results will appear here.',
+            ),
+          )}
         </p>
       </section>`;
   }
@@ -1676,7 +1698,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     : ''
                 }" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
                   <p data-testid="intent-intercept-summary">${escapeHtml(
-                    scrubPlayerFacingIntentCopy(intentDraft.summary),
+                    playerFacingMechanicsCopy(intentDraft.summary),
                   )}</p>
                   ${
                     intentDraft.interceptState === 'stale'
@@ -2258,7 +2280,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               campaignId,
               text: 'Raise a wall and wooden door ahead on this blank table.',
             });
-            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             doorRecoveryVisible = false;
             if (clarificationOnly) {
@@ -2275,7 +2297,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           } catch (failure) {
             error =
               failure instanceof ApiFailure
-                ? scrubPlayerFacingIntentCopy(failure.message)
+                ? playerFacingMechanicsCopy(failure.message)
                 : `${directorIdentityLabel} could not prepare that scene right now.`;
           } finally {
             busy = false;
@@ -2302,6 +2324,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
       });
     });
+
+    root
+      .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLInputElement) {
+          rulesSearchQuery = event.target.value;
+          render();
+        }
+      });
 
     root
       .querySelector<HTMLSelectElement>('[data-testid="rules-catalog-category"]')
@@ -2862,7 +2893,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
             });
             appendDmThread('player', 'You', declaration, 'declaration');
-            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
               intentDraft = null;
@@ -2881,7 +2912,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           } catch (failure) {
             error =
               failure instanceof ApiFailure
-                ? scrubPlayerFacingIntentCopy(failure.message)
+                ? playerFacingMechanicsCopy(failure.message)
                 : `${directorIdentityLabel} could not interpret that action right now.`;
           } finally {
             busy = false;
@@ -3153,7 +3184,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: declaration,
               ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
             });
-            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             intentDraft = draftFromInterpret({
               ...interpreted,
               summary: scrubbedSummary,
@@ -3162,7 +3193,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           } catch (failure) {
             error =
               failure instanceof ApiFailure
-                ? scrubPlayerFacingIntentCopy(failure.message)
+                ? playerFacingMechanicsCopy(failure.message)
                 : `${directorIdentityLabel} could not interpret that action right now.`;
           } finally {
             busy = false;
@@ -3245,7 +3276,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const summary =
               accepted.event.summary?.trim() ||
               'Action committed on the table.';
-            appendDmThread('system', 'Table', scrubPlayerFacingIntentCopy(summary), 'mechanics');
+            appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
             shell.announce('Action confirmed on the table.');
             intentDraft = null;
             doorRecoveryVisible = false;
@@ -3265,12 +3296,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'That action could not be confirmed.';
-            error = scrubPlayerFacingIntentCopy(raw);
+            error = playerFacingMechanicsCopy(raw);
             if (intentDraft !== null) {
               intentDraft = {
                 ...intentDraft,
                 interceptState: 'failed',
-                summary: scrubPlayerFacingIntentCopy(
+                summary: playerFacingMechanicsCopy(
                   `${intentDraft.summary} — ${error}`,
                 ),
               };
@@ -3505,7 +3536,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         container,
         shell,
         candidate,
-        onSignedIn: () => void load(),
+        onSignedIn: () => void loadLegalThenTable(),
         setBusy: (value) => {
           gateBusy = value;
         },
@@ -3516,7 +3547,67 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       return;
     }
+    if (legalGateLoading) {
+      stopProjectionPoll();
+      stageHandle?.destroy();
+      stageHandle = null;
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaign-table-heading">Campaign table</h1>
+          <p class="tagline">Checking legal acceptance…</p>
+        </div>`;
+      return;
+    }
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      stopProjectionPoll();
+      stageHandle?.destroy();
+      stageHandle = null;
+      container.innerHTML = renderLegalPlayGatePage({
+        title: 'Campaign table',
+        body: 'The tactical table opens after you accept every current legal document.',
+        acceptance: legalAcceptance,
+        candidate,
+        busy: legalGateBusy,
+        error: legalGateError,
+      });
+      bindLegalPlayGatePage({
+        container,
+        shell,
+        candidate,
+        getAcceptance: () => legalAcceptance,
+        setAcceptance: (next) => {
+          legalAcceptance = next;
+        },
+        onUnblocked: () => {
+          void load();
+        },
+        setBusy: (value) => {
+          legalGateBusy = value;
+        },
+        setError: (message) => {
+          legalGateError = message;
+        },
+        render,
+      });
+      return;
+    }
     renderTable();
+  }
+
+  async function loadLegalThenTable(): Promise<void> {
+    if (getAccount() === null) {
+      render();
+      return;
+    }
+    legalGateLoading = true;
+    render();
+    legalAcceptance = await loadLegalPlayAcceptance();
+    legalGateLoading = false;
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      render();
+      return;
+    }
+    await load();
   }
 
   async function refreshSharedProjections(options?: {
@@ -3719,7 +3810,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   document.addEventListener('visibilitychange', onVisibilityRefresh);
   subscribeAccount(() => {
-    void load();
+    void loadLegalThenTable();
   });
-  void load();
+  void loadLegalThenTable();
 }

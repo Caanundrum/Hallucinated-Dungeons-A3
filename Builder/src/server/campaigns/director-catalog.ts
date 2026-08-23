@@ -21,7 +21,7 @@ import {
 } from '../../shared/campaign-contract.js';
 
 export const DIRECTOR_CONFIGURATION_NOTICE =
-  'This locks the Game Director identity and personality for the campaign. The Game Director narrates at your table when live narration is enabled (Gemini when configured, otherwise the deterministic simulator).';
+  'This locks the Game Director identity and personality for the campaign. The Game Director narrates at your table when live narration is enabled.';
 
 /** Local Arena companion notice for development surfaces. */
 export const DIRECTOR_CONFIGURATION_NOTICE_LOCAL =

@@ -121,8 +121,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <p data-testid="preview-play-rhythm">${escapeHtml(preview.playRhythm)}</p>
         <p class="message notice" data-testid="preview-lock-reminder">
           Creating this campaign locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
-          for ordinary users. On hosted Invite-Only Alpha the Game Director may narrate through Gemini
-          when enabled.
+          for ordinary users. The Game Director may narrate at your table when live narration is enabled.
         </p>
       </section>`;
   }
@@ -224,8 +223,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
           <p>
             Emberferry Crossing is the recommended starting point: an original three-session
             adventure with chapter-linked tactical scenes (Mist Dock → Mist-Cut Caves → Drowned
-            Bell Tower), NPCs, and campaign memory. Choose the blank table instead for rules
-            practice — there is no procedural worldgen behind it.
+            Bell Tower), NPCs, and campaign memory. Choose the blank table for rules practice —
+            you can improvise chambers during play, but there is no automated world generation
+            behind it.
           </p>
           <ul class="option-list" data-testid="adventure-template-list">
             ${ADVENTURE_TEMPLATES.map(

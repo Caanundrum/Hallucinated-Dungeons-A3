@@ -1847,12 +1847,6 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-.stat-list li.proficient span:first-child::before {
-  content: '● ';
-  color: var(--verdant-success);
-  font-size: 0.7rem;
-}
-
 a.record-note {
   color: var(--amber-highlight);
   text-decoration: none;

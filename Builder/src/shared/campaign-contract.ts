@@ -131,7 +131,7 @@ export const ADVENTURE_TEMPLATE_SUMMARIES: Record<AdventureTemplate, string> = {
   emberferry_crossing:
     'An original three-session starter campaign: a river-trade dock, mist-cut caves, and a drowned bell tower, with chapters and a personal recap already in place.',
   blank:
-    'An empty table with no seeded chapters, NPCs, or map presentation — for rules practice or building your own campaign from nothing.',
+    'An empty table with no seeded chapters, NPCs, or map presentation. You can improvise chambers during play, but there is no automated world generation.',
 };
 
 /** Visually recommended default on the creation form; never silently forced. */

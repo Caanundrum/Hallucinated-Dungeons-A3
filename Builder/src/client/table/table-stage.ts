@@ -161,6 +161,30 @@ function tokenLabelFontSize(
   return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.34));
 }
 
+function mapTerrainSummary(map: MapBundleProjection): string {
+  let floor = 0;
+  let difficult = 0;
+  let blocked = 0;
+  let unexplored = 0;
+  for (const cell of map.cells) {
+    if (!cell.known) {
+      unexplored += 1;
+    } else if (cell.terrain === 'blocked') {
+      blocked += 1;
+    } else if (cell.terrain === 'difficult') {
+      difficult += 1;
+    } else {
+      floor += 1;
+    }
+  }
+  const parts: string[] = [];
+  if (floor > 0) parts.push(`${floor} floor`);
+  if (difficult > 0) parts.push(`${difficult} difficult`);
+  if (blocked > 0) parts.push(`${blocked} blocked`);
+  if (unexplored > 0) parts.push(`${unexplored} unexplored`);
+  return parts.length === 0 ? 'No terrain data yet.' : parts.join(', ');
+}
+
 function paintSemanticSvg(
   host: HTMLElement,
   map: MapBundleProjection,
@@ -192,8 +216,7 @@ function paintSemanticSvg(
         moveTarget.row === cell.row
           ? ' map-square-selected'
           : '';
-      const blocked = cell.terrain === 'blocked';
-      return `<rect role="gridcell" tabindex="0" aria-label="Square ${cell.column + 1}, ${cell.row + 1}${blocked ? ', blocked' : cell.terrain === 'difficult' ? ', difficult' : ''}${cell.known ? '' : ', unexplored'}" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${fogClass}${selected}" />`;
+      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${fogClass}${selected}" />`;
     })
     .join('');
   const gridLines: string[] = [];
@@ -284,8 +307,11 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="fit" aria-label="Fit map">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center map">Center</button>
     </div>
+    <p class="map-terrain-summary" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
+      ${escapeHtml(mapTerrainSummary(map))}
+    </p>
     <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" style="transform: scale(${zoomScale}); transform-origin: center center;">
-      <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
         <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
         <g data-layer="terrain_art">${cells}</g>
         <g data-layer="grid_reference">${gridLines.join('')}</g>
@@ -383,27 +409,6 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         const row = Number(rowText);
         if (!Number.isInteger(column) || !Number.isInteger(row)) return;
         squareClickHandler({ column, row });
-      };
-      rect.onkeydown = (event) => {
-        const raw = rect.getAttribute('data-square');
-        if (raw === null) return;
-        const [columnText, rowText] = raw.split(',');
-        let column = Number(columnText);
-        let row = Number(rowText);
-        if (!Number.isInteger(column) || !Number.isInteger(row)) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          squareClickHandler?.({ column, row });
-          return;
-        }
-        if (event.key === 'ArrowLeft') column -= 1;
-        else if (event.key === 'ArrowRight') column += 1;
-        else if (event.key === 'ArrowUp') row -= 1;
-        else if (event.key === 'ArrowDown') row += 1;
-        else return;
-        event.preventDefault();
-        const next = host.querySelector<SVGRectElement>(`rect[data-square="${column},${row}"]`);
-        next?.focus();
       };
     });
   }
