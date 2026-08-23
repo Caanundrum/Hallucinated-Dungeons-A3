@@ -2141,18 +2141,36 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           error = null;
           render();
           try {
+            if ((mapBundle?.edges.length ?? 0) > 0) {
+              doorRecoveryVisible = false;
+              const sceneTitle = mapBundle?.title?.trim() || 'this chamber';
+              const acknowledgment = `${sceneTitle} already has walls and a doorway on the table. Move your token or declare your next action.`;
+              appendDmThread('dm', directorIdentityLabel, acknowledgment, 'ruling_hint');
+              shell.announce(`${directorIdentityLabel} acknowledged the committed scene.`);
+              return;
+            }
             const interpreted = await interpretNaturalLanguage({
               candidateId: candidate.candidateId,
               campaignId,
-              text: 'I open the wooden door ahead of me.',
-              moveTarget,
+              text: 'Raise a wall and wooden door ahead on this blank table.',
             });
+            const scrubbedSummary = scrubPlayerFacingIntentCopy(interpreted.summary);
+            const clarificationOnly =
+              interpreted.proposedCommandType === 'table.sync' &&
+              interpreted.edgeId === undefined &&
+              interpreted.path === undefined;
             doorRecoveryVisible = false;
-            intentDraft = draftFromInterpret({
-              ...interpreted,
-              summary: scrubPlayerFacingIntentCopy(interpreted.summary),
-            });
-            shell.announce(`${directorIdentityLabel} prepared a scene draft — confirm to place the door.`);
+            if (clarificationOnly) {
+              intentDraft = null;
+              appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+              shell.announce(`${directorIdentityLabel} replied in the play thread.`);
+            } else {
+              intentDraft = draftFromInterpret({
+                ...interpreted,
+                summary: scrubbedSummary,
+              });
+              shell.announce(`${directorIdentityLabel} prepared a scene draft — confirm to place the door.`);
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -2750,7 +2768,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               interpreted.path === undefined;
             if (clarificationOnly) {
               intentDraft = null;
-              doorRecoveryVisible = /no door|open floor|Emberferry/i.test(scrubbedSummary);
+              doorRecoveryVisible =
+                (mapBundle?.edges.length ?? 0) === 0 &&
+                /no door|open floor|Emberferry/i.test(scrubbedSummary);
               appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
