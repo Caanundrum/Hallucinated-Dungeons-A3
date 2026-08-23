@@ -26,6 +26,7 @@ function choicesFromTemplate(template) {
     classEquipmentOptionId: template.classEquipmentOptionId,
     backgroundEquipmentOptionId: template.backgroundEquipmentOptionId,
     cantripIds: template.cantripIds,
+    spellbookIds: template.spellbookIds ?? [],
     spellIds: template.spellIds,
     chosenOriginFeatId: template.chosenOriginFeatId ?? null,
     backgroundFeatCantripIds: template.backgroundFeatCantripIds ?? [],

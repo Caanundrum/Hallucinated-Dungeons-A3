@@ -263,6 +263,28 @@ export async function fetchCharacter(characterId: string): Promise<CharacterProj
   )) as CharacterProjection;
 }
 
+export async function deleteCharacter(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+}): Promise<void> {
+  await request<null>(`/api/characters/${options.characterId}`, {
+    method: 'DELETE',
+    candidateId: options.candidateId,
+  });
+}
+
+export async function updateCharacterIdentity(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+  readonly identity: CharacterChoices['identity'];
+}): Promise<CharacterProjection> {
+  return (await request<CharacterProjection>(`/api/characters/${options.characterId}`, {
+    method: 'PATCH',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ identity: options.identity }),
+  })) as CharacterProjection;
+}
+
 export async function fetchDirectorCatalog(): Promise<DirectorCatalog> {
   return (await request<DirectorCatalog>('/api/directors/catalog')) as DirectorCatalog;
 }
@@ -627,6 +649,17 @@ export async function savePlayerSettings(options: {
         : {}),
     }),
   })) as PlayerPresentationSettingsProjection;
+}
+
+export async function saveDisplayLabel(options: {
+  readonly candidateId: string;
+  readonly displayLabel: string;
+}): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/account/display-label', {
+    method: 'PUT',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ displayLabel: options.displayLabel }),
+  })) as AccountProjection;
 }
 
 export interface AccountDeletionStatusProjection {

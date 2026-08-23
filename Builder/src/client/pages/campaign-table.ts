@@ -123,10 +123,7 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-/** Non-authoritative private notes preference for the current tab session. */
-const tableNotesPreferences = new Map<string, string>();
-
-/** Non-authoritative DM play-thread cache for the current tab session (PQA-157/158). */
+/** Non-authoritative private notes preference stored in localStorage per campaign. */
 const dmThreadPreferences = new Map<string, DmThreadMessage[]>();
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -157,6 +154,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let rulesCatalog: RulesCatalogProjection | null = null;
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
+  let rulesSearchQuery = '';
   let intentDraft: ActionDraftSuggestion | null = null;
   let reducedMotion = false;
   let lowEffects = false;
@@ -884,13 +882,67 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </details>`;
   }
 
+  function tableNotesStorageKey(): string {
+    return `hd-a3-table-notes-${campaignId}`;
+  }
+
   function loadTableNotesPreference(): string {
-    return tableNotesPreferences.get(campaignId) ?? '';
+    try {
+      return localStorage.getItem(tableNotesStorageKey()) ?? '';
+    } catch {
+      return '';
+    }
   }
 
   function saveTableNotesPreference(value: string): void {
-    // Non-authoritative UI preference for this browser tab session only.
-    tableNotesPreferences.set(campaignId, value);
+    try {
+      localStorage.setItem(tableNotesStorageKey(), value);
+    } catch {
+      // Non-authoritative scratch notes — ignore storage failures.
+    }
+  }
+
+  function scrubTrainingFoeCopy(text: string): string {
+    if (trainingToolsVisible() || !explorationMode()) {
+      return text;
+    }
+    return text
+      .replace(/\bTraining Dummy\b/gi, 'a practice foe')
+      .replace(/\bPractice Goblin\b/gi, 'a practice foe')
+      .replace(/\bpractice foes and practice foes\b/gi, 'practice foes')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  function formatCombatantLabel(name: string, combatantId: string): string {
+    if (trainingToolsVisible() || !explorationMode()) {
+      return name;
+    }
+    if (combatantId === 'training-dummy' || combatantId === 'practice-goblin') {
+      return 'Practice foe';
+    }
+    return name;
+  }
+
+  function formatCombatantConditions(
+    conditions: EncounterProjection['combatants'][number]['conditions'],
+  ): string {
+    if (conditions.length === 0) {
+      return 'No conditions';
+    }
+    return conditions
+      .map((condition) => {
+        const tableStatus =
+          condition.conditionId === 'guiding-bolt-marked' || condition.conditionId === 'shielded';
+        return tableStatus
+          ? `Table status: ${condition.label}`
+          : condition.label;
+      })
+      .join(', ');
+  }
+
+  function playerFacingMechanicsCopy(text: string): string {
+    return scrubTrainingFoeCopy(scrubPlayerFacingIntentCopy(text));
   }
 
   const INFO_TAB_LABELS: Record<InfoTab, string> = {
@@ -969,7 +1021,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function notesPanelBody(): string {
     return `
-      <p class="record-meta">Private scratch notes — saved on this device for this browser tab only. They start empty; campaign prompts live under People and Story so far.</p>
+      <p class="record-meta">Private scratch notes — saved on this device for this campaign. They start empty; campaign prompts live under People and Story so far.</p>
       <label class="field">
         <span class="visually-hidden">Table notes</span>
         <textarea data-testid="table-notes-input" rows="12"

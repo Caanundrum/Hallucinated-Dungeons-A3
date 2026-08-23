@@ -144,6 +144,7 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
   const backgroundAbilityBonuses = asScoreMap(record.backgroundAbilityBonuses);
   const classSkillIds = asIdList(record.classSkillIds);
   const cantripIds = asIdList(record.cantripIds);
+  const spellbookIds = asIdList(record.spellbookIds) ?? [];
   const spellIds = asIdList(record.spellIds);
   const chosenOriginFeatId = asOptionalId(record.chosenOriginFeatId);
   const backgroundFeatCantripIds = asIdList(record.backgroundFeatCantripIds) ?? [];
@@ -192,6 +193,7 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
     classEquipmentOptionId,
     backgroundEquipmentOptionId,
     cantripIds,
+    spellbookIds,
     spellIds,
     chosenOriginFeatId: chosenOriginFeatId ?? null,
     backgroundFeatCantripIds,

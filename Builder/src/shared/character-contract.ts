@@ -121,6 +121,8 @@ export interface CharacterChoices {
   readonly backgroundEquipmentOptionId: string | null;
   /** Cantrip and level-1 spell ids, for classes that cast at level 1. */
   readonly cantripIds: readonly string[];
+  /** Wizard spellbook entries at level 1 (prepared spells must be a subset). */
+  readonly spellbookIds: readonly string[];
   readonly spellIds: readonly string[];
   /** Human Versatile — chosen Origin feat id (background feats use backgroundDetail). */
   readonly chosenOriginFeatId: string | null;
@@ -190,6 +192,8 @@ export interface DerivedCharacterSheet {
   readonly abilityScores: Record<Ability, DerivedValue>;
   readonly abilityModifiers: Record<Ability, number>;
   readonly hitPoints: DerivedValue;
+  /** Current Hit Points; at level 1 this equals maximum Hit Points. */
+  readonly hitPointsCurrent: number;
   readonly hitDice: string;
   readonly armorClass: DerivedValue;
   readonly initiative: DerivedValue;
@@ -216,8 +220,10 @@ export interface DerivedCharacterSheet {
     readonly spellSaveDc: DerivedValue;
     readonly spellAttackBonus: DerivedValue;
     readonly cantrips: readonly { readonly id: string; readonly name: string }[];
+    readonly spellbook: readonly { readonly id: string; readonly name: string }[];
     readonly spells: readonly { readonly id: string; readonly name: string }[];
     readonly level1SlotCount: number;
+    readonly level1SlotsRemaining: number;
     readonly preparationStyle: 'prepared' | 'known';
   } | null;
 }
@@ -343,6 +349,7 @@ export interface DraftOptions {
       readonly abilityLabel: string;
       readonly cantripsKnown: number;
       readonly spellsAvailable: number;
+      readonly spellbookSize: number | null;
       readonly preparationStyle: 'prepared' | 'known';
       readonly cantripOptions: readonly SelectableOption[];
       readonly spellOptions: readonly SelectableOption[];

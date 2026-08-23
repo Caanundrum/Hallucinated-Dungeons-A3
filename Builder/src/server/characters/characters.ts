@@ -95,6 +95,7 @@ function normalizeChoices(choices: CharacterChoices): CharacterChoices {
     speciesChoiceIds: choices.speciesChoiceIds ?? base.speciesChoiceIds,
     classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
     cantripIds: choices.cantripIds ?? base.cantripIds,
+    spellbookIds: choices.spellbookIds ?? base.spellbookIds,
     spellIds: choices.spellIds ?? base.spellIds,
     chosenOriginFeatId: choices.chosenOriginFeatId ?? base.chosenOriginFeatId,
     backgroundFeatCantripIds: choices.backgroundFeatCantripIds ?? base.backgroundFeatCantripIds,
@@ -317,6 +318,7 @@ export async function applyQuickStart(options: {
     classEquipmentOptionId: template.classEquipmentOptionId,
     backgroundEquipmentOptionId: template.backgroundEquipmentOptionId,
     cantripIds: template.cantripIds,
+    spellbookIds: template.spellbookIds ?? [],
     spellIds: template.spellIds,
     chosenOriginFeatId: template.chosenOriginFeatId ?? null,
     backgroundFeatCantripIds: template.backgroundFeatCantripIds ?? [],
@@ -394,14 +396,7 @@ export async function readCharacter(options: {
   readonly characterId: string;
 }): Promise<CharacterProjection> {
   const { firestore, accountId, characterId } = options;
-  const snapshot = await firestore.collection(COLLECTIONS.characters).doc(characterId).get();
-  if (!snapshot.exists) {
-    throw new CharacterNotFoundError();
-  }
-  const stored = snapshot.data() as StoredCharacter;
-  if (stored.ownerAccountId !== accountId) {
-    throw new CharacterNotFoundError();
-  }
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
   const progressionSnap = await firestore
     .collection(COLLECTIONS.characterProgressions)
     .doc(characterId)
@@ -473,4 +468,64 @@ export async function readVault(options: {
   });
 
   return { accountId, characters, drafts };
+}
+
+async function loadOwnedCharacter(
+  firestore: Firestore,
+  accountId: string,
+  characterId: string,
+): Promise<StoredCharacter> {
+  const snapshot = await firestore.collection(COLLECTIONS.characters).doc(characterId).get();
+  if (!snapshot.exists) {
+    throw new CharacterNotFoundError();
+  }
+  const stored = snapshot.data() as StoredCharacter;
+  if (stored.ownerAccountId !== accountId) {
+    throw new CharacterNotFoundError();
+  }
+  return stored;
+}
+
+export async function deleteCharacter(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+}): Promise<void> {
+  const { firestore, accountId, characterId } = options;
+  await loadOwnedCharacter(firestore, accountId, characterId);
+  await firestore.runTransaction(async (transaction) => {
+    transaction.delete(firestore.collection(COLLECTIONS.characters).doc(characterId));
+    transaction.delete(firestore.collection(COLLECTIONS.characterProgressions).doc(characterId));
+  });
+}
+
+export async function updateCharacterIdentity(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+  readonly identity: CharacterChoices['identity'];
+}): Promise<CharacterProjection> {
+  const { firestore, accountId, characterId, identity } = options;
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
+  const choices = normalizeChoices({
+    ...stored.choices,
+    identity,
+  });
+  const updated: StoredCharacter = {
+    ...stored,
+    choices,
+    revisions: [
+      ...stored.revisions,
+      { at: new Date().toISOString(), reason: 'Identity updated' },
+    ],
+  };
+  await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updated);
+  const progressionSnap = await firestore
+    .collection(COLLECTIONS.characterProgressions)
+    .doc(characterId)
+    .get();
+  const progression = progressionSnap.exists
+    ? (progressionSnap.data() as StoredProgression)
+    : null;
+  return projectCharacter(updated, progression);
 }

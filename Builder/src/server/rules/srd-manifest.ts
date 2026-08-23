@@ -128,6 +128,8 @@ export interface ClassSpellcasting {
   readonly preparationStyle: 'prepared' | 'known';
   readonly level1SlotCount: number;
   readonly spellListId: string;
+  /** Wizard spellbook size at level 1; prepared spells must be chosen from the book. */
+  readonly spellbookSize?: number;
 }
 
 export interface ClassRecord {
@@ -939,7 +941,7 @@ export const CLASSES: readonly ClassRecord[] = [
       { name: 'Spellcasting', summary: 'You cast Wizard spells using Intelligence.' },
     ],
     choices: [], unarmoredDefenseAbility: null,
-    spellcasting: { ability: 'intelligence', cantripsKnown: 3, spellsAvailable: 4, preparationStyle: 'prepared', level1SlotCount: 2, spellListId: 'wizard' },
+    spellcasting: { ability: 'intelligence', cantripsKnown: 3, spellsAvailable: 4, preparationStyle: 'prepared', level1SlotCount: 2, spellListId: 'wizard', spellbookSize: 6 },
     equipmentOptions: [
       weaponKit('wizard-a', "Quarterstaff, Dagger (2), Arcane Focus, Robe, Spellbook, Scholar's Pack, 5 GP", [{ name: 'Quarterstaff', quantity: 1 }, { name: 'Dagger', quantity: 2 }, { name: 'Arcane Focus', quantity: 1 }, { name: 'Robe', quantity: 1 }, { name: 'Spellbook', quantity: 1 }, { name: "Scholar's Pack", quantity: 1 }], 5, [], ['quarterstaff', 'dagger']),
       weaponKit('wizard-b', '55 GP', [], 55, [], []),
@@ -971,6 +973,7 @@ export interface QuickStartTemplate {
   readonly classEquipmentOptionId: string;
   readonly backgroundEquipmentOptionId: string;
   readonly cantripIds: readonly string[];
+  readonly spellbookIds?: readonly string[];
   readonly spellIds: readonly string[];
   readonly chosenOriginFeatId?: string | null;
   readonly backgroundFeatCantripIds?: readonly string[];
@@ -1026,11 +1029,17 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     speciesChoiceIds: { 'fiendish-legacy': 'infernal' }, classChoiceIds: {},
     classEquipmentOptionId: 'wizard-a', backgroundEquipmentOptionId: 'sage-kit',
     cantripIds: ['fire-bolt', 'mage-hand', 'prestidigitation'],
+    spellbookIds: ['burning-hands', 'shield', 'magic-missile', 'sleep', 'detect-magic', 'feather-fall'],
     spellIds: ['burning-hands', 'shield', 'magic-missile', 'sleep'],
     backgroundFeatCantripIds: ['ray-of-frost', 'shocking-grasp'],
     backgroundFeatSpellIds: ['detect-magic'],
   },
 ];
+
+/** Player-facing summaries for Origin feats that are not Magic Initiate. */
+export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
+  Alert: '+5 bonus to Initiative rolls. You cannot be surprised while conscious.',
+};
 
 /** Every distinct Origin feat granted by a Background on the SRD roster. */
 export const ORIGIN_FEAT_OPTIONS: readonly { readonly id: string; readonly label: string; readonly summary: string }[] =

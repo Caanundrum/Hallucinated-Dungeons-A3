@@ -219,6 +219,8 @@ export interface CampaignProjection {
   readonly adventurePackVersion: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Not started until Session Zero is recorded; then Active or Suspended. */
+  readonly sessionStatusLabel?: string;
   /**
    * True when this account owns the campaign. Owning a campaign never grants
    * ownership of another player's character.

@@ -202,6 +202,7 @@ export function recomputeSheetForLevel(
       }],
     },
     hitPoints: { value: derived.maxHitPoints, components: hitPointComponents },
+    hitPointsCurrent: derived.maxHitPoints,
     hitDice: derived.hitDice,
     features: [
       ...baseSheet.features.filter(
@@ -252,6 +253,7 @@ export function recomputeSheetForLevel(
               derived.proficiencyBonus,
             ),
             level1SlotCount: derived.spellSlots[0] ?? 0,
+            level1SlotsRemaining: derived.spellSlots[0] ?? baseSheet.spellcasting.level1SlotsRemaining,
           },
   };
 }

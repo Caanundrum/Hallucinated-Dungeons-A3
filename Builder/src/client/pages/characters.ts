@@ -10,9 +10,16 @@
 
 import type { CharacterVaultProjection } from '../../shared/character-contract.js';
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchVault } from '../api.js';
+import { ApiFailure, discardDraft, fetchVault } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  isLegalPlayBlocked,
+  loadLegalPlayAcceptance,
+  renderLegalVaultPlayBarrier,
+  type LegalAcceptanceProjection,
+} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
@@ -31,7 +38,12 @@ export function mountCharactersPage(host: PageHost): void {
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
   const mountToken = beginPageMount(container);
+
+  function playActionsBlocked(): boolean {
+    return isLegalPlayBlocked(legalAcceptance);
+  }
 
   function renderSignedIn(): void {
     const characters = vault?.characters ?? [];
@@ -49,10 +61,17 @@ export function mountCharactersPage(host: PageHost): void {
             ? ''
             : `<div class="message error" role="alert" tabindex="-1" data-testid="vault-error">${escapeHtml(error)}</div>`
         }
+        ${renderLegalVaultPlayBarrier(legalAcceptance)}
         <div class="actions">
-          <button type="button" data-testid="start-character">
-            ${drafts.length > 0 ? 'Resume draft' : 'Create a character'}
-          </button>
+          ${
+            drafts.length > 0
+              ? `<button type="button" data-testid="resume-draft"
+                   aria-disabled="${playActionsBlocked() ? 'true' : 'false'}">Resume draft</button>
+                 <button type="button" data-testid="start-character"
+                   aria-disabled="${playActionsBlocked() ? 'true' : 'false'}">Create new character</button>`
+              : `<button type="button" data-testid="start-character"
+                   aria-disabled="${playActionsBlocked() ? 'true' : 'false'}">Create a character</button>`
+          }
         </div>
 
         <section class="panel" aria-labelledby="characters-heading">
@@ -115,7 +134,8 @@ export function mountCharactersPage(host: PageHost): void {
                             : `${draft.unresolvedCount} decisions remaining`;
                       return `
                     <li data-testid="draft-item">
-                      <a class="record-note" href="/characters/new" data-link data-testid="resume-draft">
+                      <a class="record-note" href="/characters/new" data-link data-testid="resume-draft"
+                        ${playActionsBlocked() ? 'data-legal-gated-play="true"' : ''}>
                         ${escapeHtml(title)}
                       </a>
                       <span class="record-meta">
@@ -131,8 +151,50 @@ export function mountCharactersPage(host: PageHost): void {
       </div>`;
 
     container
+      .querySelector<HTMLButtonElement>('[data-testid="resume-draft"]')
+      ?.addEventListener('click', () => {
+        if (playActionsBlocked()) {
+          navigate('/account');
+          return;
+        }
+        navigate('/characters/new');
+      });
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="start-character"]')
-      ?.addEventListener('click', () => navigate('/characters/new'));
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (playActionsBlocked()) {
+            navigate('/account');
+            return;
+          }
+          if (drafts.length === 0) {
+            navigate('/characters/new');
+            return;
+          }
+          const accepted = await confirmInApp({
+            title: 'Create new character?',
+            body: 'This replaces your current draft with a fresh character. Your unfinished draft will be discarded.',
+            confirmLabel: 'Discard draft and start',
+            cancelLabel: 'Keep draft',
+            testId: 'confirm-new-character',
+          });
+          if (!accepted || candidate === null) {
+            return;
+          }
+          for (const draft of drafts) {
+            await discardDraft({ candidateId: candidate.candidateId, draftId: draft.draftId });
+          }
+          navigate('/characters/new');
+        })();
+      });
+
+    container.querySelectorAll<HTMLAnchorElement>('[data-legal-gated-play="true"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        navigate('/account');
+      });
+    });
   }
 
   function render(): void {
@@ -189,6 +251,7 @@ export function mountCharactersPage(host: PageHost): void {
 
   async function loadVault(): Promise<void> {
     error = null;
+    legalAcceptance = await loadLegalPlayAcceptance();
     try {
       vault = await fetchVault();
     } catch (failure) {

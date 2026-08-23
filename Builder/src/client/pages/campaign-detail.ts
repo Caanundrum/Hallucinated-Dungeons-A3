@@ -394,37 +394,41 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           ${
             memory === null
               ? ''
-              : `<div class="actions">
-                   <button type="button" data-testid="suspend-session"
-                     aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
-                     ${sessionBusy ? 'Working…' : 'Suspend session'}
-                   </button>
-                   <button type="button" class="secondary" data-testid="resume-session"
-                     aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
-                     ${sessionBusy ? 'Working…' : 'Resume session'}
-                   </button>
-                   <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
-                     View personal recap
-                   </button>
-                   <button type="button" class="secondary" data-testid="close-chapter"
-                     aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
-                     Close chapter &amp; travel
-                   </button>
-                 </div>
-                 <p class="record-meta" data-testid="chapter-travel-hint">
-                   ${
-                     encounterActive
-                       ? 'End the active encounter on the table before closing this chapter or suspending the session.'
-                       : memorySnapshot?.adventureTemplateId === null ||
-                           memorySnapshot?.adventureTemplateId === undefined
-                         ? ownSeat === null
-                           ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
-                           : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
-                         : ownSeat === null
-                           ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
-                           : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
-                   }
-                 </p>`
+              : `<section class="panel panel-nested" aria-labelledby="campaign-owner-heading" data-testid="campaign-owner-panel">
+                   <h3 id="campaign-owner-heading">Campaign owner</h3>
+                   <p class="record-meta">Suspend, resume, or close chapters for the whole table. Confirm major changes with your players first.</p>
+                   <div class="actions">
+                     <button type="button" data-testid="suspend-session"
+                       aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
+                       ${sessionBusy ? 'Working…' : 'Suspend session'}
+                     </button>
+                     <button type="button" class="secondary" data-testid="resume-session"
+                       aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
+                       ${sessionBusy ? 'Working…' : 'Resume session'}
+                     </button>
+                     <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
+                       View personal recap
+                     </button>
+                     <button type="button" class="secondary" data-testid="close-chapter"
+                       aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
+                       Close chapter &amp; travel
+                     </button>
+                   </div>
+                   <p class="record-meta" data-testid="chapter-travel-hint">
+                     ${
+                       encounterActive
+                         ? 'End the active encounter on the table before closing this chapter or suspending the session.'
+                         : memorySnapshot?.adventureTemplateId === null ||
+                             memorySnapshot?.adventureTemplateId === undefined
+                           ? ownSeat === null
+                             ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
+                             : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
+                           : ownSeat === null
+                             ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
+                             : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
+                     }
+                   </p>
+                 </section>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}
         </section>

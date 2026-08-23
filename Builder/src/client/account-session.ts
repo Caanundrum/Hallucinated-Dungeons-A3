@@ -8,7 +8,7 @@
  */
 
 import type { AccountProjection, CandidateIdentity } from '../shared/contract.js';
-import { ApiFailure, enterGoogleEmulatorSession, enterHostedGoogleSession, enterLocalArena, fetchSession, leaveLocalArena } from './api.js';
+import { ApiFailure, enterGoogleEmulatorSession, enterHostedGoogleSession, enterLocalArena, fetchSession, leaveLocalArena, saveDisplayLabel } from './api.js';
 
 type Listener = () => void;
 
@@ -99,6 +99,20 @@ export async function signOutAccount(candidate: CandidateIdentity): Promise<void
   account = null;
   hydrated = true;
   notify();
+}
+
+/** Saves a new display label and projects the updated account in the shell. */
+export async function updateAccountDisplayLabel(
+  candidate: CandidateIdentity,
+  displayLabel: string,
+): Promise<AccountProjection> {
+  account = await saveDisplayLabel({
+    candidateId: candidate.candidateId,
+    displayLabel,
+  });
+  hydrated = true;
+  notify();
+  return account;
 }
 
 /**

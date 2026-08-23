@@ -39,6 +39,7 @@ import {
 } from '../../shared/campaign-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { CharacterNotFoundError, readCharacter, readVault } from '../characters/characters.js';
+import type { SessionState } from '../../shared/campaign-memory-contract.js';
 import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
@@ -303,6 +304,24 @@ function projectCampaign(
   };
 }
 
+async function resolveSessionStatusLabel(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<string> {
+  const settings = await ensureCampaignSettings(firestore, campaignId);
+  if (!settings.sessionZero.completed) {
+    return 'Not started';
+  }
+  const sessionSnapshot = await firestore.collection(COLLECTIONS.campaignSessions).doc(campaignId).get();
+  if (sessionSnapshot.exists) {
+    const session = sessionSnapshot.data() as { state?: SessionState };
+    if (session.state === 'suspended') {
+      return 'Suspended';
+    }
+  }
+  return 'Active';
+}
+
 /** Defaults to a blank table when omitted, so existing API callers are unaffected. */
 function validateAdventureTemplate(raw: unknown): AdventureTemplate {
   if (raw === undefined || raw === null) {
@@ -461,7 +480,10 @@ export async function listCampaigns(options: {
         countMembers(firestore, membership.campaignId),
         countSeats(firestore, membership.campaignId),
       ]);
-      campaigns.push(projectCampaign(campaign, membership, memberCount, seatCount));
+      campaigns.push({
+        ...projectCampaign(campaign, membership, memberCount, seatCount),
+        sessionStatusLabel: await resolveSessionStatusLabel(firestore, membership.campaignId),
+      });
     } catch (error) {
       if (error instanceof CampaignNotFoundError) {
         continue;

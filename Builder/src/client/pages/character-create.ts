@@ -850,13 +850,41 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>Choose ${detail.spellcasting.spellsAvailable} to ${
           detail.spellcasting.preparationStyle === 'prepared' ? 'prepare' : 'know'
         }. Extra spells lock at that count.</p>
+        ${
+          detail.spellcasting.spellbookSize === null
+            ? checkboxList({
+                name: 'spell',
+                testId: 'spell-options',
+                entries: detail.spellcasting.spellOptions,
+                selected: state.draft.choices.spellIds,
+                maxChoose: detail.spellcasting.spellsAvailable,
+              })
+            : `
+        <h3>Spellbook</h3>
+        <p>Choose ${detail.spellcasting.spellbookSize} spells to record in your spellbook. Prepared spells must come from this list.</p>
         ${checkboxList({
-          name: 'spell',
-          testId: 'spell-options',
+          name: 'spellbook',
+          testId: 'spellbook-options',
           entries: detail.spellcasting.spellOptions,
-          selected: state.draft.choices.spellIds,
-          maxChoose: detail.spellcasting.spellsAvailable,
-        })}`;
+          selected: state.draft.choices.spellbookIds,
+          maxChoose: detail.spellcasting.spellbookSize,
+        })}
+        <h3>Prepared Spells</h3>
+        <p>Choose ${detail.spellcasting.spellsAvailable} spells from your spellbook to prepare today.</p>
+        ${
+          state.draft.choices.spellbookIds.length === 0
+            ? '<p class="empty-state" data-testid="prepared-spells-locked">Choose spellbook spells first.</p>'
+            : checkboxList({
+                name: 'spell',
+                testId: 'spell-options',
+                entries: detail.spellcasting.spellOptions.filter((option) =>
+                  state.draft.choices.spellbookIds.includes(option.id),
+                ),
+                selected: state.draft.choices.spellIds,
+                maxChoose: detail.spellcasting.spellsAvailable,
+              })
+        }`
+        }`;
 
     return `
       <h3>${escapeHtml(detail.label)} level 1 features</h3>
@@ -1249,6 +1277,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           classChoiceIds: {},
           classEquipmentOptionId: null,
           cantripIds: [],
+          spellbookIds: [],
           spellIds: [],
         }),
       ],
@@ -1344,6 +1373,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     for (const [name, key, maxOf] of [
       ['cantrip', 'cantripIds', () => state.options.classDetail?.spellcasting?.cantripsKnown],
+      ['spellbook', 'spellbookIds', () => state.options.classDetail?.spellcasting?.spellbookSize ?? undefined],
       ['spell', 'spellIds', () => state.options.classDetail?.spellcasting?.spellsAvailable],
       ['background-feat-cantrip', 'backgroundFeatCantripIds', () => state.options.backgroundFeatDetail?.cantripsKnown],
       ['background-feat-spell', 'backgroundFeatSpellIds', () => state.options.backgroundFeatDetail?.spellsKnown],
@@ -1359,6 +1389,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
           );
           if (max !== undefined && selected.length > max) {
             selected = selected.slice(0, max);
+          }
+          if (key === 'spellbookIds') {
+            const spellbookSet = new Set(selected);
+            const prepared = foundation.spellIds.filter((id) => spellbookSet.has(id));
+            void commitChoices({ ...foundation, spellbookIds: selected, spellIds: prepared });
+            return;
           }
           void commitChoices({ ...foundation, [key]: selected });
         });

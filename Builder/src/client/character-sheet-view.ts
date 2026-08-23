@@ -194,7 +194,9 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
           ${explained('Spell Attack Bonus', sheet.spellcasting.spellAttackBonus, 'spell-attack-bonus', formatModifier)}
         </div>
         <p>
-          Level 1 Spell Slots: <b>${sheet.spellcasting.level1SlotCount}</b> ·
+          Level 1 Spell Slots:
+          <b data-testid="sheet-spell-slots-remaining">${sheet.spellcasting.level1SlotsRemaining}</b>
+          / <b>${sheet.spellcasting.level1SlotCount}</b> remaining ·
           Spells are ${escapeHtml(sheet.spellcasting.preparationStyle)}
         </p>
         <p><b>Cantrips:</b> ${
@@ -202,7 +204,16 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
             ? 'None'
             : escapeHtml(sheet.spellcasting.cantrips.map((spell) => spell.name).join(', '))
         }</p>
-        <p data-testid="sheet-spells"><b>Level 1 Spells:</b> ${
+        ${
+          sheet.spellcasting.spellbook.length > 0
+            ? `<p data-testid="sheet-spellbook"><b>Spellbook:</b> ${escapeHtml(
+                sheet.spellcasting.spellbook.map((spell) => spell.name).join(', '),
+              )}</p>`
+            : ''
+        }
+        <p data-testid="sheet-spells"><b>${
+          sheet.spellcasting.spellbook.length > 0 ? 'Prepared Spells' : 'Level 1 Spells'
+        }:</b> ${
           sheet.spellcasting.spells.length === 0
             ? 'None'
             : escapeHtml(sheet.spellcasting.spells.map((spell) => spell.name).join(', '))
@@ -218,7 +229,7 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
         <section class="panel sheet-panel" aria-labelledby="core-stats-heading">
           <h2 id="core-stats-heading">Core statistics</h2>
           <div class="stat-grid">
-            ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points')}
+            ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points', (value) => `${sheet.hitPointsCurrent} / ${value}`)}
             ${explained('Armor Class', sheet.armorClass, 'sheet-armor-class')}
             ${explained('Initiative', sheet.initiative, 'sheet-initiative', formatModifier)}
             ${explained('Speed', sheet.speed, 'sheet-speed', (value) => `${value} ft.`)}

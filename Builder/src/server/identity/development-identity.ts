@@ -26,6 +26,8 @@ import type { HostedGoogleProfile } from './google-hosted.js';
 /** Lifetime of a minted development identity and its session. */
 export const DEVELOPMENT_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 
+export const DISPLAY_LABEL_MAX_LENGTH = 64;
+
 export interface MintedSession {
   readonly sessionToken: string;
   readonly identity: DevelopmentIdentityProjection;
@@ -396,6 +398,52 @@ export async function resolveSession(options: {
     identity: projectIdentity(identity),
     deviceSessionId: sessionTokenHash,
   };
+}
+
+/**
+ * Updates the player-facing display label stored on the account identity record.
+ */
+export async function updateAccountDisplayLabel(options: {
+  readonly firestore: Firestore;
+  readonly auth: Auth;
+  readonly accountId: string;
+  readonly displayLabel: unknown;
+}): Promise<DevelopmentIdentityProjection> {
+  if (typeof options.displayLabel !== 'string') {
+    throw new Error('displayLabel must be a string');
+  }
+  const trimmed = options.displayLabel.trim();
+  if (trimmed.length === 0 || trimmed.length > DISPLAY_LABEL_MAX_LENGTH) {
+    throw new Error('displayLabel length is invalid');
+  }
+
+  const identityRef = options.firestore
+    .collection(COLLECTIONS.developmentIdentities)
+    .doc(options.accountId);
+  const identitySnapshot = await identityRef.get();
+  if (!identitySnapshot.exists) {
+    throw new Error('Account identity not found.');
+  }
+
+  const stored = identitySnapshot.data() as {
+    accountId: string;
+    displayLabel: string;
+    identityMode?: IdentityProviderMode;
+    email?: string | null;
+    expiresAt: Timestamp | Date;
+  };
+
+  await identityRef.set({ displayLabel: trimmed, updatedAt: new Date() }, { merge: true });
+  try {
+    await options.auth.updateUser(options.accountId, { displayName: trimmed });
+  } catch {
+    // Auth display name is optional polish; Firestore is the account projection source.
+  }
+
+  return projectIdentity({
+    ...stored,
+    displayLabel: trimmed,
+  });
 }
 
 /** Ends a session by deleting its server-side record. */

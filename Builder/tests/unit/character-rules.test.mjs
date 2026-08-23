@@ -65,6 +65,9 @@ function legalCharacterFor(classId, overrides = {}) {
   const cantripIds = casting === null
     ? []
     : spellsForList(casting.spellListId, 0).slice(0, casting.cantripsKnown).map((spell) => spell.id);
+  const spellbookIds = casting?.spellbookSize
+    ? spellsForList(casting.spellListId, 1).slice(0, casting.spellbookSize).map((spell) => spell.id)
+    : [];
   const spellIds = casting === null
     ? []
     : spellsForList(casting.spellListId, 1).slice(0, casting.spellsAvailable).map((spell) => spell.id);
@@ -103,6 +106,7 @@ function legalCharacterFor(classId, overrides = {}) {
     classEquipmentOptionId: classRecord.equipmentOptions[0].id,
     backgroundEquipmentOptionId: background.equipmentOptions[0].id,
     cantripIds,
+    spellbookIds,
     spellIds,
     chosenOriginFeatId,
     backgroundFeatCantripIds,
