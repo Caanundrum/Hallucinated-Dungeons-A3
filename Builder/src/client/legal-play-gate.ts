@@ -14,7 +14,10 @@ import {
   fetchLegalAcceptance,
   type LegalAcceptanceProjection,
 } from './api.js';
+import { escapeHtml } from './dom-utils.js';
 import type { ShellHandle } from './shell.js';
+
+export type { LegalAcceptanceProjection } from './api.js';
 
 const LEGAL_LABELS: Record<string, string> = {
   '/legal/terms': 'Terms of Service',

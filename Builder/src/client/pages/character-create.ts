@@ -42,9 +42,17 @@ import {
 } from '../api.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { isCreatorTutorialDismissed, setCreatorTutorialDismissed } from '../browser-preferences.js';
 import { renderCharacterSheet, renderLiveSheetPreview } from '../character-sheet-view.js';
 import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  bindLegalPlayGatePage,
+  isLegalPlayBlocked,
+  loadLegalPlayAcceptance,
+  renderLegalPlayGatePage,
+  type LegalAcceptanceProjection,
+} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
@@ -151,6 +159,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
   /** Choices currently being saved — identity edits merge against this while busy. */
   let inFlightChoices: CharacterChoices | null = null;
   let openGeneration = 0;
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
+  let legalGateBusy = false;
+  let legalGateError: string | null = null;
+  let legalGateLoading = false;
   const mountToken = beginPageMount(container);
 
   function draftHasProgress(): boolean {
@@ -166,16 +178,52 @@ export function mountCharacterCreatePage(host: PageHost): void {
     );
   }
 
+  function hasDownstreamFromClass(choices: CharacterChoices): boolean {
+    return (
+      choices.backgroundId !== null ||
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0 ||
+      choices.classSkillIds.length > 0 ||
+      choices.cantripIds.length > 0 ||
+      choices.spellIds.length > 0 ||
+      choices.spellbookIds.length > 0 ||
+      choices.classEquipmentOptionId !== null ||
+      Object.keys(choices.classChoiceIds).length > 0
+    );
+  }
+
+  function hasDownstreamFromBackground(choices: CharacterChoices): boolean {
+    return (
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0 ||
+      Object.keys(choices.backgroundAbilityBonuses).length > 0 ||
+      choices.backgroundEquipmentOptionId !== null ||
+      choices.backgroundFeatCantripIds.length > 0 ||
+      choices.backgroundFeatSpellIds.length > 0
+    );
+  }
+
+  function hasDownstreamFromSpecies(choices: CharacterChoices): boolean {
+    return (
+      choices.chosenOriginFeatId !== null ||
+      Object.keys(choices.speciesChoiceIds).length > 0 ||
+      choices.originFeatCantripIds.length > 0 ||
+      choices.originFeatSpellIds.length > 0 ||
+      Object.keys(choices.baseAbilityScores).length > 0
+    );
+  }
+
   function latestChoices(): CharacterChoices {
     return pendingChoices ?? inFlightChoices ?? current!.draft.choices;
   }
 
   function tutorialDismissed(): boolean {
-    return tutorialDismissedThisSession;
+    return tutorialDismissedThisSession || isCreatorTutorialDismissed();
   }
 
   function dismissTutorialPermanently(): void {
     tutorialDismissedThisSession = true;
+    setCreatorTutorialDismissed();
   }
 
   async function openOwnedDraft(): Promise<void> {
@@ -1269,35 +1317,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     const radioHandlers: ReadonlyArray<[string, (value: string) => CharacterChoices | null]> = [
       [
-        'class',
-        (value) => ({
-          ...latestChoices(),
-          classId: value,
-          classSkillIds: [],
-          classChoiceIds: {},
-          classEquipmentOptionId: null,
-          cantripIds: [],
-          spellbookIds: [],
-          spellIds: [],
-        }),
-      ],
-      [
-        'background',
-        (value) => {
-          backgroundBonusPattern = null;
-          backgroundPlusTwo = '';
-          backgroundPlusOne = '';
-          return {
-            ...latestChoices(),
-            backgroundId: value,
-            backgroundAbilityBonuses: {},
-            backgroundEquipmentOptionId: null,
-            backgroundFeatCantripIds: [],
-            backgroundFeatSpellIds: [],
-          };
-        },
-      ],
-      [
         'origin-feat',
         (value) => ({
           ...latestChoices(),
@@ -1306,7 +1325,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
           originFeatSpellIds: [],
         }),
       ],
-      ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {}, chosenOriginFeatId: null, originFeatCantripIds: [], originFeatSpellIds: [] })],
       ['class-equipment', (value) => ({ ...latestChoices(), classEquipmentOptionId: value })],
       [
         'background-equipment',
@@ -1325,6 +1343,110 @@ export function mountCharacterCreatePage(host: PageHost): void {
         });
       });
     }
+
+    container.querySelectorAll<HTMLInputElement>('input[name="class"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.classId !== null &&
+            foundation.classId !== input.value &&
+            hasDownstreamFromClass(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change class?',
+              body: 'Changing your class clears later choices such as skills, spells, equipment, and ability scores.',
+              confirmLabel: 'Change class',
+              cancelLabel: 'Keep class',
+              testId: 'confirm-class-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          await commitChoices({
+            ...foundation,
+            classId: input.value,
+            classSkillIds: [],
+            classChoiceIds: {},
+            classEquipmentOptionId: null,
+            cantripIds: [],
+            spellbookIds: [],
+            spellIds: [],
+          });
+        })();
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('input[name="background"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.backgroundId !== null &&
+            foundation.backgroundId !== input.value &&
+            hasDownstreamFromBackground(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change background?',
+              body: 'Changing your background clears later choices such as ability bonuses, background equipment, and species.',
+              confirmLabel: 'Change background',
+              cancelLabel: 'Keep background',
+              testId: 'confirm-background-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          backgroundBonusPattern = null;
+          backgroundPlusTwo = '';
+          backgroundPlusOne = '';
+          await commitChoices({
+            ...foundation,
+            backgroundId: input.value,
+            backgroundAbilityBonuses: {},
+            backgroundEquipmentOptionId: null,
+            backgroundFeatCantripIds: [],
+            backgroundFeatSpellIds: [],
+          });
+        })();
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('input[name="species"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.speciesId !== null &&
+            foundation.speciesId !== input.value &&
+            hasDownstreamFromSpecies(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change species?',
+              body: 'Changing your species clears later choices such as lineage options, origin feats, and ability scores.',
+              confirmLabel: 'Change species',
+              cancelLabel: 'Keep species',
+              testId: 'confirm-species-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          await commitChoices({
+            ...foundation,
+            speciesId: input.value,
+            speciesChoiceIds: {},
+            chosenOriginFeatId: null,
+            originFeatCantripIds: [],
+            originFeatSpellIds: [],
+          });
+        })();
+      });
+    });
 
     container.querySelectorAll<HTMLInputElement>('input[name="ability-method"]').forEach((input) => {
       input.addEventListener('change', () => {
@@ -1746,13 +1868,53 @@ export function mountCharacterCreatePage(host: PageHost): void {
         shell,
         candidate,
         onSignedIn: () => {
-          void openOwnedDraft();
+          void loadLegalThenDraft();
         },
         setBusy: (next) => {
           gateBusy = next;
         },
         setError: (message) => {
           gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+
+    if (legalGateLoading) {
+      container.innerHTML = `
+        <div class="page page-wide">
+          <h1 data-testid="create-heading">Create a character</h1>
+          <p class="tagline">Checking legal acceptance…</p>
+        </div>`;
+      return;
+    }
+
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      container.innerHTML = renderLegalPlayGatePage({
+        title: 'Create a character',
+        body: 'Character creation opens after you accept every current legal document.',
+        acceptance: legalAcceptance,
+        candidate,
+        busy: legalGateBusy,
+        error: legalGateError,
+      });
+      bindLegalPlayGatePage({
+        container,
+        shell,
+        candidate,
+        getAcceptance: () => legalAcceptance,
+        setAcceptance: (next) => {
+          legalAcceptance = next;
+        },
+        onUnblocked: () => {
+          void openOwnedDraft();
+        },
+        setBusy: (value) => {
+          legalGateBusy = value;
+        },
+        setError: (message) => {
+          legalGateError = message;
         },
         render,
       });
@@ -1814,6 +1976,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     restoreFocus(focus);
   }
 
+  async function loadLegalThenDraft(): Promise<void> {
+    if (getAccount() === null) {
+      render();
+      return;
+    }
+    legalGateLoading = true;
+    render();
+    legalAcceptance = await loadLegalPlayAcceptance();
+    legalGateLoading = false;
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      render();
+      return;
+    }
+    await openOwnedDraft();
+  }
+
   render();
 
   subscribeAccount(() => {
@@ -1829,9 +2007,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return;
     }
     if (!draftOpened) {
-      void openOwnedDraft();
+      void loadLegalThenDraft();
     }
   });
 
-  void openOwnedDraft();
+  void loadLegalThenDraft();
 }

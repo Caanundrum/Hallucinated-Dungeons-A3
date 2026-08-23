@@ -34,8 +34,8 @@ export interface PageHost {
  */
 let introAlreadyShown = false;
 
-function browserStatusLabel(status: (typeof BROWSER_SUPPORT_MATRIX)[number]['status']): string {
-  switch (status) {
+function browserStatusLabel(entry: (typeof BROWSER_SUPPORT_MATRIX)[number]): string {
+  switch (entry.status) {
     case 'certified_chromium_class':
       return 'Certified on this candidate (Chromium-class automated evidence)';
     case 'ordinary_regression_when_available':
@@ -43,9 +43,10 @@ function browserStatusLabel(status: (typeof BROWSER_SUPPORT_MATRIX)[number]['sta
     case 'not_yet_certified':
       return 'Not yet certified for this milestone';
     case 'unsupported':
+      if (entry.id === 'phone') {
+        return 'Partial support — the tactical table is usable at 390px width, but phone browsers are not certified for the full experience';
+      }
       return 'Unsupported for the full tactical table';
-    default:
-      return status;
   }
 }
 
@@ -118,7 +119,7 @@ export function mountHomePage(host: PageHost): void {
             (entry) => `
             <li data-testid="browser-support-${escapeHtml(entry.id)}" data-support-status="${escapeHtml(entry.status)}">
               <strong>${escapeHtml(entry.label)}</strong>
-              — ${escapeHtml(browserStatusLabel(entry.status))}
+              — ${escapeHtml(browserStatusLabel(entry))}
             </li>`,
           ).join('')}
         </ul>
