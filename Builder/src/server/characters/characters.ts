@@ -405,7 +405,7 @@ export async function readVault(options: {
       .get(),
   ]);
 
-  /** Soft enrichment for PQA-210 — never fail the vault or campaign detail if seats cannot be listed. */
+  /** Soft enrichment for PQA-210 — only the single active seat (most recently renewed). */
   const seatsByCharacterId = new Map<string, string[]>();
   try {
     const seatSnapshots = await firestore
@@ -413,26 +413,42 @@ export async function readVault(options: {
       .where('ownerAccountId', '==', accountId)
       .limit(40)
       .get();
-    const campaignNameCache = new Map<string, string | null>();
+    type SeatRow = {
+      readonly characterId: string;
+      readonly campaignId: string;
+      readonly renewedAtMs: number;
+    };
+    const rows: SeatRow[] = [];
     for (const seatDoc of seatSnapshots.docs) {
-      const seat = seatDoc.data() as { characterId?: string; campaignId?: string };
+      const seat = seatDoc.data() as {
+        characterId?: string;
+        campaignId?: string;
+        renewedAt?: Date | { toDate: () => Date };
+      };
       if (seat.characterId === undefined || seat.campaignId === undefined) {
         continue;
       }
-      let campaignName = campaignNameCache.get(seat.campaignId);
-      if (campaignName === undefined) {
-        const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).get();
-        campaignName = campaignSnap.exists
-          ? ((campaignSnap.data() as { name?: string }).name ?? null)
-          : null;
-        campaignNameCache.set(seat.campaignId, campaignName);
-      }
-      if (campaignName === null || campaignName.length === 0) {
-        continue;
-      }
-      const existing = seatsByCharacterId.get(seat.characterId) ?? [];
-      if (!existing.includes(campaignName)) {
-        seatsByCharacterId.set(seat.characterId, [...existing, campaignName]);
+      const renewed =
+        seat.renewedAt instanceof Date
+          ? seat.renewedAt.getTime()
+          : typeof seat.renewedAt?.toDate === 'function'
+            ? seat.renewedAt.toDate().getTime()
+            : 0;
+      rows.push({
+        characterId: seat.characterId,
+        campaignId: seat.campaignId,
+        renewedAtMs: renewed,
+      });
+    }
+    rows.sort((left, right) => right.renewedAtMs - left.renewedAtMs);
+    const active = rows[0];
+    if (active !== undefined) {
+      const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(active.campaignId).get();
+      const campaignName = campaignSnap.exists
+        ? ((campaignSnap.data() as { name?: string }).name ?? null)
+        : null;
+      if (campaignName !== null && campaignName.length > 0) {
+        seatsByCharacterId.set(active.characterId, [campaignName]);
       }
     }
   } catch {

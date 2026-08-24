@@ -334,19 +334,79 @@ async function listSeats(firestore: Firestore, campaignId: string): Promise<Stor
   return snapshot.docs.map((doc) => doc.data() as StoredSeat);
 }
 
+function toSeatTimeMs(value: Date | Timestamp | undefined): number {
+  if (value === undefined) {
+    return 0;
+  }
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  return value.toDate().getTime();
+}
+
+async function listSeatsForAccount(
+  firestore: Firestore,
+  accountId: string,
+): Promise<StoredSeat[]> {
+  const snapshot = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('ownerAccountId', '==', accountId)
+    .get();
+  return snapshot.docs.map((doc) => doc.data() as StoredSeat);
+}
+
+/**
+ * Exactly one active seat per account. When legacy data left multiple seats,
+ * keep the most recently renewed and delete the rest.
+ */
 async function findGlobalActiveSeat(
   firestore: Firestore,
   accountId: string,
 ): Promise<StoredSeat | null> {
-  const snapshot = await firestore
-    .collection(COLLECTIONS.campaignSeats)
-    .where('ownerAccountId', '==', accountId)
-    .limit(1)
-    .get();
-  if (snapshot.empty) {
+  const seats = await listSeatsForAccount(firestore, accountId);
+  if (seats.length === 0) {
     return null;
   }
-  return snapshot.docs[0]!.data() as StoredSeat;
+  seats.sort((left, right) => toSeatTimeMs(right.renewedAt) - toSeatTimeMs(left.renewedAt));
+  const keep = seats[0]!;
+  if (seats.length > 1) {
+    await Promise.all(
+      seats.slice(1).map(async (seat) => {
+        await firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).delete();
+        await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).update({
+          updatedAt: new Date(),
+        });
+      }),
+    );
+  }
+  return keep;
+}
+
+/** Leaves every seat for this account except optionally one campaign. */
+async function leaveAllOtherSeats(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly exceptCampaignId?: string;
+}): Promise<void> {
+  const seats = await listSeatsForAccount(options.firestore, options.accountId);
+  for (const seat of seats) {
+    if (
+      options.exceptCampaignId !== undefined &&
+      seat.campaignId === options.exceptCampaignId
+    ) {
+      continue;
+    }
+    await options.firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).delete();
+    await options.firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).update({
+      updatedAt: new Date(),
+    });
+    await appendChronicleEntry({
+      firestore: options.firestore,
+      campaignId: seat.campaignId,
+      kind: 'seat_left',
+      body: `${seat.characterName} left their seat at the table.`,
+    });
+  }
 }
 
 async function ensurePlayerMembership(options: {
@@ -1001,7 +1061,10 @@ export async function createSeat(options: {
     if (options.confirmSwitch !== true) {
       throw new AlreadyAtAnotherTableError(globalSeat.campaignId);
     }
-    await leaveSeat({ firestore, accountId, campaignId: globalSeat.campaignId });
+    await leaveAllOtherSeats({ firestore, accountId, exceptCampaignId: campaignId });
+  } else if (options.confirmSwitch === true) {
+    // Heal any leftover multi-seat legacy rows before seating here.
+    await leaveAllOtherSeats({ firestore, accountId, exceptCampaignId: campaignId });
   }
 
   const activeCount = await countSeats(firestore, campaignId);
@@ -1092,6 +1155,10 @@ export async function joinTable(options: {
       throw new AlreadyAtAnotherTableError(globalSeat.campaignId);
     }
     switchedFromCampaignId = globalSeat.campaignId;
+  }
+
+  if (options.confirmSwitch === true) {
+    await leaveAllOtherSeats({ firestore, accountId, exceptCampaignId: campaignId });
   }
 
   const seat = await createSeat({

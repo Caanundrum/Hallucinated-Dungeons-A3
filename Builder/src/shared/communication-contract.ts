@@ -191,6 +191,8 @@ export function dmThreadFromChronicleEntries(options: {
   readonly entries: readonly ChronicleEntryProjection[];
   readonly directorLabel: string;
   readonly sceneBanner: string;
+  /** Wall clock for synthetic opening prompts (defaults to now). */
+  readonly now?: Date;
 }): DmThreadMessage[] {
   const playEntries = options.entries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind));
   if (playEntries.length === 0) {
@@ -201,7 +203,7 @@ export function dmThreadFromChronicleEntries(options: {
         speaker: 'dm',
         speakerLabel: options.directorLabel,
         body: `${scene} What do you do?`,
-        createdAt: '1970-01-01T00:00:00.000Z',
+        createdAt: options.now?.toISOString() ?? new Date().toISOString(),
         kind: 'prompt',
       },
     ];
