@@ -298,9 +298,9 @@ export function resolveStarterPack(adventureTemplateId: string | null): StarterC
 
 /** Resolves the starter pack for a campaign-creation template choice, or null for 'blank'. */
 export function resolveStarterPackForTemplate(
-  template: AdventureTemplate,
+  _template: AdventureTemplate,
 ): StarterCampaignPack | null {
-  return template === 'emberferry_crossing' ? EMBERFERRY_CROSSING_PACK : null;
+  return null;
 }
 
 /**

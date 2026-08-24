@@ -184,8 +184,8 @@ export function buildDefaultStoredSettings(campaignId: string, now: Date): Store
     rulesTransparency: 'standard',
     enemyHealthPresentation: defaults.enemyHealthPresentation,
     sessionZero: {
-      completed: false,
-      completedAt: null,
+      completed: true,
+      completedAt: now,
       tone: defaults.sessionZero.tone,
       pvpPolicy: 'consent_required',
       characterConflictPolicy: defaults.sessionZero.characterConflictPolicy,
