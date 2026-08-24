@@ -141,6 +141,25 @@ export function isAdventureTemplate(value: unknown): value is AdventureTemplate 
   return typeof value === 'string' && (ADVENTURE_TEMPLATES as readonly string[]).includes(value);
 }
 
+/** Maximum concurrent active player seats at one table. */
+export const MAX_ACTIVE_PLAYERS = 4;
+
+/** Table visibility: public tables appear in the open lobby; private tables are invite-only. */
+export const CAMPAIGN_VISIBILITY = ['public', 'private'] as const;
+export type CampaignVisibility = (typeof CAMPAIGN_VISIBILITY)[number];
+
+export const CAMPAIGN_VISIBILITY_LABELS: Record<CampaignVisibility, string> = {
+  public: 'Public',
+  private: 'Private (invite only)',
+};
+
+/** Optional join password for public tables (plain text max length before hashing). */
+export const JOIN_PASSWORD_MAX_LENGTH = 64;
+
+export function isCampaignVisibility(value: unknown): value is CampaignVisibility {
+  return typeof value === 'string' && (CAMPAIGN_VISIBILITY as readonly string[]).includes(value);
+}
+
 /** Maximum length of a campaign title. */
 export const CAMPAIGN_NAME_MAX_LENGTH = 80;
 
@@ -214,6 +233,10 @@ export interface CampaignProjection {
   readonly director: DirectorConfiguration;
   readonly memberCount: number;
   readonly seatCount: number;
+  readonly activeSeatCount: number;
+  readonly visibility: CampaignVisibility;
+  /** True when a public table requires a password to join. */
+  readonly passwordProtected: boolean;
   /** Starter pack this campaign was created from, or null for a blank table. */
   readonly adventureTemplateId: string | null;
   readonly adventurePackVersion: string | null;
@@ -226,6 +249,47 @@ export interface CampaignProjection {
    * ownership of another player's character.
    */
   readonly isCampaignOwner: boolean;
+}
+
+/** Bounded public lobby row — no secrets, no membership-only fields. */
+export interface PublicTableProjection {
+  readonly campaignId: string;
+  readonly name: string;
+  readonly summary: string;
+  readonly ownerDisplayLabel: string;
+  readonly directorIdentityLabel: string;
+  readonly directorPersonalityLabel: string;
+  readonly activeSeatCount: number;
+  readonly maxActivePlayers: typeof MAX_ACTIVE_PLAYERS;
+  readonly passwordProtected: boolean;
+  readonly updatedAt: string;
+}
+
+export interface PublicTableListProjection {
+  readonly tables: readonly PublicTableProjection[];
+}
+
+/** Where this account is actively seated right now, if anywhere. */
+export interface ActiveSeatedTableProjection {
+  readonly campaignId: string;
+  readonly campaignName: string;
+  readonly seatId: string;
+  readonly characterId: string;
+  readonly characterName: string;
+}
+
+/** Result of joining a table: membership ensured, seat created, ready for /table. */
+export interface JoinTableResponse {
+  readonly campaign: CampaignProjection;
+  readonly seat: SeatProjection;
+  readonly switchedFromCampaignId: string | null;
+}
+
+export interface TablesHubProjection {
+  readonly accountId: string;
+  readonly myTables: readonly CampaignProjection[];
+  readonly openTables: readonly PublicTableProjection[];
+  readonly activeSeat: ActiveSeatedTableProjection | null;
 }
 
 export interface CampaignListProjection {
