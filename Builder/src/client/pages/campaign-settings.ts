@@ -306,7 +306,14 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           ${
             draft.sessionZero.completed
               ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="settings-open-table">Open table dock</a>`
-              : `<span class="record-meta" data-testid="settings-open-table-gated">Open table after Session Zero is recorded</span>`
+              : `<span class="record-meta" data-testid="settings-open-table-gated">Open table after Session Zero defaults are recorded</span>`
+          }
+          ${
+            draft.sessionZero.completed
+              ? `<p class="message notice" data-testid="session-zero-defaults-notice">
+                   Session Zero defaults were applied when this table was created. You can update them anytime; seating and live play stay open.
+                 </p>`
+              : ''
           }
         </div>
       </div>`;

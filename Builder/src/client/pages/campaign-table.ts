@@ -91,13 +91,21 @@ import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
+import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  // Synthetic epoch placeholders are not player-facing wall times (TBL-QA-003 / PQA-158).
+  if (date.getTime() < 86_400_000) {
+    return 'Just now';
+  }
+  return date.toLocaleString();
 }
 
 /** Clarification-only sync drafts stay Got-it; skill checks start with Ready to. */
@@ -329,6 +337,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       entries: chronicle?.entries ?? [],
       directorLabel: directorIdentityLabel,
       sceneBanner: scene,
+      now: new Date(),
     });
     const entryCount = chronicle?.entries.length ?? 0;
     if (entryCount > lastChronicleSyncCount) {
@@ -4038,15 +4047,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       render();
     }
     const presentationEpochAtLoad = presentationWriteEpoch;
+    const pendingCharacterId = readPendingJoin(campaignId);
     try {
-      const detail = await fetchCampaignDetail(campaignId);
+      let detail = await fetchCampaignDetail(campaignId);
+      if (detail.ownSeat === null && pendingCharacterId !== null) {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          detail = await fetchCampaignDetail(campaignId);
+          if (detail.ownSeat !== null) {
+            break;
+          }
+        }
+      }
       campaignName = detail.campaign.name;
       sessionZeroComplete = detail.settings.sessionZero.completed;
       sessionZeroGateActive = !sessionZeroComplete;
       directorIdentityLabel = detail.campaign.director.identityLabel;
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;
-      tableBootstrapped = true;
+      if (seated) {
+        clearPendingJoin(campaignId);
+      }
+      // Stay on Joining… until projections finish — never paint spectator mid-load.
+      tableBootstrapped = false;
       if (!seated && chatMode === 'speak_as_character') {
         chatMode = 'table_talk';
       }
@@ -4087,9 +4110,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         // Presence soft-fails on first load.
       }
       await establishPresentationCueBaseline();
+      tableBootstrapped = true;
+      if (seated) {
+        clearPendingJoin(campaignId);
+      }
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
       stopProjectionPoll();
+      tableBootstrapped = true;
     }
     render();
   }
