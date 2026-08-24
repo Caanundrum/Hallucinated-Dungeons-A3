@@ -427,6 +427,40 @@ export async function readVault(options: {
       .get(),
   ]);
 
+  /** Soft enrichment for PQA-210 — never fail the vault or campaign detail if seats cannot be listed. */
+  const seatsByCharacterId = new Map<string, string[]>();
+  try {
+    const seatSnapshots = await firestore
+      .collection(COLLECTIONS.campaignSeats)
+      .where('ownerAccountId', '==', accountId)
+      .limit(40)
+      .get();
+    const campaignNameCache = new Map<string, string | null>();
+    for (const seatDoc of seatSnapshots.docs) {
+      const seat = seatDoc.data() as { characterId?: string; campaignId?: string };
+      if (seat.characterId === undefined || seat.campaignId === undefined) {
+        continue;
+      }
+      let campaignName = campaignNameCache.get(seat.campaignId);
+      if (campaignName === undefined) {
+        const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).get();
+        campaignName = campaignSnap.exists
+          ? ((campaignSnap.data() as { name?: string }).name ?? null)
+          : null;
+        campaignNameCache.set(seat.campaignId, campaignName);
+      }
+      if (campaignName === null || campaignName.length === 0) {
+        continue;
+      }
+      const existing = seatsByCharacterId.get(seat.characterId) ?? [];
+      if (!existing.includes(campaignName)) {
+        seatsByCharacterId.set(seat.characterId, [...existing, campaignName]);
+      }
+    }
+  } catch {
+    // Leave seatsByCharacterId empty; vault characters still load.
+  }
+
   const characters = await Promise.all(
     charactersSnapshot.docs.map(async (doc) => {
       const stored = doc.data() as StoredCharacter;
@@ -438,24 +472,6 @@ export async function readVault(options: {
       const progression = progressionSnap.exists
         ? (progressionSnap.data() as StoredProgression)
         : null;
-      const seatSnapshots = await firestore
-        .collection(COLLECTIONS.campaignSeats)
-        .where('characterId', '==', stored.characterId)
-        .limit(8)
-        .get();
-      const seatedCampaignNames = await Promise.all(
-        seatSnapshots.docs.map(async (seatDoc) => {
-          const seat = seatDoc.data() as { campaignId?: string };
-          if (seat.campaignId === undefined) {
-            return null;
-          }
-          const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).get();
-          if (!campaignSnap.exists) {
-            return null;
-          }
-          return (campaignSnap.data() as { name?: string }).name ?? null;
-        }),
-      );
       return {
         characterId: stored.characterId,
         name: stored.choices.identity.name,
@@ -464,7 +480,7 @@ export async function readVault(options: {
         backgroundLabel: labels.backgroundLabel,
         level: progression?.level ?? 1,
         createdAt: toIso(stored.createdAt),
-        seatedCampaignNames: seatedCampaignNames.filter((name): name is string => name !== null && name.length > 0),
+        seatedCampaignNames: seatsByCharacterId.get(stored.characterId) ?? [],
       };
     }),
   );

@@ -78,7 +78,12 @@ export function mountCharactersPage(host: PageHost): void {
           <h2 id="characters-heading">Your characters</h2>
           ${
             characters.length === 0
-              ? '<p class="empty-state" data-testid="vault-empty">You have not created a character yet.</p>'
+              ? error !== null
+                ? `<p class="empty-state" data-testid="vault-storage-unavailable">
+                     Character list is temporarily unavailable because live storage could not be reached.
+                     Your characters were not deleted — wait a moment and retry.
+                   </p>`
+                : '<p class="empty-state" data-testid="vault-empty">You have not created a character yet.</p>'
               : `<ul class="record-list" data-testid="character-list">
                   ${characters
                     .map(
