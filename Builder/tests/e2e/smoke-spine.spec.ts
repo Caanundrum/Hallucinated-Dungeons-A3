@@ -307,8 +307,8 @@ test.describe('Permanent smoke spine', () => {
 
     await page.getByTestId('nav-campaigns').click();
     await page.getByTestId('start-campaign').click();
-    // Emberferry Crossing is the Phase 5 default starter template.
-    await expect(page.getByTestId('adventure-template-emberferry_crossing')).toHaveClass(/selected/);
+    // Private (invite only) is the Phase 5 default starter template.
+    await expect(page.getByTestId('visibility-private')).toHaveClass(/selected/);
     await page.getByTestId('campaign-name').fill('Smoke Spine Resume');
     await page.getByTestId('campaign-name').dispatchEvent('change');
     await page.getByTestId('identity-veyra').click();

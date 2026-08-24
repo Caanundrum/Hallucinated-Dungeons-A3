@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { hashJoinPassword, verifyJoinPassword } from '../../dist/server/campaigns/join-password.js';
+import { hashJoinPassword, verifyJoinPassword } from '../../dist/server/identity/join-password.js';
 
 test('join password hash verifies correct password and rejects wrong password', () => {
   const stored = hashJoinPassword('river-dock');

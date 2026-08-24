@@ -76,11 +76,11 @@ test('campaign memory contract defines audience, quest, and session enums', () =
   assert.deepEqual([...SESSION_STATES], ['active', 'suspended']);
 });
 
-test('adventure template contract recommends Emberferry Crossing and keeps blank honest', () => {
-  assert.deepEqual([...ADVENTURE_TEMPLATES], ['emberferry_crossing', 'blank']);
-  assert.equal(RECOMMENDED_ADVENTURE_TEMPLATE, 'emberferry_crossing');
-  assert.equal(isAdventureTemplate('emberferry_crossing'), true);
+test('adventure template contract is blank-only after Emberferry retirement', () => {
+  assert.deepEqual([...ADVENTURE_TEMPLATES], ['blank']);
+  assert.equal(RECOMMENDED_ADVENTURE_TEMPLATE, 'blank');
   assert.equal(isAdventureTemplate('blank'), true);
+  assert.equal(isAdventureTemplate('emberferry_crossing'), false);
   assert.equal(isAdventureTemplate('sandbox_worldgen'), false);
 });
 
@@ -90,8 +90,7 @@ test('resolveStarterPack maps the versioned pack id and fails closed on anything
   assert.equal(resolveStarterPack('some-other-pack-id'), null);
 });
 
-test('resolveStarterPackForTemplate maps the creation-time template choice', () => {
-  assert.equal(resolveStarterPackForTemplate('emberferry_crossing'), EMBERFERRY_CROSSING_PACK);
+test('resolveStarterPackForTemplate always returns null for blank-only creation', () => {
   assert.equal(resolveStarterPackForTemplate('blank'), null);
 });
 

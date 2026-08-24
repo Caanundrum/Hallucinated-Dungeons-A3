@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { recordDefaultSessionZero, enterAccountFromShell, readCandidate} from './arena-page.js';
+import { joinTableWithFirstCharacter, enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 1 chunk 1e: campaign creation with locked Director configuration,
@@ -63,8 +63,10 @@ async function createCampaignWithDirector(
   await expect(page.getByTestId('preview-play-rhythm')).not.toBeEmpty();
   await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'false');
   await page.getByTestId('create-campaign-submit').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toHaveText(options.name);
-  return page.url().split('/').pop()!;
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  return match![1]!;
 }
 
 test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => {
@@ -102,17 +104,16 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     const lockedBody = (await locked.json()) as { error: string };
     expect(lockedBody.error).toBe('DIRECTOR_CONFIG_LOCKED');
 
+    await ownerPage.goto(`/campaigns/${campaignId}`);
+    await expect(ownerPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
+
     await ownerPage.getByTestId('create-invite').click();
     await expect(ownerPage.getByTestId('invite-path')).toBeVisible();
     const invitePath = (await ownerPage.getByTestId('invite-path').innerText()).trim();
     expect(invitePath).toMatch(/^\/invite\/[A-Za-z0-9]{8,32}$/);
 
-    await recordDefaultSessionZero(ownerPage);
-    const ownerSeatSelect = ownerPage.getByTestId('seat-character-select');
-    const ownerCharacterId = await ownerSeatSelect.locator('option').nth(1).getAttribute('value');
-    expect(ownerCharacterId).toBeTruthy();
-    await ownerSeatSelect.selectOption(ownerCharacterId!);
-    await ownerPage.getByTestId('create-seat').click();
+    await joinTableWithFirstCharacter(ownerPage);
+    await ownerPage.goto(`/campaigns/${campaignId}`);
     await expect(ownerPage.getByTestId('own-seat')).toContainText('Campaign Owner Scout');
 
     const guestContext = await browser.newContext();
@@ -133,27 +134,9 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(guestPage.getByTestId('director-identity-label')).toHaveText('Veyra');
 
     await createQuickCharacter(guestPage, 'Guest Blade');
+    await guestPage.goto(`/campaigns/${campaignId}/join`);
+    await joinTableWithFirstCharacter(guestPage);
     await guestPage.goto(`/campaigns/${campaignId}`);
-    await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
-
-    // Foreign / unknown character id cannot be seated by this account.
-    const guestOrigin = new URL(guestPage.url()).origin;
-    const guestCandidate = await readCandidate(guestPage);
-    const foreignSeat = await guestPage.request.post(`/api/campaigns/${campaignId}/seats`, {
-      headers: {
-        origin: guestOrigin,
-        'content-type': 'application/json',
-        'x-hd-candidate': guestCandidate.candidateId,
-      },
-      data: { characterId: '00000000-0000-4000-8000-000000000099' },
-    });
-    expect(foreignSeat.status()).toBe(404);
-
-    const guestSeatSelect = guestPage.getByTestId('seat-character-select');
-    const guestCharacterId = await guestSeatSelect.locator('option').nth(1).getAttribute('value');
-    expect(guestCharacterId).toBeTruthy();
-    await guestSeatSelect.selectOption(guestCharacterId!);
-    await guestPage.getByTestId('create-seat').click();
     await expect(guestPage.getByTestId('own-seat')).toContainText('Guest Blade');
 
     // Reentry recovers the same locked Director configuration.

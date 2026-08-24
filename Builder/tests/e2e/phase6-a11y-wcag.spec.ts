@@ -52,11 +52,11 @@ async function createQuickCharacter(page: Page, name: string): Promise<void> {
   await expect(page.getByTestId('character-sheet-heading')).toHaveText(name);
 }
 
-/** Creates a campaign leaving the Emberferry Crossing starter template selected (the default). */
+/** Creates a campaign leaving the Private (invite only) starter template selected (the default). */
 async function createEmberferryCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('nav-campaigns').click();
   await page.getByTestId('start-campaign').click();
-  await expect(page.getByTestId('adventure-template-emberferry_crossing')).toHaveClass(/selected/);
+  await expect(page.getByTestId('visibility-private')).toHaveClass(/selected/);
   await page.getByTestId('campaign-name').fill(name);
   await page.getByTestId('campaign-name').dispatchEvent('change');
   await page.getByTestId('identity-veyra').click();

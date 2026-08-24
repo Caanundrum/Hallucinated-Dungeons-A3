@@ -79,27 +79,22 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
 }
 
 /**
- * Records Session Zero with defaults from the campaign detail page.
- * Required before seating or opening the table dock (PQA-086).
+ * Legacy helper — Session Zero defaults are applied when a table is created.
+ * Kept so existing e2e specs compile; no UI gate remains before seating.
  */
-export async function recordDefaultSessionZero(page: Page): Promise<void> {
-  const summary = page.getByTestId('session-zero-summary');
-  if (await summary.isVisible().catch(() => false)) {
-    const text = await summary.innerText();
-    if (text.includes('recorded') && !text.includes('not recorded')) {
-      return;
-    }
-  }
-  await page.getByTestId('open-campaign-settings').click();
-  await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
-  await page.getByTestId('session-length').fill('3–5 sessions');
-  await page.getByTestId('complete-session-zero').click();
-  await expect(page.getByTestId('settings-notice')).toContainText(
-    /Session Zero (recorded|updated)/i,
-  );
-  await page.getByTestId('settings-back').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
-  await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
+export async function recordDefaultSessionZero(_page: Page): Promise<void> {
+  return;
+}
+
+/** Join the current table from /campaigns/:id/join with the first vault character. */
+export async function joinTableWithFirstCharacter(page: Page): Promise<void> {
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const select = page.getByTestId('join-character-select');
+  await expect(select).toBeVisible();
+  const characterId = await select.locator('option').nth(1).getAttribute('value');
+  expect(characterId).toBeTruthy();
+  await select.selectOption(characterId!);
+  await page.getByTestId('join-table-submit').click();
 }
 
 /** Opens training / developer controls on the campaign table dashboard. */

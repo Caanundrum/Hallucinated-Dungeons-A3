@@ -63,7 +63,7 @@ import {
   TableFullError,
   WrongTablePasswordError,
 } from './errors.js';
-import { hashJoinPassword, verifyJoinPassword } from './join-password.js';
+import { hashJoinPassword, verifyJoinPassword, JoinPasswordValidationError } from '../identity/join-password.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import {
   ensureCampaignSettings,
@@ -210,7 +210,14 @@ function validateJoinPassword(raw: unknown, visibility: CampaignVisibility): str
   if (visibility !== 'public') {
     throw new CampaignValidationError('Join passwords apply only to public tables.');
   }
-  return hashJoinPassword(raw);
+  try {
+    return hashJoinPassword(raw);
+  } catch (error) {
+    if (error instanceof JoinPasswordValidationError) {
+      throw new CampaignValidationError(error.message);
+    }
+    throw error;
+  }
 }
 
 function projectDirector(stored: StoredCampaign) {
