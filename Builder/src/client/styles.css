@@ -1847,12 +1847,6 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-.stat-list li.proficient span:first-child::before {
-  content: '● ';
-  color: var(--verdant-success);
-  font-size: 0.7rem;
-}
-
 a.record-note {
   color: var(--amber-highlight);
   text-decoration: none;
@@ -2180,6 +2174,29 @@ html.hd-low-effects .map-square-fog,
 
 .table-character-sheet-panel .sheet-column {
   min-width: 0;
+}
+
+.sheet-layout-compact {
+  display: block;
+}
+
+.sheet-layout-compact .sheet-column {
+  width: 100%;
+}
+
+.sheet-layout-compact .sheet-panel {
+  margin-bottom: var(--space-2);
+}
+
+.map-edge-hit-target.map-edge-selected line {
+  stroke: #f0c043 !important;
+  stroke-width: 6 !important;
+  filter: drop-shadow(0 0 4px rgba(240, 192, 67, 0.8));
+}
+
+.table-rail-restore {
+  width: 100%;
+  margin: var(--space-2) 0;
 }
 
 @media (max-width: 760px) {

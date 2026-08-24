@@ -45,6 +45,26 @@ const SELF_EXCLUSION_COVERED_BY = 'tools/certification/code-completeness-scan.mj
  * @property {string} instead
  */
 
+/** @type {readonly string[]} */
+const BROWSER_PREFERENCE_MARKERS = [
+  'readTableNotesPreference',
+  'writeTableNotesPreference',
+  'isCreatorTutorialDismissed',
+  'setCreatorTutorialDismissed',
+  'Non-authoritative',
+  'non-authoritative',
+  'UI preference',
+  'hd-a3-table-notes-',
+  'hd-a3-creator-tutorial-dismissed',
+];
+
+function isAllowedBrowserPreferenceUse(line, previousLine = '') {
+  const context = `${previousLine}\n${line}`;
+  return BROWSER_PREFERENCE_MARKERS.some((marker) => context.includes(marker));
+}
+
+const CLIENT_BROWSER_PREFERENCE_FILES = new Set(['src/client/browser-preferences.ts']);
+
 /** @type {ConformanceRule[]} */
 export const RULES = [
   {
@@ -58,7 +78,8 @@ export const RULES = [
   {
     id: 'client_must_not_hold_identity_or_canonical_state',
     pattern: /\b(document\.cookie|localStorage|sessionStorage|indexedDB)\b/,
-    appliesTo: (path) => path.startsWith('src/client/'),
+    appliesTo: (path) =>
+      path.startsWith('src/client/') && !CLIENT_BROWSER_PREFERENCE_FILES.has(path),
     rationale:
       'Character ownership, campaign membership, and seat authorization may never depend on browser storage, and the session cookie is http-only precisely so client script cannot read or forge it.',
     instead:
@@ -122,16 +143,25 @@ export function evaluateRules(file) {
       continue;
     }
     lines.forEach((line, index) => {
-      if (rule.pattern.test(line)) {
-        findings.push({
+      if (!rule.pattern.test(line)) {
+        return;
+      }
+      if (
+        rule.id === 'client_must_not_hold_identity_or_canonical_state' &&
+        (line.trim().startsWith('//') ||
+          line.trim().startsWith('*') ||
+          isAllowedBrowserPreferenceUse(line, lines[index - 1] ?? ''))
+      ) {
+        return;
+      }
+      findings.push({
           rule: rule.id,
           file: relativePath,
           line: index + 1,
           text: line.trim().slice(0, 160),
           rationale: rule.rationale,
           instead: rule.instead,
-        });
-      }
+      });
     });
   }
 

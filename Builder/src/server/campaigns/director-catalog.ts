@@ -21,11 +21,11 @@ import {
 } from '../../shared/campaign-contract.js';
 
 export const DIRECTOR_CONFIGURATION_NOTICE =
-  'This locks the Game Director identity and personality for the campaign. On hosted Invite-Only Alpha the Game Director may narrate through Gemini when the AI kill switch is off.';
+  'This locks the Game Director identity and personality for the campaign. The Game Director narrates at your table when live narration is enabled.';
 
-/** Local Arena-only companion notice for development surfaces. */
+/** Local Arena companion notice for development surfaces. */
 export const DIRECTOR_CONFIGURATION_NOTICE_LOCAL =
-  'This locks the Game Director identity and personality for the campaign. Local Arena uses a deterministic simulator instead of live Gemini.';
+  'This locks the Game Director identity and personality for the campaign. Local Arena uses a deterministic simulator instead of live narration.';
 
 export function buildDirectorCatalog(): DirectorCatalog {
   return {

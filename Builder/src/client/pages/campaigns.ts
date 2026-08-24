@@ -67,6 +67,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         ${escapeHtml(campaign.director.identityLabel)} · ${escapeHtml(campaign.director.personalityLabel)}
                         · ${campaign.isCampaignOwner ? 'Owner' : 'Member'}
                         · ${campaign.memberCount} member${campaign.memberCount === 1 ? '' : 's'}
+                        · Session ${escapeHtml(campaign.sessionStatusLabel ?? 'Not started')}
                         · updated ${escapeHtml(formatTimestamp(campaign.updatedAt))}
                       </span>
                     </li>`,

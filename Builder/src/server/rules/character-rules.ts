@@ -43,6 +43,10 @@ import {
   RULES_VERSION,
   SKILLS,
   SPECIES,
+  MAGIC_INITIATE_CANTRIPS_KNOWN,
+  MAGIC_INITIATE_SPELLS_KNOWN,
+  ORIGIN_FEAT_OPTIONS,
+  ORIGIN_FEAT_SUMMARIES,
   findArmor,
   findBackground,
   findClass,
@@ -50,6 +54,7 @@ import {
   findSpecies,
   findSpell,
   findWeapon,
+  magicInitiateSpellListId,
   spellsForList,
   type ClassRecord,
   type EquipmentOption,
@@ -74,10 +79,157 @@ export function emptyChoices(): CharacterChoices {
     classEquipmentOptionId: null,
     backgroundEquipmentOptionId: null,
     cantripIds: [],
+    spellbookIds: [],
     spellIds: [],
+    chosenOriginFeatId: null,
+    backgroundFeatCantripIds: [],
+    backgroundFeatSpellIds: [],
+    originFeatCantripIds: [],
+    originFeatSpellIds: [],
     classChoiceIds: {},
     identity: { name: '', pronouns: '', appearance: '', concept: '' },
   };
+}
+
+/** Human Versatile Origin feat choice only — Background feats use backgroundDetail. */
+export function resolveActiveOriginFeat(
+  choices: CharacterChoices,
+  _backgroundRecord: ReturnType<typeof findBackground> = findBackground(choices.backgroundId),
+  speciesRecord: ReturnType<typeof findSpecies> = findSpecies(choices.speciesId),
+): string | null {
+  if (speciesRecord?.id === 'human') {
+    return choices.chosenOriginFeatId;
+  }
+  return null;
+}
+
+function magicInitiateAbility(listId: string): Ability {
+  return listId === 'wizard' ? 'intelligence' : 'wisdom';
+}
+
+function validateMagicInitiatePicks(options: {
+  readonly problems: UnresolvedChoice[];
+  readonly featLabel: string | null;
+  readonly listId: string | null;
+  readonly cantripIds: readonly string[];
+  readonly spellIds: readonly string[];
+  readonly step: WizardStep;
+  readonly codePrefix: string;
+}): void {
+  const { problems, featLabel, listId, cantripIds, spellIds, step, codePrefix } = options;
+  if (listId === null || featLabel === null) {
+    if (cantripIds.length > 0 || spellIds.length > 0) {
+      problems.push(
+        unresolved(step, `${codePrefix}_SPELLS_NOT_AVAILABLE`, 'This Origin feat does not grant spell choices.'),
+      );
+    }
+    return;
+  }
+  const legalCantrips = spellsForList(listId, 0).map((spell) => spell.id);
+  const legalSpells = spellsForList(listId, 1).map((spell) => spell.id);
+  if (cantripIds.some((id) => !legalCantrips.includes(id))) {
+    problems.push(
+      unresolved(
+        step,
+        `${codePrefix}_CANTRIP_NOT_ON_LIST`,
+        `A chosen ${featLabel} cantrip is not on the spell list.`,
+      ),
+    );
+  }
+  if (new Set(cantripIds).size !== cantripIds.length) {
+    problems.push(
+      unresolved(step, `${codePrefix}_CANTRIP_DUPLICATE`, 'Each Magic Initiate cantrip must be different.'),
+    );
+  }
+  if (cantripIds.length !== MAGIC_INITIATE_CANTRIPS_KNOWN) {
+    problems.push(
+      unresolved(
+        step,
+        `${codePrefix}_CANTRIP_COUNT`,
+        `Choose ${MAGIC_INITIATE_CANTRIPS_KNOWN} cantrips for ${featLabel}. ${cantripIds.length} chosen.`,
+      ),
+    );
+  }
+  if (spellIds.some((id) => !legalSpells.includes(id))) {
+    problems.push(
+      unresolved(
+        step,
+        `${codePrefix}_SPELL_NOT_ON_LIST`,
+        `A chosen ${featLabel} spell is not on the spell list.`,
+      ),
+    );
+  }
+  if (new Set(spellIds).size !== spellIds.length) {
+    problems.push(
+      unresolved(step, `${codePrefix}_SPELL_DUPLICATE`, 'Each Magic Initiate spell must be different.'),
+    );
+  }
+  if (spellIds.length !== MAGIC_INITIATE_SPELLS_KNOWN) {
+    problems.push(
+      unresolved(
+        step,
+        `${codePrefix}_SPELL_COUNT`,
+        `Choose ${MAGIC_INITIATE_SPELLS_KNOWN} level 1 spell for ${featLabel}. ${spellIds.length} chosen.`,
+      ),
+    );
+  }
+}
+
+/**
+ * Drops class skill picks that duplicate a Background grant so the player
+ * keeps every class proficiency slot after changing Background.
+ */
+export function sanitizeChoices(choices: CharacterChoices): CharacterChoices {
+  let next = choices;
+  const backgroundRecord = findBackground(next.backgroundId);
+  const speciesRecord = findSpecies(next.speciesId);
+
+  if (backgroundRecord !== null && next.classSkillIds.length > 0) {
+    const backgroundSkills = new Set(backgroundRecord.skillIds);
+    const classSkillIds = next.classSkillIds.filter((id) => !backgroundSkills.has(id));
+    if (classSkillIds.length !== next.classSkillIds.length) {
+      next = { ...next, classSkillIds };
+    }
+  }
+
+  if (speciesRecord?.id !== 'human' && next.chosenOriginFeatId !== null) {
+    next = {
+      ...next,
+      chosenOriginFeatId: null,
+      originFeatCantripIds: [],
+      originFeatSpellIds: [],
+    };
+  }
+
+  const backgroundMagicListId = magicInitiateSpellListId(backgroundRecord?.originFeat ?? null);
+  if (backgroundMagicListId === null) {
+    if (next.backgroundFeatCantripIds.length > 0 || next.backgroundFeatSpellIds.length > 0) {
+      next = { ...next, backgroundFeatCantripIds: [], backgroundFeatSpellIds: [] };
+    }
+  }
+
+  const humanFeat = speciesRecord?.id === 'human' ? next.chosenOriginFeatId : null;
+  if (magicInitiateSpellListId(humanFeat) === null) {
+    if (next.originFeatCantripIds.length > 0 || next.originFeatSpellIds.length > 0) {
+      next = { ...next, originFeatCantripIds: [], originFeatSpellIds: [] };
+    }
+  }
+
+  const classRecord = findClass(next.classId);
+  const spellbookSize = classRecord?.spellcasting?.spellbookSize ?? null;
+  if (spellbookSize === null) {
+    if (next.spellbookIds.length > 0) {
+      next = { ...next, spellbookIds: [] };
+    }
+  } else {
+    const spellbookSet = new Set(next.spellbookIds);
+    const prepared = next.spellIds.filter((id) => spellbookSet.has(id));
+    if (prepared.length !== next.spellIds.length) {
+      next = { ...next, spellIds: prepared };
+    }
+  }
+
+  return next;
 }
 
 /** One Ability Score: 4d6, drop the lowest die. */
@@ -220,6 +372,15 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
             `You are already proficient in ${findSkill(selected)?.label ?? selected}. Choose a different skill.`,
           ),
         );
+      }
+    }
+    if (speciesRecord.id === 'human') {
+      if (choices.chosenOriginFeatId === null) {
+        problems.push(
+          unresolved('species', 'ORIGIN_FEAT_REQUIRED', 'Choose an Origin feat for your Human.'),
+        );
+      } else if (!ORIGIN_FEAT_OPTIONS.some((option) => option.id === choices.chosenOriginFeatId)) {
+        problems.push(unresolved('species', 'ORIGIN_FEAT_INVALID', 'That Origin feat is not available.'));
       }
     }
   }
@@ -375,11 +536,65 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
         unresolved('features', 'SPELL_COUNT', `Choose ${casting.spellsAvailable} level 1 spells to ${verb}. ${choices.spellIds.length} chosen.`),
       );
     }
-  } else if (choices.cantripIds.length > 0 || choices.spellIds.length > 0) {
+
+    const spellbookSize = casting.spellbookSize ?? null;
+    if (spellbookSize !== null) {
+      if (choices.spellbookIds.some((id) => !legalSpells.includes(id))) {
+        problems.push(
+          unresolved('features', 'SPELLBOOK_NOT_ON_LIST', `A spellbook spell is not on the ${classRecord.label} spell list.`),
+        );
+      }
+      if (new Set(choices.spellbookIds).size !== choices.spellbookIds.length) {
+        problems.push(unresolved('features', 'SPELLBOOK_DUPLICATE', 'Each spellbook spell must be different.'));
+      }
+      if (choices.spellbookIds.length !== spellbookSize) {
+        problems.push(
+          unresolved(
+            'features',
+            'SPELLBOOK_COUNT',
+            `Choose ${spellbookSize} spells for your spellbook. ${choices.spellbookIds.length} chosen.`,
+          ),
+        );
+      }
+      if (choices.spellIds.some((id) => !choices.spellbookIds.includes(id))) {
+        problems.push(
+          unresolved(
+            'features',
+            'SPELL_NOT_IN_SPELLBOOK',
+            'Each prepared spell must also appear in your spellbook.',
+          ),
+        );
+      }
+    } else if (choices.spellbookIds.length > 0) {
+      problems.push(
+        unresolved('features', 'SPELLBOOK_NOT_AVAILABLE', 'This Class does not use a spellbook at level 1.'),
+      );
+    }
+  } else if (choices.cantripIds.length > 0 || choices.spellIds.length > 0 || choices.spellbookIds.length > 0) {
     problems.push(
       unresolved('features', 'SPELLS_NOT_AVAILABLE', 'This Class does not cast spells at level 1.'),
     );
   }
+
+  const activeOriginFeat = resolveActiveOriginFeat(choices, backgroundRecord, speciesRecord);
+  validateMagicInitiatePicks({
+    problems,
+    featLabel: backgroundRecord?.originFeat ?? null,
+    listId: magicInitiateSpellListId(backgroundRecord?.originFeat ?? null),
+    cantripIds: choices.backgroundFeatCantripIds,
+    spellIds: choices.backgroundFeatSpellIds,
+    step: 'features',
+    codePrefix: 'BACKGROUND_FEAT',
+  });
+  validateMagicInitiatePicks({
+    problems,
+    featLabel: activeOriginFeat,
+    listId: magicInitiateSpellListId(activeOriginFeat),
+    cantripIds: choices.originFeatCantripIds,
+    spellIds: choices.originFeatSpellIds,
+    step: 'features',
+    codePrefix: 'ORIGIN_FEAT',
+  });
 
   // ── Identity, last ─────────────────────────────────────────────────────
   const name = choices.identity.name.trim();
@@ -420,6 +635,20 @@ function equipmentOptionFor(
   id: string | null,
 ): EquipmentOption | null {
   return options.find((option) => option.id === id) ?? null;
+}
+
+function consolidateEquipment(
+  items: readonly { readonly name: string; readonly quantity: number }[],
+): { readonly name: string; readonly quantity: number }[] {
+  const quantities = new Map<string, number>();
+  for (const item of items) {
+    quantities.set(item.name, (quantities.get(item.name) ?? 0) + item.quantity);
+  }
+  return [...quantities.entries()].map(([name, quantity]) => ({ name, quantity }));
+}
+
+function originFeatSummary(featName: string, fallback: string): string {
+  return ORIGIN_FEAT_SUMMARIES[featName] ?? fallback;
 }
 
 function selectedClassChoiceIds(choices: CharacterChoices, choiceId: string): readonly string[] {
@@ -723,10 +952,10 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     { label: 'Perception', amount: perception?.bonus.value ?? modifiers.wisdom, ruleId: 'skill.perception' },
   ]);
 
-  const equipment = [
+  const equipment = consolidateEquipment([
     ...(classEquipment?.items ?? []),
     ...(backgroundEquipment?.items ?? []),
-  ].map((item) => ({ name: item.name, quantity: item.quantity }));
+  ]);
 
   const features = [
     ...classRecord.features
@@ -769,34 +998,188 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
         },
       ];
     }),
-    { name: backgroundRecord.originFeat, source: backgroundRecord.label, summary: 'Origin feat granted by your Background.' },
+    { name: backgroundRecord.originFeat, source: backgroundRecord.label, summary: originFeatSummary(backgroundRecord.originFeat, 'Origin feat granted by your Background.') },
   ];
+  const activeOriginFeat = resolveActiveOriginFeat(choices, backgroundRecord, speciesRecord);
+  if (speciesRecord.id === 'human' && activeOriginFeat !== null) {
+    features.push({
+      name: activeOriginFeat,
+      source: speciesRecord.label,
+      summary: originFeatSummary(activeOriginFeat, 'Origin feat chosen through Versatile.'),
+    });
+  }
+  if (activeOriginFeat !== null && magicInitiateSpellListId(activeOriginFeat) !== null) {
+    const featCantrips = choices.originFeatCantripIds
+      .map((id) => findSpell(id))
+      .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+      .map((spell) => spell.label);
+    const featSpells = choices.originFeatSpellIds
+      .map((id) => findSpell(id))
+      .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+      .map((spell) => spell.label);
+    if (featCantrips.length > 0 || featSpells.length > 0) {
+      features.push({
+        name: `${activeOriginFeat} spells`,
+        source: speciesRecord.label,
+        summary: [
+          featCantrips.length > 0 ? `Cantrips: ${featCantrips.join(', ')}` : '',
+          featSpells.length > 0 ? `Level 1: ${featSpells.join(', ')}` : '',
+        ]
+          .filter((part) => part.length > 0)
+          .join(' · '),
+      });
+    }
+  }
+  if (magicInitiateSpellListId(backgroundRecord.originFeat) !== null) {
+    const featCantrips = choices.backgroundFeatCantripIds
+      .map((id) => findSpell(id))
+      .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+      .map((spell) => spell.label);
+    const featSpells = choices.backgroundFeatSpellIds
+      .map((id) => findSpell(id))
+      .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+      .map((spell) => spell.label);
+    if (featCantrips.length > 0 || featSpells.length > 0) {
+      features.push({
+        name: `${backgroundRecord.originFeat} spells`,
+        source: backgroundRecord.label,
+        summary: [
+          featCantrips.length > 0 ? `Cantrips: ${featCantrips.join(', ')}` : '',
+          featSpells.length > 0 ? `Level 1: ${featSpells.join(', ')}` : '',
+        ]
+          .filter((part) => part.length > 0)
+          .join(' · '),
+      });
+    }
+  }
 
   const casting = classRecord.spellcasting;
-  const spellcasting = casting === null
-    ? null
-    : {
-        ability: casting.ability,
-        spellSaveDc: value([
-          { label: 'Base', amount: 8, ruleId: 'spellcasting.save-dc-base' },
-          { label: 'Proficiency Bonus', amount: proficiencyBonus.value, ruleId: 'proficiency-bonus' },
-          { label: ABILITY_LABELS[casting.ability], amount: modifiers[casting.ability], ruleId: `ability.${casting.ability}` },
-        ]),
-        spellAttackBonus: value([
-          { label: 'Proficiency Bonus', amount: proficiencyBonus.value, ruleId: 'proficiency-bonus' },
-          { label: ABILITY_LABELS[casting.ability], amount: modifiers[casting.ability], ruleId: `ability.${casting.ability}` },
-        ]),
-        cantrips: choices.cantripIds
+  const backgroundMagicListId = magicInitiateSpellListId(backgroundRecord.originFeat);
+  const humanMagicListId = magicInitiateSpellListId(activeOriginFeat);
+  const magicInitiateListId = casting === null ? (backgroundMagicListId ?? humanMagicListId) : backgroundMagicListId ?? humanMagicListId;
+  const featCantripEntries = [...choices.backgroundFeatCantripIds, ...choices.originFeatCantripIds]
+    .map((id) => findSpell(id))
+    .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+    .map((spell) => ({ id: spell.id, name: spell.label }));
+  const featSpellEntries = [...choices.backgroundFeatSpellIds, ...choices.originFeatSpellIds]
+    .map((id) => findSpell(id))
+    .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+    .map((spell) => ({ id: spell.id, name: spell.label }));
+  const classSpellEntries =
+    casting === null
+      ? []
+      : choices.spellIds
           .map((id) => findSpell(id))
           .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
-          .map((spell) => ({ id: spell.id, name: spell.label })),
-        spells: choices.spellIds
+          .map((spell) => ({ id: spell.id, name: spell.label }));
+  const spellbookSize = casting?.spellbookSize ?? null;
+  const spellbookEntries =
+    spellbookSize === null
+      ? []
+      : choices.spellbookIds
           .map((id) => findSpell(id))
           .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
-          .map((spell) => ({ id: spell.id, name: spell.label })),
-        level1SlotCount: casting.level1SlotCount,
-        preparationStyle: casting.preparationStyle,
-      };
+          .map((spell) => ({ id: spell.id, name: spell.label }));
+  const level1SlotCount = casting?.level1SlotCount ?? 0;
+  const spellcasting =
+    casting === null && magicInitiateListId === null
+      ? null
+      : {
+          ability: casting?.ability ?? magicInitiateAbility(magicInitiateListId!),
+          spellSaveDc: value([
+            { label: 'Base', amount: 8, ruleId: 'spellcasting.save-dc-base' },
+            { label: 'Proficiency Bonus', amount: proficiencyBonus.value, ruleId: 'proficiency-bonus' },
+            {
+              label: ABILITY_LABELS[casting?.ability ?? magicInitiateAbility(magicInitiateListId!)],
+              amount: modifiers[casting?.ability ?? magicInitiateAbility(magicInitiateListId!)],
+              ruleId: `ability.${casting?.ability ?? magicInitiateAbility(magicInitiateListId!)}`,
+            },
+          ]),
+          spellAttackBonus: value([
+            { label: 'Proficiency Bonus', amount: proficiencyBonus.value, ruleId: 'proficiency-bonus' },
+            {
+              label: ABILITY_LABELS[casting?.ability ?? magicInitiateAbility(magicInitiateListId!)],
+              amount: modifiers[casting?.ability ?? magicInitiateAbility(magicInitiateListId!)],
+              ruleId: `ability.${casting?.ability ?? magicInitiateAbility(magicInitiateListId!)}`,
+            },
+          ]),
+          cantrips: [
+            ...(casting === null
+              ? []
+              : choices.cantripIds
+                  .map((id) => findSpell(id))
+                  .filter((spell): spell is NonNullable<typeof spell> => spell !== null)
+                  .map((spell) => ({ id: spell.id, name: spell.label }))),
+            ...featCantripEntries,
+          ],
+          spellbook: spellbookEntries,
+          spells:
+            spellbookSize !== null
+              ? classSpellEntries
+              : [...classSpellEntries, ...featSpellEntries],
+          level1SlotCount,
+          level1SlotsRemaining: level1SlotCount,
+          preparationStyle: casting?.preparationStyle ?? 'known',
+        };
+
+  const hasAlert =
+    backgroundRecord.originFeat === 'Alert' ||
+    (speciesRecord.id === 'human' && activeOriginFeat === 'Alert');
+  const initiativeComponents = [
+    { label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' },
+  ];
+  if (hasAlert) {
+    initiativeComponents.push({ label: 'Alert', amount: 5, ruleId: 'feat.alert.initiative' });
+  }
+  const hitPoints = value(hitPointComponents);
+  const attacks = deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices);
+  const fightingStyle = features.find((feature) => feature.name.startsWith('Fighting Style:'));
+  const subclassLabel =
+    fightingStyle !== undefined
+      ? `${fightingStyle.name.replace('Fighting Style: ', '')} (fighting style)`
+      : classRecord.id === 'fighter'
+        ? 'Subclass unlocks at level 3'
+        : null;
+  const masteryCount = classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
+    ? classRecord.id === 'fighter'
+      ? 3
+      : 2
+    : 0;
+  const weaponMasteries =
+    masteryCount === 0
+      ? []
+      : attacks.slice(0, masteryCount).map((attack) => ({
+          name: attack.name,
+          property: attack.properties[0] ?? 'Mastery',
+        }));
+  const classResources: Array<{
+    id: string;
+    label: string;
+    summary: string;
+    remaining: number;
+    maximum: number;
+    recharge: string;
+  }> = [];
+  if (classRecord.features.some((feature) => feature.name === 'Second Wind')) {
+    classResources.push({
+      id: 'second-wind',
+      label: 'Second Wind',
+      summary: 'Bonus Action to regain 1d10 + level Hit Points.',
+      remaining: 1,
+      maximum: 1,
+      recharge: 'Short rest',
+    });
+  }
+  if (classRecord.features.some((feature) => feature.name === 'Action Surge')) {
+    classResources.push({
+      id: 'action-surge',
+      label: 'Action Surge',
+      summary: 'Take one additional Action on your turn.',
+      remaining: 1,
+      maximum: 1,
+      recharge: 'Short rest',
+    });
+  }
 
   return {
     level: STARTING_LEVEL,
@@ -804,10 +1187,11 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     proficiencyBonus,
     abilityScores,
     abilityModifiers: modifiers,
-    hitPoints: value(hitPointComponents),
+    hitPoints,
+    hitPointsCurrent: hitPoints.value,
     hitDice: `1d${classRecord.hitDie}`,
     armorClass: deriveArmorClass(classRecord, classEquipment, modifiers, choices),
-    initiative: value([{ label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' }]),
+    initiative: value(initiativeComponents),
     speed: value([{ label: `${speciesRecord.label} Speed`, amount: speciesRecord.speed, ruleId: `species.${speciesRecord.id}.speed` }]),
     passivePerception,
     savingThrows,
@@ -817,10 +1201,13 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     proficiencies,
     languages: ['Common'],
     features,
-    attacks: deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices),
+    attacks,
     equipment,
     currencyGold: (classEquipment?.gold ?? 0) + (backgroundEquipment?.gold ?? 0),
     spellcasting,
+    subclassLabel,
+    weaponMasteries,
+    classResources,
   };
 }
 
@@ -833,6 +1220,23 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
   const classRecord = findClass(choices.classId);
   const speciesRecord = findSpecies(choices.speciesId);
   const backgroundRecord = findBackground(choices.backgroundId);
+  const activeOriginFeat = resolveActiveOriginFeat(choices, backgroundRecord, speciesRecord);
+
+  const magicInitiateDetail = (
+    featLabel: string | null,
+  ): DraftOptions['backgroundFeatDetail'] => {
+    const listId = magicInitiateSpellListId(featLabel);
+    if (listId === null || featLabel === null) {
+      return null;
+    }
+    return {
+      label: featLabel,
+      cantripsKnown: MAGIC_INITIATE_CANTRIPS_KNOWN,
+      spellsKnown: MAGIC_INITIATE_SPELLS_KNOWN,
+      cantripOptions: spellsForList(listId, 0).map((spell) => ({ id: spell.id, label: spell.label })),
+      spellOptions: spellsForList(listId, 1).map((spell) => ({ id: spell.id, label: spell.label })),
+    };
+  };
 
   return {
     catalog: buildCatalog(),
@@ -881,6 +1285,7 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
                     abilityLabel: ABILITY_LABELS[classRecord.spellcasting.ability],
                     cantripsKnown: classRecord.spellcasting.cantripsKnown,
                     spellsAvailable: classRecord.spellcasting.spellsAvailable,
+                    spellbookSize: classRecord.spellcasting.spellbookSize ?? null,
                     preparationStyle: classRecord.spellcasting.preparationStyle,
                     cantripOptions: spellsForList(classRecord.spellcasting.spellListId, 0).map((spell) => ({
                       id: spell.id,
@@ -944,6 +1349,16 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
               gold: option.gold,
             })),
           },
+    originFeatOptions:
+      speciesRecord?.id === 'human'
+        ? ORIGIN_FEAT_OPTIONS.map((option) => ({
+            id: option.id,
+            label: option.label,
+            summary: option.summary,
+          }))
+        : null,
+    backgroundFeatDetail: magicInitiateDetail(backgroundRecord?.originFeat ?? null),
+    originFeatDetail: magicInitiateDetail(activeOriginFeat),
   };
 }
 

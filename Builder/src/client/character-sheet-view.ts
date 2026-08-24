@@ -108,7 +108,11 @@ function explained(
     </div>`;
 }
 
-export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
+export function renderCharacterSheet(
+  sheet: DerivedCharacterSheet,
+  options: { readonly compact?: boolean } = {},
+): string {
+  const compact = options.compact === true;
   const abilityBlock = ABILITIES.map((ability) => {
     const score = sheet.abilityScores[ability];
     return `
@@ -194,7 +198,9 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
           ${explained('Spell Attack Bonus', sheet.spellcasting.spellAttackBonus, 'spell-attack-bonus', formatModifier)}
         </div>
         <p>
-          Level 1 Spell Slots: <b>${sheet.spellcasting.level1SlotCount}</b> ·
+          Level 1 Spell Slots:
+          <b data-testid="sheet-spell-slots-remaining">${sheet.spellcasting.level1SlotsRemaining}</b>
+          / <b>${sheet.spellcasting.level1SlotCount}</b> remaining ·
           Spells are ${escapeHtml(sheet.spellcasting.preparationStyle)}
         </p>
         <p><b>Cantrips:</b> ${
@@ -202,23 +208,71 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
             ? 'None'
             : escapeHtml(sheet.spellcasting.cantrips.map((spell) => spell.name).join(', '))
         }</p>
-        <p data-testid="sheet-spells"><b>Level 1 Spells:</b> ${
+        ${
+          sheet.spellcasting.spellbook.length > 0
+            ? `<p data-testid="sheet-spellbook"><b>Spellbook:</b> ${escapeHtml(
+                sheet.spellcasting.spellbook.map((spell) => spell.name).join(', '),
+              )}</p>`
+            : ''
+        }
+        <p data-testid="sheet-spells"><b>${
+          sheet.spellcasting.spellbook.length > 0 ? 'Prepared Spells' : 'Level 1 Spells'
+        }:</b> ${
           sheet.spellcasting.spells.length === 0
             ? 'None'
             : escapeHtml(sheet.spellcasting.spells.map((spell) => spell.name).join(', '))
         }</p>
       </section>`;
 
+  const resourceRows =
+    sheet.classResources === undefined || sheet.classResources.length === 0
+      ? ''
+      : `<section class="panel sheet-panel" aria-labelledby="resources-heading">
+          <h2 id="resources-heading">Class resources</h2>
+          <ul class="record-list" data-testid="sheet-class-resources">
+            ${sheet.classResources
+              .map(
+                (resource) => `
+              <li data-testid="sheet-resource-${escapeHtml(resource.id)}">
+                <span class="record-note">${escapeHtml(resource.label)}</span>
+                <span class="record-meta">
+                  ${resource.remaining} / ${resource.maximum} remaining · recharges on ${escapeHtml(resource.recharge)}
+                  · ${escapeHtml(resource.summary)}
+                </span>
+                <button type="button" class="secondary compact" data-sheet-resource="${escapeHtml(resource.id)}"
+                  data-testid="spend-${escapeHtml(resource.id)}"
+                  aria-disabled="${resource.remaining <= 0 ? 'true' : 'false'}">
+                  Spend
+                </button>
+              </li>`,
+              )
+              .join('')}
+          </ul>
+          <p class="record-meta">Spending a resource updates your local tracker until you rest or refresh the sheet.</p>
+        </section>`;
+
+  const masteryBlock =
+    sheet.weaponMasteries === undefined || sheet.weaponMasteries.length === 0
+      ? ''
+      : `<p data-testid="sheet-weapon-masteries"><b>Weapon mastery:</b> ${escapeHtml(
+          sheet.weaponMasteries.map((entry) => `${entry.name} (${entry.property})`).join(', '),
+        )}</p>`;
+
+  const subclassLine =
+    sheet.subclassLabel === undefined || sheet.subclassLabel === null
+      ? ''
+      : `<p data-testid="sheet-subclass"><b>Subclass / style:</b> ${escapeHtml(sheet.subclassLabel)}</p>`;
+
   return `
     <p class="sheet-legend" data-testid="sheet-breakdown-legend">
       Hover or focus any highlighted number for <b>How we got this</b> — the breakdown of that total.
     </p>
-    <div class="sheet-layout" data-testid="character-sheet-layout">
+    <div class="sheet-layout${compact ? ' sheet-layout-compact' : ''}" data-testid="character-sheet-layout">
       <div class="sheet-column">
         <section class="panel sheet-panel" aria-labelledby="core-stats-heading">
           <h2 id="core-stats-heading">Core statistics</h2>
           <div class="stat-grid">
-            ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points')}
+            ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points', (value) => `${sheet.hitPointsCurrent} / ${value}`)}
             ${explained('Armor Class', sheet.armorClass, 'sheet-armor-class')}
             ${explained('Initiative', sheet.initiative, 'sheet-initiative', formatModifier)}
             ${explained('Speed', sheet.speed, 'sheet-speed', (value) => `${value} ft.`)}
@@ -252,8 +306,12 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
 
         ${spellBlock}
 
+        ${resourceRows}
+
         <section class="panel sheet-panel" aria-labelledby="features-heading">
           <h2 id="features-heading">Features and Traits</h2>
+          ${subclassLine}
+          ${masteryBlock}
           <ul class="record-list" data-testid="feature-list">
             ${sheet.features
               .map(
@@ -269,15 +327,24 @@ export function renderCharacterSheet(sheet: DerivedCharacterSheet): string {
 
         <section class="panel sheet-panel" aria-labelledby="equipment-heading">
           <h2 id="equipment-heading">Equipment and Proficiencies</h2>
-          <p data-testid="sheet-equipment">${
+          ${
             sheet.equipment.length === 0
-              ? 'No starting equipment chosen.'
-              : escapeHtml(
-                  sheet.equipment
-                    .map((item) => (item.quantity > 1 ? `${item.name} (${item.quantity})` : item.name))
-                    .join(', '),
-                )
-          }</p>
+              ? '<p data-testid="sheet-equipment">No starting equipment chosen.</p>'
+              : `<ul class="record-list" data-testid="sheet-equipment-list">
+                  ${sheet.equipment
+                    .map(
+                      (item) => `
+                    <li data-testid="sheet-equipment-item">
+                      <span class="record-note">${escapeHtml(item.name)}${item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
+                      <span class="record-meta">Carried · declare use at the table or mark consumed below</span>
+                      <button type="button" class="secondary compact" data-testid="sheet-mark-consumed-${escapeHtml(item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">
+                        Mark consumed
+                      </button>
+                    </li>`,
+                    )
+                    .join('')}
+                </ul>`
+          }
           <p><b>Gold:</b> ${sheet.currencyGold} GP</p>
           <p><b>Senses:</b> ${sheet.senses.length === 0 ? 'Normal vision' : escapeHtml(sheet.senses.join(', '))}</p>
           <p><b>Languages:</b> ${escapeHtml(sheet.languages.join(', '))}</p>

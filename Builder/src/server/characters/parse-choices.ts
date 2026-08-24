@@ -144,7 +144,13 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
   const backgroundAbilityBonuses = asScoreMap(record.backgroundAbilityBonuses);
   const classSkillIds = asIdList(record.classSkillIds);
   const cantripIds = asIdList(record.cantripIds);
+  const spellbookIds = asIdList(record.spellbookIds) ?? [];
   const spellIds = asIdList(record.spellIds);
+  const chosenOriginFeatId = asOptionalId(record.chosenOriginFeatId);
+  const backgroundFeatCantripIds = asIdList(record.backgroundFeatCantripIds) ?? [];
+  const backgroundFeatSpellIds = asIdList(record.backgroundFeatSpellIds) ?? [];
+  const originFeatCantripIds = asIdList(record.originFeatCantripIds) ?? [];
+  const originFeatSpellIds = asIdList(record.originFeatSpellIds) ?? [];
   const speciesChoiceIds = asChoiceMap(record.speciesChoiceIds);
   const classChoiceIds = asChoiceListMap(record.classChoiceIds);
   if (
@@ -187,7 +193,13 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
     classEquipmentOptionId,
     backgroundEquipmentOptionId,
     cantripIds,
+    spellbookIds,
     spellIds,
+    chosenOriginFeatId: chosenOriginFeatId ?? null,
+    backgroundFeatCantripIds,
+    backgroundFeatSpellIds,
+    originFeatCantripIds,
+    originFeatSpellIds,
     classChoiceIds,
     identity: { name, pronouns, appearance, concept },
   };

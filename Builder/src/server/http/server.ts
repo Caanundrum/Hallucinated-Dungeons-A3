@@ -41,7 +41,7 @@ import {
 } from '../foundation/foundation-checks.js';
 import { getLegalDocument } from '../legal/legal-registry.js';
 import { renderLegalPage } from '../legal/render-legal-page.js';
-import { acceptCurrentLegalDocument, readLegalAcceptance } from '../legal/legal-acceptance.js';
+import { acceptCurrentLegalDocument, assertLegalAcceptanceForPlay, LegalAcceptanceRequiredError, readLegalAcceptance } from '../legal/legal-acceptance.js';
 import { buildGoldMasterPackage } from '../release/gold-master.js';
 import { isLocalArenaPublicSurface } from '../release/public-surface.js';
 import { qaHarnessStatus, runQaHarnessOperation } from '../release/qa-harness.js';
@@ -52,6 +52,7 @@ import {
   mintGoogleEmulatorIdentity,
   mintQaFixtureSession,
   resolveSession,
+  updateAccountDisplayLabel,
   issueHostedGoogleSession,
 } from '../identity/development-identity.js';
 import {
@@ -86,12 +87,14 @@ import {
   CharacterNotFoundError,
   applyQuickStart,
   commitDraft,
+  deleteCharacter,
   discardDraft,
   openOrResumeDraft,
   readCharacter,
   readDraft,
   readVault,
   rollDraftAbilities,
+  updateCharacterIdentity,
   updateDraft,
 } from '../characters/characters.js';
 import {
@@ -239,6 +242,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.STALE_STATE_VERSION]: 409,
   [ERROR_CODES.NOT_SEATED]: 409,
   [ERROR_CODES.ILLEGAL_PATH]: 409,
+  [ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED]: 403,
   [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
   [ERROR_CODES.TIMING_AUTHORITY_INVALID]: 409,
   [ERROR_CODES.NPC_SPOTLIGHT_HELD]: 409,
@@ -287,6 +291,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Seat a character you own in this campaign before submitting table commands.',
   [ERROR_CODES.ILLEGAL_PATH]:
     'That movement path is not legal on this map. Choose another route.',
+  [ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED]:
+    'Accept every current legal document on Account before creating characters, campaigns, or submitting table commands.',
   [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]:
     'Claim Active Turn before committing table actions.',
   [ERROR_CODES.TIMING_AUTHORITY_INVALID]:
@@ -1222,6 +1228,44 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    if (path === '/api/account/display-label') {
+      const session = await resolveSession({
+        firestore,
+        sessionToken: sessionTokenFrom(request),
+      });
+      if (session === null) {
+        sendError(response, ERROR_CODES.NOT_AUTHENTICATED);
+        return;
+      }
+      if (method !== 'PUT') {
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          refuseOversizedBody(request, response);
+        } else {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+        }
+        return;
+      }
+      try {
+        const identity = await updateAccountDisplayLabel({
+          firestore,
+          auth,
+          accountId: session.accountId,
+          displayLabel: (body as { displayLabel?: unknown }).displayLabel,
+        });
+        sendJson(response, 200, identity);
+      } catch {
+        sendError(response, ERROR_CODES.BAD_REQUEST);
+      }
+      return;
+    }
+
     if (path === '/api/account/deletion-request' || path === '/api/account/deletion-status') {
       const session = await resolveSession({
         firestore,
@@ -1390,6 +1434,19 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     }
     const accountId = session.accountId;
 
+    const requireLegalForPlay = async (): Promise<boolean> => {
+      try {
+        await assertLegalAcceptanceForPlay(firestore, accountId);
+        return true;
+      } catch (error) {
+        if (error instanceof LegalAcceptanceRequiredError) {
+          sendError(response, ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED);
+          return false;
+        }
+        throw error;
+      }
+    };
+
     const readBody = async (): Promise<unknown | typeof BODY_REJECTED> => {
       try {
         return await readJsonBody(request);
@@ -1410,6 +1467,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
 
       if (path === '/api/characters/drafts' && method === 'POST') {
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const draft = await openOrResumeDraft({ firestore, accountId });
         sendJson(response, 200, { draft, options: buildDraftOptions(draft.choices) });
         return;
@@ -1426,6 +1486,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         }
 
         if (method === 'PUT') {
+          if (!(await requireLegalForPlay())) {
+            return;
+          }
           const body = await readBody();
           if (body === BODY_REJECTED) {
             return;
@@ -1457,6 +1520,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
           return;
         }
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const body = await readBody();
         if (body === BODY_REJECTED) {
           return;
@@ -1484,6 +1550,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
           return;
         }
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const draft = await rollDraftAbilities({
           firestore,
           accountId,
@@ -1499,6 +1568,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
           return;
         }
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const character = await commitDraft({ firestore, accountId, draftId: commitMatch[1]! });
         sendJson(response, 201, character);
         return;
@@ -1506,11 +1578,56 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
       const characterMatch = /^\/api\/characters\/([A-Za-z0-9-]{1,64})$/.exec(path);
       if (characterMatch !== null) {
-        if (method !== 'GET') {
-          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        const characterId = characterMatch[1]!;
+
+        if (method === 'GET') {
+          sendJson(response, 200, await readCharacter({ firestore, accountId, characterId }));
           return;
         }
-        sendJson(response, 200, await readCharacter({ firestore, accountId, characterId: characterMatch[1]! }));
+
+        if (method === 'DELETE') {
+          await deleteCharacter({ firestore, accountId, characterId });
+          sendJson(response, 204, null);
+          return;
+        }
+
+        if (method === 'PATCH') {
+          const body = await readBody();
+          if (body === BODY_REJECTED) {
+            return;
+          }
+          const identityRecord =
+            typeof body === 'object' && body !== null && !Array.isArray(body)
+              ? (body as { identity?: unknown }).identity
+              : undefined;
+          if (
+            typeof identityRecord !== 'object' ||
+            identityRecord === null ||
+            Array.isArray(identityRecord)
+          ) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          const record = identityRecord as Record<string, unknown>;
+          const name = typeof record.name === 'string' ? record.name : undefined;
+          const pronouns = typeof record.pronouns === 'string' ? record.pronouns : undefined;
+          const appearance = typeof record.appearance === 'string' ? record.appearance : undefined;
+          const concept = typeof record.concept === 'string' ? record.concept : undefined;
+          if (name === undefined || pronouns === undefined || appearance === undefined || concept === undefined) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          const character = await updateCharacterIdentity({
+            firestore,
+            accountId,
+            characterId,
+            identity: { name, pronouns, appearance, concept },
+          });
+          sendJson(response, 200, character);
+          return;
+        }
+
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
         return;
       }
 
@@ -1607,12 +1724,28 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       const accountId = session.accountId;
 
+      const requireLegalForPlay = async (): Promise<boolean> => {
+        try {
+          await assertLegalAcceptanceForPlay(firestore, accountId);
+          return true;
+        } catch (error) {
+          if (error instanceof LegalAcceptanceRequiredError) {
+            sendError(response, ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED);
+            return false;
+          }
+          throw error;
+        }
+      };
+
       if (path === '/api/campaigns' && method === 'GET') {
         sendJson(response, 200, await listCampaigns({ firestore, accountId }));
         return;
       }
 
       if (path === '/api/campaigns' && method === 'POST') {
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const body = await readBody();
         if (body === BODY_REJECTED) {
           return;
@@ -2293,6 +2426,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           return;
         }
         const campaignId = tableCommandsMatch[1]!;
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
         const body = await readBody();
         if (body === BODY_REJECTED) {
           return;

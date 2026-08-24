@@ -6,7 +6,11 @@
  * live AI table.
  */
 
-import type { CampaignDetailProjection } from '../../shared/campaign-contract.js';
+import type { CampaignDetailProjection, DirectorIdentity } from '../../shared/campaign-contract.js';
+import {
+  DIRECTOR_IDENTITY_LABELS,
+  DIRECTOR_PERSONALITY_LABELS,
+} from '../../shared/campaign-contract.js';
 import type { CampaignMemoryProjection, PersonalRecapProjection } from '../../shared/campaign-memory-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
@@ -22,6 +26,7 @@ import {
   revokeCampaignInvitation,
   suspendCampaignSession,
   closeCampaignChapter,
+  updateCampaign,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
@@ -327,15 +332,22 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             : `<div class="message error" role="alert" tabindex="-1" data-testid="campaign-detail-error">${escapeHtml(error)}</div>`
         }
 
-        <section class="panel locked-panel" aria-labelledby="director-heading">
+        <section class="panel${sessionZeroComplete ? ' locked-panel' : ''}" aria-labelledby="director-heading">
           <h2 id="director-heading">
-            <span class="lock-mark" aria-hidden="true">▣</span>
+            ${sessionZeroComplete ? '<span class="lock-mark" aria-hidden="true">▣</span>' : ''}
             Game Director configuration
-            <span class="lock-badge" data-testid="director-lock-badge">Fixed</span>
+            ${
+              sessionZeroComplete
+                ? '<span class="lock-badge" data-testid="director-lock-badge">Fixed</span>'
+                : '<span class="tagline" data-testid="director-unlock-badge">Adjust before Session Zero</span>'
+            }
           </h2>
           <p class="message notice" data-testid="director-locked-notice">
-            Fixed after creation for ordinary users — there is no edit control here. The Game Director
-            narrates at the table; this panel only records which voice you chose.
+            ${
+              sessionZeroComplete
+                ? 'Fixed after Session Zero — there is no edit control here. The Game Director narrates at the table; this panel only records which voice you chose.'
+                : 'You can still change the Game Director identity and personality until Session Zero is recorded. After that, the choice locks for ordinary players.'
+            }
           </p>
           ${directorAvatarMarkup({
             avatarKey: campaign.director.avatarKey,
@@ -357,6 +369,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               <dd data-testid="director-locked-at">${escapeHtml(formatTimestamp(campaign.director.lockedAt))}</dd>
             </div>
           </dl>
+          ${
+            sessionZeroComplete || !campaign.isCampaignOwner
+              ? ''
+              : `<div class="actions" data-testid="director-change-panel">
+                   <p class="record-meta">Need a different voice? Choose again before Session Zero.</p>
+                   <button type="button" class="secondary" data-testid="change-director-identity">Change Game Director</button>
+                 </div>`
+          }
         </section>
 
         <section class="panel" aria-labelledby="members-heading">
@@ -392,39 +412,43 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               : `<p class="message success" data-testid="session-action-message">${escapeHtml(sessionMessage)}</p>`
           }
           ${
-            memory === null
+            memory === null || !campaign.isCampaignOwner
               ? ''
-              : `<div class="actions">
-                   <button type="button" data-testid="suspend-session"
-                     aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
-                     ${sessionBusy ? 'Working…' : 'Suspend session'}
-                   </button>
-                   <button type="button" class="secondary" data-testid="resume-session"
-                     aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
-                     ${sessionBusy ? 'Working…' : 'Resume session'}
-                   </button>
-                   <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
-                     View personal recap
-                   </button>
-                   <button type="button" class="secondary" data-testid="close-chapter"
-                     aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
-                     Close chapter &amp; travel
-                   </button>
-                 </div>
-                 <p class="record-meta" data-testid="chapter-travel-hint">
-                   ${
-                     encounterActive
-                       ? 'End the active encounter on the table before closing this chapter or suspending the session.'
-                       : memorySnapshot?.adventureTemplateId === null ||
-                           memorySnapshot?.adventureTemplateId === undefined
-                         ? ownSeat === null
-                           ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
-                           : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
-                         : ownSeat === null
-                           ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
-                           : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
-                   }
-                 </p>`
+              : `<section class="panel panel-nested" aria-labelledby="campaign-owner-heading" data-testid="campaign-owner-panel">
+                   <h3 id="campaign-owner-heading">Campaign owner</h3>
+                   <p class="record-meta">Suspend, resume, or close chapters for the whole table. Confirm major changes with your players first.</p>
+                   <div class="actions">
+                     <button type="button" data-testid="suspend-session"
+                       aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
+                       ${sessionBusy ? 'Working…' : 'Suspend session'}
+                     </button>
+                     <button type="button" class="secondary" data-testid="resume-session"
+                       aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
+                       ${sessionBusy ? 'Working…' : 'Resume session'}
+                     </button>
+                     <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
+                       View personal recap
+                     </button>
+                     <button type="button" class="secondary" data-testid="close-chapter"
+                       aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
+                       Close chapter &amp; travel
+                     </button>
+                   </div>
+                   <p class="record-meta" data-testid="chapter-travel-hint">
+                     ${
+                       encounterActive
+                         ? 'End the active encounter on the table before closing this chapter or suspending the session.'
+                         : memorySnapshot?.adventureTemplateId === null ||
+                             memorySnapshot?.adventureTemplateId === undefined
+                           ? ownSeat === null
+                             ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
+                             : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
+                           : ownSeat === null
+                             ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
+                             : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
+                     }
+                   </p>
+                 </section>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}
         </section>
@@ -536,6 +560,48 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
 
         <p><a href="/campaigns" data-link data-testid="back-to-campaigns">Back to campaigns</a></p>
       </div>`;
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="change-director-identity"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || detail === null || detail.settings.sessionZero.completed) {
+            return;
+          }
+          const current = detail.campaign.director.identity;
+          const next: DirectorIdentity = current === 'garrick' ? 'veyra' : 'garrick';
+          const accepted = await confirmInApp({
+            title: 'Change Game Director?',
+            body: `Switch from ${DIRECTOR_IDENTITY_LABELS[current]} to ${DIRECTOR_IDENTITY_LABELS[next]}? Personality (${DIRECTOR_PERSONALITY_LABELS[detail.campaign.director.personality]}) stays the same. You can only do this before Session Zero.`,
+            confirmLabel: `Use ${DIRECTOR_IDENTITY_LABELS[next]}`,
+            cancelLabel: 'Keep current Director',
+            testId: 'confirm-director-change',
+          });
+          if (!accepted) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await updateCampaign({
+              candidateId: candidate.candidateId,
+              campaignId,
+              directorIdentity: next,
+            });
+            detail = await fetchCampaignDetail(campaignId);
+            shell.announce(`Game Director updated to ${DIRECTOR_IDENTITY_LABELS[next]}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The Game Director could not be updated.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
 
     container
       .querySelector<HTMLButtonElement>('[data-testid="create-invite"]')

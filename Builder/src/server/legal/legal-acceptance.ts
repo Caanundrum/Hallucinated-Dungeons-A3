@@ -116,3 +116,21 @@ export async function acceptCurrentLegalDocument(
 
   return readLegalAcceptance(firestore, accountId);
 }
+
+/** Throws when the account has not accepted every current legal document. */
+export async function assertLegalAcceptanceForPlay(
+  firestore: Firestore,
+  accountId: string,
+): Promise<void> {
+  const acceptance = await readLegalAcceptance(firestore, accountId);
+  if (!acceptance.allCurrentAccepted) {
+    throw new LegalAcceptanceRequiredError();
+  }
+}
+
+export class LegalAcceptanceRequiredError extends Error {
+  constructor() {
+    super('Legal acceptance required before play.');
+    this.name = 'LegalAcceptanceRequiredError';
+  }
+}

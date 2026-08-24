@@ -42,9 +42,17 @@ import {
 } from '../api.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { isCreatorTutorialDismissed, setCreatorTutorialDismissed } from '../browser-preferences.js';
 import { renderCharacterSheet, renderLiveSheetPreview } from '../character-sheet-view.js';
 import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  bindLegalPlayGatePage,
+  isLegalPlayBlocked,
+  loadLegalPlayAcceptance,
+  renderLegalPlayGatePage,
+  type LegalAcceptanceProjection,
+} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
@@ -151,6 +159,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
   /** Choices currently being saved — identity edits merge against this while busy. */
   let inFlightChoices: CharacterChoices | null = null;
   let openGeneration = 0;
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
+  let legalGateBusy = false;
+  let legalGateError: string | null = null;
+  let legalGateLoading = false;
   const mountToken = beginPageMount(container);
 
   function draftHasProgress(): boolean {
@@ -166,16 +178,52 @@ export function mountCharacterCreatePage(host: PageHost): void {
     );
   }
 
+  function hasDownstreamFromClass(choices: CharacterChoices): boolean {
+    return (
+      choices.backgroundId !== null ||
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0 ||
+      choices.classSkillIds.length > 0 ||
+      choices.cantripIds.length > 0 ||
+      choices.spellIds.length > 0 ||
+      choices.spellbookIds.length > 0 ||
+      choices.classEquipmentOptionId !== null ||
+      Object.keys(choices.classChoiceIds).length > 0
+    );
+  }
+
+  function hasDownstreamFromBackground(choices: CharacterChoices): boolean {
+    return (
+      choices.speciesId !== null ||
+      Object.keys(choices.baseAbilityScores).length > 0 ||
+      Object.keys(choices.backgroundAbilityBonuses).length > 0 ||
+      choices.backgroundEquipmentOptionId !== null ||
+      choices.backgroundFeatCantripIds.length > 0 ||
+      choices.backgroundFeatSpellIds.length > 0
+    );
+  }
+
+  function hasDownstreamFromSpecies(choices: CharacterChoices): boolean {
+    return (
+      choices.chosenOriginFeatId !== null ||
+      Object.keys(choices.speciesChoiceIds).length > 0 ||
+      choices.originFeatCantripIds.length > 0 ||
+      choices.originFeatSpellIds.length > 0 ||
+      Object.keys(choices.baseAbilityScores).length > 0
+    );
+  }
+
   function latestChoices(): CharacterChoices {
     return pendingChoices ?? inFlightChoices ?? current!.draft.choices;
   }
 
   function tutorialDismissed(): boolean {
-    return tutorialDismissedThisSession;
+    return tutorialDismissedThisSession || isCreatorTutorialDismissed();
   }
 
   function dismissTutorialPermanently(): void {
     tutorialDismissedThisSession = true;
+    setCreatorTutorialDismissed();
   }
 
   async function openOwnedDraft(): Promise<void> {
@@ -226,6 +274,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
         draftId: current.draft.draftId,
         choices: next,
       });
+      const firstIncomplete = WIZARD_STEPS.find(
+        (step) => !current?.draft.completedSteps.includes(step),
+      );
+      if (firstIncomplete !== undefined) {
+        const incompleteIndex = WIZARD_STEPS.indexOf(firstIncomplete);
+        const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+        if (incompleteIndex < activeIndex) {
+          activeStep = firstIncomplete;
+        }
+      }
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
@@ -366,13 +424,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
     /** When set, unchecked options disable once this many are selected. */
     readonly maxChoose?: number;
   }): string {
+    const visibleSelected = options.selected.filter((id) =>
+      options.entries.some((entry) => entry.id === id),
+    );
     const atCap =
-      options.maxChoose !== undefined && options.selected.length >= options.maxChoose;
+      options.maxChoose !== undefined && visibleSelected.length >= options.maxChoose;
     return `
       <div class="option-list compact" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
           .map((entry) => {
-            const isSelected = options.selected.includes(entry.id);
+            const isSelected = visibleSelected.includes(entry.id);
             const disabled = busy || (atCap && !isSelected);
             return `
           <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
@@ -427,7 +488,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
-          Skills your Background already grants are omitted so you do not lose a class pick (PQA-196).
+          Skills your Background already grants are omitted so you do not lose a class pick.
         </p>
         ${checkboxList({
           name: 'class-skill',
@@ -603,8 +664,50 @@ export function mountCharacterCreatePage(host: PageHost): void {
               .join('')}
           </div>`,
           )
-          .join('')}`
+          .join('')}${
+        state.draft.choices.speciesId === 'human' && state.options.originFeatOptions !== null
+          ? `
+        <h3>Versatile — choose an Origin feat</h3>
+        <p class="step-helper">Humans gain one additional Origin feat from the SRD roster.</p>
+        ${optionList({
+          name: 'origin-feat',
+          testId: 'origin-feat-options',
+          entries: state.options.originFeatOptions,
+          selected: state.draft.choices.chosenOriginFeatId,
+        })}`
+          : ''
+      }`
       }`;
+  }
+
+  function renderMagicInitiateSection(options: {
+    readonly title: string;
+    readonly testIdPrefix: string;
+    readonly detail: NonNullable<DraftResponse['options']['backgroundFeatDetail']>;
+    readonly cantripIds: readonly string[];
+    readonly spellIds: readonly string[];
+    readonly cantripName: string;
+    readonly spellName: string;
+  }): string {
+    return `
+      <h3>${escapeHtml(options.title)}</h3>
+      <p>Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list.</p>
+      <h4>Cantrips</h4>
+      ${checkboxList({
+        name: options.cantripName,
+        testId: `${options.testIdPrefix}-cantrip-options`,
+        entries: options.detail.cantripOptions,
+        selected: options.cantripIds,
+        maxChoose: options.detail.cantripsKnown,
+      })}
+      <h4>Level 1 spell</h4>
+      ${checkboxList({
+        name: options.spellName,
+        testId: `${options.testIdPrefix}-spell-options`,
+        entries: options.detail.spellOptions,
+        selected: options.spellIds,
+        maxChoose: options.detail.spellsKnown,
+      })}`;
   }
 
   function renderAbilitiesStep(): string {
@@ -795,13 +898,41 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>Choose ${detail.spellcasting.spellsAvailable} to ${
           detail.spellcasting.preparationStyle === 'prepared' ? 'prepare' : 'know'
         }. Extra spells lock at that count.</p>
+        ${
+          detail.spellcasting.spellbookSize === null
+            ? checkboxList({
+                name: 'spell',
+                testId: 'spell-options',
+                entries: detail.spellcasting.spellOptions,
+                selected: state.draft.choices.spellIds,
+                maxChoose: detail.spellcasting.spellsAvailable,
+              })
+            : `
+        <h3>Spellbook</h3>
+        <p>Choose ${detail.spellcasting.spellbookSize} spells to record in your spellbook. Prepared spells must come from this list.</p>
         ${checkboxList({
-          name: 'spell',
-          testId: 'spell-options',
+          name: 'spellbook',
+          testId: 'spellbook-options',
           entries: detail.spellcasting.spellOptions,
-          selected: state.draft.choices.spellIds,
-          maxChoose: detail.spellcasting.spellsAvailable,
-        })}`;
+          selected: state.draft.choices.spellbookIds,
+          maxChoose: detail.spellcasting.spellbookSize,
+        })}
+        <h3>Prepared Spells</h3>
+        <p>Choose ${detail.spellcasting.spellsAvailable} spells from your spellbook to prepare today.</p>
+        ${
+          state.draft.choices.spellbookIds.length === 0
+            ? '<p class="empty-state" data-testid="prepared-spells-locked">Choose spellbook spells first.</p>'
+            : checkboxList({
+                name: 'spell',
+                testId: 'spell-options',
+                entries: detail.spellcasting.spellOptions.filter((option) =>
+                  state.draft.choices.spellbookIds.includes(option.id),
+                ),
+                selected: state.draft.choices.spellIds,
+                maxChoose: detail.spellcasting.spellsAvailable,
+              })
+        }`
+        }`;
 
     return `
       <h3>${escapeHtml(detail.label)} level 1 features</h3>
@@ -815,6 +946,32 @@ export function mountCharacterCreatePage(host: PageHost): void {
           .join('')}
       </ul>
       ${classChoices}
+      ${
+        state.options.backgroundFeatDetail === null
+          ? ''
+          : renderMagicInitiateSection({
+              title: `${state.options.backgroundFeatDetail.label} (Background)`,
+              testIdPrefix: 'background-feat',
+              detail: state.options.backgroundFeatDetail,
+              cantripIds: state.draft.choices.backgroundFeatCantripIds,
+              spellIds: state.draft.choices.backgroundFeatSpellIds,
+              cantripName: 'background-feat-cantrip',
+              spellName: 'background-feat-spell',
+            })
+      }
+      ${
+        state.options.originFeatDetail === null
+          ? ''
+          : renderMagicInitiateSection({
+              title: `${state.options.originFeatDetail.label} (Versatile)`,
+              testIdPrefix: 'origin-feat',
+              detail: state.options.originFeatDetail,
+              cantripIds: state.draft.choices.originFeatCantripIds,
+              spellIds: state.draft.choices.originFeatSpellIds,
+              cantripName: 'origin-feat-cantrip',
+              spellName: 'origin-feat-spell',
+            })
+      }
       ${spells}`;
   }
 
@@ -828,6 +985,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return `
       <h3>Identity & final review</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
+      <p class="record-meta" data-testid="identity-autosave-notice">
+        Identity fields save automatically after you pause typing. While a save is in flight, controls may
+        briefly show <strong>Working…</strong> — your draft is still safe on the server.
+      </p>
       <label for="character-name">Name</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
         maxlength="${CHARACTER_NAME_MAX_LENGTH}"
@@ -1009,13 +1170,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
         const target = button.dataset.step as WizardStep;
         const targetIndex = WIZARD_STEPS.indexOf(target);
         const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+        const targetComplete = current?.draft.completedSteps.includes(target) === true;
+        const goingBackOrCurrent = targetIndex <= activeIndex;
         const priorComplete =
-          targetIndex <= activeIndex ||
           targetIndex === 0 ||
           WIZARD_STEPS.slice(0, targetIndex).every(
             (prior) => current?.draft.completedSteps.includes(prior) === true,
           );
-        if (!priorComplete) {
+        if (!goingBackOrCurrent && !targetComplete && !priorComplete) {
           error = 'Finish earlier steps before jumping ahead on the step train.';
           render();
           return;
@@ -1159,32 +1321,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     const radioHandlers: ReadonlyArray<[string, (value: string) => CharacterChoices | null]> = [
       [
-        'class',
+        'origin-feat',
         (value) => ({
           ...latestChoices(),
-          classId: value,
-          classSkillIds: [],
-          classChoiceIds: {},
-          classEquipmentOptionId: null,
-          cantripIds: [],
-          spellIds: [],
+          chosenOriginFeatId: value,
+          originFeatCantripIds: [],
+          originFeatSpellIds: [],
         }),
       ],
-      [
-        'background',
-        (value) => {
-          backgroundBonusPattern = null;
-          backgroundPlusTwo = '';
-          backgroundPlusOne = '';
-          return {
-            ...latestChoices(),
-            backgroundId: value,
-            backgroundAbilityBonuses: {},
-            backgroundEquipmentOptionId: null,
-          };
-        },
-      ],
-      ['species', (value) => ({ ...latestChoices(), speciesId: value, speciesChoiceIds: {} })],
       ['class-equipment', (value) => ({ ...latestChoices(), classEquipmentOptionId: value })],
       [
         'background-equipment',
@@ -1203,6 +1347,110 @@ export function mountCharacterCreatePage(host: PageHost): void {
         });
       });
     }
+
+    container.querySelectorAll<HTMLInputElement>('input[name="class"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.classId !== null &&
+            foundation.classId !== input.value &&
+            hasDownstreamFromClass(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change class?',
+              body: 'Changing your class clears later choices such as skills, spells, equipment, and ability scores.',
+              confirmLabel: 'Change class',
+              cancelLabel: 'Keep class',
+              testId: 'confirm-class-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          await commitChoices({
+            ...foundation,
+            classId: input.value,
+            classSkillIds: [],
+            classChoiceIds: {},
+            classEquipmentOptionId: null,
+            cantripIds: [],
+            spellbookIds: [],
+            spellIds: [],
+          });
+        })();
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('input[name="background"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.backgroundId !== null &&
+            foundation.backgroundId !== input.value &&
+            hasDownstreamFromBackground(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change background?',
+              body: 'Changing your background clears later choices such as ability bonuses, background equipment, and species.',
+              confirmLabel: 'Change background',
+              cancelLabel: 'Keep background',
+              testId: 'confirm-background-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          backgroundBonusPattern = null;
+          backgroundPlusTwo = '';
+          backgroundPlusOne = '';
+          await commitChoices({
+            ...foundation,
+            backgroundId: input.value,
+            backgroundAbilityBonuses: {},
+            backgroundEquipmentOptionId: null,
+            backgroundFeatCantripIds: [],
+            backgroundFeatSpellIds: [],
+          });
+        })();
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('input[name="species"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        void (async () => {
+          const foundation = latestChoices();
+          if (
+            foundation.speciesId !== null &&
+            foundation.speciesId !== input.value &&
+            hasDownstreamFromSpecies(foundation)
+          ) {
+            const accepted = await confirmInApp({
+              title: 'Change species?',
+              body: 'Changing your species clears later choices such as lineage options, origin feats, and ability scores.',
+              confirmLabel: 'Change species',
+              cancelLabel: 'Keep species',
+              testId: 'confirm-species-change',
+            });
+            if (!accepted) {
+              render();
+              return;
+            }
+          }
+          await commitChoices({
+            ...foundation,
+            speciesId: input.value,
+            speciesChoiceIds: {},
+            chosenOriginFeatId: null,
+            originFeatCantripIds: [],
+            originFeatSpellIds: [],
+          });
+        })();
+      });
+    });
 
     container.querySelectorAll<HTMLInputElement>('input[name="ability-method"]').forEach((input) => {
       input.addEventListener('change', () => {
@@ -1251,7 +1499,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     for (const [name, key, maxOf] of [
       ['cantrip', 'cantripIds', () => state.options.classDetail?.spellcasting?.cantripsKnown],
+      ['spellbook', 'spellbookIds', () => state.options.classDetail?.spellcasting?.spellbookSize ?? undefined],
       ['spell', 'spellIds', () => state.options.classDetail?.spellcasting?.spellsAvailable],
+      ['background-feat-cantrip', 'backgroundFeatCantripIds', () => state.options.backgroundFeatDetail?.cantripsKnown],
+      ['background-feat-spell', 'backgroundFeatSpellIds', () => state.options.backgroundFeatDetail?.spellsKnown],
+      ['origin-feat-cantrip', 'originFeatCantripIds', () => state.options.originFeatDetail?.cantripsKnown],
+      ['origin-feat-spell', 'originFeatSpellIds', () => state.options.originFeatDetail?.spellsKnown],
     ] as const) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
         input.addEventListener('change', () => {
@@ -1262,6 +1515,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
           );
           if (max !== undefined && selected.length > max) {
             selected = selected.slice(0, max);
+          }
+          if (key === 'spellbookIds') {
+            const spellbookSet = new Set(selected);
+            const prepared = foundation.spellIds.filter((id) => spellbookSet.has(id));
+            void commitChoices({ ...foundation, spellbookIds: selected, spellIds: prepared });
+            return;
           }
           void commitChoices({ ...foundation, [key]: selected });
         });
@@ -1613,13 +1872,53 @@ export function mountCharacterCreatePage(host: PageHost): void {
         shell,
         candidate,
         onSignedIn: () => {
-          void openOwnedDraft();
+          void loadLegalThenDraft();
         },
         setBusy: (next) => {
           gateBusy = next;
         },
         setError: (message) => {
           gateError = message;
+        },
+        render,
+      });
+      return;
+    }
+
+    if (legalGateLoading) {
+      container.innerHTML = `
+        <div class="page page-wide">
+          <h1 data-testid="create-heading">Create a character</h1>
+          <p class="tagline">Checking legal acceptance…</p>
+        </div>`;
+      return;
+    }
+
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      container.innerHTML = renderLegalPlayGatePage({
+        title: 'Create a character',
+        body: 'Character creation opens after you accept every current legal document.',
+        acceptance: legalAcceptance,
+        candidate,
+        busy: legalGateBusy,
+        error: legalGateError,
+      });
+      bindLegalPlayGatePage({
+        container,
+        shell,
+        candidate,
+        getAcceptance: () => legalAcceptance,
+        setAcceptance: (next) => {
+          legalAcceptance = next;
+        },
+        onUnblocked: () => {
+          void openOwnedDraft();
+        },
+        setBusy: (value) => {
+          legalGateBusy = value;
+        },
+        setError: (message) => {
+          legalGateError = message;
         },
         render,
       });
@@ -1681,6 +1980,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     restoreFocus(focus);
   }
 
+  async function loadLegalThenDraft(): Promise<void> {
+    if (getAccount() === null) {
+      render();
+      return;
+    }
+    legalGateLoading = true;
+    render();
+    legalAcceptance = await loadLegalPlayAcceptance();
+    legalGateLoading = false;
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      render();
+      return;
+    }
+    await openOwnedDraft();
+  }
+
   render();
 
   subscribeAccount(() => {
@@ -1696,9 +2011,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return;
     }
     if (!draftOpened) {
-      void openOwnedDraft();
+      void loadLegalThenDraft();
     }
   });
 
-  void openOwnedDraft();
+  void loadLegalThenDraft();
 }

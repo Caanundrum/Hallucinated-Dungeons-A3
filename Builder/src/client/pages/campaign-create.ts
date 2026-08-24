@@ -34,6 +34,13 @@ import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, createCampaign, fetchDirectorCatalog } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  bindLegalPlayGatePage,
+  isLegalPlayBlocked,
+  loadLegalPlayAcceptance,
+  renderLegalPlayGatePage,
+  type LegalAcceptanceProjection,
+} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
@@ -53,6 +60,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let legalAcceptance: LegalAcceptanceProjection | null = null;
+  let legalGateBusy = false;
+  let legalGateError: string | null = null;
+  let legalGateLoading = true;
   const mountToken = beginPageMount(container);
 
   function canSubmit(): boolean {
@@ -121,8 +132,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <p data-testid="preview-play-rhythm">${escapeHtml(preview.playRhythm)}</p>
         <p class="message notice" data-testid="preview-lock-reminder">
           Creating this campaign locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
-          for ordinary users. On hosted Invite-Only Alpha the Game Director may narrate through Gemini
-          when enabled.
+          for ordinary users. The Game Director may narrate at your table when live narration is enabled.
         </p>
       </section>`;
   }
@@ -224,8 +234,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
           <p>
             Emberferry Crossing is the recommended starting point: an original three-session
             adventure with chapter-linked tactical scenes (Mist Dock → Mist-Cut Caves → Drowned
-            Bell Tower), NPCs, and campaign memory. Choose the blank table instead for rules
-            practice — there is no procedural worldgen behind it.
+            Bell Tower), NPCs, and campaign memory. Choose the blank table for rules practice —
+            you can improvise chambers during play, but there is no automated world generation
+            behind it.
           </p>
           <ul class="option-list" data-testid="adventure-template-list">
             ${ADVENTURE_TEMPLATES.map(
@@ -445,7 +456,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         shell,
         candidate,
         onSignedIn: () => {
-          void load();
+          void loadLegalThenCatalog();
         },
         setBusy: (busyState) => {
           gateBusy = busyState;
@@ -457,7 +468,61 @@ export function mountCampaignCreatePage(host: PageHost): void {
       });
       return;
     }
+    if (legalGateLoading) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="create-campaign-heading">Create a campaign</h1>
+          <p class="tagline">Checking legal acceptance…</p>
+        </div>`;
+      return;
+    }
+    if (isLegalPlayBlocked(legalAcceptance)) {
+      container.innerHTML = renderLegalPlayGatePage({
+        title: 'Create a campaign',
+        body: 'Campaign creation opens after you accept every current legal document.',
+        acceptance: legalAcceptance,
+        candidate,
+        busy: legalGateBusy,
+        error: legalGateError,
+      });
+      bindLegalPlayGatePage({
+        container,
+        shell,
+        candidate,
+        getAcceptance: () => legalAcceptance,
+        setAcceptance: (next) => {
+          legalAcceptance = next;
+        },
+        onUnblocked: () => {
+          void load();
+        },
+        setBusy: (value) => {
+          legalGateBusy = value;
+        },
+        setError: (message) => {
+          legalGateError = message;
+        },
+        render,
+      });
+      return;
+    }
     renderForm();
+  }
+
+  async function loadLegalThenCatalog(): Promise<void> {
+    if (getAccount() === null) {
+      render();
+      return;
+    }
+    legalGateLoading = true;
+    render();
+    legalAcceptance = await loadLegalPlayAcceptance();
+    legalGateLoading = false;
+    if (!isLegalPlayBlocked(legalAcceptance)) {
+      await load();
+      return;
+    }
+    render();
   }
 
   async function load(): Promise<void> {
@@ -494,7 +559,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       error = null;
       busy = false;
     }
-    void load();
+    void loadLegalThenCatalog();
   });
-  void load();
+  void loadLegalThenCatalog();
 }

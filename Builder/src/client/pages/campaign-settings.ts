@@ -21,6 +21,7 @@ import {
   GROUP_DECISION_POLICIES,
   GROUP_DECISION_POLICY_LABELS,
   GROUP_DECISION_POLICY_SUMMARIES,
+  type GroupDecisionPolicy,
   LETHALITY_PREFERENCES,
   LETHALITY_PREFERENCE_LABELS,
   REACTION_WINDOW_SECONDS_MAX,
@@ -33,6 +34,7 @@ import {
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchCampaignDetail, saveCampaignSettings } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
@@ -60,6 +62,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
 
   // Editable draft of the form (owner only).
   let draft: CampaignSettingsProjection | null = null;
+  let savedGroupDecisionPolicy: GroupDecisionPolicy | null = null;
 
   function renderForm(): void {
     if (settings === null || draft === null) {
@@ -110,7 +113,8 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           </ul>
           <label class="field">
             <span>Lines, veils, and safety boundaries</span>
-            <textarea data-testid="safety-boundaries" rows="3" ${disabled ? 'disabled' : ''}>${escapeHtml(draft.safetyBoundaries)}</textarea>
+            <textarea data-testid="safety-boundaries" rows="3" placeholder="Example: No harm to children on screen. Fade to black for romance." ${disabled ? 'disabled' : ''}>${escapeHtml(draft.safetyBoundaries)}</textarea>
+            <span class="record-meta">Required when you record Session Zero. List at least one line, veil, or boundary your table agrees on.</span>
           </label>
         </section>
 
@@ -160,6 +164,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <input type="number" data-testid="reaction-window"
               min="${REACTION_WINDOW_SECONDS_MIN}" max="${REACTION_WINDOW_SECONDS_MAX}"
               value="${draft.reactionWindowSeconds}" ${disabled ? 'disabled' : ''} />
+            <span class="record-meta">Allowed range ${REACTION_WINDOW_SECONDS_MIN}–${REACTION_WINDOW_SECONDS_MAX} seconds. Example: 6 seconds gives one beat to declare a reaction before play moves on.</span>
           </label>
           <p class="record-meta">Rules transparency: ${escapeHtml(draft.rulesTransparencyLabel)} (locked default).</p>
           <ul class="option-list compact" data-testid="enemy-health-list">
@@ -264,7 +269,13 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         <div class="actions">
           ${
             isOwner
-              ? `<button type="button" data-testid="save-settings" aria-disabled="${busy}">
+              ? `<p class="record-meta" data-testid="settings-save-hint">
+                   <strong>Save settings</strong> commits content profile, group-decision policy, table defaults
+                   (reaction window and enemy health), and safety boundaries without recording Session Zero.
+                   <strong>Record Session Zero</strong> also commits the Session Zero fields below and marks the
+                   social contract as recorded — required before seating characters or opening live play.
+                 </p>
+                 <button type="button" data-testid="save-settings" aria-disabled="${busy}">
                    ${busy ? 'Saving…' : 'Save settings'}
                  </button>
                  <button type="button" class="secondary" data-testid="complete-session-zero" aria-disabled="${busy}">
@@ -395,6 +406,13 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           render();
           return;
         }
+        if (draft.safetyBoundaries.trim().length === 0) {
+          error = 'Record at least one line, veil, or safety boundary before recording Session Zero.';
+          notice = null;
+          shell.announce(error);
+          render();
+          return;
+        }
       }
       const reactionSeconds = draft.reactionWindowSeconds;
       if (
@@ -428,6 +446,22 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         render();
         return;
       }
+      const sessionZeroAlreadyRecorded = draft.sessionZero.completed;
+      const groupDecisionChanged =
+        savedGroupDecisionPolicy !== null &&
+        draft.groupDecisionPolicy !== savedGroupDecisionPolicy;
+      if (sessionZeroAlreadyRecorded && groupDecisionChanged) {
+        const confirmed = await confirmInApp({
+          title: 'Change group-decision policy?',
+          body:
+            'Session Zero was already recorded. Confirm with your table members before saving a new group-decision policy.',
+          confirmLabel: 'Save policy change',
+          testId: 'group-decision-change-confirm',
+        });
+        if (!confirmed) {
+          return;
+        }
+      }
       const payload: Record<string, unknown> = {
         contentProfile: draft.contentProfile,
         safetyBoundaries: draft.safetyBoundaries,
@@ -449,7 +483,6 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           complete: completeSessionZero,
         },
       };
-      const sessionZeroAlreadyRecorded = draft.sessionZero.completed;
       busy = true;
       error = null;
       notice = null;
@@ -460,6 +493,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           payload,
         });
         draft = structuredClone(settings);
+        savedGroupDecisionPolicy = settings.groupDecisionPolicy;
         notice = completeSessionZero
           ? sessionZeroAlreadyRecorded
             ? 'Session Zero updated and settings saved.'
@@ -534,6 +568,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
       }));
       settings = detail.settings;
       draft = structuredClone(detail.settings);
+      savedGroupDecisionPolicy = detail.settings.groupDecisionPolicy;
       shell.setDocumentTitle(`Settings · ${detail.campaign.name}`);
     } catch (failure) {
       settings = null;

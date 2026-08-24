@@ -121,7 +121,19 @@ export interface CharacterChoices {
   readonly backgroundEquipmentOptionId: string | null;
   /** Cantrip and level-1 spell ids, for classes that cast at level 1. */
   readonly cantripIds: readonly string[];
+  /** Wizard spellbook entries at level 1 (prepared spells must be a subset). */
+  readonly spellbookIds: readonly string[];
   readonly spellIds: readonly string[];
+  /** Human Versatile — chosen Origin feat id (background feats use backgroundDetail). */
+  readonly chosenOriginFeatId: string | null;
+  /** Magic Initiate cantrips from the Background Origin feat. */
+  readonly backgroundFeatCantripIds: readonly string[];
+  /** Magic Initiate level-1 spells from the Background Origin feat. */
+  readonly backgroundFeatSpellIds: readonly string[];
+  /** Magic Initiate cantrips from the Human Versatile Origin feat. */
+  readonly originFeatCantripIds: readonly string[];
+  /** Magic Initiate level-1 spells from the Human Versatile Origin feat. */
+  readonly originFeatSpellIds: readonly string[];
   /** Class-specific level-1 choices, keyed by the choice id in the manifest. */
   readonly classChoiceIds: Readonly<Record<string, readonly string[]>>;
   readonly identity: CharacterIdentity;
@@ -180,6 +192,8 @@ export interface DerivedCharacterSheet {
   readonly abilityScores: Record<Ability, DerivedValue>;
   readonly abilityModifiers: Record<Ability, number>;
   readonly hitPoints: DerivedValue;
+  /** Current Hit Points; at level 1 this equals maximum Hit Points. */
+  readonly hitPointsCurrent: number;
   readonly hitDice: string;
   readonly armorClass: DerivedValue;
   readonly initiative: DerivedValue;
@@ -206,10 +220,25 @@ export interface DerivedCharacterSheet {
     readonly spellSaveDc: DerivedValue;
     readonly spellAttackBonus: DerivedValue;
     readonly cantrips: readonly { readonly id: string; readonly name: string }[];
+    readonly spellbook: readonly { readonly id: string; readonly name: string }[];
     readonly spells: readonly { readonly id: string; readonly name: string }[];
     readonly level1SlotCount: number;
+    readonly level1SlotsRemaining: number;
     readonly preparationStyle: 'prepared' | 'known';
   } | null;
+  /** Fighter-style subclass or fighting-style label for level-1 heroes. */
+  readonly subclassLabel?: string | null;
+  /** Weapon mastery assignments derived from starting weapons. */
+  readonly weaponMasteries?: readonly { readonly name: string; readonly property: string }[];
+  /** Spendable class resources such as Second Wind or Action Surge. */
+  readonly classResources?: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly summary: string;
+    readonly remaining: number;
+    readonly maximum: number;
+    readonly recharge: string;
+  }[];
 }
 
 /** One unresolved requirement blocking creation, named in player-facing terms. */
@@ -263,6 +292,8 @@ export interface CharacterSummary {
   readonly backgroundLabel: string;
   readonly level: number;
   readonly createdAt: string;
+  /** Campaign names where this character currently holds a seat, if any. */
+  readonly seatedCampaignNames?: readonly string[];
 }
 
 export interface DraftSummary {
@@ -333,6 +364,7 @@ export interface DraftOptions {
       readonly abilityLabel: string;
       readonly cantripsKnown: number;
       readonly spellsAvailable: number;
+      readonly spellbookSize: number | null;
       readonly preparationStyle: 'prepared' | 'known';
       readonly cantripOptions: readonly SelectableOption[];
       readonly spellOptions: readonly SelectableOption[];
@@ -354,6 +386,21 @@ export interface DraftOptions {
     readonly skillLabels: readonly string[];
     readonly toolProficiency: string;
     readonly equipmentOptions: readonly EquipmentOptionView[];
+  } | null;
+  readonly originFeatOptions: readonly SelectableOption[] | null;
+  readonly backgroundFeatDetail: {
+    readonly label: string;
+    readonly cantripsKnown: number;
+    readonly spellsKnown: number;
+    readonly cantripOptions: readonly SelectableOption[];
+    readonly spellOptions: readonly SelectableOption[];
+  } | null;
+  readonly originFeatDetail: {
+    readonly label: string;
+    readonly cantripsKnown: number;
+    readonly spellsKnown: number;
+    readonly cantripOptions: readonly SelectableOption[];
+    readonly spellOptions: readonly SelectableOption[];
   } | null;
 }
 

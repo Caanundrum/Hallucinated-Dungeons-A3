@@ -14,7 +14,7 @@ import {
   isNarrationDensity,
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
-import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount } from '../account-session.js';
+import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount, updateAccountDisplayLabel } from '../account-session.js';
 import {
   ApiFailure,
   acceptLegalDocument,
@@ -74,6 +74,9 @@ export function mountAccountPage(host: PageHost): void {
   let googleEmail = 'phase7-player@example.com';
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let goldMaster: GoldMasterPackageProjection | null = null;
+  let displayNameDraft = '';
+  let displayNameSavedMessage: string | null = null;
+  let presentationSavedMessage: string | null = null;
   const goldMasterSurface = candidate?.publicSurface === 'gold_master';
   const hostedSurface =
     candidate?.environmentClass === 'milestone' || candidate?.publicSurface === 'gold_master';
@@ -89,6 +92,10 @@ export function mountAccountPage(host: PageHost): void {
       return;
     }
     const account = getAccount();
+
+    if (account !== null && displayNameDraft.length === 0) {
+      displayNameDraft = account.displayLabel;
+    }
 
     if (account === null) {
       container.innerHTML = `
@@ -207,7 +214,24 @@ export function mountAccountPage(host: PageHost): void {
             <dl class="account-details" data-testid="account-details">
               <div>
                 <dt>Display name</dt>
-                <dd data-testid="account-display-label">${escapeHtml(account.displayLabel)}</dd>
+                <dd>
+                  <label class="field">
+                    <span class="visually-hidden">Display name</span>
+                    <input type="text" data-testid="account-display-name-input" maxlength="64"
+                      value="${escapeHtml(displayNameDraft)}" autocomplete="name" />
+                  </label>
+                  <div class="actions">
+                    <button type="button" data-testid="account-save-display-name"
+                      aria-disabled="${busy}">
+                      ${busy ? 'Saving…' : 'Save display name'}
+                    </button>
+                  </div>
+                  ${
+                    displayNameSavedMessage === null
+                      ? ''
+                      : `<p class="message success" role="status" data-testid="display-name-saved">${escapeHtml(displayNameSavedMessage)}</p>`
+                  }
+                </dd>
               </div>
               ${
                 hostedSurface || hostedGoogleClientId !== null
@@ -244,6 +268,11 @@ export function mountAccountPage(host: PageHost): void {
                 <dd data-testid="account-expires">${escapeHtml(formatTimestamp(account.expiresAt))}</dd>
               </div>
             </dl>
+            <p class="record-meta" data-testid="account-session-renewal-note">
+              Your browser session expires at the time above. Sign in again to renew it. If the session
+              ends while you are playing, unsent draft text in the Communication Dock may be lost, but
+              characters, campaigns, and table state already saved on the server stay on your account.
+            </p>
             <div class="actions">
               <button type="button" class="secondary" data-testid="account-leave"
                 aria-disabled="${busy}">
@@ -294,6 +323,11 @@ export function mountAccountPage(host: PageHost): void {
             <p class="record-meta" data-testid="narration-density-summary">
               ${escapeHtml(NARRATION_DENSITY_SUMMARIES[narrationDensity])}
             </p>
+            ${
+              presentationSavedMessage === null
+                ? ''
+                : `<p class="message success" role="status" data-testid="presentation-settings-saved">${escapeHtml(presentationSavedMessage)}</p>`
+            }
           </section>
           <p class="record-meta">
             Signing out ends this browser session. It does not delete characters or other
@@ -343,8 +377,9 @@ export function mountAccountPage(host: PageHost): void {
           <section class="panel" aria-labelledby="legal-acceptance-heading">
             <h2 id="legal-acceptance-heading">Legal acceptance</h2>
             <p class="record-meta">
-              Recording acceptance is recommended for Alpha; play is not blocked yet.
-              When you record acceptance, the server stores the current route, version, and content digest.
+              Accept every current legal document before creating characters, campaigns, or playing at
+              the table. When you record acceptance, the server stores the current route, version, and
+              content digest.
             </p>
             <ul data-testid="legal-acceptance-list">
               ${
@@ -477,6 +512,50 @@ export function mountAccountPage(host: PageHost): void {
       });
     }
 
+    container
+      .querySelector<HTMLInputElement>('[data-testid="account-display-name-input"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLInputElement) {
+          displayNameDraft = event.target.value;
+          displayNameSavedMessage = null;
+        }
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="account-save-display-name"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          const trimmed = displayNameDraft.trim();
+          if (trimmed.length === 0) {
+            displayNameSavedMessage = null;
+            error = 'Enter a display name before saving.';
+            render();
+            return;
+          }
+          busy = true;
+          error = null;
+          displayNameSavedMessage = null;
+          render();
+          try {
+            const next = await updateAccountDisplayLabel(candidate, trimmed);
+            displayNameDraft = next.displayLabel;
+            displayNameSavedMessage = 'Display name saved.';
+            shell.announce(`Display name saved as ${next.displayLabel}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Display name could not be saved.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
     container.querySelectorAll<HTMLButtonElement>('[data-legal-route]').forEach((button) => {
       button.addEventListener('click', () => {
         void (async () => {
@@ -528,6 +607,8 @@ export function mountAccountPage(host: PageHost): void {
             textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
             speechToTextEnabled = settings.reserved.speechToTextEnabled;
             applyPresentationPreferences({ reducedMotion, lowEffects });
+            presentationSavedMessage =
+              reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.';
             shell.announce(
               reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.',
             );
@@ -565,6 +646,8 @@ export function mountAccountPage(host: PageHost): void {
             textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
             speechToTextEnabled = settings.reserved.speechToTextEnabled;
             applyPresentationPreferences({ reducedMotion, lowEffects });
+            presentationSavedMessage =
+              lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.';
             shell.announce(
               lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.',
             );
@@ -602,6 +685,8 @@ export function mountAccountPage(host: PageHost): void {
             });
             textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
             speechToTextEnabled = settings.reserved.speechToTextEnabled;
+            presentationSavedMessage =
+              textToSpeechEnabled ? 'Text-to-speech enabled.' : 'Text-to-speech disabled.';
             shell.announce(
               textToSpeechEnabled ? 'Text-to-speech enabled.' : 'Text-to-speech disabled.',
             );
@@ -639,6 +724,10 @@ export function mountAccountPage(host: PageHost): void {
             });
             textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
             speechToTextEnabled = settings.reserved.speechToTextEnabled;
+            presentationSavedMessage =
+              speechToTextEnabled
+                ? 'Speech-to-text draft dictation enabled.'
+                : 'Speech-to-text disabled.';
             shell.announce(
               speechToTextEnabled
                 ? 'Speech-to-text draft dictation enabled.'
@@ -679,6 +768,7 @@ export function mountAccountPage(host: PageHost): void {
               narrationDensity: nextDensity,
             });
             narrationDensity = settings.reserved.narrationDensity;
+            presentationSavedMessage = `Narration density set to ${NARRATION_DENSITY_LABELS[narrationDensity]}.`;
             shell.announce(`Narration density set to ${NARRATION_DENSITY_LABELS[narrationDensity]}.`);
           } catch (failure) {
             error =
@@ -781,6 +871,14 @@ export function mountAccountPage(host: PageHost): void {
   subscribeAccount(() => {
     if (!isPageMountCurrent(container, mountToken) || busy) {
       return;
+    }
+    const nextAccount = getAccount();
+    if (nextAccount !== null) {
+      displayNameDraft = nextAccount.displayLabel;
+    } else {
+      displayNameDraft = '';
+      displayNameSavedMessage = null;
+      presentationSavedMessage = null;
     }
     render();
     if (getAccount() !== null) {

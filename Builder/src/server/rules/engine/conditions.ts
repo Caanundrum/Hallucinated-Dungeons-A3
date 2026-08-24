@@ -67,6 +67,15 @@ export function expireConditions(
   );
 }
 
+const TABLE_STATUS_CONDITION_IDS: ReadonlySet<ConditionId> = new Set([
+  'guiding-bolt-marked',
+  'shielded',
+]);
+
+export function isTableStatusCondition(conditionId: ConditionId): boolean {
+  return TABLE_STATUS_CONDITION_IDS.has(conditionId);
+}
+
 export function explainCondition(conditionId: ConditionId): RuleExplanationProjection {
   const rule = conditionRule(conditionId);
   return {
@@ -74,6 +83,6 @@ export function explainCondition(conditionId: ConditionId): RuleExplanationProje
     title: rule.label,
     summary: rule.summary,
     steps: rule.effects,
-    source: 'SRD 5.2',
+    source: isTableStatusCondition(conditionId) ? 'Hallucinated Dungeons Phase 3' : 'SRD 5.2',
   };
 }

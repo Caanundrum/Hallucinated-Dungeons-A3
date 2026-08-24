@@ -39,6 +39,7 @@ import {
 } from '../../shared/campaign-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { CharacterNotFoundError, readCharacter, readVault } from '../characters/characters.js';
+import type { SessionState } from '../../shared/campaign-memory-contract.js';
 import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
@@ -303,6 +304,24 @@ function projectCampaign(
   };
 }
 
+async function resolveSessionStatusLabel(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<string> {
+  const settings = await ensureCampaignSettings(firestore, campaignId);
+  if (!settings.sessionZero.completed) {
+    return 'Not started';
+  }
+  const sessionSnapshot = await firestore.collection(COLLECTIONS.campaignSessions).doc(campaignId).get();
+  if (sessionSnapshot.exists) {
+    const session = sessionSnapshot.data() as { state?: SessionState };
+    if (session.state === 'suspended') {
+      return 'Suspended';
+    }
+  }
+  return 'Active';
+}
+
 /** Defaults to a blank table when omitted, so existing API callers are unaffected. */
 function validateAdventureTemplate(raw: unknown): AdventureTemplate {
   if (raw === undefined || raw === null) {
@@ -461,7 +480,10 @@ export async function listCampaigns(options: {
         countMembers(firestore, membership.campaignId),
         countSeats(firestore, membership.campaignId),
       ]);
-      campaigns.push(projectCampaign(campaign, membership, memberCount, seatCount));
+      campaigns.push({
+        ...projectCampaign(campaign, membership, memberCount, seatCount),
+        sessionStatusLabel: await resolveSessionStatusLabel(firestore, membership.campaignId),
+      });
     } catch (error) {
       if (error instanceof CampaignNotFoundError) {
         continue;
@@ -526,16 +548,45 @@ export async function updateCampaign(options: {
 }): Promise<CampaignProjection> {
   const { firestore, accountId, campaignId } = options;
 
-  if (options.directorIdentity !== undefined || options.directorPersonality !== undefined) {
-    throw new DirectorConfigLockedError();
-  }
-
   const membership = await requireMembership(firestore, campaignId, accountId);
   if (membership.role !== 'owner') {
     throw new CampaignNotFoundError();
   }
 
   const stored = await loadCampaign(firestore, campaignId);
+  const settings = await ensureCampaignSettings(firestore, campaignId);
+
+  let directorIdentity = stored.directorIdentity;
+  let directorPersonality = stored.directorPersonality;
+  let directorAvatarKey = stored.directorAvatarKey;
+
+  if (options.directorIdentity !== undefined || options.directorPersonality !== undefined) {
+    if (settings.sessionZero.completed) {
+      throw new DirectorConfigLockedError();
+    }
+    const nextIdentity =
+      options.directorIdentity === undefined ? directorIdentity : options.directorIdentity;
+    const nextPersonality =
+      options.directorPersonality === undefined ? directorPersonality : options.directorPersonality;
+    if (!isDirectorIdentity(nextIdentity)) {
+      throw new CampaignValidationError('Choose Veyra or Garrick as the Game Director identity.');
+    }
+    if (!isDirectorPersonality(nextPersonality)) {
+      throw new CampaignValidationError('Choose one approved Game Director personality.');
+    }
+    const director = resolveDirectorConfiguration({
+      identity: nextIdentity,
+      personality: nextPersonality,
+      lockedAt:
+        stored.directorLockedAt instanceof Date
+          ? stored.directorLockedAt
+          : (stored.directorLockedAt as Timestamp).toDate(),
+    });
+    directorIdentity = director.identity;
+    directorPersonality = director.personality;
+    directorAvatarKey = director.avatarKey;
+  }
+
   const name = options.name === undefined ? stored.name : validateName(options.name);
   const summary =
     options.summary === undefined ? stored.summary : validateSummary(options.summary);
@@ -544,6 +595,9 @@ export async function updateCampaign(options: {
     ...stored,
     name,
     summary,
+    directorIdentity,
+    directorPersonality,
+    directorAvatarKey,
     updatedAt: new Date(),
   };
   await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).set(updated);

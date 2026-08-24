@@ -32,6 +32,7 @@ import {
   describeChoices,
   emptyChoices,
   rollAbilityScorePool,
+  sanitizeChoices,
   validateChoices,
 } from '../rules/character-rules.js';
 import {
@@ -85,7 +86,7 @@ export class AbilityRollsExhaustedError extends Error {
  */
 function normalizeChoices(choices: CharacterChoices): CharacterChoices {
   const base = emptyChoices();
-  return {
+  return sanitizeChoices({
     ...base,
     ...choices,
     baseAbilityScores: choices.baseAbilityScores ?? base.baseAbilityScores,
@@ -94,14 +95,20 @@ function normalizeChoices(choices: CharacterChoices): CharacterChoices {
     speciesChoiceIds: choices.speciesChoiceIds ?? base.speciesChoiceIds,
     classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
     cantripIds: choices.cantripIds ?? base.cantripIds,
+    spellbookIds: choices.spellbookIds ?? base.spellbookIds,
     spellIds: choices.spellIds ?? base.spellIds,
+    chosenOriginFeatId: choices.chosenOriginFeatId ?? base.chosenOriginFeatId,
+    backgroundFeatCantripIds: choices.backgroundFeatCantripIds ?? base.backgroundFeatCantripIds,
+    backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
+    originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
+    originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
     identity: choices.identity ?? base.identity,
     rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
     abilityRollAttempts:
       typeof choices.abilityRollAttempts === 'number' && Number.isInteger(choices.abilityRollAttempts)
         ? Math.max(0, choices.abilityRollAttempts)
         : 0,
-  };
+  });
 }
 
 function toIso(value: Timestamp | Date): string {
@@ -311,7 +318,13 @@ export async function applyQuickStart(options: {
     classEquipmentOptionId: template.classEquipmentOptionId,
     backgroundEquipmentOptionId: template.backgroundEquipmentOptionId,
     cantripIds: template.cantripIds,
+    spellbookIds: template.spellbookIds ?? [],
     spellIds: template.spellIds,
+    chosenOriginFeatId: template.chosenOriginFeatId ?? null,
+    backgroundFeatCantripIds: template.backgroundFeatCantripIds ?? [],
+    backgroundFeatSpellIds: template.backgroundFeatSpellIds ?? [],
+    originFeatCantripIds: template.originFeatCantripIds ?? [],
+    originFeatSpellIds: template.originFeatSpellIds ?? [],
     // Identity is intentionally left empty: the player supplies it at the
     // final review step, exactly as the custom path requires.
     identity: stored.choices.identity,
@@ -383,14 +396,7 @@ export async function readCharacter(options: {
   readonly characterId: string;
 }): Promise<CharacterProjection> {
   const { firestore, accountId, characterId } = options;
-  const snapshot = await firestore.collection(COLLECTIONS.characters).doc(characterId).get();
-  if (!snapshot.exists) {
-    throw new CharacterNotFoundError();
-  }
-  const stored = snapshot.data() as StoredCharacter;
-  if (stored.ownerAccountId !== accountId) {
-    throw new CharacterNotFoundError();
-  }
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
   const progressionSnap = await firestore
     .collection(COLLECTIONS.characterProgressions)
     .doc(characterId)
@@ -432,6 +438,24 @@ export async function readVault(options: {
       const progression = progressionSnap.exists
         ? (progressionSnap.data() as StoredProgression)
         : null;
+      const seatSnapshots = await firestore
+        .collection(COLLECTIONS.campaignSeats)
+        .where('characterId', '==', stored.characterId)
+        .limit(8)
+        .get();
+      const seatedCampaignNames = await Promise.all(
+        seatSnapshots.docs.map(async (seatDoc) => {
+          const seat = seatDoc.data() as { campaignId?: string };
+          if (seat.campaignId === undefined) {
+            return null;
+          }
+          const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).get();
+          if (!campaignSnap.exists) {
+            return null;
+          }
+          return (campaignSnap.data() as { name?: string }).name ?? null;
+        }),
+      );
       return {
         characterId: stored.characterId,
         name: stored.choices.identity.name,
@@ -440,6 +464,7 @@ export async function readVault(options: {
         backgroundLabel: labels.backgroundLabel,
         level: progression?.level ?? 1,
         createdAt: toIso(stored.createdAt),
+        seatedCampaignNames: seatedCampaignNames.filter((name): name is string => name !== null && name.length > 0),
       };
     }),
   );
@@ -462,4 +487,64 @@ export async function readVault(options: {
   });
 
   return { accountId, characters, drafts };
+}
+
+async function loadOwnedCharacter(
+  firestore: Firestore,
+  accountId: string,
+  characterId: string,
+): Promise<StoredCharacter> {
+  const snapshot = await firestore.collection(COLLECTIONS.characters).doc(characterId).get();
+  if (!snapshot.exists) {
+    throw new CharacterNotFoundError();
+  }
+  const stored = snapshot.data() as StoredCharacter;
+  if (stored.ownerAccountId !== accountId) {
+    throw new CharacterNotFoundError();
+  }
+  return stored;
+}
+
+export async function deleteCharacter(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+}): Promise<void> {
+  const { firestore, accountId, characterId } = options;
+  await loadOwnedCharacter(firestore, accountId, characterId);
+  await firestore.runTransaction(async (transaction) => {
+    transaction.delete(firestore.collection(COLLECTIONS.characters).doc(characterId));
+    transaction.delete(firestore.collection(COLLECTIONS.characterProgressions).doc(characterId));
+  });
+}
+
+export async function updateCharacterIdentity(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+  readonly identity: CharacterChoices['identity'];
+}): Promise<CharacterProjection> {
+  const { firestore, accountId, characterId, identity } = options;
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
+  const choices = normalizeChoices({
+    ...stored.choices,
+    identity,
+  });
+  const updated: StoredCharacter = {
+    ...stored,
+    choices,
+    revisions: [
+      ...stored.revisions,
+      { at: new Date().toISOString(), reason: 'Identity updated' },
+    ],
+  };
+  await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updated);
+  const progressionSnap = await firestore
+    .collection(COLLECTIONS.characterProgressions)
+    .doc(characterId)
+    .get();
+  const progression = progressionSnap.exists
+    ? (progressionSnap.data() as StoredProgression)
+    : null;
+  return projectCharacter(updated, progression);
 }

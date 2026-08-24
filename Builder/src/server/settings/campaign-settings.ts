@@ -437,6 +437,11 @@ export async function updateCampaignSettings(options: {
       if (next.sessionZero.textChatExpectations.trim().length === 0) {
         throw new CampaignValidationError('Text-chat expectations are required for Session Zero.');
       }
+      if (next.safetyBoundaries.trim().length === 0) {
+        throw new CampaignValidationError(
+          'Record at least one line, veil, or safety boundary before recording Session Zero.',
+        );
+      }
       if (!next.sessionZero.completed) {
         next.sessionZero.completed = true;
         next.sessionZero.completedAt = new Date();
@@ -465,12 +470,14 @@ export async function updateCampaignSettings(options: {
   }
 
   const wasSessionZeroComplete = current.sessionZero.completed;
+  const priorGroupDecisionPolicy = current.groupDecisionPolicy;
   next.updatedAt = new Date();
   const stored: StoredCampaignSettings = {
     ...next,
     sessionZero: { ...next.sessionZero },
   };
   await firestore.collection(COLLECTIONS.campaignSettings).doc(campaignId).set(stored);
+  await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).update({ updatedAt: next.updatedAt });
 
   await appendChronicleEntry({
     firestore,
@@ -478,6 +485,15 @@ export async function updateCampaignSettings(options: {
     kind: 'settings_updated',
     body: 'Campaign settings were updated by the campaign owner.',
   });
+
+  if (wasSessionZeroComplete && stored.groupDecisionPolicy !== priorGroupDecisionPolicy) {
+    await appendChronicleEntry({
+      firestore,
+      campaignId,
+      kind: 'settings_updated',
+      body: `Group-decision policy changed to ${GROUP_DECISION_POLICY_LABELS[stored.groupDecisionPolicy]}. Table members should agree on this change.`,
+    });
+  }
 
   if (!wasSessionZeroComplete && stored.sessionZero.completed) {
     await appendChronicleEntry({

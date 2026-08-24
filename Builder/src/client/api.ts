@@ -263,6 +263,28 @@ export async function fetchCharacter(characterId: string): Promise<CharacterProj
   )) as CharacterProjection;
 }
 
+export async function deleteCharacter(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+}): Promise<void> {
+  await request<null>(`/api/characters/${options.characterId}`, {
+    method: 'DELETE',
+    candidateId: options.candidateId,
+  });
+}
+
+export async function updateCharacterIdentity(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+  readonly identity: CharacterChoices['identity'];
+}): Promise<CharacterProjection> {
+  return (await request<CharacterProjection>(`/api/characters/${options.characterId}`, {
+    method: 'PATCH',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ identity: options.identity }),
+  })) as CharacterProjection;
+}
+
 export async function fetchDirectorCatalog(): Promise<DirectorCatalog> {
   return (await request<DirectorCatalog>('/api/directors/catalog')) as DirectorCatalog;
 }
@@ -299,6 +321,28 @@ export async function fetchCampaignDetail(campaignId: string): Promise<CampaignD
   return (await request<CampaignDetailProjection>(
     `/api/campaigns/${campaignId}`,
   )) as CampaignDetailProjection;
+}
+
+export async function updateCampaign(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly name?: string;
+  readonly summary?: string;
+  readonly directorIdentity?: string;
+  readonly directorPersonality?: string;
+}): Promise<CampaignProjection> {
+  return (await request<CampaignProjection>(`/api/campaigns/${options.campaignId}`, {
+    method: 'PATCH',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      ...(options.name !== undefined ? { name: options.name } : {}),
+      ...(options.summary !== undefined ? { summary: options.summary } : {}),
+      ...(options.directorIdentity !== undefined ? { directorIdentity: options.directorIdentity } : {}),
+      ...(options.directorPersonality !== undefined
+        ? { directorPersonality: options.directorPersonality }
+        : {}),
+    }),
+  })) as CampaignProjection;
 }
 
 export async function createCampaignInvitation(options: {
@@ -627,6 +671,17 @@ export async function savePlayerSettings(options: {
         : {}),
     }),
   })) as PlayerPresentationSettingsProjection;
+}
+
+export async function saveDisplayLabel(options: {
+  readonly candidateId: string;
+  readonly displayLabel: string;
+}): Promise<AccountProjection> {
+  return (await request<AccountProjection>('/api/account/display-label', {
+    method: 'PUT',
+    candidateId: options.candidateId,
+    body: JSON.stringify({ displayLabel: options.displayLabel }),
+  })) as AccountProjection;
 }
 
 export interface AccountDeletionStatusProjection {
