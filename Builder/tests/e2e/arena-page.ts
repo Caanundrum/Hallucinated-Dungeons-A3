@@ -64,14 +64,42 @@ export async function enterArena(page: Page): Promise<string> {
   return (await page.getByTestId('account-id').innerText()).trim();
 }
 
+/** Legal routes required before play surfaces open. */
+const LEGAL_PLAY_ROUTES = [
+  '/legal/terms',
+  '/legal/privacy',
+  '/legal/alpha-participation',
+  '/legal/content-and-safety',
+] as const;
+
+/** Records acceptance for every current legal document via the API (Local Arena / e2e). */
+export async function acceptAllLegalForPlay(page: Page): Promise<void> {
+  const candidate = await readCandidate(page);
+  const origin = new URL(page.url()).origin;
+  for (const route of LEGAL_PLAY_ROUTES) {
+    const response = await page.request.post('/api/legal/acceptance', {
+      headers: {
+        origin,
+        'content-type': 'application/json',
+        'x-hd-candidate': candidate.candidateId,
+      },
+      data: { route },
+    });
+    expect(response.ok()).toBeTruthy();
+  }
+  await page.reload();
+}
+
 /** Signs in from the shell account chip without visiting diagnostics. */
 export async function enterAccountFromShell(page: Page): Promise<void> {
   if (await page.getByTestId('shell-account-link').isVisible().catch(() => false)) {
+    await acceptAllLegalForPlay(page);
     return;
   }
   await expect(page.getByTestId('shell-enter-account')).toBeVisible();
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  await acceptAllLegalForPlay(page);
 }
 
 /** Submits a foundation check and waits for the page to settle. */
@@ -98,6 +126,7 @@ export async function joinTableWithFirstCharacter(page: Page): Promise<void> {
   expect(characterId).toBeTruthy();
   await select.selectOption(characterId!);
   await page.getByTestId('join-table-submit').click();
+  await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
 }
 
 /** Opens training / developer controls on the campaign table dashboard. */

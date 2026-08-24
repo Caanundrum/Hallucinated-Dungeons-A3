@@ -132,10 +132,12 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         failure.code === ERROR_CODES.ALREADY_AT_ANOTHER_TABLE &&
         !confirmSwitch
       ) {
-        const ok = await confirmInApp(
-          'Switch tables?',
-          'You are seated at another table. Leave that seat and join this one?',
-        );
+        const ok = await confirmInApp({
+          title: 'Switch tables?',
+          body: 'You are seated at another table. Leave that seat and join this one?',
+          confirmLabel: 'Switch tables',
+          testId: 'confirm-switch-table',
+        });
         if (ok) {
           await submitJoin(true);
           return;
