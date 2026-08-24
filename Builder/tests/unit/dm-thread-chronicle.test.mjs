@@ -61,6 +61,8 @@ test('dmThreadFromChronicleEntries seeds opening prompt when Chronicle has no pl
   assert.equal(thread.length, 1);
   assert.equal(thread[0].kind, 'prompt');
   assert.match(thread[0].body, /What do you do\?/);
+  assert.notEqual(thread[0].createdAt, '1970-01-01T00:00:00.000Z');
+  assert.ok(Date.parse(thread[0].createdAt) > 0);
 });
 
 test('formatDirectorProse strips bold markers', () => {

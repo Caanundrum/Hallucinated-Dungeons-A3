@@ -115,7 +115,11 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           <label class="field">
             <span>Lines, veils, and safety boundaries</span>
             <textarea data-testid="safety-boundaries" rows="3" placeholder="Example: No harm to children on screen. Fade to black for romance." ${disabled ? 'disabled' : ''}>${escapeHtml(draft.safetyBoundaries)}</textarea>
-            <span class="record-meta">Required when you record Session Zero. List at least one line, veil, or boundary your table agrees on.</span>
+            <span class="record-meta">${
+              draft.sessionZero.completed
+                ? 'Already recorded with table defaults. Edit anytime your table agrees to change lines, veils, or boundaries.'
+                : 'Required when you record Session Zero. List at least one line, veil, or boundary your table agrees on.'
+            }</span>
           </label>
         </section>
 
@@ -239,7 +243,11 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <span>Expected session length</span>
             <input type="text" data-testid="session-length" placeholder="Example: 3–5 sessions"
               value="${escapeHtml(draft.sessionZero.expectedSessionLength)}" ${disabled ? 'disabled' : ''} />
-            <span class="record-meta">Required to record Session Zero. Clearing this field cannot fall back to a hidden default.</span>
+            <span class="record-meta">${
+              draft.sessionZero.completed
+                ? 'Recorded with table defaults. Edit anytime; clearing this field cannot fall back to a hidden default.'
+                : 'Required to record Session Zero. Clearing this field cannot fall back to a hidden default.'
+            }</span>
           </label>
           <label class="field">
             <span>Drop-in / drop-out</span>
@@ -280,8 +288,11 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
               ? `<p class="record-meta" data-testid="settings-save-hint">
                    <strong>Save settings</strong> commits content profile, group-decision policy, table defaults
                    (reaction window and enemy health), and safety boundaries without recording Session Zero.
-                   <strong>Record Session Zero</strong> also commits the Session Zero fields below and marks the
-                   social contract as recorded — required before seating characters or opening live play.
+                   ${
+                     draft.sessionZero.completed
+                       ? '<strong>Update Session Zero</strong> saves changes to the recorded social contract. New tables already apply defaults at creation so seating and live play are open immediately.'
+                       : '<strong>Record Session Zero</strong> also commits the Session Zero fields below and marks the social contract as recorded — required before seating characters or opening live play.'
+                   }
                  </p>
                  <button type="button" data-testid="save-settings" aria-disabled="${busy}">
                    ${busy ? 'Saving…' : 'Save settings'}
