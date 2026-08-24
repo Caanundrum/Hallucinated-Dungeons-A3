@@ -89,7 +89,17 @@ function looksMechanical(text: string): boolean {
   );
 }
 
+function mentionsDoorStateIntent(text: string): boolean {
+  return (
+    /(swing|ajar|hinge|free\s*swing|push|pull|test).*(door|gate|entry)/.test(text) ||
+    /(door|gate|entry).*(swing|ajar|hinge|stuck|free|push|pull|test)/.test(text)
+  );
+}
+
 function mentionsSkillCheckIntent(text: string): boolean {
+  if (mentionsDoorStateIntent(text) && !/(trap|disarm|lock|thieves|pick|unlock)/.test(text)) {
+    return false;
+  }
   return (
     (/(trap|disarm|investigat|perception|search|examine|inspect)/.test(text) &&
       /(door|lock|way|trap|entry|gate)/.test(text)) ||
@@ -99,6 +109,7 @@ function mentionsSkillCheckIntent(text: string): boolean {
 
 function mentionsDoorIntent(text: string): boolean {
   return (
+    mentionsDoorStateIntent(text) ||
     /(open|unlock|push).*(door|gate|entry)/.test(text) ||
     /(door|gate|entryway).*(open|unlock|ahead|beyond|enter)/.test(text) ||
     /\b(door|gate|entryway)\b/.test(text)
@@ -411,10 +422,7 @@ export async function interpretNaturalLanguageIntent(options: {
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
-  if (mentionsSkillCheckIntent(text)) {
-    proposedCommandType = 'table.sync';
-    summary = buildSkillCheckDraftSummary(seatedSheet, text);
-  } else if (mentionsDoorIntent(text)) {
+  if (mentionsDoorIntent(text) && (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text))) {
     try {
       const map = await fetchCampaignMap({
         firestore: options.firestore,
@@ -456,6 +464,9 @@ export async function interpretNaturalLanguageIntent(options: {
       summary =
         'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
     }
+  } else if (mentionsSkillCheckIntent(text)) {
+    proposedCommandType = 'table.sync';
+    summary = buildSkillCheckDraftSummary(seatedSheet, text);
   } else if (mentionsMovementIntent(text) && options.moveTarget) {
     let legalStep = false;
     try {

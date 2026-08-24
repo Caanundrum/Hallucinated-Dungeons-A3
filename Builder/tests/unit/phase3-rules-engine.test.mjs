@@ -22,6 +22,7 @@ import {
   levelForExperience,
   proficiencyBonusForLevel,
   spellSlotsForClass,
+  recomputeSheetForLevel,
 } from '../../dist/server/rules/engine/xp-progression.js';
 
 function sequenceRandom(values) {
@@ -215,4 +216,96 @@ test('damage consumes temp HP, healing recovers, and death saves cover 1/20/thre
   }
   assert.equal(saving.deathSaves.stable, true);
   assert.equal(saving.deathSaves.successes, 3);
+});
+
+
+test('recomputeSheetForLevel refreshes Alert initiative and adds Action Surge at level 2+', () => {
+  const baseSheet = {
+    level: 1,
+    experiencePoints: 0,
+    proficiencyBonus: {
+      value: 2,
+      components: [{ label: 'Level 1', amount: 2, ruleId: 'proficiency-bonus.level-1' }],
+    },
+    abilityScores: {
+      strength: { value: 15, components: [] },
+      dexterity: { value: 14, components: [] },
+      constitution: { value: 13, components: [] },
+      intelligence: { value: 10, components: [] },
+      wisdom: { value: 12, components: [] },
+      charisma: { value: 8, components: [] },
+    },
+    abilityModifiers: {
+      strength: 2,
+      dexterity: 2,
+      constitution: 1,
+      intelligence: 0,
+      wisdom: 1,
+      charisma: -1,
+    },
+    hitPoints: {
+      value: 11,
+      components: [{ label: 'Hit Die', amount: 11, ruleId: 'class.fighter.hit-points' }],
+    },
+    hitPointsCurrent: 11,
+    hitDice: '1d10',
+    armorClass: { value: 16, components: [] },
+    initiative: {
+      value: 4,
+      components: [
+        { label: 'Dexterity', amount: 2, ruleId: 'ability.dexterity' },
+        { label: 'Alert', amount: 2, ruleId: 'feat.alert.initiative' },
+      ],
+    },
+    speed: { value: 30, components: [] },
+    passivePerception: { value: 11, components: [] },
+    savingThrows: {
+      strength: {
+        value: 4,
+        components: [
+          { label: 'Strength', amount: 2, ruleId: 'ability.strength' },
+          { label: 'Proficiency Bonus', amount: 2, ruleId: 'proficiency-bonus' },
+        ],
+      },
+      dexterity: { value: 2, components: [{ label: 'Dexterity', amount: 2, ruleId: 'ability.dexterity' }] },
+      constitution: {
+        value: 3,
+        components: [
+          { label: 'Constitution', amount: 1, ruleId: 'ability.constitution' },
+          { label: 'Proficiency Bonus', amount: 2, ruleId: 'proficiency-bonus' },
+        ],
+      },
+      intelligence: { value: 0, components: [] },
+      wisdom: { value: 1, components: [] },
+      charisma: { value: -1, components: [] },
+    },
+    skills: [],
+    attacks: [],
+    features: [],
+    equipment: [],
+    proficiencies: [],
+    spellcasting: null,
+    classResources: [
+      {
+        id: 'second-wind',
+        label: 'Second Wind',
+        summary: 'Regain hit points as a Bonus Action.',
+        remaining: 1,
+        maximum: 1,
+        recharge: 'Short rest',
+      },
+    ],
+    weaponMasteries: [],
+    subclassLabel: 'Subclass unlocks at level 3 (Champion is the Alpha default)',
+  };
+
+  const level5 = recomputeSheetForLevel(baseSheet, 'fighter', 5, 6500);
+  assert.equal(level5.proficiencyBonus.value, 3);
+  const alert = level5.initiative.components.find((component) => component.ruleId === 'feat.alert.initiative');
+  assert.ok(alert);
+  assert.equal(alert.amount, 3);
+  assert.equal(level5.initiative.value, 5);
+  assert.ok((level5.classResources ?? []).some((resource) => resource.id === 'action-surge'));
+  assert.ok((level5.classResources ?? []).some((resource) => resource.id === 'second-wind'));
+  assert.match(level5.subclassLabel ?? '', /Champion/i);
 });

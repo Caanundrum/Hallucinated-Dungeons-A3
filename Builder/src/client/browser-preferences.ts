@@ -38,3 +38,26 @@ export function writeTableNotesPreference(campaignId: string, value: string): vo
     // Non-authoritative scratch notes — ignore storage failures.
   }
 }
+
+const INTENT_DRAFT_KEY_PREFIX = 'hd-a3-intent-draft-';
+
+export function readIntentDraftPreference(campaignId: string): string | null {
+  try {
+    return localStorage.getItem(`${INTENT_DRAFT_KEY_PREFIX}${campaignId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function writeIntentDraftPreference(campaignId: string, draftJson: string | null): void {
+  try {
+    const key = `${INTENT_DRAFT_KEY_PREFIX}${campaignId}`;
+    if (draftJson === null || draftJson.length === 0) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, draftJson);
+  } catch {
+    // Non-authoritative draft recovery — ignore storage failures.
+  }
+}

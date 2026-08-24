@@ -20,6 +20,8 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+type CampaignSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc';
+
 export function mountCampaignsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Campaigns');
@@ -28,10 +30,43 @@ export function mountCampaignsPage(host: PageHost): void {
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let searchQuery = '';
+  let sortMode: CampaignSort = 'updated_desc';
   const mountToken = beginPageMount(container);
 
-  function renderSignedIn(): void {
+  function filteredCampaigns(): CampaignListProjection['campaigns'] {
     const campaigns = list?.campaigns ?? [];
+    const needle = searchQuery.trim().toLowerCase();
+    const filtered =
+      needle.length === 0
+        ? [...campaigns]
+        : campaigns.filter((campaign) => {
+            const haystack = [
+              campaign.name,
+              campaign.director.identityLabel,
+              campaign.director.personalityLabel,
+              campaign.sessionStatusLabel ?? '',
+              campaign.isCampaignOwner ? 'owner' : 'member',
+            ]
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(needle);
+          });
+    filtered.sort((left, right) => {
+      if (sortMode === 'name_asc' || sortMode === 'name_desc') {
+        const cmp = left.name.localeCompare(right.name);
+        return sortMode === 'name_asc' ? cmp : -cmp;
+      }
+      const leftTime = Date.parse(left.updatedAt) || 0;
+      const rightTime = Date.parse(right.updatedAt) || 0;
+      return sortMode === 'updated_asc' ? leftTime - rightTime : rightTime - leftTime;
+    });
+    return filtered;
+  }
+
+  function renderSignedIn(): void {
+    const campaigns = filteredCampaigns();
+    const total = list?.campaigns.length ?? 0;
     container.innerHTML = `
       <div class="page">
         <h1 data-testid="campaigns-heading">Campaigns</h1>
@@ -53,8 +88,31 @@ export function mountCampaignsPage(host: PageHost): void {
         <section class="panel" aria-labelledby="campaign-list-heading">
           <h2 id="campaign-list-heading">Your campaigns</h2>
           ${
-            campaigns.length === 0
+            total === 0
               ? '<p class="empty-state" data-testid="campaigns-empty">You have not created or joined a campaign yet.</p>'
+              : `
+          <div class="campaign-list-tools" data-testid="campaign-list-tools">
+            <label class="field">
+              <span>Search</span>
+              <input type="search" data-testid="campaigns-search" placeholder="Name, Director, owner, or session"
+                value="${escapeHtml(searchQuery)}" />
+            </label>
+            <label class="field">
+              <span>Sort</span>
+              <select data-testid="campaigns-sort">
+                <option value="updated_desc" ${sortMode === 'updated_desc' ? 'selected' : ''}>Updated (newest)</option>
+                <option value="updated_asc" ${sortMode === 'updated_asc' ? 'selected' : ''}>Updated (oldest)</option>
+                <option value="name_asc" ${sortMode === 'name_asc' ? 'selected' : ''}>Name (A–Z)</option>
+                <option value="name_desc" ${sortMode === 'name_desc' ? 'selected' : ''}>Name (Z–A)</option>
+              </select>
+            </label>
+            <p class="record-meta" data-testid="campaigns-filter-meta">
+              Showing ${campaigns.length} of ${total}
+            </p>
+          </div>
+          ${
+            campaigns.length === 0
+              ? '<p class="empty-state" data-testid="campaigns-filter-empty">No campaigns match this search.</p>'
               : `<ul class="record-list" data-testid="campaign-list">
                   ${campaigns
                     .map(
@@ -74,6 +132,7 @@ export function mountCampaignsPage(host: PageHost): void {
                     )
                     .join('')}
                 </ul>`
+          }`
           }
         </section>
       </div>`;
@@ -81,6 +140,27 @@ export function mountCampaignsPage(host: PageHost): void {
     container
       .querySelector<HTMLButtonElement>('[data-testid="start-campaign"]')
       ?.addEventListener('click', () => navigate('/campaigns/new'));
+    container
+      .querySelector<HTMLInputElement>('[data-testid="campaigns-search"]')
+      ?.addEventListener('input', (event) => {
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        searchQuery = event.target.value;
+        renderSignedIn();
+        const search = container.querySelector<HTMLInputElement>('[data-testid="campaigns-search"]');
+        search?.focus();
+        search?.setSelectionRange(search.value.length, search.value.length);
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="campaigns-sort"]')
+      ?.addEventListener('change', (event) => {
+        if (!(event.target instanceof HTMLSelectElement)) {
+          return;
+        }
+        sortMode = event.target.value as CampaignSort;
+        renderSignedIn();
+      });
   }
 
   function render(): void {

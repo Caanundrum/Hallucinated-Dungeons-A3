@@ -1164,7 +1164,11 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     { label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' },
   ];
   if (hasAlert) {
-    initiativeComponents.push({ label: 'Alert', amount: 5, ruleId: 'feat.alert.initiative' });
+    initiativeComponents.push({
+      label: 'Alert',
+      amount: proficiencyBonus.value,
+      ruleId: 'feat.alert.initiative',
+    });
   }
   const hitPoints = value(hitPointComponents);
   const attacks = deriveAttacks(classRecord, classEquipment, modifiers, proficiencyBonus.value, choices);
@@ -1173,19 +1177,42 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     fightingStyle !== undefined
       ? `${fightingStyle.name.replace('Fighting Style: ', '')} (fighting style)`
       : classRecord.id === 'fighter'
-        ? 'Subclass unlocks at level 3'
+        ? 'Subclass unlocks at level 3 (Champion is the Alpha default)'
         : null;
   const masteryCount = classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
     ? classRecord.id === 'fighter'
       ? 3
       : 2
     : 0;
+  /** SRD 5.2.1 weapon mastery properties for starting weapons. */
+  const WEAPON_MASTERY_BY_NAME: Readonly<Record<string, string>> = {
+    Greataxe: 'Cleave',
+    Greatsword: 'Graze',
+    Longsword: 'Sap',
+    Scimitar: 'Nick',
+    Shortsword: 'Vex',
+    Longbow: 'Slow',
+    Javelin: 'Slow',
+    Handaxe: 'Vex',
+    Dagger: 'Nick',
+    Spear: 'Sap',
+    Quarterstaff: 'Topple',
+    Sickle: 'Nick',
+  };
+  const masteryWeapons = [
+    ...new Set(
+      [
+        ...attacks.map((attack) => attack.name),
+        ...equipment.map((item) => item.name),
+      ].filter((name) => WEAPON_MASTERY_BY_NAME[name] !== undefined),
+    ),
+  ];
   const weaponMasteries =
     masteryCount === 0
       ? []
-      : attacks.slice(0, masteryCount).map((attack) => ({
-          name: attack.name,
-          property: attack.properties[0] ?? 'Mastery',
+      : masteryWeapons.slice(0, masteryCount).map((name) => ({
+          name,
+          property: WEAPON_MASTERY_BY_NAME[name] ?? 'Mastery',
         }));
   const classResources: Array<{
     id: string;
@@ -1205,16 +1232,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       recharge: 'Short rest',
     });
   }
-  if (classRecord.features.some((feature) => feature.name === 'Action Surge')) {
-    classResources.push({
-      id: 'action-surge',
-      label: 'Action Surge',
-      summary: 'Take one additional Action on your turn.',
-      remaining: 1,
-      maximum: 1,
-      recharge: 'Short rest',
-    });
-  }
+  // Action Surge is a level-2 Fighter feature; L1 sheets omit it.
 
   return {
     level: STARTING_LEVEL,

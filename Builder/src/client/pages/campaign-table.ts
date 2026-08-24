@@ -77,7 +77,7 @@ import {
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
-import { readTableNotesPreference, writeTableNotesPreference } from '../browser-preferences.js';
+import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference } from '../browser-preferences.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
@@ -181,7 +181,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
-  let intentDraft: ActionDraftSuggestion | null = null;
+  let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
   let textToSpeechEnabled = false;
@@ -397,7 +397,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       commandType.startsWith('progression.') ||
       commandType === 'table.move' ||
       commandType === 'table.open_door' ||
-      commandType === 'table.build_scene'
+      commandType === 'table.build_scene' ||
+      commandType === 'table.sync'
     );
   }
 
@@ -410,9 +411,44 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const dest = path[path.length - 1] ?? start;
     const squares = path.length;
     const feet = squares * map.coordinateSpace.feetPerSquare;
-    const startLabel = `column ${start.column + 1}, row ${start.row + 1}`;
-    const destLabel = `column ${dest.column + 1}, row ${dest.row + 1}`;
-    return `Moved from ${startLabel} to ${destLabel} · ${squares} square${squares === 1 ? '' : 's'} (${feet} ft)`;
+    const scene = map.title.trim().length > 0 ? map.title : 'the map';
+    return `Moved ${squares} square${squares === 1 ? '' : 's'} (${feet} ft) across ${scene} toward the marked destination.`;
+  }
+
+  function persistIntentDraft(draft: ActionDraftSuggestion | null): void {
+    if (draft === null) {
+      writeIntentDraftPreference(campaignId, null);
+      return;
+    }
+    writeIntentDraftPreference(campaignId, JSON.stringify(draft));
+  }
+
+  function setIntentDraft(next: ActionDraftSuggestion | null): void {
+    intentDraft = next;
+    persistIntentDraft(next);
+  }
+
+  function restoreIntentDraft(): ActionDraftSuggestion | null {
+    const raw = readIntentDraftPreference(campaignId);
+    if (raw === null || raw.length === 0) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as ActionDraftSuggestion;
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        parsed.campaignId !== campaignId ||
+        typeof parsed.draftId !== 'string' ||
+        typeof parsed.proposedCommandType !== 'string' ||
+        typeof parsed.summary !== 'string'
+      ) {
+        return null;
+      }
+      return { ...parsed, interceptState: 'ready' };
+    } catch {
+      return null;
+    }
   }
 
   let narrationChain: Promise<void> = Promise.resolve();
@@ -434,7 +470,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     if (intentDraft.interceptState !== 'stale') {
-      intentDraft = { ...intentDraft, interceptState: 'stale' };
+      setIntentDraft({ ...intentDraft, interceptState: 'stale' });
     }
     appendDmThread('system', 'Table', reason, 'system');
   }
@@ -915,6 +951,44 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .trim();
   }
 
+  function formatCombatantSide(side: string): string {
+    if (side === 'foe') {
+      return 'hostile (practice)';
+    }
+    if (side === 'party') {
+      return 'party';
+    }
+    return side;
+  }
+
+  function formatCombatantHealth(
+    combatant: EncounterProjection['combatants'][number],
+  ): string {
+    const isOwn = combatant.seatId !== null;
+    const temp =
+      combatant.temporaryHitPoints > 0 ? ` +${combatant.temporaryHitPoints} temp` : '';
+    if (isOwn) {
+      return `HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${temp} · AC ${combatant.armorClass}`;
+    }
+    const ratio =
+      combatant.maxHitPoints <= 0
+        ? 0
+        : combatant.currentHitPoints / combatant.maxHitPoints;
+    let band = 'unharmed';
+    if (combatant.currentHitPoints <= 0) {
+      band = 'defeated';
+    } else if (ratio <= 0.25) {
+      band = 'bloodied';
+    } else if (ratio < 1) {
+      band = 'wounded';
+    }
+    const purpose =
+      combatant.combatantId === 'training-dummy' || combatant.combatantId === 'practice-goblin'
+        ? ' · practice foe for rules training (no story arrival)'
+        : '';
+    return `Condition ${band}${temp} · AC ${combatant.armorClass}${purpose}`;
+  }
+
   function formatCombatantLabel(name: string, combatantId: string): string {
     if (trainingToolsVisible() || !explorationMode()) {
       return name;
@@ -1070,12 +1144,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-info-rail"
-        aria-expanded="${!infoRailCollapsed}">
-        ${infoRailCollapsed ? 'Show reference' : 'Hide reference'}
+        aria-expanded="${!infoRailCollapsed}" ${infoRailCollapsed ? 'hidden' : ''}>
+        Hide reference
       </button>
       ${
         infoRailCollapsed
-          ? `<button type="button" class="table-rail-restore" data-testid="expand-info-rail-inline">Open reference panel</button>`
+          ? `<button type="button" class="table-rail-restore" data-testid="expand-info-rail-inline">Show reference</button>`
           : `<div class="info-rail-tabs" role="tablist" aria-label="Table reference">
         ${tabs
           .map(
@@ -1096,12 +1170,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function commsDockBody(): string {
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-comms-rail"
-        aria-expanded="${!commsRailCollapsed}">
-        ${commsRailCollapsed ? 'Show chat' : 'Hide chat'}
+        aria-expanded="${!commsRailCollapsed}" ${commsRailCollapsed ? 'hidden' : ''}>
+        Hide chat
       </button>
       ${
         commsRailCollapsed
-          ? `<button type="button" class="table-rail-restore" data-testid="expand-comms-rail-inline">Open chat panel</button>`
+          ? `<button type="button" class="table-rail-restore" data-testid="expand-comms-rail-inline">Show chat</button>`
           : `<div class="dock-tabs" role="tablist" aria-label="Table conversations">
         ${PLAYER_DOCK_TAB_ORDER.map(
           (tab) => `
@@ -1392,7 +1466,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dock-pane" data-testid="party-chat-pane">
         ${
           spotlight === null
-            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is for in-character roleplay. Messages here are player-authored, not Director canon — name an NPC (for example Lysa Quill) when you Speak as Character.</p>'
+            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is for in-character roleplay. Messages here are player-authored, not Director canon — Speak as Character and address an NPC by the name already established at your table.</p>'
             : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
                 <p data-testid="npc-spotlight-meta">
                   Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
@@ -1582,10 +1656,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       data-testid="combatant-${escapeHtml(combatant.combatantId)}"
                       ${combatant.seatId !== null ? 'data-own-combatant="true"' : ''}>
                       <strong>${escapeHtml(formatCombatantLabel(combatant.name, combatant.combatantId))}</strong>
-                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}${
-                        combatant.temporaryHitPoints > 0 ? ` +${combatant.temporaryHitPoints} temp` : ''
-                      } · AC ${combatant.armorClass}</span>
-                      <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(combatant.side)}</span>
+                      <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">${escapeHtml(formatCombatantHealth(combatant))}</span>
+                      <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(formatCombatantSide(combatant.side))}</span>
                       <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${escapeHtml(formatCombatantConditions(combatant.conditions))}</span>
                       ${
                         combatant.seatId !== null && combatant.inventory.length > 0
@@ -1900,11 +1972,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-describedby="composer-gate-hint">
           ${busy ? 'Moving…' : 'Commit move'}
         </button>
-        <button type="button" data-testid="undo-last-move"
-          aria-disabled="${syncDisabled || undoMoveAnchor === null}"
+        ${
+          undoMoveAnchor === null
+            ? ''
+            : `<button type="button" data-testid="undo-last-move"
+          aria-disabled="${syncDisabled}"
           aria-describedby="composer-gate-hint">
           Undo last move
-        </button>
+        </button>`
+        }
         <button type="button" data-testid="open-adjacent-door"
           aria-disabled="${syncDisabled || !hasClosedDoor}"
           aria-describedby="composer-gate-hint">
@@ -1952,10 +2028,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <div data-testid="table-info-slot"></div>
           </aside>
           <main class="table-play-column" aria-label="Play area">
-            <div class="table-focus-restore" data-testid="table-focus-restore" hidden>
-              <button type="button" data-testid="expand-info-rail">Reference</button>
-              <button type="button" data-testid="expand-comms-rail">Chat</button>
-            </div>
+            <div class="table-focus-restore" data-testid="table-focus-restore" hidden></div>
             <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
               <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
             </section>
@@ -2004,7 +2077,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           selectedEdgeId = edgeId;
           const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
           if (edge !== null) {
-            movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+            const label = edgeAccessibleLabelFromEdge(edge);
+            movePreviewNote = `Selected ${label}. Declare an interaction in the play channel.`;
+            shell.announce(`Selected ${label}.`);
           }
           render();
         });
@@ -2031,7 +2106,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           selectedEdgeId = edgeId;
           const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
           if (edge !== null) {
-            movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+            const label = edgeAccessibleLabelFromEdge(edge);
+            movePreviewNote = `Selected ${label}. Declare an interaction in the play channel.`;
+            shell.announce(`Selected ${label}.`);
           }
           render();
         });
@@ -2276,6 +2353,55 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function bindPanelEvents(root: HTMLElement): void {
+    root.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (progression === null || button.getAttribute('aria-disabled') === 'true') {
+          return;
+        }
+        const resourceId = button.dataset.sheetResource;
+        const resources = progression.sheet.classResources;
+        if (resourceId === undefined || resources === undefined) {
+          return;
+        }
+        progression = {
+          ...progression,
+          sheet: {
+            ...progression.sheet,
+            classResources: resources.map((resource) =>
+              resource.id === resourceId && resource.remaining > 0
+                ? { ...resource, remaining: resource.remaining - 1 }
+                : resource,
+            ),
+          },
+        };
+        shell.announce(`Spent ${resourceId.replace(/-/g, ' ')}.`);
+        render();
+      });
+    });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="spend-spell-slot"]')
+      ?.addEventListener('click', () => {
+        if (
+          progression === null ||
+          progression.sheet.spellcasting === null ||
+          progression.sheet.spellcasting.level1SlotsRemaining <= 0
+        ) {
+          return;
+        }
+        progression = {
+          ...progression,
+          sheet: {
+            ...progression.sheet,
+            spellcasting: {
+              ...progression.sheet.spellcasting,
+              level1SlotsRemaining: progression.sheet.spellcasting.level1SlotsRemaining - 1,
+            },
+          },
+        };
+        shell.announce('Spent a level 1 spell slot.');
+        render();
+      });
+
     root.querySelectorAll<HTMLButtonElement>('[data-info-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         activeInfoTab = button.dataset.infoTab as InfoTab;
@@ -2394,14 +2520,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             doorRecoveryVisible = false;
             if (clarificationOnly) {
-              intentDraft = null;
+              setIntentDraft(null);
               appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
-              intentDraft = draftFromInterpret({
+              setIntentDraft(draftFromInterpret({
                 ...interpreted,
                 summary: scrubbedSummary,
-              });
+              }));
               shell.announce(`${directorIdentityLabel} prepared a scene draft — confirm to place the door.`);
             }
           } catch (failure) {
@@ -2801,7 +2927,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: nlIntentText.trim(),
               moveTarget,
             });
-            intentDraft = draftFromInterpret(interpreted);
+            setIntentDraft(draftFromInterpret(interpreted));
             shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
           } catch (failure) {
             error =
@@ -3006,17 +3132,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
-              intentDraft = null;
+              setIntentDraft(null);
               doorRecoveryVisible =
                 (mapBundle?.edges.length ?? 0) === 0 &&
                 /no door|open floor|Emberferry/i.test(scrubbedSummary);
               appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
-              intentDraft = draftFromInterpret({
+              setIntentDraft(draftFromInterpret({
                 ...interpreted,
                 summary: scrubbedSummary,
-              });
+              }));
               shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
             }
           } catch (failure) {
@@ -3236,7 +3362,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           return;
         }
         if (moveTarget !== null) {
-          intentDraft = {
+          setIntentDraft({
             draftId: crypto.randomUUID(),
             source: 'action_composer_interpret',
             campaignId,
@@ -3245,19 +3371,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             path: [moveTarget],
             interceptState: 'awaiting_confirmation',
             createdAt: new Date().toISOString(),
-          };
+          });
           render();
           return;
         }
         error = 'Select a destination square on the map before planning a move.';
-        intentDraft = null;
+        setIntentDraft(null);
         render();
       });
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="cancel-intent-intercept"]')
       ?.addEventListener('click', () => {
-        intentDraft = null;
+        setIntentDraft(null);
         render();
       });
 
@@ -3265,7 +3391,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="edit-failed-declaration"]')
       ?.addEventListener('click', () => {
         playerActionDraft = lastSubmittedDeclaration;
-        intentDraft = null;
+        setIntentDraft(null);
         error = null;
         render();
         const composer = root.querySelector<HTMLTextAreaElement>('[data-testid="player-action-input"]');
@@ -3295,10 +3421,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
             });
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
-            intentDraft = draftFromInterpret({
+            setIntentDraft(draftFromInterpret({
               ...interpreted,
               summary: scrubbedSummary,
-            });
+            }));
             shell.announce(`${directorIdentityLabel} prepared a fresh draft — confirm to resolve it.`);
           } catch (failure) {
             error =
@@ -3356,7 +3482,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           const draft = intentDraft;
           if (isRulesIntentDraftCommand(draft.proposedCommandType)) {
-            intentDraft = null;
+            setIntentDraft(null);
             await submitRulesAction(
               draft.proposedCommandType,
               fieldsFromIntentDraft(draft),
@@ -3388,7 +3514,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               'Action committed on the table.';
             appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
             shell.announce('Action confirmed on the table.');
-            intentDraft = null;
+            setIntentDraft(null);
             doorRecoveryVisible = false;
             if (
               shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
@@ -3408,13 +3534,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : 'That action could not be confirmed.';
             error = playerFacingMechanicsCopy(raw);
             if (intentDraft !== null) {
-              intentDraft = {
+              setIntentDraft({
                 ...intentDraft,
                 interceptState: 'failed',
                 summary: playerFacingMechanicsCopy(
                   `${intentDraft.summary} — ${error}`,
                 ),
-              };
+              });
             }
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
               presentTableConflict(failure);
@@ -3538,7 +3664,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ? 'Map projection pending.'
         : (() => {
             const art = humanizeArtProvenance(mapBundle.artProvenance, mapBundle.title);
-            const base = `${escapeHtml(mapBundle.title)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square`;
+            const checkpoint = mapBundle.title.trim().length > 0 ? mapBundle.title : 'Blank table';
+            const base = `Shared scene checkpoint: ${escapeHtml(checkpoint)} · ${mapBundle.coordinateSpace.columns}×${mapBundle.coordinateSpace.rows} squares · ${mapBundle.coordinateSpace.feetPerSquare} ft/square`;
             return art.length === 0 ? base : `${base} · ${escapeHtml(art)}`;
           })();
 

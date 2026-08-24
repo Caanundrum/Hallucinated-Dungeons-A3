@@ -1038,7 +1038,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
 
 /** Player-facing summaries for Origin feats that are not Magic Initiate. */
 export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
-  Alert: '+5 bonus to Initiative rolls. You cannot be surprised while conscious.',
+  Alert: 'Add your Proficiency Bonus to Initiative. You cannot be surprised while conscious.',
 };
 
 /** Every distinct Origin feat granted by a Background on the SRD roster. */

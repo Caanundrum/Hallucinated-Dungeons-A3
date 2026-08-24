@@ -132,6 +132,28 @@ export function resolveDoorIntentForMap(
   }
 
   if (openDoors.length > 0) {
+    const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
+    if (
+      adjacentOpen !== undefined &&
+      /(swing|ajar|hinge|free|test|push|pull|check|inspect)/.test(text)
+    ) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: adjacentOpen.edgeId,
+        summary:
+          'The wooden door beside you is already open and swings freely on its hinges. No roll is required — declare what you do next through the doorway.',
+      };
+    }
+    if (/(swing|ajar|hinge|free|test).*(door|gate)|door.*(swing|ajar|hinge|free|test)/.test(text)) {
+      const door = adjacentOpen ?? openDoors[0]!;
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: door.edgeId,
+        summary: adjacentOpen
+          ? 'The wooden door beside you is already open and swings freely on its hinges. No roll is required — declare what you do next through the doorway.'
+          : `An open wooden door is on this scene (${sceneTitle}). Move adjacent to test it, or declare your next action through the doorway.`,
+      };
+    }
     if (/(enter|room beyond|beyond|through)/.test(text)) {
       return {
         proposedCommandType: 'table.sync',

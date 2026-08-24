@@ -10,7 +10,7 @@ import {
   type RulesCatalogProjection,
 } from '../../shared/rules-catalog-contract.js';
 import { CONDITION_IDS } from '../../shared/rules-combat-contract.js';
-import { explainCondition } from './engine/conditions.js';
+import { explainCondition, isTableStatusCondition } from './engine/conditions.js';
 import { RULE_EXPLANATION_IDS, explainRule } from './engine/rules-explanations.js';
 import {
   ARMOR,
@@ -49,11 +49,14 @@ function coreMechanicEntries(): RulesCatalogEntryProjection[] {
 function conditionEntries(): RulesCatalogEntryProjection[] {
   return CONDITION_IDS.map((conditionId) => {
     const explanation = explainCondition(conditionId);
+    const tableStatus = isTableStatusCondition(conditionId);
     return {
       entryId: `condition:${conditionId}`,
-      category: 'conditions' as const,
-      title: explanation.title,
-      summary: explanation.summary,
+      category: tableStatus ? ('table_statuses' as const) : ('conditions' as const),
+      title: tableStatus ? `${explanation.title} (table status)` : explanation.title,
+      summary: tableStatus
+        ? `Hallucinated Dungeons table status — not an SRD condition. ${explanation.summary}`
+        : explanation.summary,
       details: explanation.steps,
       source: explanation.source,
     };

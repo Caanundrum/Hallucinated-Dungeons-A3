@@ -201,7 +201,7 @@ export function dmThreadFromChronicleEntries(options: {
         speaker: 'dm',
         speakerLabel: options.directorLabel,
         body: `${scene} What do you do?`,
-        createdAt: new Date().toISOString(),
+        createdAt: '1970-01-01T00:00:00.000Z',
         kind: 'prompt',
       },
     ];

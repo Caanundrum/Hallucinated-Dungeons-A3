@@ -200,8 +200,13 @@ export function renderCharacterSheet(
         <p>
           Level 1 Spell Slots:
           <b data-testid="sheet-spell-slots-remaining">${sheet.spellcasting.level1SlotsRemaining}</b>
-          / <b>${sheet.spellcasting.level1SlotCount}</b> remaining ·
+          / <b data-testid="sheet-spell-slots-maximum">${sheet.spellcasting.level1SlotCount}</b> remaining ·
           Spells are ${escapeHtml(sheet.spellcasting.preparationStyle)}
+          <button type="button" class="secondary compact" data-sheet-spell-slot="level1"
+            data-testid="spend-spell-slot"
+            aria-disabled="${sheet.spellcasting.level1SlotsRemaining <= 0 ? 'true' : 'false'}">
+            Spend slot
+          </button>
         </p>
         <p><b>Cantrips:</b> ${
           sheet.spellcasting.cantrips.length === 0

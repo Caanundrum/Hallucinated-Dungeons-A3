@@ -121,6 +121,58 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </div>`;
 
     bindIdentityControls();
+    bindSheetTrackers();
+  }
+
+  function bindSheetTrackers(): void {
+    if (character === null) {
+      return;
+    }
+    container.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (character === null || button.getAttribute('aria-disabled') === 'true') {
+          return;
+        }
+        const resourceId = button.dataset.sheetResource;
+        if (resourceId === undefined || character.sheet.classResources === undefined) {
+          return;
+        }
+        const resources = character.sheet.classResources.map((resource) =>
+          resource.id === resourceId && resource.remaining > 0
+            ? { ...resource, remaining: resource.remaining - 1 }
+            : resource,
+        );
+        character = {
+          ...character,
+          sheet: { ...character.sheet, classResources: resources },
+        };
+        shell.announce(`Spent ${resourceId.replace(/-/g, ' ')}.`);
+        renderSignedIn();
+      });
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="spend-spell-slot"]')
+      ?.addEventListener('click', () => {
+        if (
+          character === null ||
+          character.sheet.spellcasting === null ||
+          character.sheet.spellcasting.level1SlotsRemaining <= 0
+        ) {
+          return;
+        }
+        character = {
+          ...character,
+          sheet: {
+            ...character.sheet,
+            spellcasting: {
+              ...character.sheet.spellcasting,
+              level1SlotsRemaining: character.sheet.spellcasting.level1SlotsRemaining - 1,
+            },
+          },
+        };
+        shell.announce('Spent a level 1 spell slot.');
+        renderSignedIn();
+      });
   }
 
   function bindIdentityControls(): void {
