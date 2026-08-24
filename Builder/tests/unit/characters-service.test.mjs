@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { emptyChoices, validateChoices, deriveSheet } from '../../dist/server/rules/character-rules.js';
+import {
+  coerceStoredChoices,
+  emptyChoices,
+  validateChoices,
+  deriveSheet,
+} from '../../dist/server/rules/character-rules.js';
 import { QUICK_START_TEMPLATES } from '../../dist/server/rules/srd-manifest.js';
 
 /**
@@ -67,4 +72,31 @@ test('every quick-start template is mechanically complete after identity is supp
     assert.ok(sheet.proficiencyBonus.value >= 2);
     assert.ok(sheet.hitPoints.components.length >= 1);
   }
+});
+
+test('legacy Wizard drafts missing spellbookIds still validate without throwing', () => {
+  const template = QUICK_START_TEMPLATES.find((entry) => entry.id === 'studious-mage');
+  assert.ok(template);
+  const legacy = {
+    ...choicesFromTemplate(template),
+  };
+  // Simulate a pre–spellbook Firestore document.
+  delete legacy.spellbookIds;
+  delete legacy.backgroundFeatCantripIds;
+  delete legacy.backgroundFeatSpellIds;
+  delete legacy.chosenOriginFeatId;
+
+  assert.doesNotThrow(() => validateChoices(legacy));
+  const coerced = coerceStoredChoices(legacy);
+  assert.deepEqual(coerced.spellbookIds, []);
+  const problems = validateChoices(legacy);
+  assert.ok(
+    problems.some(
+      (problem) =>
+        problem.code === 'SPELLBOOK_COUNT' ||
+        problem.code === 'SPELL_NOT_IN_SPELLBOOK' ||
+        problem.message.toLowerCase().includes('spellbook'),
+    ),
+    `expected spellbook unresolved after coerce, got ${JSON.stringify(problems)}`,
+  );
 });

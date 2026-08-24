@@ -671,7 +671,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
   const server = createServer((request, response) => {
     handleRequest(request, response).catch((error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       process.stderr.write(`[arena-server] unhandled request failure: ${detail}\n`);
       if (!response.headersSent) {
         sendError(response, ERROR_CODES.UPSTREAM_UNAVAILABLE);

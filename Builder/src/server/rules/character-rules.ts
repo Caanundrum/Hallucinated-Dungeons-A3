@@ -91,6 +91,39 @@ export function emptyChoices(): CharacterChoices {
   };
 }
 
+/**
+ * Backfill fields added after a draft/character was first written so older
+ * Firestore documents still validate and project under the current contract.
+ * Without this, missing arrays (for example `spellbookIds`) throw inside
+ * validateChoices and the hosted vault surfaces a false "live storage" error.
+ */
+export function coerceStoredChoices(choices: CharacterChoices): CharacterChoices {
+  const base = emptyChoices();
+  return {
+    ...base,
+    ...choices,
+    baseAbilityScores: choices.baseAbilityScores ?? base.baseAbilityScores,
+    backgroundAbilityBonuses: choices.backgroundAbilityBonuses ?? base.backgroundAbilityBonuses,
+    classSkillIds: choices.classSkillIds ?? base.classSkillIds,
+    speciesChoiceIds: choices.speciesChoiceIds ?? base.speciesChoiceIds,
+    classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
+    cantripIds: choices.cantripIds ?? base.cantripIds,
+    spellbookIds: choices.spellbookIds ?? base.spellbookIds,
+    spellIds: choices.spellIds ?? base.spellIds,
+    chosenOriginFeatId: choices.chosenOriginFeatId ?? base.chosenOriginFeatId,
+    backgroundFeatCantripIds: choices.backgroundFeatCantripIds ?? base.backgroundFeatCantripIds,
+    backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
+    originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
+    originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
+    identity: choices.identity ?? base.identity,
+    rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
+    abilityRollAttempts:
+      typeof choices.abilityRollAttempts === 'number' && Number.isInteger(choices.abilityRollAttempts)
+        ? Math.max(0, choices.abilityRollAttempts)
+        : 0,
+  };
+}
+
 /** Human Versatile Origin feat choice only — Background feats use backgroundDetail. */
 export function resolveActiveOriginFeat(
   choices: CharacterChoices,
@@ -180,7 +213,7 @@ function validateMagicInitiatePicks(options: {
  * keeps every class proficiency slot after changing Background.
  */
 export function sanitizeChoices(choices: CharacterChoices): CharacterChoices {
-  let next = choices;
+  let next = coerceStoredChoices(choices);
   const backgroundRecord = findBackground(next.backgroundId);
   const speciesRecord = findSpecies(next.speciesId);
 
@@ -268,6 +301,7 @@ function unresolved(step: WizardStep, code: string, message: string): Unresolved
  */
 export function validateChoices(choices: CharacterChoices): readonly UnresolvedChoice[] {
   const problems: UnresolvedChoice[] = [];
+  choices = coerceStoredChoices(choices);
 
   const classRecord = findClass(choices.classId);
   const backgroundRecord = findBackground(choices.backgroundId);
@@ -831,6 +865,7 @@ function deriveAttacks(
  * `validateChoices`.
  */
 export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | null {
+  choices = coerceStoredChoices(choices);
   const classRecord = findClass(choices.classId);
   const backgroundRecord = findBackground(choices.backgroundId);
   const speciesRecord = findSpecies(choices.speciesId);
