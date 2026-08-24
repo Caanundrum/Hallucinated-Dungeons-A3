@@ -66,6 +66,9 @@ export async function enterArena(page: Page): Promise<string> {
 
 /** Signs in from the shell account chip without visiting diagnostics. */
 export async function enterAccountFromShell(page: Page): Promise<void> {
+  if (await page.getByTestId('shell-account-link').isVisible().catch(() => false)) {
+    return;
+  }
   await expect(page.getByTestId('shell-enter-account')).toBeVisible();
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
