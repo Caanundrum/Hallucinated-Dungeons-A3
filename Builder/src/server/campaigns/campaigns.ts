@@ -22,18 +22,26 @@ import {
   INVITATION_RATE_LIMIT_MAX,
   INVITATION_RATE_LIMIT_WINDOW_MS,
   INVITATION_TTL_MS,
+  MAX_ACTIVE_PLAYERS,
+  type ActiveSeatedTableProjection,
   type AdventureTemplate,
   type CampaignDetailProjection,
   type CampaignListProjection,
   type CampaignMemberRole,
   type CampaignProjection,
+  type CampaignVisibility,
   type DirectorIdentity,
   type DirectorPersonality,
   type InvitationCreatedProjection,
   type InvitationPreview,
+  type JoinTableResponse,
   type MembershipProjection,
+  type PublicTableListProjection,
+  type PublicTableProjection,
   type SeatProjection,
+  type TablesHubProjection,
   isAdventureTemplate,
+  isCampaignVisibility,
   isDirectorIdentity,
   isDirectorPersonality,
 } from '../../shared/campaign-contract.js';
@@ -47,21 +55,25 @@ import {
 import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
 import {
   AlreadySeatedError,
+  AlreadyAtAnotherTableError,
   CampaignNotFoundError,
   CampaignValidationError,
   InvitationRateLimitedError,
   InvitationUnavailableError,
+  TableFullError,
+  WrongTablePasswordError,
 } from './errors.js';
+import { hashJoinPassword, verifyJoinPassword, JoinPasswordValidationError } from '../identity/join-password.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import {
   ensureCampaignSettings,
   projectCampaignSettings,
   seedCampaignSettings,
-  assertSessionZeroRecorded,
 } from '../settings/campaign-settings.js';
 
 export {
   AlreadyMemberError,
+  AlreadyAtAnotherTableError,
   AlreadySeatedError,
   CampaignNotFoundError,
   CampaignValidationError,
@@ -69,6 +81,9 @@ export {
   InvitationRateLimitedError,
   InvitationUnavailableError,
   NotAMemberError,
+  NotPublicTableError,
+  TableFullError,
+  WrongTablePasswordError,
 } from './errors.js';
 
 const SESSION_STATE_OPEN = 'Open for membership';
@@ -89,6 +104,8 @@ interface StoredCampaign {
   /** Starter pack this campaign was created from, or null for a blank table (Phase 5). */
   readonly adventureTemplateId: string | null;
   readonly adventurePackVersion: string | null;
+  readonly visibility: CampaignVisibility;
+  readonly joinPasswordHash: string | null;
   readonly createdAt: Timestamp | Date;
   readonly updatedAt: Timestamp | Date;
 }
@@ -163,6 +180,44 @@ function validateSummary(raw: unknown): string {
     );
   }
   return summary;
+}
+
+function campaignVisibility(stored: StoredCampaign): CampaignVisibility {
+  return stored.visibility ?? 'private';
+}
+
+function campaignPasswordProtected(stored: StoredCampaign): boolean {
+  return typeof stored.joinPasswordHash === 'string' && stored.joinPasswordHash.length > 0;
+}
+
+function validateVisibility(raw: unknown): CampaignVisibility {
+  if (raw === undefined || raw === null) {
+    return 'private';
+  }
+  if (!isCampaignVisibility(raw)) {
+    throw new CampaignValidationError('Choose public or private table visibility.');
+  }
+  return raw;
+}
+
+function validateJoinPassword(raw: unknown, visibility: CampaignVisibility): string | null {
+  if (raw === undefined || raw === null || raw === '') {
+    return null;
+  }
+  if (typeof raw !== 'string') {
+    throw new CampaignValidationError('Join password must be text.');
+  }
+  if (visibility !== 'public') {
+    throw new CampaignValidationError('Join passwords apply only to public tables.');
+  }
+  try {
+    return hashJoinPassword(raw);
+  } catch (error) {
+    if (error instanceof JoinPasswordValidationError) {
+      throw new CampaignValidationError(error.message);
+    }
+    throw error;
+  }
 }
 
 function projectDirector(stored: StoredCampaign) {
@@ -279,12 +334,60 @@ async function listSeats(firestore: Firestore, campaignId: string): Promise<Stor
   return snapshot.docs.map((doc) => doc.data() as StoredSeat);
 }
 
+async function findGlobalActiveSeat(
+  firestore: Firestore,
+  accountId: string,
+): Promise<StoredSeat | null> {
+  const snapshot = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('ownerAccountId', '==', accountId)
+    .limit(1)
+    .get();
+  if (snapshot.empty) {
+    return null;
+  }
+  return snapshot.docs[0]!.data() as StoredSeat;
+}
+
+async function ensurePlayerMembership(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+  readonly displayLabel: string;
+}): Promise<StoredMembership> {
+  const existing = await loadMembership(options.firestore, options.campaignId, options.accountId);
+  if (existing !== null) {
+    return existing;
+  }
+  const now = new Date();
+  const membership: StoredMembership = {
+    membershipId: randomUUID(),
+    campaignId: options.campaignId,
+    accountId: options.accountId,
+    displayLabel: options.displayLabel,
+    role: 'player',
+    joinedAt: now,
+  };
+  await options.firestore
+    .collection(COLLECTIONS.campaignMemberships)
+    .doc(membership.membershipId)
+    .set(membership);
+  await appendChronicleEntry({
+    firestore: options.firestore,
+    campaignId: options.campaignId,
+    kind: 'member_joined',
+    body: `${options.displayLabel} joined the campaign.`,
+  });
+  return membership;
+}
+
 function projectCampaign(
   stored: StoredCampaign,
   membership: StoredMembership,
   memberCount: number,
-  seatCount: number,
+  activeSeatCount: number,
 ): CampaignProjection {
+  const visibility = campaignVisibility(stored);
   return {
     campaignId: stored.campaignId,
     name: stored.name,
@@ -294,12 +397,30 @@ function projectCampaign(
     membershipRole: membership.role,
     director: projectDirector(stored),
     memberCount,
-    seatCount,
+    seatCount: activeSeatCount,
+    activeSeatCount,
+    visibility,
+    passwordProtected: campaignPasswordProtected(stored),
     adventureTemplateId: stored.adventureTemplateId ?? null,
     adventurePackVersion: stored.adventurePackVersion ?? null,
     createdAt: toIso(stored.createdAt),
     updatedAt: toIso(stored.updatedAt),
     isCampaignOwner: membership.role === 'owner',
+  };
+}
+
+function projectPublicTable(stored: StoredCampaign, activeSeatCount: number): PublicTableProjection {
+  return {
+    campaignId: stored.campaignId,
+    name: stored.name,
+    summary: stored.summary,
+    ownerDisplayLabel: stored.ownerDisplayLabel,
+    directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[stored.directorIdentity],
+    directorPersonalityLabel: DIRECTOR_PERSONALITY_LABELS[stored.directorPersonality],
+    activeSeatCount,
+    maxActivePlayers: MAX_ACTIVE_PLAYERS,
+    passwordProtected: campaignPasswordProtected(stored),
+    updatedAt: toIso(stored.updatedAt),
   };
 }
 
@@ -389,11 +510,15 @@ export async function createCampaign(options: {
   readonly directorPersonality: unknown;
   /** Starter pack to seed from, or 'blank'. Omitted requests default to blank. */
   readonly adventureTemplate?: unknown;
+  readonly visibility?: unknown;
+  readonly joinPassword?: unknown;
 }): Promise<CampaignProjection> {
   const { firestore, accountId, displayLabel } = options;
   const name = validateName(options.name);
   const summary = validateSummary(options.summary);
   const adventureTemplate = validateAdventureTemplate(options.adventureTemplate);
+  const visibility = validateVisibility(options.visibility);
+  const joinPasswordHash = validateJoinPassword(options.joinPassword, visibility);
 
   if (!isDirectorIdentity(options.directorIdentity)) {
     throw new CampaignValidationError('Choose Veyra or Garrick as the Game Director identity.');
@@ -423,6 +548,8 @@ export async function createCampaign(options: {
     directorLockedAt: director.lockedAt,
     adventureTemplateId: starterPack?.packId ?? null,
     adventurePackVersion: starterPack?.packVersion ?? null,
+    visibility,
+    joinPasswordHash,
     createdAt: now,
     updatedAt: now,
   };
@@ -457,6 +584,61 @@ export async function createCampaign(options: {
   });
 
   return projectCampaign(campaign, membership, 1, 0);
+}
+
+/** Lists public tables for the open lobby. */
+export async function listPublicTables(options: {
+  readonly firestore: Firestore;
+}): Promise<PublicTableListProjection> {
+  const snapshot = await options.firestore
+    .collection(COLLECTIONS.campaigns)
+    .where('visibility', '==', 'public')
+    .get();
+  const tables: PublicTableProjection[] = [];
+  for (const doc of snapshot.docs) {
+    const stored = doc.data() as StoredCampaign;
+    const activeSeatCount = await countSeats(options.firestore, stored.campaignId);
+    tables.push(projectPublicTable(stored, activeSeatCount));
+  }
+  tables.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  return { tables };
+}
+
+/** Returns the table this account is actively seated at, if any. */
+export async function readActiveSeatedTable(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+}): Promise<ActiveSeatedTableProjection | null> {
+  const seat = await findGlobalActiveSeat(options.firestore, options.accountId);
+  if (seat === null) {
+    return null;
+  }
+  const campaign = await loadCampaign(options.firestore, seat.campaignId);
+  return {
+    campaignId: seat.campaignId,
+    campaignName: campaign.name,
+    seatId: seat.seatId,
+    characterId: seat.characterId,
+    characterName: seat.characterName,
+  };
+}
+
+/** My tables, open lobby, and active seat in one hub payload. */
+export async function readTablesHub(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+}): Promise<TablesHubProjection> {
+  const [list, open, activeSeat] = await Promise.all([
+    listCampaigns({ firestore: options.firestore, accountId: options.accountId }),
+    listPublicTables({ firestore: options.firestore }),
+    readActiveSeatedTable({ firestore: options.firestore, accountId: options.accountId }),
+  ]);
+  return {
+    accountId: options.accountId,
+    myTables: list.campaigns,
+    openTables: open.tables,
+    activeSeat,
+  };
 }
 
 /** Lists campaigns this account owns or has joined. */
@@ -789,7 +971,7 @@ export async function acceptInvitation(options: {
 
 /**
  * Creates a seat binding this account's owned character into the campaign.
- * Foreign characters and non-members are refused without leaking ownership.
+ * Enforces one global active seat and a maximum of four concurrent players.
  */
 export async function createSeat(options: {
   readonly firestore: Firestore;
@@ -797,20 +979,34 @@ export async function createSeat(options: {
   readonly campaignId: string;
   readonly characterId: string;
   readonly deviceSessionId: string;
+  /** When true, auto-leave an active seat at another table before seating here. */
+  readonly confirmSwitch?: boolean;
 }): Promise<SeatProjection> {
   const { firestore, accountId, campaignId, characterId, deviceSessionId } = options;
   await requireMembership(firestore, campaignId, accountId);
   await loadCampaign(firestore, campaignId);
-  await assertSessionZeroRecorded(firestore, campaignId);
 
-  const existingSeats = await firestore
+  const existingAtTable = await firestore
     .collection(COLLECTIONS.campaignSeats)
     .where('campaignId', '==', campaignId)
     .where('ownerAccountId', '==', accountId)
     .limit(1)
     .get();
-  if (!existingSeats.empty) {
+  if (!existingAtTable.empty) {
     throw new AlreadySeatedError();
+  }
+
+  const globalSeat = await findGlobalActiveSeat(firestore, accountId);
+  if (globalSeat !== null && globalSeat.campaignId !== campaignId) {
+    if (options.confirmSwitch !== true) {
+      throw new AlreadyAtAnotherTableError(globalSeat.campaignId);
+    }
+    await leaveSeat({ firestore, accountId, campaignId: globalSeat.campaignId });
+  }
+
+  const activeCount = await countSeats(firestore, campaignId);
+  if (activeCount >= MAX_ACTIVE_PLAYERS) {
+    throw new TableFullError();
   }
 
   let character;
@@ -818,7 +1014,6 @@ export async function createSeat(options: {
     character = await readCharacter({ firestore, accountId, characterId });
   } catch (error) {
     if (error instanceof CharacterNotFoundError) {
-      // A character owned by someone else is indistinguishable from missing.
       throw new CharacterNotFoundError();
     }
     throw error;
@@ -847,6 +1042,77 @@ export async function createSeat(options: {
     body: `${character.identity.name} was seated at the table.`,
   });
   return projectSeat(seat);
+}
+
+/**
+ * Join a table with a character: ensures membership (public lobby), verifies
+ * password when required, optionally switches from another active table, and seats.
+ */
+export async function joinTable(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly displayLabel: string;
+  readonly campaignId: string;
+  readonly characterId: string;
+  readonly deviceSessionId: string;
+  readonly password?: unknown;
+  readonly confirmSwitch?: boolean;
+}): Promise<JoinTableResponse> {
+  const { firestore, accountId, displayLabel, campaignId, characterId, deviceSessionId } =
+    options;
+  const stored = await loadCampaign(firestore, campaignId);
+  const visibility = campaignVisibility(stored);
+
+  let membership = await loadMembership(firestore, campaignId, accountId);
+  if (membership === null) {
+    if (visibility !== 'public') {
+      throw new CampaignNotFoundError();
+    }
+    membership = await ensurePlayerMembership({
+      firestore,
+      campaignId,
+      accountId,
+      displayLabel,
+    });
+  }
+
+  if (campaignPasswordProtected(stored)) {
+    if (typeof options.password !== 'string' || options.password.trim().length === 0) {
+      throw new WrongTablePasswordError();
+    }
+    if (!verifyJoinPassword(options.password, stored.joinPasswordHash!)) {
+      throw new WrongTablePasswordError();
+    }
+  }
+
+  let switchedFromCampaignId: string | null = null;
+  const globalSeat = await findGlobalActiveSeat(firestore, accountId);
+  if (globalSeat !== null && globalSeat.campaignId !== campaignId) {
+    if (options.confirmSwitch !== true) {
+      throw new AlreadyAtAnotherTableError(globalSeat.campaignId);
+    }
+    switchedFromCampaignId = globalSeat.campaignId;
+  }
+
+  const seat = await createSeat({
+    firestore,
+    accountId,
+    campaignId,
+    characterId,
+    deviceSessionId,
+    ...(options.confirmSwitch === true ? { confirmSwitch: true } : {}),
+  });
+
+  const [memberCount, activeSeatCount] = await Promise.all([
+    countMembers(firestore, campaignId),
+    countSeats(firestore, campaignId),
+  ]);
+
+  return {
+    campaign: projectCampaign(stored, membership, memberCount, activeSeatCount),
+    seat,
+    switchedFromCampaignId,
+  };
 }
 
 /** Removes the caller's own seat so they can reseat another character. */

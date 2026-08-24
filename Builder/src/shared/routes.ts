@@ -25,7 +25,7 @@ export const SPA_ROUTES = [
 ] as const;
 export type SpaRoute = (typeof SPA_ROUTES)[number];
 
-export type CampaignSubroute = 'detail' | 'settings' | 'table';
+export type CampaignSubroute = 'detail' | 'settings' | 'table' | 'join';
 
 /**
  * Parameterized single-page routes. A path matching one of these is served
@@ -37,6 +37,7 @@ const SPA_ROUTE_PATTERNS: readonly RegExp[] = [
   /^\/campaigns\/[A-Za-z0-9-]{1,64}$/,
   /^\/campaigns\/[A-Za-z0-9-]{1,64}\/settings$/,
   /^\/campaigns\/[A-Za-z0-9-]{1,64}\/table$/,
+  /^\/campaigns\/[A-Za-z0-9-]{1,64}\/join$/,
   /^\/invite\/[A-Za-z0-9]{8,32}$/,
 ];
 
@@ -71,13 +72,19 @@ export function characterIdFromPath(path: string): string | null {
 export function campaignRouteFromPath(
   path: string,
 ): { readonly campaignId: string; readonly subroute: CampaignSubroute } | null {
-  const match = /^\/campaigns\/([A-Za-z0-9-]{1,64})(?:\/(settings|table))?$/.exec(path);
+  const match = /^\/campaigns\/([A-Za-z0-9-]{1,64})(?:\/(settings|table|join))?$/.exec(path);
   if (match === null || match[1] === 'new') {
     return null;
   }
   const suffix = match[2];
   const subroute: CampaignSubroute =
-    suffix === 'settings' ? 'settings' : suffix === 'table' ? 'table' : 'detail';
+    suffix === 'settings'
+      ? 'settings'
+      : suffix === 'table'
+        ? 'table'
+        : suffix === 'join'
+          ? 'join'
+          : 'detail';
   return { campaignId: match[1]!, subroute };
 }
 

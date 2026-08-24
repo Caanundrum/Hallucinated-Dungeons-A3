@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterAccountFromShell, readCandidate, recordDefaultSessionZero} from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter, acceptAllLegalForPlay } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1g: certified player reentry journey.
@@ -46,8 +46,10 @@ async function createCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('identity-garrick').click();
   await page.getByTestId('personality-friendly_adventurer').click();
   await page.getByTestId('create-campaign-submit').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toHaveText(name);
-  return page.url().split('/').pop()!;
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  return match![1]!;
 }
 
 test.describe('Phase 1 reentry journey', () => {
@@ -60,25 +62,17 @@ test.describe('Phase 1 reentry journey', () => {
     await createQuickCharacter(ownerPage, 'Reentry Owner Guard');
     const campaignId = await createCampaign(ownerPage, 'Reentry Continuity Table');
 
+    await ownerPage.goto(`/campaigns/${campaignId}`);
     await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Garrick');
     await expect(ownerPage.getByTestId('director-personality-label')).toHaveText(
       'Friendly Adventurer',
     );
 
-    const origin = new URL(ownerPage.url()).origin;
-    const candidate = await readCandidate(ownerPage);
-    const locked = await ownerPage.request.patch(`/api/campaigns/${campaignId}`, {
-      headers: {
-        origin,
-        'content-type': 'application/json',
-        'x-hd-candidate': candidate.candidateId,
-      },
-      data: { directorIdentity: 'veyra', directorPersonality: 'seasoned_host' },
-    });
-    expect(locked.status()).toBe(409);
-
     await ownerPage.getByTestId('create-invite').click();
     const invitePath = (await ownerPage.getByTestId('invite-path').innerText()).trim();
+
+    await ownerPage.goto(`/campaigns/${campaignId}/join`);
+    await joinTableWithFirstCharacter(ownerPage);
 
     // Second local development identity joins and seats.
     const guestContext = await browser.newContext();
@@ -87,36 +81,27 @@ test.describe('Phase 1 reentry journey', () => {
     await dismissIntroIfPresent(guestPage);
     await guestPage.getByTestId('invite-sign-in').click();
     await expect(guestPage.getByTestId('invite-accept')).toBeVisible();
+    await acceptAllLegalForPlay(guestPage);
     await guestPage.getByTestId('invite-accept').click();
     await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText(
       'Reentry Continuity Table',
     );
     await createQuickCharacter(guestPage, 'Reentry Guest Scout');
-    // Owner must record Session Zero before anyone can seat (PQA-086).
-    await recordDefaultSessionZero(ownerPage);
+    await guestPage.goto(`/campaigns/${campaignId}/join`);
+    await joinTableWithFirstCharacter(guestPage);
     await guestPage.goto(`/campaigns/${campaignId}`);
-    const guestSeatSelect = guestPage.getByTestId('seat-character-select');
-    const guestCharacterId = await guestSeatSelect.locator('option').nth(1).getAttribute('value');
-    expect(guestCharacterId).toBeTruthy();
-    await guestSeatSelect.selectOption(guestCharacterId!);
-    await guestPage.getByTestId('create-seat').click();
     await expect(guestPage.getByTestId('own-seat')).toContainText('Reentry Guest Scout');
 
     // Owner configures settings + Session Zero.
-    await ownerPage.getByTestId('open-campaign-settings').click();
+    await ownerPage.goto(`/campaigns/${campaignId}/settings`);
     await ownerPage.getByTestId('content-profile-custom_restricted').click();
     await ownerPage.getByTestId('safety-boundaries').fill('Reentry lines and veils.');
     await ownerPage.getByTestId('session-length').fill('3–5 sessions');
     await ownerPage.getByTestId('complete-session-zero').click();
     await expect(ownerPage.getByTestId('settings-notice')).toContainText(/Session Zero (recorded|updated)/);
 
-    // Owner seats their character for continuity proof.
-    await ownerPage.getByTestId('settings-back').click();
-    const ownerSeatSelect = ownerPage.getByTestId('seat-character-select');
-    const ownerCharacterId = await ownerSeatSelect.locator('option').nth(1).getAttribute('value');
-    expect(ownerCharacterId).toBeTruthy();
-    await ownerSeatSelect.selectOption(ownerCharacterId!);
-    await ownerPage.getByTestId('create-seat').click();
+    // Owner already seated above; confirm seat persists.
+    await ownerPage.goto(`/campaigns/${campaignId}`);
     await expect(ownerPage.getByTestId('own-seat')).toContainText('Reentry Owner Guard');
 
     // Leave and return: hard reload with the same session cookie.
@@ -125,8 +110,8 @@ test.describe('Phase 1 reentry journey', () => {
     await ownerPage.getByTestId('nav-characters').click();
     await expect(ownerPage.getByTestId('character-link')).toContainText('Reentry Owner Guard');
     await ownerPage.getByTestId('nav-campaigns').click();
-    await expect(ownerPage.getByTestId('campaign-link')).toContainText('Reentry Continuity Table');
-    await ownerPage.getByTestId('campaign-link').filter({ hasText: 'Reentry Continuity Table' }).click();
+    await expect(ownerPage.getByTestId('campaign-item').filter({ hasText: 'Reentry Continuity Table' })).toBeVisible();
+    await ownerPage.goto(`/campaigns/${campaignId}`);
     await expect(ownerPage.getByTestId('campaign-detail-heading')).toHaveText(
       'Reentry Continuity Table',
     );

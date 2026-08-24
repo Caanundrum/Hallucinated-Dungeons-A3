@@ -8,39 +8,30 @@
  * creation.
  */
 
-import type {
-  AdventureTemplate,
-  DirectorCatalog,
-  DirectorIdentity,
-  DirectorPersonality,
-} from '../../shared/campaign-contract.js';
 import {
-  ADVENTURE_TEMPLATES,
-  ADVENTURE_TEMPLATE_LABELS,
-  ADVENTURE_TEMPLATE_SUMMARIES,
   CAMPAIGN_NAME_MAX_LENGTH,
   CAMPAIGN_SUMMARY_MAX_LENGTH,
+  CAMPAIGN_VISIBILITY,
+  CAMPAIGN_VISIBILITY_LABELS,
   DIRECTOR_CREATION_PREVIEW,
   DIRECTOR_IDENTITY_LABELS,
   DIRECTOR_PERSONALITY_LABELS,
-  RECOMMENDED_ADVENTURE_TEMPLATE,
   directorAvatarKey,
-  isAdventureTemplate,
+  isCampaignVisibility,
   isDirectorIdentity,
   isDirectorPersonality,
+} from '../../shared/campaign-contract.js';
+import type {
+  CampaignVisibility,
+  DirectorCatalog,
+  DirectorIdentity,
+  DirectorPersonality,
 } from '../../shared/campaign-contract.js';
 import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { ApiFailure, createCampaign, fetchDirectorCatalog } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
-import {
-  bindLegalPlayGatePage,
-  isLegalPlayBlocked,
-  loadLegalPlayAcceptance,
-  renderLegalPlayGatePage,
-  type LegalAcceptanceProjection,
-} from '../legal-play-gate.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
@@ -48,22 +39,19 @@ import type { PageHost } from './home.js';
 
 export function mountCampaignCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
-  shell.setDocumentTitle('Create a campaign');
+  shell.setDocumentTitle('Create a table');
 
   let catalog: DirectorCatalog | null = null;
   let name = '';
   let summary = '';
   let directorIdentity: DirectorIdentity | null = null;
   let directorPersonality: DirectorPersonality | null = null;
-  let adventureTemplate: AdventureTemplate = RECOMMENDED_ADVENTURE_TEMPLATE;
+  let visibility: CampaignVisibility = 'private';
+  let joinPassword = '';
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
-  let legalAcceptance: LegalAcceptanceProjection | null = null;
-  let legalGateBusy = false;
-  let legalGateError: string | null = null;
-  let legalGateLoading = true;
   const mountToken = beginPageMount(container);
 
   function canSubmit(): boolean {
@@ -122,8 +110,8 @@ export function mountCampaignCreatePage(host: PageHost): void {
             <dd data-testid="preview-director-personality">${escapeHtml(personalityLabel)}</dd>
           </div>
           <div>
-            <dt>Starter adventure</dt>
-            <dd data-testid="preview-adventure-template">${escapeHtml(ADVENTURE_TEMPLATE_LABELS[adventureTemplate])}</dd>
+            <dt>Visibility</dt>
+            <dd data-testid="preview-table-visibility">${escapeHtml(CAMPAIGN_VISIBILITY_LABELS[visibility])}</dd>
           </div>
         </dl>
         <h3 class="preview-subheading">Sample scene tone</h3>
@@ -217,10 +205,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
 
     container.innerHTML = `
       <div class="page">
-        <h1 data-testid="create-campaign-heading">Create a campaign</h1>
+        <h1 data-testid="create-campaign-heading">Create a table</h1>
         <p class="tagline">
-          Name the table, choose a Game Director identity first, then one personality. Review the
-          preview, then create. Both Director choices stay fixed for ordinary users afterward.
+          Name the table, choose public or private visibility, pick a Game Director identity and
+          personality, then create. You join the same way every other player does.
         </p>
         <p class="message notice" data-testid="director-config-notice">${escapeHtml(catalog.configurationNotice)}</p>
         ${
@@ -229,39 +217,37 @@ export function mountCampaignCreatePage(host: PageHost): void {
             : `<div class="message error" role="alert" tabindex="-1" data-testid="create-campaign-error">${escapeHtml(error)}</div>`
         }
 
-        <section class="panel" aria-labelledby="adventure-template-heading">
-          <h2 id="adventure-template-heading">1. Starter adventure</h2>
+        <section class="panel" aria-labelledby="table-visibility-heading">
+          <h2 id="table-visibility-heading">1. Visibility</h2>
           <p>
-            Emberferry Crossing is the recommended starting point: an original three-session
-            adventure with chapter-linked tactical scenes (Mist Dock → Mist-Cut Caves → Drowned
-            Bell Tower), NPCs, and campaign memory. Choose the blank table for rules practice —
-            you can improvise chambers during play, but there is no automated world generation
-            behind it.
+            Public tables appear in the open lobby. Private tables are invite-only. Public tables
+            may optionally require a password to join.
           </p>
-          <ul class="option-list" data-testid="adventure-template-list">
-            ${ADVENTURE_TEMPLATES.map(
-              (templateId) => `
+          <ul class="option-list" data-testid="table-visibility-list">
+            ${CAMPAIGN_VISIBILITY.map(
+              (option) => `
               <li>
-                <label class="option${adventureTemplate === templateId ? ' selected' : ''}" data-testid="adventure-template-${escapeHtml(templateId)}">
-                  <input type="radio" name="adventure-template" value="${escapeHtml(templateId)}"
-                    ${adventureTemplate === templateId ? 'checked' : ''} />
-                  <span class="option-label">
-                    ${escapeHtml(ADVENTURE_TEMPLATE_LABELS[templateId])}
-                    ${
-                      templateId === RECOMMENDED_ADVENTURE_TEMPLATE
-                        ? '<span class="option-badge" data-testid="adventure-template-recommended">Recommended</span>'
-                        : ''
-                    }
-                  </span>
-                  <span class="option-summary">${escapeHtml(ADVENTURE_TEMPLATE_SUMMARIES[templateId])}</span>
+                <label class="option${visibility === option ? ' selected' : ''}" data-testid="visibility-${escapeHtml(option)}">
+                  <input type="radio" name="table-visibility" value="${escapeHtml(option)}"
+                    ${visibility === option ? 'checked' : ''} />
+                  <span class="option-label">${escapeHtml(CAMPAIGN_VISIBILITY_LABELS[option])}</span>
                 </label>
               </li>`,
             ).join('')}
           </ul>
+          ${
+            visibility === 'public'
+              ? `<label class="field">
+                   <span>Optional join password</span>
+                   <input type="password" data-testid="join-password" autocomplete="new-password"
+                     value="${escapeHtml(joinPassword)}" />
+                 </label>`
+              : ''
+          }
         </section>
 
         <section class="panel" aria-labelledby="campaign-basics-heading">
-          <h2 id="campaign-basics-heading">2. Campaign</h2>
+          <h2 id="campaign-basics-heading">2. Table</h2>
           <label class="field">
             <span>Title</span>
             <input type="text" data-testid="campaign-name" maxlength="${CAMPAIGN_NAME_MAX_LENGTH}"
@@ -331,7 +317,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <div class="actions">
           <button type="button" data-testid="create-campaign-submit"
             aria-disabled="${canSubmit() ? 'false' : 'true'}">
-            ${busy ? 'Creating…' : 'Create campaign'}
+            ${busy ? 'Creating…' : 'Create table'}
           </button>
           <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to campaigns</a>
         </div>
@@ -381,16 +367,25 @@ export function mountCampaignCreatePage(host: PageHost): void {
         });
       });
 
+    container.querySelectorAll<HTMLInputElement>('input[name="table-visibility"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        if (!isCampaignVisibility(input.value)) {
+          return;
+        }
+        visibility = input.value;
+        if (visibility !== 'public') {
+          joinPassword = '';
+        }
+        render();
+      });
+    });
+
     container
-      .querySelectorAll<HTMLInputElement>('input[name="adventure-template"]')
-      .forEach((input) => {
-        input.addEventListener('change', () => {
-          if (!isAdventureTemplate(input.value)) {
-            return;
-          }
-          adventureTemplate = input.value;
-          render();
-        });
+      .querySelector<HTMLInputElement>('[data-testid="join-password"]')
+      ?.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLInputElement) {
+          joinPassword = event.target.value;
+        }
       });
 
     if (directorIdentity !== null && directorPersonality !== null) {
@@ -418,10 +413,13 @@ export function mountCampaignCreatePage(host: PageHost): void {
               summary: summary.trim(),
               directorIdentity,
               directorPersonality,
-              adventureTemplate,
+              visibility,
+              ...(visibility === 'public' && joinPassword.trim().length > 0
+                ? { joinPassword: joinPassword.trim() }
+                : {}),
             });
-            shell.announce(`Campaign ${campaign.name} created.`);
-            navigate(`/campaigns/${campaign.campaignId}`);
+            shell.announce(`Table ${campaign.name} created.`);
+            navigate(`/campaigns/${campaign.campaignId}/join`);
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -456,7 +454,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         shell,
         candidate,
         onSignedIn: () => {
-          void loadLegalThenCatalog();
+          void load();
         },
         setBusy: (busyState) => {
           gateBusy = busyState;
@@ -468,61 +466,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       });
       return;
     }
-    if (legalGateLoading) {
-      container.innerHTML = `
-        <div class="page">
-          <h1 data-testid="create-campaign-heading">Create a campaign</h1>
-          <p class="tagline">Checking legal acceptance…</p>
-        </div>`;
-      return;
-    }
-    if (isLegalPlayBlocked(legalAcceptance)) {
-      container.innerHTML = renderLegalPlayGatePage({
-        title: 'Create a campaign',
-        body: 'Campaign creation opens after you accept every current legal document.',
-        acceptance: legalAcceptance,
-        candidate,
-        busy: legalGateBusy,
-        error: legalGateError,
-      });
-      bindLegalPlayGatePage({
-        container,
-        shell,
-        candidate,
-        getAcceptance: () => legalAcceptance,
-        setAcceptance: (next) => {
-          legalAcceptance = next;
-        },
-        onUnblocked: () => {
-          void load();
-        },
-        setBusy: (value) => {
-          legalGateBusy = value;
-        },
-        setError: (message) => {
-          legalGateError = message;
-        },
-        render,
-      });
-      return;
-    }
     renderForm();
-  }
-
-  async function loadLegalThenCatalog(): Promise<void> {
-    if (getAccount() === null) {
-      render();
-      return;
-    }
-    legalGateLoading = true;
-    render();
-    legalAcceptance = await loadLegalPlayAcceptance();
-    legalGateLoading = false;
-    if (!isLegalPlayBlocked(legalAcceptance)) {
-      await load();
-      return;
-    }
-    render();
   }
 
   async function load(): Promise<void> {
@@ -554,12 +498,13 @@ export function mountCampaignCreatePage(host: PageHost): void {
       summary = '';
       directorIdentity = null;
       directorPersonality = null;
-      adventureTemplate = RECOMMENDED_ADVENTURE_TEMPLATE;
+      visibility = 'private';
+      joinPassword = '';
       catalog = null;
       error = null;
       busy = false;
     }
-    void loadLegalThenCatalog();
+    void load();
   });
-  void loadLegalThenCatalog();
+  void load();
 }

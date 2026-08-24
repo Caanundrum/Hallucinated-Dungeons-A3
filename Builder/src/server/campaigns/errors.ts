@@ -57,3 +57,34 @@ export class CampaignValidationError extends Error {
     this.name = 'CampaignValidationError';
   }
 }
+
+export class TableFullError extends Error {
+  constructor() {
+    super('This table already has four active players');
+    this.name = 'TableFullError';
+  }
+}
+
+export class WrongTablePasswordError extends Error {
+  constructor() {
+    super('The table password is incorrect');
+    this.name = 'WrongTablePasswordError';
+  }
+}
+
+export class NotPublicTableError extends Error {
+  constructor() {
+    super('This table is not listed in the open lobby');
+    this.name = 'NotPublicTableError';
+  }
+}
+
+export class AlreadyAtAnotherTableError extends Error {
+  readonly otherCampaignId: string;
+
+  constructor(otherCampaignId: string) {
+    super('You are already seated at another table');
+    this.name = 'AlreadyAtAnotherTableError';
+    this.otherCampaignId = otherCampaignId;
+  }
+}

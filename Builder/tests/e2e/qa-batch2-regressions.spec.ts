@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 import {
   enterAccountFromShell,
+  joinTableWithFirstCharacter,
   openTableAdvancedControls,
   openTablePresencePanel,
-  recordDefaultSessionZero,
 } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
@@ -30,21 +30,17 @@ async function seatFreshCampaign(page: Page, name: string): Promise<void> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  await expect(page.getByTestId('campaign-detail-heading')).not.toHaveText('Campaign unavailable');
-  await expect(page.getByTestId('campaign-detail-heading')).toContainText(`${name} Camp`);
-  await expect(page.getByTestId('session-zero-gate-notice')).toBeVisible();
-  await expect(page.getByTestId('create-seat')).toHaveAttribute('aria-disabled', 'true');
-  await recordDefaultSessionZero(page);
-  const seatSelect = page.getByTestId('seat-character-select');
-  const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-  await seatSelect.selectOption(characterId!);
-  await page.getByTestId('create-seat').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  await joinTableWithFirstCharacter(page);
+  await page.goto(`/campaigns/${match![1]}`);
   await expect(page.getByTestId('own-seat')).toBeVisible();
   await expect(page.getByTestId('leave-seat')).toBeVisible();
 }
 
 test.describe('PQA batch 2 regressions', () => {
-  test('PQA-062/063/064/086: campaign detail loads, Session Zero gates seating, leave seat', async ({
+  test('PQA-062/063/064: campaign detail loads and leave seat after join', async ({
     page,
   }) => {
     await page.goto('/');

@@ -64,11 +64,56 @@ export async function enterArena(page: Page): Promise<string> {
   return (await page.getByTestId('account-id').innerText()).trim();
 }
 
+/** Legal routes required before play surfaces open. */
+const LEGAL_PLAY_ROUTES = [
+  '/legal/terms',
+  '/legal/privacy',
+  '/legal/alpha-participation',
+  '/legal/content-and-safety',
+] as const;
+
+/** Records acceptance for every current legal document via the API (Local Arena / e2e). */
+export async function acceptAllLegalForPlay(page: Page): Promise<void> {
+  const candidate = await readCandidate(page);
+  const origin = new URL(page.url()).origin;
+  const headers = {
+    origin,
+    'content-type': 'application/json',
+    'x-hd-candidate': candidate.candidateId,
+  };
+  for (const route of LEGAL_PLAY_ROUTES) {
+    const response = await page.request.post('/api/legal/acceptance', {
+      headers,
+      data: { route },
+    });
+    expect(response.ok()).toBeTruthy();
+  }
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/api/legal/acceptance', {
+        headers: { origin, 'x-hd-candidate': candidate.candidateId },
+      });
+      if (!response.ok()) {
+        return false;
+      }
+      const body = (await response.json()) as { allCurrentAccepted?: boolean };
+      return body.allCurrentAccepted === true;
+    }, { timeout: 15_000 })
+    .toBe(true);
+  await page.reload();
+  await page.waitForLoadState('domcontentloaded');
+}
+
 /** Signs in from the shell account chip without visiting diagnostics. */
 export async function enterAccountFromShell(page: Page): Promise<void> {
+  if (await page.getByTestId('shell-account-link').isVisible().catch(() => false)) {
+    await acceptAllLegalForPlay(page);
+    return;
+  }
   await expect(page.getByTestId('shell-enter-account')).toBeVisible();
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  await acceptAllLegalForPlay(page);
 }
 
 /** Submits a foundation check and waits for the page to settle. */
@@ -79,27 +124,26 @@ export async function recordCheck(page: Page, note: string): Promise<void> {
 }
 
 /**
- * Records Session Zero with defaults from the campaign detail page.
- * Required before seating or opening the table dock (PQA-086).
+ * Legacy helper — Session Zero defaults are applied when a table is created.
+ * Kept so existing e2e specs compile; no UI gate remains before seating.
  */
-export async function recordDefaultSessionZero(page: Page): Promise<void> {
-  const summary = page.getByTestId('session-zero-summary');
-  if (await summary.isVisible().catch(() => false)) {
-    const text = await summary.innerText();
-    if (text.includes('recorded') && !text.includes('not recorded')) {
-      return;
-    }
+export async function recordDefaultSessionZero(_page: Page): Promise<void> {
+  return;
+}
+
+/** Join the current table from /campaigns/:id/join with the first vault character. */
+export async function joinTableWithFirstCharacter(page: Page): Promise<void> {
+  if (await page.getByTestId('legal-play-gate-heading').isVisible().catch(() => false)) {
+    await acceptAllLegalForPlay(page);
   }
-  await page.getByTestId('open-campaign-settings').click();
-  await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
-  await page.getByTestId('session-length').fill('3–5 sessions');
-  await page.getByTestId('complete-session-zero').click();
-  await expect(page.getByTestId('settings-notice')).toContainText(
-    /Session Zero (recorded|updated)/i,
-  );
-  await page.getByTestId('settings-back').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
-  await expect(page.getByTestId('session-zero-summary')).toContainText('recorded');
+  await expect(page.getByTestId('join-table-heading')).toBeVisible({ timeout: 20_000 });
+  const select = page.getByTestId('join-character-select');
+  await expect(select).toBeVisible();
+  const characterId = await select.locator('option').nth(1).getAttribute('value');
+  expect(characterId).toBeTruthy();
+  await select.selectOption(characterId!);
+  await page.getByTestId('join-table-submit').click();
+  await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
 }
 
 /** Opens training / developer controls on the campaign table dashboard. */

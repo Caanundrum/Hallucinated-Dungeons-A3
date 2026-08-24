@@ -98,6 +98,7 @@ import {
   updateDraft,
 } from '../characters/characters.js';
 import {
+  AlreadyAtAnotherTableError,
   AlreadyMemberError,
   AlreadySeatedError,
   CampaignNotFoundError,
@@ -105,14 +106,21 @@ import {
   DirectorConfigLockedError,
   InvitationRateLimitedError,
   InvitationUnavailableError,
+  NotPublicTableError,
+  TableFullError,
+  WrongTablePasswordError,
   acceptInvitation,
   createCampaign,
   createInvitation,
   createSeat,
+  joinTable,
   leaveSeat,
   listCampaigns,
+  listPublicTables,
   previewInvitation,
+  readActiveSeatedTable,
   readCampaignDetail,
+  readTablesHub,
   revokeInvitation,
   updateCampaign,
 } from '../campaigns/campaigns.js';
@@ -220,6 +228,7 @@ function contentSecurityPolicy(env: ServerEnvironment): string {
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]: 409,
+  [ERROR_CODES.ALREADY_AT_ANOTHER_TABLE]: 409,
   [ERROR_CODES.ALREADY_MEMBER]: 409,
   [ERROR_CODES.ALREADY_SEATED]: 409,
   [ERROR_CODES.BAD_REQUEST]: 400,
@@ -240,7 +249,10 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.REQUEST_ID_INVALID]: 400,
   [ERROR_CODES.SESSION_EXPIRED]: 401,
   [ERROR_CODES.STALE_STATE_VERSION]: 409,
+  [ERROR_CODES.NOT_PUBLIC]: 403,
   [ERROR_CODES.NOT_SEATED]: 409,
+  [ERROR_CODES.TABLE_FULL]: 409,
+  [ERROR_CODES.WRONG_TABLE_PASSWORD]: 403,
   [ERROR_CODES.ILLEGAL_PATH]: 409,
   [ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED]: 403,
   [ERROR_CODES.TIMING_AUTHORITY_REQUIRED]: 403,
@@ -254,6 +266,8 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
   [ERROR_CODES.ABILITY_ROLLS_EXHAUSTED]:
     'You have already used all three Ability Score rolls. Earlier rolls cannot be restored.',
+  [ERROR_CODES.ALREADY_AT_ANOTHER_TABLE]:
+    'You are already seated at another table. Confirm switching tables to leave your current seat and join this one.',
   [ERROR_CODES.ALREADY_MEMBER]: 'This development account is already a member of that campaign.',
   [ERROR_CODES.ALREADY_SEATED]: 'This development account already has a seat in that campaign.',
   [ERROR_CODES.BAD_REQUEST]: 'The request body was not valid JSON in the expected shape.',
@@ -287,8 +301,12 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'This development session expired. Sign in again with a Local Arena development account.',
   [ERROR_CODES.STALE_STATE_VERSION]:
     'This table moved on since you last loaded it. Reload the table state, then retry.',
+  [ERROR_CODES.NOT_PUBLIC]:
+    'This table is private and does not appear in the open lobby. Ask the owner for an invite link.',
   [ERROR_CODES.NOT_SEATED]:
     'Seat a character you own in this campaign before submitting table commands.',
+  [ERROR_CODES.TABLE_FULL]: 'This table already has four active players. Try again when a seat opens.',
+  [ERROR_CODES.WRONG_TABLE_PASSWORD]: 'The table password is incorrect.',
   [ERROR_CODES.ILLEGAL_PATH]:
     'That movement path is not legal on this map. Choose another route.',
   [ERROR_CODES.LEGAL_ACCEPTANCE_REQUIRED]:
@@ -1405,6 +1423,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     if (
       path === '/api/campaigns' ||
       path.startsWith('/api/campaigns/') ||
+      path === '/api/tables/hub' ||
+      path === '/api/tables/public' ||
+      path === '/api/tables/active-seat' ||
       path === '/api/directors/catalog' ||
       path.startsWith('/api/invitations/')
     ) {
@@ -1742,6 +1763,25 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      if (path === '/api/tables/hub' && method === 'GET') {
+        sendJson(response, 200, await readTablesHub({ firestore, accountId }));
+        return;
+      }
+
+      if (path === '/api/tables/public' && method === 'GET') {
+        sendJson(response, 200, await listPublicTables({ firestore }));
+        return;
+      }
+
+      if (path === '/api/tables/active-seat' && method === 'GET') {
+        sendJson(
+          response,
+          200,
+          await readActiveSeatedTable({ firestore, accountId }),
+        );
+        return;
+      }
+
       if (path === '/api/campaigns' && method === 'POST') {
         if (!(await requireLegalForPlay())) {
           return;
@@ -1756,6 +1796,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           directorIdentity?: unknown;
           directorPersonality?: unknown;
           adventureTemplate?: unknown;
+          visibility?: unknown;
+          joinPassword?: unknown;
         };
         const campaign = await createCampaign({
           firestore,
@@ -1766,6 +1808,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           directorIdentity: payload.directorIdentity,
           directorPersonality: payload.directorPersonality,
           adventureTemplate: payload.adventureTemplate,
+          visibility: payload.visibility,
+          joinPassword: payload.joinPassword,
         });
         sendJson(response, 201, campaign);
         return;
@@ -1859,7 +1903,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         if (body === BODY_REJECTED) {
           return;
         }
-        const characterId = (body as { characterId?: unknown } | undefined)?.characterId;
+        const payload = body as { characterId?: unknown; confirmSwitch?: unknown };
+        const characterId = payload.characterId;
         if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 64) {
           sendError(response, ERROR_CODES.BAD_REQUEST);
           return;
@@ -1870,8 +1915,46 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           campaignId: seatCreateMatch[1]!,
           characterId,
           deviceSessionId: session.deviceSessionId,
+          confirmSwitch: payload.confirmSwitch === true,
         });
         sendJson(response, 201, seat);
+        return;
+      }
+
+      const joinTableMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/join$/.exec(path);
+      if (joinTableMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          characterId?: unknown;
+          password?: unknown;
+          confirmSwitch?: unknown;
+        };
+        const characterId = payload.characterId;
+        if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 64) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const joined = await joinTable({
+          firestore,
+          accountId,
+          displayLabel: session.identity.displayLabel,
+          campaignId: joinTableMatch[1]!,
+          characterId,
+          deviceSessionId: session.deviceSessionId,
+          password: payload.password,
+          confirmSwitch: payload.confirmSwitch === true,
+        });
+        sendJson(response, 201, joined);
         return;
       }
 
@@ -2543,6 +2626,25 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof AlreadySeatedError) {
         sendError(response, ERROR_CODES.ALREADY_SEATED);
+        return;
+      }
+      if (error instanceof AlreadyAtAnotherTableError) {
+        sendJson(response, 409, {
+          error: ERROR_CODES.ALREADY_AT_ANOTHER_TABLE,
+          message: error.message,
+        } satisfies ApiErrorBody);
+        return;
+      }
+      if (error instanceof TableFullError) {
+        sendError(response, ERROR_CODES.TABLE_FULL);
+        return;
+      }
+      if (error instanceof WrongTablePasswordError) {
+        sendError(response, ERROR_CODES.WRONG_TABLE_PASSWORD);
+        return;
+      }
+      if (error instanceof NotPublicTableError) {
+        sendError(response, ERROR_CODES.NOT_PUBLIC);
         return;
       }
       if (error instanceof CampaignValidationError) {

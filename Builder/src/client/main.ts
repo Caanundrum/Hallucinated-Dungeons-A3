@@ -20,6 +20,7 @@ import { mountAccountPage } from './pages/account.js';
 import { mountAdminPage } from './pages/admin.js';
 import { mountCampaignCreatePage } from './pages/campaign-create.js';
 import { mountCampaignDetailPage } from './pages/campaign-detail.js';
+import { mountCampaignJoinPage } from './pages/campaign-join.js';
 import { mountCampaignSettingsPage } from './pages/campaign-settings.js';
 import { mountCampaignTablePage } from './pages/campaign-table.js';
 import { mountCampaignsPage } from './pages/campaigns.js';
@@ -34,6 +35,16 @@ import { mountWelcomePage } from './pages/welcome.js';
 import { isHostedPlayerSurface } from './player-surface.js';
 import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
+import {
+  bindLegalPlayGatePage,
+  renderLegalPlayGatePage,
+} from './legal-play-gate.js';
+import {
+  getLegalAcceptance,
+  hydrateLegalAcceptance,
+  isPlayBlockedByLegal,
+  setLegalAcceptance,
+} from './legal-play-session.js';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (root === null) {
@@ -55,6 +66,7 @@ async function start(): Promise<void> {
 
   const shell = mountShell(root as HTMLDivElement, candidate);
   await hydrateAccount();
+  await hydrateLegalAcceptance();
   if (getAccount() !== null) {
     try {
       const settings = await fetchPlayerSettings();
@@ -74,8 +86,38 @@ async function start(): Promise<void> {
   // load would pre-empt the ordinary "Tab reaches the skip link first"
   // sequence a keyboard user expects when a page first opens.
   let isFirstRender = true;
+  let legalGateBusy = false;
+  let legalGateError: string | null = null;
 
-  startRouter((locationKey) => {
+  function mountLegalGateForPlay(title: string, body: string, onUnblocked: () => void): void {
+    shell.mainElement.innerHTML = renderLegalPlayGatePage({
+      title,
+      body,
+      acceptance: getLegalAcceptance(),
+      candidate,
+      busy: legalGateBusy,
+      error: legalGateError,
+    });
+    bindLegalPlayGatePage({
+      container: shell.mainElement,
+      shell,
+      candidate,
+      getAcceptance: getLegalAcceptance,
+      setAcceptance: setLegalAcceptance,
+      onUnblocked,
+      setBusy: (busy) => {
+        legalGateBusy = busy;
+      },
+      setError: (message) => {
+        legalGateError = message;
+      },
+      render: () => {
+        onUnblocked();
+      },
+    });
+  }
+
+  function startRouterCallback(locationKey: string): void {
     const path = pathnameOf(locationKey);
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };
@@ -102,17 +144,47 @@ async function start(): Promise<void> {
     } else if (path === '/characters') {
       mountCharactersPage(host);
     } else if (path === '/characters/new') {
-      mountCharacterCreatePage(host);
+      if (isPlayBlockedByLegal()) {
+        mountLegalGateForPlay(
+          'Create a character',
+          'Accept the current legal documents once before creating characters.',
+          () => mountCharacterCreatePage(host),
+        );
+      } else {
+        mountCharacterCreatePage(host);
+      }
     } else if (characterId !== null) {
       mountCharacterSheetPage(host, characterId);
     } else if (path === '/campaigns') {
       mountCampaignsPage(host);
     } else if (path === '/campaigns/new') {
-      mountCampaignCreatePage(host);
+      if (isPlayBlockedByLegal()) {
+        mountLegalGateForPlay(
+          'Create a table',
+          'Accept the current legal documents once before creating tables.',
+          () => mountCampaignCreatePage(host),
+        );
+      } else {
+        mountCampaignCreatePage(host);
+      }
     } else if (campaignRoute !== null && campaignRoute.subroute === 'settings') {
       mountCampaignSettingsPage(host, campaignRoute.campaignId);
+    } else if (campaignRoute !== null && campaignRoute.subroute === 'join') {
+      if (isPlayBlockedByLegal()) {
+        mountLegalGateForPlay('Join table', 'Accept the current legal documents once to join tables.', () => {
+          mountCampaignJoinPage(host, campaignRoute.campaignId);
+        });
+      } else {
+        mountCampaignJoinPage(host, campaignRoute.campaignId);
+      }
     } else if (campaignRoute !== null && campaignRoute.subroute === 'table') {
-      mountCampaignTablePage(host, campaignRoute.campaignId);
+      if (isPlayBlockedByLegal()) {
+        mountLegalGateForPlay('Table', 'Accept the current legal documents once to play at the table.', () => {
+          mountCampaignTablePage(host, campaignRoute.campaignId);
+        });
+      } else {
+        mountCampaignTablePage(host, campaignRoute.campaignId);
+      }
     } else if (campaignRoute !== null && campaignRoute.subroute === 'detail') {
       mountCampaignDetailPage(host, campaignRoute.campaignId);
     } else if (inviteCode !== null) {
@@ -130,7 +202,9 @@ async function start(): Promise<void> {
     } else {
       shell.focusPageHeading();
     }
-  });
+  }
+
+  startRouter(startRouterCallback);
 }
 
 void start();

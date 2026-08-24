@@ -1534,17 +1534,6 @@ export async function acceptRulesCommand(options: {
     throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'expectedStateVersion must be a non-negative integer.');
   }
   await assertCampaignMember(firestore, accountId, campaignId);
-  if (commandType === 'encounter.begin') {
-    try {
-      const { assertSessionZeroRecorded } = await import('../../settings/campaign-settings.js');
-      await assertSessionZeroRecorded(firestore, campaignId);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'CampaignValidationError') {
-        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, error.message);
-      }
-      throw error;
-    }
-  }
   const seat = await loadOwnSeat(firestore, accountId, campaignId);
   const source = await loadCharacterRulesSource(firestore, seat.characterId);
   if (source.ownerAccountId !== accountId) {

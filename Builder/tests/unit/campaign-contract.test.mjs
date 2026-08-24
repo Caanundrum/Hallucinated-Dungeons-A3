@@ -3,11 +3,15 @@ import { test } from 'node:test';
 
 import {
   CAMPAIGN_NAME_MAX_LENGTH,
+  CAMPAIGN_VISIBILITY,
   DIRECTOR_CREATION_PREVIEW,
   DIRECTOR_IDENTITIES,
   DIRECTOR_PERSONALITIES,
+  JOIN_PASSWORD_MAX_LENGTH,
+  MAX_ACTIVE_PLAYERS,
   RECOMMENDED_DIRECTOR_PERSONALITY,
   directorAvatarKey,
+  isCampaignVisibility,
   isDirectorIdentity,
   isDirectorPersonality,
 } from '../../dist/shared/campaign-contract.js';
@@ -55,4 +59,13 @@ test('director guards reject forged catalog ids', () => {
 
 test('campaign name max length is bounded for Phase 1 forms', () => {
   assert.equal(CAMPAIGN_NAME_MAX_LENGTH, 80);
+});
+
+test('table lobby contracts expose visibility, seat cap, and join password bounds', () => {
+  assert.equal(MAX_ACTIVE_PLAYERS, 4);
+  assert.deepEqual([...CAMPAIGN_VISIBILITY], ['public', 'private']);
+  assert.equal(JOIN_PASSWORD_MAX_LENGTH, 64);
+  assert.equal(isCampaignVisibility('public'), true);
+  assert.equal(isCampaignVisibility('private'), true);
+  assert.equal(isCampaignVisibility('hidden'), false);
 });
