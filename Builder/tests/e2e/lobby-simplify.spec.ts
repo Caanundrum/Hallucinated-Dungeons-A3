@@ -147,6 +147,9 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
 
     await page.getByTestId('nav-campaigns').click();
     await expect(page.getByTestId('return-to-table')).toContainText('Second Table');
+    await page.goto(`/campaigns/${tableB}/join`);
+    await expect(page.getByTestId('join-already-seated')).toBeVisible();
+    await expect(page.getByTestId('join-open-table')).toBeVisible();
     await page.goto(`/campaigns/${tableA}/join`);
     if (await page.getByTestId('legal-play-gate-heading').isVisible().catch(() => false)) {
       await acceptAllLegalForPlay(page);
