@@ -188,6 +188,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let speechToTextEnabled = false;
   /** Bumped on player-driven presentation saves so an in-flight table load cannot clobber them. */
   let presentationWriteEpoch = 0;
+  let tableBootstrapped = false;
   let seated = false;
   let ownSeatId: string | null = null;
   let moveTarget: { column: number; row: number } | null = null;
@@ -3853,6 +3854,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </div>`;
       return;
     }
+    if (!tableBootstrapped) {
+      stopProjectionPoll();
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+          <p class="tagline" data-testid="table-joining">Joining the table…</p>
+        </div>`;
+      return;
+    }
     renderTable();
   }
 
@@ -4018,7 +4028,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     error = null;
     tableNotes = loadTableNotesPreference();
-    render();
+    if (!tableBootstrapped) {
+      container.innerHTML = `
+        <div class="page">
+          <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+          <p class="tagline" data-testid="table-joining">Joining the table…</p>
+        </div>`;
+    } else {
+      render();
+    }
     const presentationEpochAtLoad = presentationWriteEpoch;
     try {
       const detail = await fetchCampaignDetail(campaignId);
@@ -4028,6 +4046,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       directorIdentityLabel = detail.campaign.director.identityLabel;
       seated = detail.ownSeat !== null;
       ownSeatId = detail.ownSeat?.seatId ?? null;
+      tableBootstrapped = true;
       if (!seated && chatMode === 'speak_as_character') {
         chatMode = 'table_talk';
       }

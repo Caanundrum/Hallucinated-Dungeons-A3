@@ -158,6 +158,7 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await page.getByTestId('join-table-submit').click();
     await expect(page.getByTestId('confirm-switch-table')).toBeVisible();
     await page.getByTestId('confirm-switch-table-cancel').click();
+    await expect(page.getByTestId('join-table-error')).toHaveCount(0);
     await page.getByTestId('nav-campaigns').click();
     await expect(page.getByTestId('return-to-table')).toContainText('Second Table');
   });

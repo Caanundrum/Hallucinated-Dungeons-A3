@@ -177,7 +177,8 @@ export function buildDefaultStoredSettings(campaignId: string, now: Date): Store
   return {
     campaignId,
     contentProfile: defaults.contentProfile,
-    safetyBoundaries: defaults.safetyBoundaries,
+    safetyBoundaries:
+      'Standard Alpha table: no harm to children on screen; fade to black for romance; respect lines and veils named at the table.',
     groupDecisionPolicy: defaults.groupDecisionPolicy,
     designatedCallerAccountId: null,
     reactionWindowSeconds: defaults.reactionWindowSeconds,
@@ -192,7 +193,7 @@ export function buildDefaultStoredSettings(campaignId: string, now: Date): Store
       romancePolicy: defaults.sessionZero.romancePolicy,
       lethalityPreference: defaults.sessionZero.lethalityPreference,
       directorDiscretionLevel: 'moderate_bounded',
-      expectedSessionLength: defaults.sessionZero.expectedSessionLength,
+      expectedSessionLength: '2–4 hours',
       dropInOutPolicy: defaults.sessionZero.dropInOutPolicy,
       textChatExpectations: defaults.sessionZero.textChatExpectations,
       externalVoiceNote: '',

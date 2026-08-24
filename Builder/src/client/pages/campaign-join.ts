@@ -142,6 +142,9 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
           await submitJoin(true);
           return;
         }
+        // Cancellation is intentional — keep the join form without an error alert.
+        error = null;
+        return;
       }
       error =
         failure instanceof ApiFailure ? failure.message : 'Could not join this table.';
