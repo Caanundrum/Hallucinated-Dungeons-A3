@@ -27,6 +27,7 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
   RULES_VERSION,
+  coerceStoredChoices,
   completedSteps,
   deriveSheet,
   describeChoices,
@@ -85,30 +86,7 @@ export class AbilityRollsExhaustedError extends Error {
  * still project cleanly under the current contract.
  */
 function normalizeChoices(choices: CharacterChoices): CharacterChoices {
-  const base = emptyChoices();
-  return sanitizeChoices({
-    ...base,
-    ...choices,
-    baseAbilityScores: choices.baseAbilityScores ?? base.baseAbilityScores,
-    backgroundAbilityBonuses: choices.backgroundAbilityBonuses ?? base.backgroundAbilityBonuses,
-    classSkillIds: choices.classSkillIds ?? base.classSkillIds,
-    speciesChoiceIds: choices.speciesChoiceIds ?? base.speciesChoiceIds,
-    classChoiceIds: choices.classChoiceIds ?? base.classChoiceIds,
-    cantripIds: choices.cantripIds ?? base.cantripIds,
-    spellbookIds: choices.spellbookIds ?? base.spellbookIds,
-    spellIds: choices.spellIds ?? base.spellIds,
-    chosenOriginFeatId: choices.chosenOriginFeatId ?? base.chosenOriginFeatId,
-    backgroundFeatCantripIds: choices.backgroundFeatCantripIds ?? base.backgroundFeatCantripIds,
-    backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
-    originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
-    originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
-    identity: choices.identity ?? base.identity,
-    rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
-    abilityRollAttempts:
-      typeof choices.abilityRollAttempts === 'number' && Number.isInteger(choices.abilityRollAttempts)
-        ? Math.max(0, choices.abilityRollAttempts)
-        : 0,
-  });
+  return sanitizeChoices(coerceStoredChoices(choices));
 }
 
 function toIso(value: Timestamp | Date): string {
@@ -461,45 +439,65 @@ export async function readVault(options: {
     // Leave seatsByCharacterId empty; vault characters still load.
   }
 
-  const characters = await Promise.all(
-    charactersSnapshot.docs.map(async (doc) => {
-      const stored = doc.data() as StoredCharacter;
-      const labels = describeChoices(stored.choices);
-      const progressionSnap = await firestore
-        .collection(COLLECTIONS.characterProgressions)
-        .doc(stored.characterId)
-        .get();
-      const progression = progressionSnap.exists
-        ? (progressionSnap.data() as StoredProgression)
-        : null;
-      return {
-        characterId: stored.characterId,
-        name: stored.choices.identity.name,
-        classLabel: labels.classLabel,
-        speciesLabel: labels.speciesLabel,
-        backgroundLabel: labels.backgroundLabel,
-        level: progression?.level ?? 1,
-        createdAt: toIso(stored.createdAt),
-        seatedCampaignNames: seatsByCharacterId.get(stored.characterId) ?? [],
-      };
-    }),
-  );
+  const characters = (
+    await Promise.all(
+      charactersSnapshot.docs.map(async (doc) => {
+        try {
+          const stored = doc.data() as StoredCharacter;
+          const choices = normalizeChoices(stored.choices);
+          const labels = describeChoices(choices);
+          const progressionSnap = await firestore
+            .collection(COLLECTIONS.characterProgressions)
+            .doc(stored.characterId)
+            .get();
+          const progression = progressionSnap.exists
+            ? (progressionSnap.data() as StoredProgression)
+            : null;
+          return {
+            characterId: stored.characterId,
+            name: choices.identity.name,
+            classLabel: labels.classLabel,
+            speciesLabel: labels.speciesLabel,
+            backgroundLabel: labels.backgroundLabel,
+            level: progression?.level ?? 1,
+            createdAt: toIso(stored.createdAt),
+            seatedCampaignNames: seatsByCharacterId.get(stored.characterId) ?? [],
+          };
+        } catch (failure) {
+          const detail = failure instanceof Error ? failure.message : String(failure);
+          process.stderr.write(
+            `[characters] vault character ${doc.id} skipped during projection: ${detail}\n`,
+          );
+          return null;
+        }
+      }),
+    )
+  ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
-  const drafts = draftsSnapshot.docs.map((doc) => {
-    const stored = doc.data() as StoredDraft;
-    const problems = validateChoices(stored.choices);
-    const labels = describeChoices(stored.choices);
-    return {
-      draftId: stored.draftId,
-      classLabel: labels.classLabel,
-      speciesLabel: labels.speciesLabel,
-      backgroundLabel: labels.backgroundLabel,
-      name: stored.choices.identity.name.trim(),
-      concept: stored.choices.identity.concept.trim(),
-      updatedAt: toIso(stored.updatedAt),
-      canCreate: problems.length === 0,
-      unresolvedCount: problems.length,
-    };
+  const drafts = draftsSnapshot.docs.flatMap((doc) => {
+    try {
+      const stored = doc.data() as StoredDraft;
+      const choices = normalizeChoices(stored.choices);
+      const problems = validateChoices(choices);
+      const labels = describeChoices(choices);
+      return [
+        {
+          draftId: stored.draftId,
+          classLabel: labels.classLabel,
+          speciesLabel: labels.speciesLabel,
+          backgroundLabel: labels.backgroundLabel,
+          name: choices.identity.name.trim(),
+          concept: choices.identity.concept.trim(),
+          updatedAt: toIso(stored.updatedAt),
+          canCreate: problems.length === 0,
+          unresolvedCount: problems.length,
+        },
+      ];
+    } catch (failure) {
+      const detail = failure instanceof Error ? failure.message : String(failure);
+      process.stderr.write(`[characters] vault draft ${doc.id} skipped during projection: ${detail}\n`);
+      return [];
+    }
   });
 
   return { accountId, characters, drafts };
