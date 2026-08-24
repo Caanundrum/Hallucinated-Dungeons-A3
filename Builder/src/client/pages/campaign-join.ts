@@ -203,13 +203,21 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
     error = null;
     render();
     try {
-      const [hubPayload, detail] = await Promise.all([
-        fetchTablesHub(),
-        fetchCampaignDetail(campaignId),
-      ]);
-      hub = hubPayload;
-      tableName = detail.campaign.name;
-      passwordProtected = detail.campaign.passwordProtected;
+      hub = await fetchTablesHub();
+      try {
+        const detail = await fetchCampaignDetail(campaignId);
+        tableName = detail.campaign.name;
+        passwordProtected = detail.campaign.passwordProtected;
+      } catch (detailFailure) {
+        const fromHub =
+          hub.myTables.find((table) => table.campaignId === campaignId) ??
+          hub.openTables.find((table) => table.campaignId === campaignId);
+        if (fromHub === undefined) {
+          throw detailFailure;
+        }
+        tableName = fromHub.name;
+        passwordProtected = fromHub.passwordProtected;
+      }
     } catch (failure) {
       hub = null;
       error =

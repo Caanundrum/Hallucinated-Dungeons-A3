@@ -76,18 +76,32 @@ const LEGAL_PLAY_ROUTES = [
 export async function acceptAllLegalForPlay(page: Page): Promise<void> {
   const candidate = await readCandidate(page);
   const origin = new URL(page.url()).origin;
+  const headers = {
+    origin,
+    'content-type': 'application/json',
+    'x-hd-candidate': candidate.candidateId,
+  };
   for (const route of LEGAL_PLAY_ROUTES) {
     const response = await page.request.post('/api/legal/acceptance', {
-      headers: {
-        origin,
-        'content-type': 'application/json',
-        'x-hd-candidate': candidate.candidateId,
-      },
+      headers,
       data: { route },
     });
     expect(response.ok()).toBeTruthy();
   }
+  await expect
+    .poll(async () => {
+      const response = await page.request.get('/api/legal/acceptance', {
+        headers: { origin, 'x-hd-candidate': candidate.candidateId },
+      });
+      if (!response.ok()) {
+        return false;
+      }
+      const body = (await response.json()) as { allCurrentAccepted?: boolean };
+      return body.allCurrentAccepted === true;
+    }, { timeout: 15_000 })
+    .toBe(true);
   await page.reload();
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /** Signs in from the shell account chip without visiting diagnostics. */
@@ -119,7 +133,10 @@ export async function recordDefaultSessionZero(_page: Page): Promise<void> {
 
 /** Join the current table from /campaigns/:id/join with the first vault character. */
 export async function joinTableWithFirstCharacter(page: Page): Promise<void> {
-  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  if (await page.getByTestId('legal-play-gate-heading').isVisible().catch(() => false)) {
+    await acceptAllLegalForPlay(page);
+  }
+  await expect(page.getByTestId('join-table-heading')).toBeVisible({ timeout: 20_000 });
   const select = page.getByTestId('join-character-select');
   await expect(select).toBeVisible();
   const characterId = await select.locator('option').nth(1).getAttribute('value');

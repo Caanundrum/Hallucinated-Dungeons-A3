@@ -39,7 +39,10 @@ export async function hydrateLegalAcceptance(): Promise<void> {
     notify();
     return;
   }
-  if (loadedForAccountId === account.accountId || loading) {
+  if (loading) {
+    return;
+  }
+  if (loadedForAccountId === account.accountId && acceptance !== null) {
     return;
   }
   loading = true;

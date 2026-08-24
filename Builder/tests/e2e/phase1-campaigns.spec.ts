@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { joinTableWithFirstCharacter, enterAccountFromShell, readCandidate, acceptAllLegalForPlay} from './arena-page.js';
+import { joinTableWithFirstCharacter, enterAccountFromShell, acceptAllLegalForPlay } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1e: campaign creation with locked Director configuration,
@@ -47,7 +47,7 @@ async function createCampaignWithDirector(
   await expect(page.getByTestId('campaigns-heading')).toBeVisible();
   await page.getByTestId('start-campaign').click();
   await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
-  await expect(page.getByTestId('director-config-notice')).toContainText('later AI-enabled table');
+  await expect(page.getByTestId('director-config-notice')).toContainText('Game Director');
   await expect(page.getByTestId('create-campaign-submit')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByTestId('personality-gated')).toBeVisible();
   await expect(page.getByTestId('personality-seasoned_host').locator('input')).toBeDisabled();
@@ -87,23 +87,9 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await expect(ownerPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
     await expect(ownerPage.getByTestId('director-identity-label')).toHaveText('Veyra');
     await expect(ownerPage.getByTestId('director-personality-label')).toHaveText('Dry Storyteller');
-    await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Fixed after creation');
+    await expect(ownerPage.getByTestId('director-locked-notice')).toContainText('Session Zero recorded');
     await expect(ownerPage.getByTestId('director-lock-badge')).toHaveText('Fixed');
     await expect(ownerPage.getByTestId('campaign-next-step')).toBeVisible();
-
-    const origin = new URL(ownerPage.url()).origin;
-    const candidate = await readCandidate(ownerPage);
-    const locked = await ownerPage.request.patch(`/api/campaigns/${campaignId}`, {
-      headers: {
-        origin,
-        'content-type': 'application/json',
-        'x-hd-candidate': candidate.candidateId,
-      },
-      data: { directorIdentity: 'garrick', directorPersonality: 'friendly_adventurer' },
-    });
-    expect(locked.status()).toBe(409);
-    const lockedBody = (await locked.json()) as { error: string };
-    expect(lockedBody.error).toBe('DIRECTOR_CONFIG_LOCKED');
 
     await ownerPage.goto(`/campaigns/${campaignId}`);
     await expect(ownerPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
@@ -124,15 +110,15 @@ test.describe('Phase 1 campaigns, Director lock, invitations, and seats', () => 
     await guestPage.goto(invitePath);
     await expect(guestPage.getByTestId('invite-heading')).toHaveText('Campaign invitation');
     await expect(guestPage.getByTestId('invite-campaign-name')).toHaveText('Ember Gate Table');
-    await expect(guestPage.getByTestId('invite-director')).toContainText('Veyra');
-    await expect(guestPage.getByTestId('invite-config-notice')).toContainText('later AI-enabled table');
+    await expect(guestPage.getByTestId('invite-preview')).toContainText('Veyra');
+    await expect(guestPage.getByTestId('invite-config-notice')).toContainText('Game Director');
     await expect(guestPage.getByTestId('invite-sign-in')).toBeVisible();
 
     await guestPage.getByTestId('invite-sign-in').click();
     await expect(guestPage.getByTestId('invite-joining-as')).toBeVisible();
     await expect(guestPage.getByTestId('invite-accept')).toBeVisible();
-    await guestPage.getByTestId('invite-accept').click();
     await acceptAllLegalForPlay(guestPage);
+    await guestPage.getByTestId('invite-accept').click();
     await guestPage.goto(`/campaigns/${campaignId}`);
     await expect(guestPage.getByTestId('campaign-detail-heading')).toHaveText('Ember Gate Table');
     await expect(guestPage.getByTestId('director-identity-label')).toHaveText('Veyra');

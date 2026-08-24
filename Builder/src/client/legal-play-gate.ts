@@ -27,7 +27,10 @@ const LEGAL_LABELS: Record<string, string> = {
 };
 
 export function isLegalPlayBlocked(acceptance: LegalAcceptanceProjection | null): boolean {
-  return acceptance === null || !acceptance.allCurrentAccepted;
+  if (acceptance === null) {
+    return false;
+  }
+  return !acceptance.allCurrentAccepted;
 }
 
 export async function loadLegalPlayAcceptance(): Promise<LegalAcceptanceProjection | null> {
