@@ -106,7 +106,7 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
               <li><a href="/characters" data-link data-testid="nav-characters">Characters</a></li>
-              <li><a href="/campaigns" data-link data-testid="nav-campaigns">Campaigns</a></li>
+              <li><a href="/campaigns" data-link data-testid="nav-campaigns">Tables</a></li>
               <li><a href="/account" data-link data-testid="nav-account">Account</a></li>
               <li data-nav-admin hidden><a href="/admin" data-link data-testid="nav-admin">Admin</a></li>
               ${

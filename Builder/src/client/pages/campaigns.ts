@@ -1,13 +1,11 @@
 /**
- * Campaign list: every campaign this account owns or has joined.
- *
- * Blueprint ownership: Section 25 Phase 1 (campaigns) and Section 1.5.4
- * (campaign ownership grants no character ownership).
+ * Tables hub: my tables, open lobby, and jump-in join flow entry points.
  */
 
-import type { CampaignListProjection } from '../../shared/campaign-contract.js';
+import type { TablesHubProjection } from '../../shared/campaign-contract.js';
+import { MAX_ACTIVE_PLAYERS } from '../../shared/campaign-contract.js';
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchCampaigns } from '../api.js';
+import { ApiFailure, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
@@ -15,124 +13,134 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
+type TablesTab = 'mine' | 'open';
+
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-type CampaignSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc';
-
 export function mountCampaignsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
-  shell.setDocumentTitle('Campaigns');
+  shell.setDocumentTitle('Tables');
 
-  let list: CampaignListProjection | null = null;
+  let hub: TablesHubProjection | null = null;
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
   let searchQuery = '';
-  let sortMode: CampaignSort = 'updated_desc';
+  let tab: TablesTab = 'mine';
   const mountToken = beginPageMount(container);
 
-  function filteredCampaigns(): CampaignListProjection['campaigns'] {
-    const campaigns = list?.campaigns ?? [];
-    const needle = searchQuery.trim().toLowerCase();
-    const filtered =
-      needle.length === 0
-        ? [...campaigns]
-        : campaigns.filter((campaign) => {
-            const haystack = [
-              campaign.name,
-              campaign.director.identityLabel,
-              campaign.director.personalityLabel,
-              campaign.sessionStatusLabel ?? '',
-              campaign.isCampaignOwner ? 'owner' : 'member',
-            ]
-              .join(' ')
-              .toLowerCase();
-            return haystack.includes(needle);
-          });
-    filtered.sort((left, right) => {
-      if (sortMode === 'name_asc' || sortMode === 'name_desc') {
-        const cmp = left.name.localeCompare(right.name);
-        return sortMode === 'name_asc' ? cmp : -cmp;
-      }
-      const leftTime = Date.parse(left.updatedAt) || 0;
-      const rightTime = Date.parse(right.updatedAt) || 0;
-      return sortMode === 'updated_asc' ? leftTime - rightTime : rightTime - leftTime;
-    });
-    return filtered;
-  }
-
   function renderSignedIn(): void {
-    const campaigns = filteredCampaigns();
-    const total = list?.campaigns.length ?? 0;
+    const myTables = hub?.myTables ?? [];
+    const openTables = hub?.openTables ?? [];
+    const needle = searchQuery.trim().toLowerCase();
+    const filteredMine =
+      needle.length === 0
+        ? myTables
+        : myTables.filter((table) =>
+            [table.name, table.director.identityLabel, table.director.personalityLabel]
+              .join(' ')
+              .toLowerCase()
+              .includes(needle),
+          );
+    const filteredOpen =
+      needle.length === 0
+        ? openTables
+        : openTables.filter((table) =>
+            [table.name, table.ownerDisplayLabel, table.directorIdentityLabel]
+              .join(' ')
+              .toLowerCase()
+              .includes(needle),
+          );
+
     container.innerHTML = `
       <div class="page">
-        <h1 data-testid="campaigns-heading">Campaigns</h1>
+        <h1 data-testid="campaigns-heading">Tables</h1>
         <p class="tagline">
-          ${
-            candidate?.environmentClass === 'milestone'
-              ? 'Start a table, invite friends, choose who narrates your world, and bring your hero to the session.'
-              : 'Create a table, lock its Game Director configuration, invite another Local Arena account, and seat a character you own. Hosting a campaign never grants ownership of another player\'s character.'
-          }
+          Jump in: pick a table, choose your character, and play. Four seats are active at once;
+          membership history is unlimited.
         </p>
+        ${
+          hub?.activeSeat
+            ? `<p class="message notice" data-testid="return-to-table">
+                 You are seated at
+                 <a href="/campaigns/${escapeHtml(hub.activeSeat.campaignId)}/table" data-link>
+                   ${escapeHtml(hub.activeSeat.campaignName)}
+                 </a>
+                 as ${escapeHtml(hub.activeSeat.characterName)}.
+               </p>`
+            : ''
+        }
         ${
           error === null
             ? ''
             : `<div class="message error" role="alert" tabindex="-1" data-testid="campaigns-error">${escapeHtml(error)}</div>`
         }
         <div class="actions">
-          <button type="button" data-testid="start-campaign">Create a campaign</button>
+          <button type="button" data-testid="start-campaign">New table</button>
         </div>
-        <section class="panel" aria-labelledby="campaign-list-heading">
-          <h2 id="campaign-list-heading">Your campaigns</h2>
-          ${
-            total === 0
-              ? '<p class="empty-state" data-testid="campaigns-empty">You have not created or joined a campaign yet.</p>'
-              : `
-          <div class="campaign-list-tools" data-testid="campaign-list-tools">
-            <label class="field">
-              <span>Search</span>
-              <input type="search" data-testid="campaigns-search" placeholder="Name, Director, owner, or session"
-                value="${escapeHtml(searchQuery)}" />
-            </label>
-            <label class="field">
-              <span>Sort</span>
-              <select data-testid="campaigns-sort">
-                <option value="updated_desc" ${sortMode === 'updated_desc' ? 'selected' : ''}>Updated (newest)</option>
-                <option value="updated_asc" ${sortMode === 'updated_asc' ? 'selected' : ''}>Updated (oldest)</option>
-                <option value="name_asc" ${sortMode === 'name_asc' ? 'selected' : ''}>Name (A–Z)</option>
-                <option value="name_desc" ${sortMode === 'name_desc' ? 'selected' : ''}>Name (Z–A)</option>
-              </select>
-            </label>
-            <p class="record-meta" data-testid="campaigns-filter-meta">
-              Showing ${campaigns.length} of ${total}
-            </p>
+        <div class="campaign-list-tools" data-testid="campaign-list-tools">
+          <label class="field">
+            <span>Search</span>
+            <input type="search" data-testid="campaigns-search" placeholder="Name or Director"
+              value="${escapeHtml(searchQuery)}" />
+          </label>
+          <div class="actions" role="tablist" aria-label="Table lists">
+            <button type="button" role="tab" data-testid="tables-tab-mine"
+              aria-selected="${tab === 'mine' ? 'true' : 'false'}">My tables</button>
+            <button type="button" role="tab" data-testid="tables-tab-open"
+              aria-selected="${tab === 'open' ? 'true' : 'false'}">Open tables</button>
           </div>
+        </div>
+        <section class="panel" aria-labelledby="table-list-heading">
+          <h2 id="table-list-heading">${tab === 'mine' ? 'My tables' : 'Open tables'}</h2>
           ${
-            campaigns.length === 0
-              ? '<p class="empty-state" data-testid="campaigns-filter-empty">No campaigns match this search.</p>'
-              : `<ul class="record-list" data-testid="campaign-list">
-                  ${campaigns
-                    .map(
-                      (campaign) => `
-                    <li data-testid="campaign-item">
-                      <a class="record-note" href="/campaigns/${escapeHtml(campaign.campaignId)}" data-link data-testid="campaign-link">
-                        ${escapeHtml(campaign.name)}
-                      </a>
-                      <span class="record-meta">
-                        ${escapeHtml(campaign.director.identityLabel)} · ${escapeHtml(campaign.director.personalityLabel)}
-                        · ${campaign.isCampaignOwner ? 'Owner' : 'Member'}
-                        · ${campaign.memberCount} member${campaign.memberCount === 1 ? '' : 's'}
-                        · Session ${escapeHtml(campaign.sessionStatusLabel ?? 'Not started')}
-                        · updated ${escapeHtml(formatTimestamp(campaign.updatedAt))}
-                      </span>
-                    </li>`,
-                    )
-                    .join('')}
-                </ul>`
-          }`
+            tab === 'mine'
+              ? filteredMine.length === 0
+                ? '<p class="empty-state" data-testid="campaigns-empty">You have not created or joined a table yet.</p>'
+                : `<ul class="record-list" data-testid="campaign-list">
+                    ${filteredMine
+                      .map(
+                        (table) => `
+                      <li data-testid="campaign-item">
+                        <a class="record-note" href="/campaigns/${escapeHtml(table.campaignId)}/join" data-link>
+                          ${escapeHtml(table.name)}
+                        </a>
+                        <span class="record-meta">
+                          ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
+                          · ${table.isCampaignOwner ? 'Owner' : 'Member'}
+                          · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
+                          · ${escapeHtml(table.visibility)}
+                          ${table.passwordProtected ? ' · 🔒' : ''}
+                          · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
+                        </span>
+                      </li>`,
+                      )
+                      .join('')}
+                  </ul>`
+              : filteredOpen.length === 0
+                ? '<p class="empty-state" data-testid="open-tables-empty">No public tables are open right now.</p>'
+                : `<ul class="record-list" data-testid="open-table-list">
+                    ${filteredOpen
+                      .map(
+                        (table) => `
+                      <li data-testid="open-table-item">
+                        <a class="record-note" href="/campaigns/${escapeHtml(table.campaignId)}/join" data-link
+                          data-testid="open-table-link">
+                          ${escapeHtml(table.name)}${table.passwordProtected ? ' 🔒' : ''}
+                        </a>
+                        <span class="record-meta">
+                          Host ${escapeHtml(table.ownerDisplayLabel)}
+                          · ${escapeHtml(table.directorIdentityLabel)} · ${escapeHtml(table.directorPersonalityLabel)}
+                          · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
+                          · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
+                        </span>
+                      </li>`,
+                      )
+                      .join('')}
+                  </ul>`
           }
         </section>
       </div>`;
@@ -143,24 +151,19 @@ export function mountCampaignsPage(host: PageHost): void {
     container
       .querySelector<HTMLInputElement>('[data-testid="campaigns-search"]')
       ?.addEventListener('input', (event) => {
-        if (!(event.target instanceof HTMLInputElement)) {
-          return;
+        if (event.target instanceof HTMLInputElement) {
+          searchQuery = event.target.value;
+          renderSignedIn();
         }
-        searchQuery = event.target.value;
-        renderSignedIn();
-        const search = container.querySelector<HTMLInputElement>('[data-testid="campaigns-search"]');
-        search?.focus();
-        search?.setSelectionRange(search.value.length, search.value.length);
       });
-    container
-      .querySelector<HTMLSelectElement>('[data-testid="campaigns-sort"]')
-      ?.addEventListener('change', (event) => {
-        if (!(event.target instanceof HTMLSelectElement)) {
-          return;
-        }
-        sortMode = event.target.value as CampaignSort;
-        renderSignedIn();
-      });
+    container.querySelector<HTMLButtonElement>('[data-testid="tables-tab-mine"]')?.addEventListener('click', () => {
+      tab = 'mine';
+      renderSignedIn();
+    });
+    container.querySelector<HTMLButtonElement>('[data-testid="tables-tab-open"]')?.addEventListener('click', () => {
+      tab = 'open';
+      renderSignedIn();
+    });
   }
 
   function render(): void {
@@ -170,7 +173,7 @@ export function mountCampaignsPage(host: PageHost): void {
     if (!isAccountHydrated()) {
       container.innerHTML = `
         <div class="page">
-          <h1 data-testid="campaigns-heading">Campaigns</h1>
+          <h1 data-testid="campaigns-heading">Tables</h1>
           <p class="tagline" data-testid="campaigns-loading">Checking your session…</p>
         </div>`;
       return;
@@ -181,8 +184,8 @@ export function mountCampaignsPage(host: PageHost): void {
         return;
       }
       container.innerHTML = renderSignedOutGate({
-        title: 'Campaigns',
-        body: 'Sign in with a Local Arena development account to create or join campaigns.',
+        title: 'Tables',
+        body: 'Sign in to browse tables and join a game.',
         candidate,
         busy: gateBusy,
         error: gateError,
@@ -204,11 +207,11 @@ export function mountCampaignsPage(host: PageHost): void {
       });
       return;
     }
-    if (list === null && error === null) {
+    if (hub === null && error === null) {
       container.innerHTML = `
         <div class="page">
-          <h1 data-testid="campaigns-heading">Campaigns</h1>
-          <p class="tagline" data-testid="campaigns-loading">Loading your campaigns…</p>
+          <h1 data-testid="campaigns-heading">Tables</h1>
+          <p class="tagline" data-testid="campaigns-loading">Loading tables…</p>
         </div>`;
       return;
     }
@@ -223,13 +226,10 @@ export function mountCampaignsPage(host: PageHost): void {
     error = null;
     render();
     try {
-      list = await fetchCampaigns();
+      hub = await fetchTablesHub();
     } catch (failure) {
-      list = null;
-      error =
-        failure instanceof ApiFailure
-          ? failure.message
-          : 'Campaigns could not be loaded.';
+      hub = null;
+      error = failure instanceof ApiFailure ? failure.message : 'Tables could not be loaded.';
     }
     render();
   }

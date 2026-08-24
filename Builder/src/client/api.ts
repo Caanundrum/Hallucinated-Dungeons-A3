@@ -24,13 +24,17 @@ import type {
   DraftProjection,
 } from '../shared/character-contract.js';
 import type {
+  ActiveSeatedTableProjection,
   CampaignDetailProjection,
   CampaignListProjection,
   CampaignProjection,
   DirectorCatalog,
   InvitationCreatedProjection,
   InvitationPreview,
+  JoinTableResponse,
+  PublicTableListProjection,
   SeatProjection,
+  TablesHubProjection,
 } from '../shared/campaign-contract.js';
 import type {
   CampaignMemoryProjection,
@@ -293,14 +297,28 @@ export async function fetchCampaigns(): Promise<CampaignListProjection> {
   return (await request<CampaignListProjection>('/api/campaigns')) as CampaignListProjection;
 }
 
+export async function fetchTablesHub(): Promise<TablesHubProjection> {
+  return (await request<TablesHubProjection>('/api/tables/hub')) as TablesHubProjection;
+}
+
+export async function fetchPublicTables(): Promise<PublicTableListProjection> {
+  return (await request<PublicTableListProjection>(
+    '/api/tables/public',
+  )) as PublicTableListProjection;
+}
+
+export async function fetchActiveSeatedTable(): Promise<ActiveSeatedTableProjection | null> {
+  return await request<ActiveSeatedTableProjection | null>('/api/tables/active-seat');
+}
+
 export async function createCampaign(options: {
   readonly candidateId: string;
   readonly name: string;
   readonly summary: string;
   readonly directorIdentity: string;
   readonly directorPersonality: string;
-  /** Starter pack to seed from, or 'blank'. Omitted defaults to a blank table. */
-  readonly adventureTemplate?: string;
+  readonly visibility?: string;
+  readonly joinPassword?: string;
 }): Promise<CampaignProjection> {
   return (await request<CampaignProjection>('/api/campaigns', {
     method: 'POST',
@@ -310,8 +328,10 @@ export async function createCampaign(options: {
       summary: options.summary,
       directorIdentity: options.directorIdentity,
       directorPersonality: options.directorPersonality,
-      ...(options.adventureTemplate !== undefined
-        ? { adventureTemplate: options.adventureTemplate }
+      adventureTemplate: 'blank',
+      ...(options.visibility !== undefined ? { visibility: options.visibility } : {}),
+      ...(options.joinPassword !== undefined && options.joinPassword.length > 0
+        ? { joinPassword: options.joinPassword }
         : {}),
     }),
   })) as CampaignProjection;
@@ -388,12 +408,36 @@ export async function createCampaignSeat(options: {
   readonly candidateId: string;
   readonly campaignId: string;
   readonly characterId: string;
+  readonly confirmSwitch?: boolean;
 }): Promise<SeatProjection> {
   return (await request<SeatProjection>(`/api/campaigns/${options.campaignId}/seats`, {
     method: 'POST',
     candidateId: options.candidateId,
-    body: JSON.stringify({ characterId: options.characterId }),
+    body: JSON.stringify({
+      characterId: options.characterId,
+      ...(options.confirmSwitch === true ? { confirmSwitch: true } : {}),
+    }),
   })) as SeatProjection;
+}
+
+export async function joinCampaignTable(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly characterId: string;
+  readonly password?: string;
+  readonly confirmSwitch?: boolean;
+}): Promise<JoinTableResponse> {
+  return (await request<JoinTableResponse>(`/api/campaigns/${options.campaignId}/join`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      characterId: options.characterId,
+      ...(options.password !== undefined && options.password.length > 0
+        ? { password: options.password }
+        : {}),
+      ...(options.confirmSwitch === true ? { confirmSwitch: true } : {}),
+    }),
+  })) as JoinTableResponse;
 }
 
 export async function leaveCampaignSeat(options: {
