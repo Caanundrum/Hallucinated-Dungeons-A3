@@ -292,6 +292,7 @@ export function mountAccountPage(host: PageHost): void {
             <p class="record-meta">
               Speech is player-optional. Text-to-speech only reads already-visible text.
               Speech-to-text only fills editable unsent drafts — never auto-submits.
+              Adjust the controls, then press Save presentation to persist them.
             </p>
             <label class="option">
               <input type="checkbox" data-testid="account-reduced-motion" ${reducedMotion ? 'checked' : ''} />
@@ -323,6 +324,11 @@ export function mountAccountPage(host: PageHost): void {
             <p class="record-meta" data-testid="narration-density-summary">
               ${escapeHtml(NARRATION_DENSITY_SUMMARIES[narrationDensity])}
             </p>
+            <div class="actions">
+              <button type="button" data-testid="save-presentation" ${busy ? 'disabled' : ''}>
+                ${busy ? 'Saving…' : 'Save presentation'}
+              </button>
+            </div>
             ${
               presentationSavedMessage === null
                 ? ''
@@ -588,176 +594,71 @@ export function mountAccountPage(host: PageHost): void {
     container
       .querySelector<HTMLInputElement>('[data-testid="account-reduced-motion"]')
       ?.addEventListener('change', (event) => {
-        void (async () => {
-          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const settings = await savePlayerSettings({
-              candidateId: candidate.candidateId,
-              reducedMotion: event.target.checked,
-              lowEffects,
-              speech: { textToSpeechEnabled, speechToTextEnabled },
-            });
-            reducedMotion = settings.reducedMotion;
-            lowEffects = settings.lowEffects;
-            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
-            speechToTextEnabled = settings.reserved.speechToTextEnabled;
-            applyPresentationPreferences({ reducedMotion, lowEffects });
-            presentationSavedMessage =
-              reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.';
-            shell.announce(
-              reducedMotion ? 'Reduced motion preference saved.' : 'Reduced motion preference cleared.',
-            );
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Presentation settings could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        reducedMotion = event.target.checked;
+        presentationSavedMessage = null;
       });
 
     container
       .querySelector<HTMLInputElement>('[data-testid="account-low-effects"]')
       ?.addEventListener('change', (event) => {
-        void (async () => {
-          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const settings = await savePlayerSettings({
-              candidateId: candidate.candidateId,
-              reducedMotion,
-              lowEffects: event.target.checked,
-              speech: { textToSpeechEnabled, speechToTextEnabled },
-            });
-            reducedMotion = settings.reducedMotion;
-            lowEffects = settings.lowEffects;
-            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
-            speechToTextEnabled = settings.reserved.speechToTextEnabled;
-            applyPresentationPreferences({ reducedMotion, lowEffects });
-            presentationSavedMessage =
-              lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.';
-            shell.announce(
-              lowEffects ? 'Low effects preference saved.' : 'Low effects preference cleared.',
-            );
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Presentation settings could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        lowEffects = event.target.checked;
+        presentationSavedMessage = null;
       });
 
     container
       .querySelector<HTMLInputElement>('[data-testid="account-tts"]')
       ?.addEventListener('change', (event) => {
-        void (async () => {
-          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const settings = await savePlayerSettings({
-              candidateId: candidate.candidateId,
-              reducedMotion,
-              lowEffects,
-              speech: {
-                textToSpeechEnabled: event.target.checked,
-                speechToTextEnabled,
-              },
-            });
-            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
-            speechToTextEnabled = settings.reserved.speechToTextEnabled;
-            presentationSavedMessage =
-              textToSpeechEnabled ? 'Text-to-speech enabled.' : 'Text-to-speech disabled.';
-            shell.announce(
-              textToSpeechEnabled ? 'Text-to-speech enabled.' : 'Text-to-speech disabled.',
-            );
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Speech settings could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        textToSpeechEnabled = event.target.checked;
+        presentationSavedMessage = null;
       });
 
     container
       .querySelector<HTMLInputElement>('[data-testid="account-stt"]')
       ?.addEventListener('change', (event) => {
-        void (async () => {
-          if (candidate === null || busy || !(event.target instanceof HTMLInputElement)) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const settings = await savePlayerSettings({
-              candidateId: candidate.candidateId,
-              reducedMotion,
-              lowEffects,
-              speech: {
-                textToSpeechEnabled,
-                speechToTextEnabled: event.target.checked,
-              },
-            });
-            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
-            speechToTextEnabled = settings.reserved.speechToTextEnabled;
-            presentationSavedMessage =
-              speechToTextEnabled
-                ? 'Speech-to-text draft dictation enabled.'
-                : 'Speech-to-text disabled.';
-            shell.announce(
-              speechToTextEnabled
-                ? 'Speech-to-text draft dictation enabled.'
-                : 'Speech-to-text disabled.',
-            );
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Speech settings could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        speechToTextEnabled = event.target.checked;
+        presentationSavedMessage = null;
       });
 
     container
       .querySelector<HTMLSelectElement>('[data-testid="account-narration-density"]')
       ?.addEventListener('change', (event) => {
+        if (!(event.target instanceof HTMLSelectElement)) {
+          return;
+        }
+        const nextDensity = event.target.value;
+        if (!isNarrationDensity(nextDensity)) {
+          return;
+        }
+        narrationDensity = nextDensity;
+        presentationSavedMessage = null;
+        const summary = container.querySelector<HTMLElement>('[data-testid="narration-density-summary"]');
+        if (summary !== null) {
+          summary.textContent = NARRATION_DENSITY_SUMMARIES[narrationDensity];
+        }
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="save-presentation"]')
+      ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || !(event.target instanceof HTMLSelectElement)) {
-            return;
-          }
-          const nextDensity = event.target.value;
-          if (!isNarrationDensity(nextDensity)) {
+          if (candidate === null || busy) {
             return;
           }
           busy = true;
           error = null;
+          presentationSavedMessage = null;
           render();
           try {
             const settings = await savePlayerSettings({
@@ -765,16 +666,21 @@ export function mountAccountPage(host: PageHost): void {
               reducedMotion,
               lowEffects,
               speech: { textToSpeechEnabled, speechToTextEnabled },
-              narrationDensity: nextDensity,
+              narrationDensity,
             });
+            reducedMotion = settings.reducedMotion;
+            lowEffects = settings.lowEffects;
+            textToSpeechEnabled = settings.reserved.textToSpeechEnabled;
+            speechToTextEnabled = settings.reserved.speechToTextEnabled;
             narrationDensity = settings.reserved.narrationDensity;
-            presentationSavedMessage = `Narration density set to ${NARRATION_DENSITY_LABELS[narrationDensity]}.`;
-            shell.announce(`Narration density set to ${NARRATION_DENSITY_LABELS[narrationDensity]}.`);
+            applyPresentationPreferences({ reducedMotion, lowEffects });
+            presentationSavedMessage = 'Presentation preferences saved.';
+            shell.announce('Presentation preferences saved.');
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'Narration density could not be saved.';
+                : 'Presentation settings could not be saved.';
           } finally {
             busy = false;
             render();

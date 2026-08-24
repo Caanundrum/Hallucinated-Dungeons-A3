@@ -49,7 +49,6 @@ import {
   AlreadySeatedError,
   CampaignNotFoundError,
   CampaignValidationError,
-  DirectorConfigLockedError,
   InvitationRateLimitedError,
   InvitationUnavailableError,
 } from './errors.js';
@@ -554,16 +553,13 @@ export async function updateCampaign(options: {
   }
 
   const stored = await loadCampaign(firestore, campaignId);
-  const settings = await ensureCampaignSettings(firestore, campaignId);
 
   let directorIdentity = stored.directorIdentity;
   let directorPersonality = stored.directorPersonality;
   let directorAvatarKey = stored.directorAvatarKey;
 
   if (options.directorIdentity !== undefined || options.directorPersonality !== undefined) {
-    if (settings.sessionZero.completed) {
-      throw new DirectorConfigLockedError();
-    }
+    // Owners may recover Director identity after Session Zero with an explicit UI confirm.
     const nextIdentity =
       options.directorIdentity === undefined ? directorIdentity : options.directorIdentity;
     const nextPersonality =

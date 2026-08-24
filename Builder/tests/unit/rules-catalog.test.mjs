@@ -19,5 +19,10 @@ test('rules catalog lists SRD categories without claiming full prose books', () 
   assert.equal(xp.details.some((line) => /server-validated/i.test(line)), false);
   assert.ok(catalog.entries.some((entry) => entry.category === 'spells'));
   assert.ok(catalog.entries.some((entry) => entry.category === 'skills'));
+  assert.ok(catalog.entries.some((entry) => entry.category === 'table_statuses'));
+  const guiding = catalog.entries.find((entry) => entry.entryId === 'condition:guiding-bolt-marked');
+  assert.ok(guiding);
+  assert.equal(guiding.category, 'table_statuses');
+  assert.match(guiding.title, /table status/i);
   assert.ok(catalog.entries.length > 40);
 });

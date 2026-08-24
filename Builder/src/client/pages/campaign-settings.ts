@@ -24,6 +24,7 @@ import {
   type GroupDecisionPolicy,
   LETHALITY_PREFERENCES,
   LETHALITY_PREFERENCE_LABELS,
+  REACTION_WINDOW_SECONDS_DEFAULT,
   REACTION_WINDOW_SECONDS_MAX,
   REACTION_WINDOW_SECONDS_MIN,
   ROMANCE_POLICIES,
@@ -120,6 +121,13 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
 
         <section class="panel" aria-labelledby="group-decision-heading">
           <h2 id="group-decision-heading">Group-decision policy</h2>
+          ${
+            draft.sessionZero.completed
+              ? `<p class="message notice" data-testid="group-decision-consent-notice">
+                   Session Zero already recorded this policy. Changing it requires table consent — you will confirm before Save settings writes the new policy. No automatic change history is stored in Alpha; note the prior choice with your players.
+                 </p>`
+              : ''
+          }
           <ul class="option-list" data-testid="group-decision-list">
             ${GROUP_DECISION_POLICIES.map(
               (policy) => `
@@ -164,7 +172,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
             <input type="number" data-testid="reaction-window"
               min="${REACTION_WINDOW_SECONDS_MIN}" max="${REACTION_WINDOW_SECONDS_MAX}"
               value="${draft.reactionWindowSeconds}" ${disabled ? 'disabled' : ''} />
-            <span class="record-meta">Allowed range ${REACTION_WINDOW_SECONDS_MIN}–${REACTION_WINDOW_SECONDS_MAX} seconds. Example: 6 seconds gives one beat to declare a reaction before play moves on.</span>
+            <span class="record-meta">Allowed range ${REACTION_WINDOW_SECONDS_MIN}–${REACTION_WINDOW_SECONDS_MAX} seconds. Example: ${REACTION_WINDOW_SECONDS_DEFAULT} seconds gives one beat to declare a reaction before play moves on.</span>
           </label>
           <p class="record-meta">Rules transparency: ${escapeHtml(draft.rulesTransparencyLabel)} (locked default).</p>
           <ul class="option-list compact" data-testid="enemy-health-list">

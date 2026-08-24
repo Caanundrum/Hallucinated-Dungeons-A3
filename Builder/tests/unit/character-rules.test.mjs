@@ -598,3 +598,28 @@ test('species skill-choice labels are plain English, not “Skillful skill profi
   assert.match(keen.label, /Keen Senses/i);
   assert.doesNotMatch(keen.label, /Keen Senses skill proficiency/i);
 });
+
+test('Alert adds proficiency bonus to initiative, not a flat +5', () => {
+  const choices = legalCharacterFor('fighter', { backgroundId: 'criminal' });
+  const sheet = deriveSheet(choices);
+  const alert = sheet.initiative.components.find((component) => component.ruleId === 'feat.alert.initiative');
+  assert.ok(alert);
+  assert.equal(alert.amount, sheet.proficiencyBonus.value);
+  assert.equal(alert.amount, 2);
+  assert.equal(
+    sheet.initiative.value,
+    sheet.abilityModifiers.dexterity + sheet.proficiencyBonus.value,
+  );
+});
+
+test('level-1 Fighter sheets omit Action Surge; mastery lists starting weapons', () => {
+  const choices = legalCharacterFor('fighter', { classEquipmentOptionId: 'fighter-a' });
+  const sheet = deriveSheet(choices);
+  assert.equal((sheet.classResources ?? []).some((resource) => resource.id === 'action-surge'), false);
+  assert.ok((sheet.classResources ?? []).some((resource) => resource.id === 'second-wind'));
+  assert.ok((sheet.weaponMasteries ?? []).length >= 1);
+  assert.ok(
+    /Champion|level 3|fighting style/i.test(sheet.subclassLabel ?? ''),
+    `unexpected subclassLabel: ${sheet.subclassLabel}`,
+  );
+});

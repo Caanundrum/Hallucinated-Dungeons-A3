@@ -9,6 +9,7 @@
 export const RULES_CATALOG_CATEGORIES = [
   'core_mechanics',
   'conditions',
+  'table_statuses',
   'skills',
   'classes',
   'species',
@@ -22,6 +23,7 @@ export type RulesCatalogCategory = (typeof RULES_CATALOG_CATEGORIES)[number];
 export const RULES_CATALOG_CATEGORY_LABELS: Record<RulesCatalogCategory, string> = {
   core_mechanics: 'Core mechanics',
   conditions: 'Conditions',
+  table_statuses: 'Table statuses',
   skills: 'Skills',
   classes: 'Classes',
   species: 'Species',

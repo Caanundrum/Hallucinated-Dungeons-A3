@@ -308,9 +308,13 @@ function paintSemanticSvg(
     <div class="table-stage-toolbar" data-testid="map-stage-toolbar">
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
-      <button type="button" data-map-zoom="fit" aria-label="Fit map">Fit</button>
-      <button type="button" data-map-zoom="center" aria-label="Center map">Center</button>
+      <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
+      <button type="button" data-map-zoom="center" aria-label="Center map on origin">Center</button>
+      <span class="record-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom ${Math.round(zoomScale * 100)}%</span>
     </div>
+    <p class="record-meta" data-testid="map-zoom-help">
+      Fit resets zoom to 100% so the whole map fills this frame. Center scrolls the map origin into view without changing zoom.
+    </p>
     <p class="map-terrain-summary" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
       ${escapeHtml(mapTerrainSummary(map))}
     </p>
@@ -332,7 +336,10 @@ function paintSemanticSvg(
       <span><span class="swatch" style="background:#f0c043"></span> Party token</span>
       <span><span class="swatch" style="background:#b86b2b"></span> Door</span>
       <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
-    </div>`;
+    </div>
+    <p class="record-meta" data-testid="map-hazard-layer-note">
+      Traps, locks, cover, and lighting are not a separate map layer in Alpha — declare searches and interactions in the play channel; the Director and rules resolve them against this scene.
+    </p>`;
 
   if (!reduceMotion) {
     requestAnimationFrame(() => {
@@ -374,6 +381,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     if (viewport !== null) {
       viewport.style.transform = `scale(${zoomScale})`;
       viewport.style.transformOrigin = 'center center';
+    }
+    const indicator = host.querySelector<HTMLElement>('[data-testid="map-zoom-indicator"]');
+    if (indicator !== null) {
+      indicator.textContent = `Zoom ${Math.round(zoomScale * 100)}%`;
     }
   }
 

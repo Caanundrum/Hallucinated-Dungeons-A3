@@ -1143,7 +1143,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function tutorialAskBanner(): string {
-    if (tutorialDismissed() || tutorialOpen || current === null) {
+    if (tutorialDismissed() || tutorialOpen || current === null || activeStep !== 'class') {
       return '';
     }
     return `

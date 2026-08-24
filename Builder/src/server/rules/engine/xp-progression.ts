@@ -116,7 +116,7 @@ function classFeaturesForLevel(classId: string, level: number): readonly string[
   if (classId === 'fighter') {
     if (level >= 1) features.push('Second Wind', 'Weapon Mastery');
     if (level >= 2) features.push('Action Surge', 'Tactical Mind');
-    if (level >= 3) features.push('Fighter Subclass');
+    if (level >= 3) features.push('Champion (Fighter subclass)');
     if (level >= 5) features.push('Extra Attack');
     if (level >= 9) features.push('Indomitable');
     if (level >= 11) features.push('Two Extra Attacks');
@@ -133,7 +133,9 @@ function classFeaturesForLevel(classId: string, level: number): readonly string[
 
 function replaceProficiency(value: DerivedValue, proficiencyBonus: number): DerivedValue {
   const components = value.components.map((component) =>
-    component.ruleId === 'proficiency-bonus' || component.ruleId.startsWith('proficiency-bonus.')
+    component.ruleId === 'proficiency-bonus' ||
+    component.ruleId.startsWith('proficiency-bonus.') ||
+    component.ruleId === 'feat.alert.initiative'
       ? { ...component, amount: proficiencyBonus }
       : component,
   );
@@ -141,6 +143,56 @@ function replaceProficiency(value: DerivedValue, proficiencyBonus: number): Deri
     components,
     value: components.reduce((total, component) => total + component.amount, 0),
   };
+}
+
+function classResourcesForLevel(
+  baseSheet: DerivedCharacterSheet,
+  classId: string,
+  level: number,
+): NonNullable<DerivedCharacterSheet['classResources']> {
+  const prior = baseSheet.classResources ?? [];
+  const byId = new Map(prior.map((resource) => [resource.id, resource]));
+  const next: Array<{
+    id: string;
+    label: string;
+    summary: string;
+    remaining: number;
+    maximum: number;
+    recharge: string;
+  }> = [];
+  const secondWind = byId.get('second-wind');
+  if (secondWind !== undefined || classId === 'fighter') {
+    next.push(
+      secondWind ?? {
+        id: 'second-wind',
+        label: 'Second Wind',
+        summary: 'Regain hit points as a Bonus Action.',
+        remaining: 1,
+        maximum: 1,
+        recharge: 'Short rest',
+      },
+    );
+  }
+  if (classId === 'fighter' && level >= 2) {
+    const actionSurge = byId.get('action-surge');
+    next.push(
+      actionSurge ?? {
+        id: 'action-surge',
+        label: 'Action Surge',
+        summary: 'Take one additional Action on your turn.',
+        remaining: 1,
+        maximum: 1,
+        recharge: 'Short rest',
+      },
+    );
+  }
+  for (const resource of prior) {
+    if (resource.id === 'second-wind' || resource.id === 'action-surge') {
+      continue;
+    }
+    next.push(resource);
+  }
+  return next;
 }
 
 export function deriveProgression(
@@ -227,6 +279,7 @@ export function recomputeSheetForLevel(
       ...skill,
       bonus: replaceProficiency(skill.bonus, derived.proficiencyBonus),
     })),
+    initiative: replaceProficiency(baseSheet.initiative, derived.proficiencyBonus),
     attacks: baseSheet.attacks.map((attack) => ({
       ...attack,
       attackBonus: {
@@ -239,6 +292,10 @@ export function recomputeSheetForLevel(
         ),
       },
     })),
+    classResources: classResourcesForLevel(baseSheet, classId, level),
+    ...(classId === 'fighter' && level >= 3
+      ? { subclassLabel: 'Champion (Alpha default Fighter subclass)' }
+      : {}),
     spellcasting:
       baseSheet.spellcasting === null
         ? null

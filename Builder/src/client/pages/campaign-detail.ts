@@ -361,8 +361,8 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           <p class="message notice" data-testid="director-locked-notice">
             ${
               sessionZeroComplete
-                ? 'Fixed after Session Zero — there is no edit control here. The Game Director narrates at the table; this panel only records which voice you chose.'
-                : 'You can still change the Game Director identity and personality until Session Zero is recorded. After that, the choice locks for ordinary players.'
+                ? 'Session Zero recorded this voice. Campaign owners can still recover identity here if the table agrees — confirm before switching.'
+                : 'You can still change the Game Director identity and personality until Session Zero is recorded. After that, owners retain a recovery path with confirmation.'
             }
           </p>
           ${directorAvatarMarkup({
@@ -386,10 +386,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             </div>
           </dl>
           ${
-            sessionZeroComplete || !campaign.isCampaignOwner
+            !campaign.isCampaignOwner
               ? ''
               : `<div class="actions" data-testid="director-change-panel">
-                   <p class="record-meta">Need a different voice? Choose again before Session Zero.</p>
+                   <p class="record-meta">${
+                     sessionZeroComplete
+                       ? 'Owner recovery: switch identity if your table agrees. Personality stays the same.'
+                       : 'Need a different voice? Choose again before Session Zero.'
+                   }</p>
                    <button type="button" class="secondary" data-testid="change-director-identity">Change Game Director</button>
                  </div>`
           }
@@ -431,8 +435,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             memory === null || !campaign.isCampaignOwner
               ? ''
               : `<section class="panel panel-nested" aria-labelledby="campaign-owner-heading" data-testid="campaign-owner-panel">
-                   <h3 id="campaign-owner-heading">Campaign owner</h3>
-                   <p class="record-meta">Suspend, resume, or close chapters for the whole table. Confirm major changes with your players first.</p>
+                   <h3 id="campaign-owner-heading">Owner admin tools</h3>
+                   <p class="record-meta" data-testid="campaign-owner-admin-notice">
+                     These controls are for the campaign owner only. They are separate from ordinary seating and play.
+                     Confirm major changes with your players first.
+                   </p>
                    <div class="actions">
                      <button type="button" data-testid="suspend-session"
                        aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
@@ -472,8 +479,9 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         ${
           campaign.isCampaignOwner
             ? `
-        <section class="panel" aria-labelledby="invite-heading">
-          <h2 id="invite-heading">Invitation</h2>
+        <section class="panel" aria-labelledby="invite-heading" data-testid="campaign-invite-admin-panel">
+          <h2 id="invite-heading">Invitation (owner)</h2>
+          <p class="record-meta">Owner admin tool — invite links are not part of ordinary seating.</p>
           <p>
             Share an invite link with another player. The link shows a bounded preview before
             sign-in, expires after 48 hours, and can be revoked.
@@ -581,14 +589,17 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       .querySelector<HTMLButtonElement>('[data-testid="change-director-identity"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || busy || detail === null || detail.settings.sessionZero.completed) {
+          if (candidate === null || busy || detail === null) {
             return;
           }
           const current = detail.campaign.director.identity;
           const next: DirectorIdentity = current === 'garrick' ? 'veyra' : 'garrick';
+          const afterSessionZero = detail.settings.sessionZero.completed;
           const accepted = await confirmInApp({
-            title: 'Change Game Director?',
-            body: `Switch from ${DIRECTOR_IDENTITY_LABELS[current]} to ${DIRECTOR_IDENTITY_LABELS[next]}? Personality (${DIRECTOR_PERSONALITY_LABELS[detail.campaign.director.personality]}) stays the same. You can only do this before Session Zero.`,
+            title: afterSessionZero ? 'Recover Game Director after Session Zero?' : 'Change Game Director?',
+            body: afterSessionZero
+              ? `Session Zero already recorded ${DIRECTOR_IDENTITY_LABELS[current]}. Confirm with your table, then switch to ${DIRECTOR_IDENTITY_LABELS[next]}? Personality (${DIRECTOR_PERSONALITY_LABELS[detail.campaign.director.personality]}) stays the same.`
+              : `Switch from ${DIRECTOR_IDENTITY_LABELS[current]} to ${DIRECTOR_IDENTITY_LABELS[next]}? Personality (${DIRECTOR_PERSONALITY_LABELS[detail.campaign.director.personality]}) stays the same.`,
             confirmLabel: `Use ${DIRECTOR_IDENTITY_LABELS[next]}`,
             cancelLabel: 'Keep current Director',
             testId: 'confirm-director-change',
