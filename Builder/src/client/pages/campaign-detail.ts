@@ -227,20 +227,36 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       return;
     }
     if (unavailable || detail === null) {
+      const storageFailure =
+        error !== null &&
+        (error.includes('live data storage') || error.includes('could not be loaded'));
       container.innerHTML = `
         <div class="page">
-          <h1 data-testid="campaign-detail-heading">Campaign unavailable</h1>
-          <p class="tagline">
-            This campaign is not available for your account. Foreign campaigns look the same as
-            missing ones.
+          <h1 data-testid="campaign-detail-heading">
+            ${storageFailure ? 'Campaign temporarily unavailable' : 'Campaign unavailable'}
+          </h1>
+          <p class="tagline" data-testid="campaign-detail-unavailable-copy">
+            ${
+              storageFailure
+                ? 'Live storage could not be reached just now. Campaigns that still appear in your campaign list were not deleted — wait a moment and open this page again.'
+                : 'This campaign is not available for your account. Foreign campaigns look the same as missing ones.'
+            }
           </p>
           ${
             error === null
               ? ''
               : `<div class="message error" role="alert" tabindex="-1" data-testid="campaign-detail-error">${escapeHtml(error)}</div>`
           }
-          <p><a href="/campaigns" data-link data-testid="back-to-campaigns">Back to campaigns</a></p>
+          <div class="actions">
+            <button type="button" data-testid="retry-campaign-detail">Try again</button>
+            <a href="/campaigns" data-link data-testid="back-to-campaigns">Back to campaigns</a>
+          </div>
         </div>`;
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="retry-campaign-detail"]')
+        ?.addEventListener('click', () => {
+          void load();
+        });
       return;
     }
 
