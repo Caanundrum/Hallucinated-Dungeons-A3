@@ -488,7 +488,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <p>
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
+<<<<<<< HEAD
           Skills your Background already grants are omitted so you do not lose a class pick.
+=======
+          Skills your Background already grants are omitted so you do not lose a class pick (PQA-196).
+>>>>>>> origin/main
         </p>
         ${checkboxList({
           name: 'class-skill',
