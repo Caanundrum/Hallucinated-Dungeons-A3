@@ -278,6 +278,16 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         if (detail.ownSeat !== null) {
           alreadySeatedHere = true;
           seatedCharacterName = detail.ownSeat.characterName;
+        } else {
+          const account = getAccount();
+          const ownSeat =
+            account === null
+              ? undefined
+              : detail.seats.find((seat) => seat.ownerAccountId === account.accountId);
+          if (ownSeat !== undefined) {
+            alreadySeatedHere = true;
+            seatedCharacterName = ownSeat.characterName;
+          }
         }
       } catch (detailFailure) {
         const fromHub =

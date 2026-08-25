@@ -186,6 +186,36 @@ const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
   'token_moved',
 ]);
 
+/** True when a timestamp is a Unix-epoch placeholder (TBL-QA-003 / PQA-158). */
+export function isEpochPlaceholderTimestamp(iso: string): boolean {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) && ms < 86_400_000;
+}
+
+/** Player-facing wall time; epoch placeholders never render as 1969/1970 dates. */
+export function formatPlayerFacingTimestamp(iso: string, now: Date = new Date()): string {
+  if (typeof iso !== 'string' || iso.trim().length === 0) {
+    return 'Just now';
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()) || isEpochPlaceholderTimestamp(iso)) {
+    return 'Just now';
+  }
+  // Synthetic opening prompts should read as immediate, not a stale absolute clock.
+  const ageMs = Math.abs(now.getTime() - date.getTime());
+  if (ageMs < 60_000) {
+    return 'Just now';
+  }
+  return date.toLocaleString();
+}
+
+function sanitizeThreadCreatedAt(iso: string, now: Date): string {
+  if (typeof iso !== 'string' || iso.trim().length === 0 || isEpochPlaceholderTimestamp(iso)) {
+    return now.toISOString();
+  }
+  return iso;
+}
+
 /** Rebuild the DM play thread from trusted Chronicle play beats (PQA-157/158/159). */
 export function dmThreadFromChronicleEntries(options: {
   readonly entries: readonly ChronicleEntryProjection[];
@@ -194,6 +224,7 @@ export function dmThreadFromChronicleEntries(options: {
   /** Wall clock for synthetic opening prompts (defaults to now). */
   readonly now?: Date;
 }): DmThreadMessage[] {
+  const now = options.now ?? new Date();
   const playEntries = options.entries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind));
   if (playEntries.length === 0) {
     const scene = options.sceneBanner.trim() || 'The table is ready.';
@@ -203,20 +234,22 @@ export function dmThreadFromChronicleEntries(options: {
         speaker: 'dm',
         speakerLabel: options.directorLabel,
         body: `${scene} What do you do?`,
-        createdAt: options.now?.toISOString() ?? new Date().toISOString(),
+        // Always wall-clock; never emit Unix epoch (TBL-QA-003 / PQA-158).
+        createdAt: now.toISOString(),
         kind: 'prompt',
       },
     ];
   }
   return playEntries.map((entry) => {
     const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
+    const createdAt = sanitizeThreadCreatedAt(entry.createdAt, now);
     if (entry.kind === 'play_declaration') {
       return {
         messageId: entry.entryId,
         speaker: 'player',
         speakerLabel: 'You',
         body,
-        createdAt: entry.createdAt,
+        createdAt,
         kind: 'declaration',
       };
     }
@@ -226,7 +259,7 @@ export function dmThreadFromChronicleEntries(options: {
         speaker: 'dm',
         speakerLabel: options.directorLabel,
         body,
-        createdAt: entry.createdAt,
+        createdAt,
         kind: 'ruling_hint',
       };
     }
@@ -235,7 +268,7 @@ export function dmThreadFromChronicleEntries(options: {
       speaker: 'system',
       speakerLabel: 'Table',
       body,
-      createdAt: entry.createdAt,
+      createdAt,
       kind: 'mechanics',
     };
   });

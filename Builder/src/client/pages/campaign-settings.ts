@@ -44,7 +44,10 @@ import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+  if (Number.isNaN(date.getTime()) || date.getTime() < 86_400_000) {
+    return 'Just now';
+  }
+  return date.toLocaleString();
 }
 
 export function mountCampaignSettingsPage(host: PageHost, campaignId: string): void {
@@ -290,8 +293,8 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
                    (reaction window and enemy health), and safety boundaries without recording Session Zero.
                    ${
                      draft.sessionZero.completed
-                       ? '<strong>Update Session Zero</strong> saves changes to the recorded social contract. New tables already apply defaults at creation so seating and live play are open immediately.'
-                       : '<strong>Record Session Zero</strong> also commits the Session Zero fields below and marks the social contract as recorded — required before seating characters or opening live play.'
+                       ? '<strong>Update Session Zero</strong> saves changes to the recorded social contract. New tables already apply defaults at creation so seating and live play stay open.'
+                       : '<strong>Record Session Zero</strong> commits the Session Zero fields below and marks the social contract as recorded. New tables apply defaults automatically at creation; use this only to record or refresh the contract on older tables.'
                    }
                  </p>
                  <button type="button" data-testid="save-settings" aria-disabled="${busy}">
@@ -308,13 +311,13 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
               ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="settings-open-table">Open table dock</a>`
               : `<span class="record-meta" data-testid="settings-open-table-gated">Open table after Session Zero defaults are recorded</span>`
           }
-          ${
-            draft.sessionZero.completed
-              ? `<p class="message notice" data-testid="session-zero-defaults-notice">
-                   Session Zero defaults were applied when this table was created. You can update them anytime; seating and live play stay open.
-                 </p>`
-              : ''
-          }
+          <p class="message notice" data-testid="session-zero-defaults-notice">
+            ${
+              draft.sessionZero.completed
+                ? 'Session Zero defaults were applied when this table was created. You can update them anytime; seating and live play stay open.'
+                : 'New tables apply Session Zero defaults at creation so seating and live play can open immediately. Record Session Zero here only if this older table still needs a social contract.'
+            }
+          </p>
         </div>
       </div>`;
 

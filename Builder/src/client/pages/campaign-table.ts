@@ -20,6 +20,7 @@ import {
   CHRONICLE_ENTRY_KIND_LABELS,
   dmThreadFromChronicleEntries,
   formatDirectorProse,
+  formatPlayerFacingTimestamp,
   PLAY_CHANNEL_LABEL,
   scrubChronicleCheckpointZero,
   type DockTab,
@@ -97,15 +98,7 @@ import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-  // Synthetic epoch placeholders are not player-facing wall times (TBL-QA-003 / PQA-158).
-  if (date.getTime() < 86_400_000) {
-    return 'Just now';
-  }
-  return date.toLocaleString();
+  return formatPlayerFacingTimestamp(iso);
 }
 
 /** Clarification-only sync drafts stay Got-it; skill checks start with Ready to. */
@@ -389,10 +382,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             options.latestReplyTestId !== undefined && index === lastDmIndex
               ? options.latestReplyTestId
               : 'dm-thread-message';
+          const stamped =
+            message.messageId === 'opening-prompt' || message.kind === 'prompt'
+              ? 'Just now'
+              : formatTimestamp(message.createdAt);
           return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="${testId}">
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
             <p>${escapeHtml(formatDirectorProse(message.body))}</p>
-            <span class="record-meta">${escapeHtml(formatTimestamp(message.createdAt))}</span>
+            <span class="record-meta" data-testid="dm-thread-timestamp">${escapeHtml(stamped)}</span>
           </li>`;
         })
         .join('')}

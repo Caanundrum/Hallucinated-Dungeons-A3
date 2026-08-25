@@ -226,7 +226,7 @@ export async function assertSessionZeroRecorded(
   const stored = await ensureCampaignSettings(firestore, campaignId);
   if (!stored.sessionZero.completed) {
     throw new CampaignValidationError(
-      'Record Session Zero in Campaign settings before seating characters or starting live play.',
+      'Session Zero is not recorded for this campaign yet. Open Campaign settings to record it before seating characters or starting live play.',
     );
   }
 }
