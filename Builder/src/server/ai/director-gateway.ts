@@ -513,12 +513,64 @@ export async function interpretNaturalLanguageIntent(options: {
       summary =
         'That destination is not a legal next step from where you stand. Pick an adjacent square on the map, or declare a door or scene action instead.';
     }
+  } else if (
+    /(short\s*rest|take a short rest|rest briefly|catch my breath|recover.*(second wind|action surge|short.?rest))/i.test(
+      text,
+    )
+  ) {
+    if (combatActive) {
+      proposedCommandType = 'table.sync';
+      summary =
+        'A Short Rest needs the fight to end first. End the encounter, then declare a Short Rest again.';
+    } else {
+      proposedCommandType = 'combat.short_rest';
+      summary =
+        'Ready to take a Short Rest and recover short-rest resources (and spend a Hit Die if available). Confirm to resolve the rest.';
+    }
+  } else if (
+    /(long\s*rest|take a long rest|camp for the night|sleep until morning|recover.*spell slot|arcane recovery)/i.test(
+      text,
+    )
+  ) {
+    if (combatActive) {
+      proposedCommandType = 'table.sync';
+      summary =
+        'A Long Rest needs the fight to end first. End the encounter, then declare a Long Rest again.';
+    } else {
+      proposedCommandType = 'combat.long_rest';
+      summary =
+        'Ready to take a Long Rest and restore Hit Points, Hit Dice, spell slots, and class resources. Confirm to resolve the rest.';
+    }
+  } else if (
+    /(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative|initiative)/i.test(text) ||
+    (/hostile|guardian|foe|enemy/.test(text) && /initiative|encounter|combat/.test(text))
+  ) {
+    const wantsInitiative = /initiative/.test(text);
+    if (combatActive) {
+      proposedCommandType = 'table.sync';
+      summary = 'Combat is already active. Declare your attack or spell on your turn.';
+    } else if (encounter !== null && encounter.status === 'setup') {
+      proposedCommandType = 'initiative.roll';
+      summary =
+        'Ready to roll initiative for this encounter. Confirm to establish turn order.';
+    } else if (encounter !== null && encounter.status === 'ended') {
+      proposedCommandType = 'encounter.begin';
+      summary = wantsInitiative
+        ? 'Ready to begin a new encounter with practice foes. Confirm to start; initiative follows once setup is ready.'
+        : 'Ready to begin a new encounter with practice foes. Confirm to start combat setup.';
+    } else {
+      // No encounter yet — begin is the supported path (hosted has no Tools tab).
+      proposedCommandType = 'encounter.begin';
+      summary = wantsInitiative
+        ? 'Ready to begin the encounter and prepare initiative. Confirm to bring practice foes into play, then confirm rolling initiative.'
+        : 'Ready to begin the encounter. Confirm to bring practice foes into play.';
+    }
   } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
     const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
     if (!combatActive || self === null) {
+      proposedCommandType = 'encounter.begin';
       summary =
-        'You want to use a Potion of Healing, but there is no active combat seat to spend it from. Begin encounter and take your turn, then declare again.';
-      proposedCommandType = 'table.sync';
+        'Ready to begin an encounter so you can use a Potion of Healing on your turn. Confirm to start combat setup, then declare the potion again.';
     } else {
       proposedCommandType = 'inventory.use_item';
       itemId = 'healing-potion';
@@ -529,9 +581,9 @@ export async function interpretNaturalLanguageIntent(options: {
     const matchedSpell = matchSpellFromText(text);
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
+      proposedCommandType = 'encounter.begin';
       summary =
-        'That sounds like a spell, but combat is not active. Begin encounter and roll initiative, then declare the cast again.';
-      proposedCommandType = 'table.sync';
+        'Ready to begin an encounter so you can cast in combat. Confirm to start combat setup, then declare the spell again after initiative.';
     } else if (matchedSpell === null) {
       summary =
         'Name which prepared spell you cast (for example Fire Bolt or Burning Hands), then declare again.';
@@ -563,9 +615,9 @@ export async function interpretNaturalLanguageIntent(options: {
   } else if (/(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)/.test(text)) {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
+      proposedCommandType = 'encounter.begin';
       summary =
-        'That sounds like an attack, but combat is not active. Begin encounter and roll initiative, then declare the attack again.';
-      proposedCommandType = 'table.sync';
+        'Ready to begin an encounter so you can attack. Confirm to start combat setup, then declare the attack again after initiative.';
     } else if (target === null) {
       const foeHint =
         foes
@@ -585,7 +637,11 @@ export async function interpretNaturalLanguageIntent(options: {
     proposedCommandType === 'table.build_scene' ||
     proposedCommandType === 'table.sync' ||
     proposedCommandType === 'table.move' ||
-    proposedCommandType === 'table.open_door';
+    proposedCommandType === 'table.open_door' ||
+    proposedCommandType === 'encounter.begin' ||
+    proposedCommandType === 'initiative.roll' ||
+    proposedCommandType === 'combat.short_rest' ||
+    proposedCommandType === 'combat.long_rest';
   const liveSummary = skipLiveRewrite
     ? null
     : await tryLiveProse(options, {

@@ -296,6 +296,7 @@ export async function updateCharacterLoadout(options: {
   readonly classEquipmentOptionId?: string | null;
   readonly backgroundEquipmentOptionId?: string | null;
   readonly weaponMasteryWeaponNames?: readonly string[];
+  readonly chosenOriginFeatId?: string | null;
 }): Promise<CharacterProjection> {
   const { candidateId, characterId, ...loadout } = options;
   return (await request<CharacterProjection>(`/api/characters/${characterId}`, {

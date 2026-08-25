@@ -235,7 +235,7 @@ test('hosted NL interpret keeps deterministic command types', async () => {
   assert.doesNotMatch(interpreted.summary, /LIVE GEMINI/i);
 });
 
-test('NL attack without active combat stays a clarify draft, not a fake hit', async () => {
+test('NL attack without active combat drafts encounter.begin (hosted play path)', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
     campaignId: 'camp-1',
@@ -243,9 +243,33 @@ test('NL attack without active combat stays a clarify draft, not a fake hit', as
     text: 'I leap down and smash the goblin with my warhammer',
     environmentClass: 'local',
   });
-  assert.equal(interpreted.proposedCommandType, 'table.sync');
-  assert.match(interpreted.summary, /combat is not active|Begin encounter/i);
+  assert.equal(interpreted.proposedCommandType, 'encounter.begin');
+  assert.match(interpreted.summary, /Ready to begin|Confirm/i);
   assert.equal(interpreted.targetCombatantId, undefined);
+});
+
+test('NL begin encounter and roll initiative drafts encounter.begin when no combat', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I begin the encounter and roll initiative as the hostile guardian attacks from beyond the doorway.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'encounter.begin');
+  assert.match(interpreted.summary, /Ready to begin|initiative|Confirm/i);
+});
+
+test('NL short rest drafts combat.short_rest outside combat', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I take a Short Rest to recover Second Wind and Action Surge.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'combat.short_rest');
+  assert.match(interpreted.summary, /Ready to take a Short Rest|Confirm/i);
 });
 
 test('PQA-141/143/145: door intent without scene doors clarifies instead of leaking open_door', async () => {

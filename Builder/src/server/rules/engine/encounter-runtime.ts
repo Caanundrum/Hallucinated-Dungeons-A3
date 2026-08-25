@@ -95,17 +95,72 @@ export function baseSheetFor(source: StoredCharacterRulesSource): DerivedCharact
   return sheet;
 }
 
+export function applyProgressionTrackers(
+  sheet: DerivedCharacterSheet,
+  progression: StoredProgression | null,
+): DerivedCharacterSheet {
+  if (progression === null) {
+    return sheet;
+  }
+  const maxHp = sheet.hitPoints.value;
+  const hitPointsCurrent =
+    typeof progression.hitPointsCurrent === 'number'
+      ? Math.max(0, Math.min(maxHp, progression.hitPointsCurrent))
+      : sheet.hitPointsCurrent;
+  const temporaryHitPoints =
+    typeof progression.temporaryHitPoints === 'number'
+      ? Math.max(0, progression.temporaryHitPoints)
+      : (sheet.temporaryHitPoints ?? 0);
+  const classResources = (sheet.classResources ?? []).map((resource) => {
+    const remaining = progression.resourceRemaining?.[resource.id];
+    if (typeof remaining !== 'number') {
+      return resource;
+    }
+    return {
+      ...resource,
+      remaining: Math.max(0, Math.min(resource.maximum, remaining)),
+    };
+  });
+  const spellcasting =
+    sheet.spellcasting === null
+      ? null
+      : {
+          ...sheet.spellcasting,
+          level1SlotsRemaining:
+            typeof progression.level1SlotsRemaining === 'number'
+              ? Math.max(
+                  0,
+                  Math.min(sheet.spellcasting.level1SlotCount, progression.level1SlotsRemaining),
+                )
+              : sheet.spellcasting.level1SlotsRemaining,
+        };
+  const equipment =
+    progression.equipmentOverrides !== undefined && progression.equipmentOverrides.length > 0
+      ? progression.equipmentOverrides.map((item) => ({
+          name: item.name,
+          quantity: Math.max(0, item.quantity),
+          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
+        }))
+      : sheet.equipment;
+  return {
+    ...sheet,
+    hitPointsCurrent,
+    temporaryHitPoints,
+    classResources,
+    spellcasting,
+    equipment,
+  };
+}
+
 export function projectProgression(
   source: StoredCharacterRulesSource,
   stored: StoredProgression,
 ): CharacterProgressionProjection {
   const baseSheet = baseSheetFor(source);
   const level = Math.max(1, Math.min(20, stored.level));
-  const sheet = recomputeSheetForLevel(
-    baseSheet,
-    stored.classId,
-    level,
-    stored.experiencePoints,
+  const sheet = applyProgressionTrackers(
+    recomputeSheetForLevel(baseSheet, stored.classId, level, stored.experiencePoints),
+    stored,
   );
   return {
     characterId: stored.characterId,

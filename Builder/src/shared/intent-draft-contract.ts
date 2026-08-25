@@ -14,6 +14,10 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'combat.attack',
   'combat.cast_spell',
   'inventory.use_item',
+  'encounter.begin',
+  'initiative.roll',
+  'combat.short_rest',
+  'combat.long_rest',
 ] as const;
 export type IntentDraftCommandType = (typeof INTENT_DRAFT_COMMAND_TYPES)[number];
 
@@ -28,7 +32,11 @@ export function isRulesIntentDraftCommand(commandType: IntentDraftCommandType): 
   return (
     commandType === 'combat.attack' ||
     commandType === 'combat.cast_spell' ||
-    commandType === 'inventory.use_item'
+    commandType === 'inventory.use_item' ||
+    commandType === 'encounter.begin' ||
+    commandType === 'initiative.roll' ||
+    commandType === 'combat.short_rest' ||
+    commandType === 'combat.long_rest'
   );
 }
 
