@@ -136,6 +136,11 @@ export interface CharacterChoices {
   readonly originFeatSpellIds: readonly string[];
   /** Class-specific level-1 choices, keyed by the choice id in the manifest. */
   readonly classChoiceIds: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Weapon names chosen for Weapon Mastery slots (Fighter 3, other mastery
+   * classes 2). Empty means the server auto-assigns from starting weapons.
+   */
+  readonly weaponMasteryWeaponNames: readonly string[];
   readonly identity: CharacterIdentity;
 }
 
@@ -194,6 +199,8 @@ export interface DerivedCharacterSheet {
   readonly hitPoints: DerivedValue;
   /** Current Hit Points; at level 1 this equals maximum Hit Points. */
   readonly hitPointsCurrent: number;
+  /** Temporary Hit Points currently held (0 when none). */
+  readonly temporaryHitPoints?: number;
   readonly hitDice: string;
   readonly armorClass: DerivedValue;
   readonly initiative: DerivedValue;
@@ -213,7 +220,11 @@ export interface DerivedCharacterSheet {
   readonly languages: readonly string[];
   readonly features: readonly { readonly name: string; readonly source: string; readonly summary: string }[];
   readonly attacks: readonly DerivedAttack[];
-  readonly equipment: readonly { readonly name: string; readonly quantity: number }[];
+  readonly equipment: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
   readonly currencyGold: number;
   readonly spellcasting: {
     readonly ability: Ability;
@@ -229,7 +240,13 @@ export interface DerivedCharacterSheet {
   /** Fighter-style subclass or fighting-style label for level-1 heroes. */
   readonly subclassLabel?: string | null;
   /** Weapon mastery assignments derived from starting weapons. */
-  readonly weaponMasteries?: readonly { readonly name: string; readonly property: string }[];
+  readonly weaponMasteries?: readonly {
+    readonly name: string;
+    readonly property: string;
+    readonly assigned?: boolean;
+  }[];
+  /** How many mastery slots the class grants at this level. */
+  readonly weaponMasterySlotCount?: number;
   /** Spendable class resources such as Second Wind or Action Surge. */
   readonly classResources?: readonly {
     readonly id: string;
@@ -276,6 +293,8 @@ export interface CharacterProjection {
   readonly level: number;
   readonly choices: CharacterChoices;
   readonly sheet: DerivedCharacterSheet;
+  /** Options for post-create loadout edits (spells, kits, masteries). */
+  readonly editOptions: DraftOptions;
 }
 
 export interface CharacterVaultProjection {
@@ -401,6 +420,10 @@ export interface DraftOptions {
     readonly spellsKnown: number;
     readonly cantripOptions: readonly SelectableOption[];
     readonly spellOptions: readonly SelectableOption[];
+  } | null;
+  readonly weaponMastery: {
+    readonly slotCount: number;
+    readonly options: readonly SelectableOption[];
   } | null;
 }
 

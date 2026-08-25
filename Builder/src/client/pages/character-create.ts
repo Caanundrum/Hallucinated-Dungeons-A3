@@ -820,6 +820,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
       }`;
   }
 
+  /** Item names in a kit's label, stripping quantities and gold totals. */
+  function equipmentItemNames(label: string): readonly string[] {
+    return label
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0 && !/\bGP\b/i.test(part))
+      .map((part) => part.replace(/\s*\([^)]*\)\s*/g, '').trim())
+      .filter((part) => part.length > 0);
+  }
+
   function renderEquipmentStep(): string {
     const state = current;
     if (state === null) {
@@ -831,6 +841,33 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (classDetail === null || backgroundDetail === null) {
       return '<p class="empty-state">Choose a Class and Background first.</p>';
     }
+
+    const classKit = classDetail.equipmentOptions.find(
+      (option) => option.id === state.draft.choices.classEquipmentOptionId,
+    );
+    const backgroundKit = backgroundDetail.equipmentOptions.find(
+      (option) => option.id === state.draft.choices.backgroundEquipmentOptionId,
+    );
+    const overlapNote =
+      classKit === undefined || backgroundKit === undefined
+        ? ''
+        : (() => {
+            const classItems = new Set(
+              equipmentItemNames(classKit.label).map((name) => name.toLowerCase()),
+            );
+            const backgroundItems = equipmentItemNames(backgroundKit.label);
+            const overlapping = backgroundItems.filter((name) => classItems.has(name.toLowerCase()));
+            return `
+        <p class="wizard-coach" data-testid="equipment-overlap-note">
+          Identical items from Class and Background kits consolidate into one stack on your sheet.
+          Swap either kit above if you want different gear — Alpha does not support per-item swaps.
+          ${
+            overlapping.length > 0
+              ? `Shared this time: ${escapeHtml(overlapping.join(', '))}.`
+              : ''
+          }
+        </p>`;
+          })();
 
     return `
       <h3>Starting equipment</h3>
@@ -848,7 +885,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
         testId: 'background-equipment-options',
         entries: backgroundDetail.equipmentOptions.map((option) => ({ id: option.id, label: option.label })),
         selected: state.draft.choices.backgroundEquipmentOptionId,
-      })}`;
+      })}
+      ${overlapNote}`;
   }
 
   function renderFeaturesStep(): string {
@@ -945,6 +983,23 @@ export function mountCharacterCreatePage(host: PageHost): void {
           )
           .join('')}
       </ul>
+      ${
+        state.options.weaponMastery === null
+          ? ''
+          : `
+      <h3>Weapon Mastery</h3>
+      <p class="step-helper" data-testid="weapon-mastery-helper">
+        Choose up to ${state.options.weaponMastery.slotCount} weapon masteries. Unassigned slots appear
+        on your sheet until you pick.
+      </p>
+      ${checkboxList({
+        name: 'weapon-mastery',
+        testId: 'weapon-mastery-options',
+        entries: state.options.weaponMastery.options,
+        selected: state.draft.choices.weaponMasteryWeaponNames,
+        maxChoose: state.options.weaponMastery.slotCount,
+      })}`
+      }
       ${classChoices}
       ${
         state.options.backgroundFeatDetail === null
@@ -1505,6 +1560,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ['background-feat-spell', 'backgroundFeatSpellIds', () => state.options.backgroundFeatDetail?.spellsKnown],
       ['origin-feat-cantrip', 'originFeatCantripIds', () => state.options.originFeatDetail?.cantripsKnown],
       ['origin-feat-spell', 'originFeatSpellIds', () => state.options.originFeatDetail?.spellsKnown],
+      ['weapon-mastery', 'weaponMasteryWeaponNames', () => state.options.weaponMastery?.slotCount],
     ] as const) {
       container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((input) => {
         input.addEventListener('change', () => {
@@ -1935,6 +1991,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
           Follow the steps in order — or hop the train above if you need to revisit a choice.
           The server checks every decision against the SRD, so Continue waits until this step is legal.
           On a wide screen, the sheet builds on the side so you can compare as you choose.
+        </p>
+        <p class="wizard-coach" data-testid="one-draft-disclosure">
+          Alpha keeps one draft at a time. Starting a new character from the Vault discards this draft
+          after you confirm.
         </p>
         ${
           error === null

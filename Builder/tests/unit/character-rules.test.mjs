@@ -623,3 +623,49 @@ test('level-1 Fighter sheets omit Action Surge; mastery lists starting weapons',
     `unexpected subclassLabel: ${sheet.subclassLabel}`,
   );
 });
+
+test('PQA-195 Human Versatile names the Origin feat separately from the Background feat', () => {
+  const choices = legalCharacterFor('fighter', {
+    speciesId: 'human',
+    backgroundId: 'soldier',
+    chosenOriginFeatId: 'Tough',
+  });
+  const sheet = deriveSheet(choices);
+  const versatile = sheet.features.find((feature) => feature.name.startsWith('Versatile:'));
+  assert.ok(versatile, 'expected Versatile: Feat feature');
+  assert.equal(versatile.name, 'Versatile: Tough');
+  assert.match(versatile.source, /Human.*Versatile/i);
+  assert.equal(
+    sheet.features.some((feature) => feature.name === 'Versatile'),
+    false,
+    'bare Versatile line must be dropped once a feat is chosen',
+  );
+  const backgroundFeat = sheet.features.find((feature) => feature.name === 'Savage Attacker' || feature.source.includes('Soldier'));
+  assert.ok(backgroundFeat || sheet.features.some((feature) => /Soldier/i.test(feature.source)));
+});
+
+test('PQA-211 Fighter mastery slots pad Unassigned and honor explicit picks', () => {
+  const auto = deriveSheet(legalCharacterFor('fighter', { classEquipmentOptionId: 'fighter-a' }));
+  assert.equal(auto.weaponMasterySlotCount, 3);
+  assert.equal((auto.weaponMasteries ?? []).length, 3);
+  assert.ok((auto.weaponMasteries ?? []).some((entry) => entry.assigned === false || entry.name === 'Unassigned'));
+
+  const explicit = deriveSheet(
+    legalCharacterFor('fighter', {
+      classEquipmentOptionId: 'fighter-a',
+      weaponMasteryWeaponNames: ['Longsword', 'Longbow'],
+    }),
+  );
+  const assigned = (explicit.weaponMasteries ?? []).filter((entry) => entry.assigned !== false);
+  assert.equal(assigned.length, 2);
+  assert.deepEqual(
+    assigned.map((entry) => entry.name).sort(),
+    ['Longbow', 'Longsword'],
+  );
+  assert.equal((explicit.weaponMasteries ?? []).filter((entry) => entry.assigned === false).length, 1);
+
+  const options = buildDraftOptions(legalCharacterFor('fighter'));
+  assert.notEqual(options.weaponMastery, null);
+  assert.equal(options.weaponMastery.slotCount, 3);
+  assert.ok(options.weaponMastery.options.some((option) => option.id === 'Longbow'));
+});

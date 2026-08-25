@@ -197,6 +197,21 @@ test('PQA-152/153: trap/lock declarations produce confirmable skill-check sync d
   assert.match(lockOnly.summary, /^Ready to /i);
 });
 
+test('PQA-184: movement drafts use scene language, not column/row', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I walk to the marked square',
+    moveTarget: { column: 3, row: 4 },
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.move');
+  assert.deepEqual(interpreted.path, [{ column: 3, row: 4 }]);
+  assert.match(interpreted.summary, /marked destination|Confirm to commit/i);
+  assert.doesNotMatch(interpreted.summary, /column\s+\d+|row\s+\d+/i);
+});
+
 test('hosted NL interpret keeps deterministic command types', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
@@ -215,7 +230,8 @@ test('hosted NL interpret keeps deterministic command types', async () => {
   assert.equal(interpreted.proposedCommandType, 'table.move');
   assert.deepEqual(interpreted.path, [{ column: 3, row: 4 }]);
   assert.equal(interpreted.interceptState, 'awaiting_confirmation');
-  assert.match(interpreted.summary, /column 3, row 4/i);
+  assert.match(interpreted.summary, /marked destination|Confirm to commit/i);
+  assert.doesNotMatch(interpreted.summary, /column\s+\d+|row\s+\d+/i);
   assert.doesNotMatch(interpreted.summary, /LIVE GEMINI/i);
 });
 

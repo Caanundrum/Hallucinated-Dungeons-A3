@@ -289,6 +289,43 @@ export async function updateCharacterIdentity(options: {
   })) as CharacterProjection;
 }
 
+export async function updateCharacterLoadout(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+  readonly spellIds?: readonly string[];
+  readonly classEquipmentOptionId?: string | null;
+  readonly backgroundEquipmentOptionId?: string | null;
+  readonly weaponMasteryWeaponNames?: readonly string[];
+}): Promise<CharacterProjection> {
+  const { candidateId, characterId, ...loadout } = options;
+  return (await request<CharacterProjection>(`/api/characters/${characterId}`, {
+    method: 'PATCH',
+    candidateId,
+    body: JSON.stringify({ loadout }),
+  })) as CharacterProjection;
+}
+
+export async function updateCharacterTrackers(options: {
+  readonly candidateId: string;
+  readonly characterId: string;
+  readonly hitPointsCurrent?: number;
+  readonly temporaryHitPoints?: number;
+  readonly resourceRemaining?: Readonly<Record<string, number>>;
+  readonly level1SlotsRemaining?: number;
+  readonly equipmentOverrides?: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
+}): Promise<CharacterProjection> {
+  const { candidateId, characterId, ...trackers } = options;
+  return (await request<CharacterProjection>(`/api/characters/${characterId}`, {
+    method: 'PATCH',
+    candidateId,
+    body: JSON.stringify({ trackers }),
+  })) as CharacterProjection;
+}
+
 export async function fetchDirectorCatalog(): Promise<DirectorCatalog> {
   return (await request<DirectorCatalog>('/api/directors/catalog')) as DirectorCatalog;
 }

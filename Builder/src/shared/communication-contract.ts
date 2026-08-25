@@ -70,7 +70,7 @@ export const CHRONICLE_ENTRY_KIND_LABELS: Record<ChronicleEntryKind, string> = {
   door_opened: 'Door opened',
   token_moved: 'Token moved',
   play_declaration: 'Declaration',
-  director_ruling: 'Director ruling',
+  director_ruling: 'Director narration',
   play_resolved: 'Resolved on table',
 };
 

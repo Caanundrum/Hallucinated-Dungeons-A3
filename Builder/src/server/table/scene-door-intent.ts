@@ -95,6 +95,21 @@ export function resolveDoorIntentForMap(
   const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
   const openDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
   const adjacentClosed = closedDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
+  const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
+  const wantsOpen = /(open|unlock|push\s+open|swing\s+open)/.test(text);
+  const wantsInspect =
+    /(inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)/.test(text) &&
+    !wantsOpen;
+
+  // PQA-155: plain inspect/check reads current door state; open is a separate confirm.
+  if (adjacentClosed !== undefined && wantsInspect) {
+    return {
+      proposedCommandType: 'table.sync',
+      edgeId: adjacentClosed.edgeId,
+      summary:
+        'The wooden door beside you is closed. It looks solid and ordinary from a casual look — no trap signs without a careful search. Confirm to open it, or declare a trap or lock check if you want a roll.',
+    };
+  }
 
   if (adjacentClosed !== undefined) {
     return {
@@ -104,13 +119,29 @@ export function resolveDoorIntentForMap(
     };
   }
 
+  if (openDoors.length > 0 && /(enter|room beyond|beyond|through)/.test(text)) {
+    return {
+      proposedCommandType: 'table.sync',
+      summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,
+    };
+  }
+
+  if (adjacentOpen !== undefined && (wantsInspect || wantsOpen)) {
+    return {
+      proposedCommandType: 'table.sync',
+      edgeId: adjacentOpen.edgeId,
+      summary:
+        'The wooden door beside you is already open and swings freely on its hinges. No roll is required — declare what you do next through the doorway.',
+    };
+  }
+
   if (mentionsMovementIntent(text)) {
     const approachOpen = nextStepTowardOpenDoor(tokenAnchor, map);
     if (approachOpen !== null) {
       return {
         proposedCommandType: 'table.move',
         path: [approachOpen],
-        summary: `Ready to move toward column ${approachOpen.column}, row ${approachOpen.row}. Confirm to commit the step.`,
+        summary: `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
     const approachClosed = nextStepTowardClosedDoor(tokenAnchor, map);
@@ -118,33 +149,30 @@ export function resolveDoorIntentForMap(
       return {
         proposedCommandType: 'table.move',
         path: [approachClosed],
-        summary: `Ready to move toward column ${approachClosed.column}, row ${approachClosed.row}. Confirm to commit the step.`,
+        summary: `Ready to step toward the closed door in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
   }
 
   if (closedDoors.length > 0) {
+    const door = closedDoors[0]!;
+    if (wantsInspect) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: door.edgeId,
+        summary: `A closed wooden door stands in ${sceneTitle}. Move adjacent to inspect it up close, then open it or declare a careful trap or lock check.`,
+      };
+    }
     return {
       proposedCommandType: 'table.sync',
+      edgeId: door.edgeId,
       summary:
-        'There is a door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
+        'There is a closed door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
     };
   }
 
   if (openDoors.length > 0) {
-    const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
-    if (
-      adjacentOpen !== undefined &&
-      /(swing|ajar|hinge|free|test|push|pull|check|inspect)/.test(text)
-    ) {
-      return {
-        proposedCommandType: 'table.sync',
-        edgeId: adjacentOpen.edgeId,
-        summary:
-          'The wooden door beside you is already open and swings freely on its hinges. No roll is required — declare what you do next through the doorway.',
-      };
-    }
-    if (/(swing|ajar|hinge|free|test).*(door|gate)|door.*(swing|ajar|hinge|free|test)/.test(text)) {
+    if (/(swing|ajar|hinge|free|test).*(door|gate)|door.*(swing|ajar|hinge|free|test)|inspect|check|examine/.test(text)) {
       const door = adjacentOpen ?? openDoors[0]!;
       return {
         proposedCommandType: 'table.sync',

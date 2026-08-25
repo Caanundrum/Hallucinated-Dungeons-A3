@@ -153,6 +153,7 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
   const originFeatSpellIds = asIdList(record.originFeatSpellIds) ?? [];
   const speciesChoiceIds = asChoiceMap(record.speciesChoiceIds);
   const classChoiceIds = asChoiceListMap(record.classChoiceIds);
+  const weaponMasteryWeaponNames = asIdList(record.weaponMasteryWeaponNames) ?? [];
   if (
     baseAbilityScores === undefined ||
     backgroundAbilityBonuses === undefined ||
@@ -201,6 +202,7 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
     originFeatCantripIds,
     originFeatSpellIds,
     classChoiceIds,
+    weaponMasteryWeaponNames,
     identity: { name, pronouns, appearance, concept },
   };
 }

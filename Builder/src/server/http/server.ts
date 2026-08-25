@@ -95,6 +95,8 @@ import {
   readVault,
   rollDraftAbilities,
   updateCharacterIdentity,
+  updateCharacterLoadout,
+  updateCharacterTrackers,
   updateDraft,
 } from '../characters/characters.js';
 import {
@@ -1617,10 +1619,151 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           if (body === BODY_REJECTED) {
             return;
           }
-          const identityRecord =
-            typeof body === 'object' && body !== null && !Array.isArray(body)
-              ? (body as { identity?: unknown }).identity
+          if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+            return;
+          }
+          const payload = body as {
+            identity?: unknown;
+            loadout?: unknown;
+            trackers?: unknown;
+          };
+
+          if (payload.trackers !== undefined) {
+            if (
+              typeof payload.trackers !== 'object' ||
+              payload.trackers === null ||
+              Array.isArray(payload.trackers)
+            ) {
+              sendError(response, ERROR_CODES.BAD_REQUEST);
+              return;
+            }
+            const trackers = payload.trackers as Record<string, unknown>;
+            const hitPointsCurrent =
+              typeof trackers.hitPointsCurrent === 'number' && Number.isFinite(trackers.hitPointsCurrent)
+                ? Math.max(0, Math.floor(trackers.hitPointsCurrent))
+                : undefined;
+            const temporaryHitPoints =
+              typeof trackers.temporaryHitPoints === 'number' &&
+              Number.isFinite(trackers.temporaryHitPoints)
+                ? Math.max(0, Math.floor(trackers.temporaryHitPoints))
+                : undefined;
+            const level1SlotsRemaining =
+              typeof trackers.level1SlotsRemaining === 'number' &&
+              Number.isFinite(trackers.level1SlotsRemaining)
+                ? Math.max(0, Math.floor(trackers.level1SlotsRemaining))
+                : undefined;
+            let resourceRemaining: Record<string, number> | undefined;
+            if (trackers.resourceRemaining !== undefined) {
+              if (
+                typeof trackers.resourceRemaining !== 'object' ||
+                trackers.resourceRemaining === null ||
+                Array.isArray(trackers.resourceRemaining)
+              ) {
+                sendError(response, ERROR_CODES.BAD_REQUEST);
+                return;
+              }
+              resourceRemaining = {};
+              for (const [key, value] of Object.entries(
+                trackers.resourceRemaining as Record<string, unknown>,
+              )) {
+                if (typeof value !== 'number' || !Number.isFinite(value) || key.length > 120) {
+                  sendError(response, ERROR_CODES.BAD_REQUEST);
+                  return;
+                }
+                resourceRemaining[key] = Math.max(0, Math.floor(value));
+              }
+            }
+            let equipmentOverrides:
+              | { name: string; quantity: number; equipped?: boolean }[]
+              | undefined;
+            if (trackers.equipmentOverrides !== undefined) {
+              if (!Array.isArray(trackers.equipmentOverrides) || trackers.equipmentOverrides.length > 64) {
+                sendError(response, ERROR_CODES.BAD_REQUEST);
+                return;
+              }
+              equipmentOverrides = [];
+              for (const entry of trackers.equipmentOverrides) {
+                if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+                  sendError(response, ERROR_CODES.BAD_REQUEST);
+                  return;
+                }
+                const item = entry as Record<string, unknown>;
+                if (
+                  typeof item.name !== 'string' ||
+                  item.name.length === 0 ||
+                  item.name.length > 120 ||
+                  typeof item.quantity !== 'number' ||
+                  !Number.isFinite(item.quantity)
+                ) {
+                  sendError(response, ERROR_CODES.BAD_REQUEST);
+                  return;
+                }
+                equipmentOverrides.push({
+                  name: item.name,
+                  quantity: Math.max(0, Math.floor(item.quantity)),
+                  ...(typeof item.equipped === 'boolean' ? { equipped: item.equipped } : {}),
+                });
+              }
+            }
+            const character = await updateCharacterTrackers({
+              firestore,
+              accountId,
+              characterId,
+              ...(hitPointsCurrent !== undefined ? { hitPointsCurrent } : {}),
+              ...(temporaryHitPoints !== undefined ? { temporaryHitPoints } : {}),
+              ...(resourceRemaining !== undefined ? { resourceRemaining } : {}),
+              ...(level1SlotsRemaining !== undefined ? { level1SlotsRemaining } : {}),
+              ...(equipmentOverrides !== undefined ? { equipmentOverrides } : {}),
+            });
+            sendJson(response, 200, character);
+            return;
+          }
+
+          if (payload.loadout !== undefined) {
+            if (
+              typeof payload.loadout !== 'object' ||
+              payload.loadout === null ||
+              Array.isArray(payload.loadout)
+            ) {
+              sendError(response, ERROR_CODES.BAD_REQUEST);
+              return;
+            }
+            const loadout = payload.loadout as Record<string, unknown>;
+            const spellIds = Array.isArray(loadout.spellIds)
+              ? loadout.spellIds.filter((id): id is string => typeof id === 'string' && id.length <= 120)
               : undefined;
+            const weaponMasteryWeaponNames = Array.isArray(loadout.weaponMasteryWeaponNames)
+              ? loadout.weaponMasteryWeaponNames.filter(
+                  (name): name is string => typeof name === 'string' && name.length <= 120,
+                )
+              : undefined;
+            const classEquipmentOptionId =
+              loadout.classEquipmentOptionId === null
+                ? null
+                : typeof loadout.classEquipmentOptionId === 'string'
+                  ? loadout.classEquipmentOptionId
+                  : undefined;
+            const backgroundEquipmentOptionId =
+              loadout.backgroundEquipmentOptionId === null
+                ? null
+                : typeof loadout.backgroundEquipmentOptionId === 'string'
+                  ? loadout.backgroundEquipmentOptionId
+                  : undefined;
+            const character = await updateCharacterLoadout({
+              firestore,
+              accountId,
+              characterId,
+              ...(spellIds !== undefined ? { spellIds } : {}),
+              ...(classEquipmentOptionId !== undefined ? { classEquipmentOptionId } : {}),
+              ...(backgroundEquipmentOptionId !== undefined ? { backgroundEquipmentOptionId } : {}),
+              ...(weaponMasteryWeaponNames !== undefined ? { weaponMasteryWeaponNames } : {}),
+            });
+            sendJson(response, 200, character);
+            return;
+          }
+
+          const identityRecord = payload.identity;
           if (
             typeof identityRecord !== 'object' ||
             identityRecord === null ||

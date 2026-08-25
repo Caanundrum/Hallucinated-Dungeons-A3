@@ -811,7 +811,7 @@ function mutateRules(options: {
       log: [],
       updatedAt: now.toISOString(),
     };
-    summary = `Encounter began with ${player.name}, Training Dummy, and Practice Goblin. Two Potions of Healing were added to ${player.name}’s inventory.`;
+    summary = `${player.name} faces a Training Dummy and a Practice Goblin for rules practice — practice foes with no story arrival. Two Potions of Healing were added to ${player.name}’s inventory.`;
     affectedCombatantIds = encounter.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'initiative.roll') {
     const current = requireEncounter(encounter);
@@ -841,8 +841,20 @@ function mutateRules(options: {
       combatants,
     };
     summary = `Initiative order: ${initiativeOrder
-      .map((id) => combatants.find((combatant) => combatant.combatantId === id)?.name ?? id)
-      .join(', ')}.`;
+      .map((id) => {
+        const combatant = combatants.find((entry) => entry.combatantId === id);
+        if (combatant === undefined) {
+          return id;
+        }
+        const side =
+          combatant.side === 'foe'
+            ? 'hostile practice'
+            : combatant.side === 'party'
+              ? 'party'
+              : combatant.side;
+        return `${combatant.name} (${side}, HP ${combatant.currentHitPoints}/${combatant.maxHitPoints})`;
+      })
+      .join('; ')}.`;
     affectedCombatantIds = initiativeOrder;
   } else if (commandType === 'encounter.next_turn') {
     const current = requireEncounter(encounter);

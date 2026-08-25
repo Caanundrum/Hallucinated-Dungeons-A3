@@ -1039,6 +1039,16 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
 /** Player-facing summaries for Origin feats that are not Magic Initiate. */
 export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
   Alert: 'Add your Proficiency Bonus to Initiative. You cannot be surprised while conscious.',
+  Tough: 'Your Hit Point maximum increases by twice your level (at level 1: +2 HP).',
+  Lucky: 'You have Luck Points equal to your Proficiency Bonus to spend on rerolls.',
+  Skilled: 'You gain proficiency in three skills or tools of your choice.',
+  Musician: 'You gain proficiency with three musical instruments and can grant Heroic Inspiration.',
+  'Magic Initiate (Wizard)': 'Learn two Wizard cantrips and one level 1 Wizard spell.',
+  'Magic Initiate (Cleric)': 'Learn two Cleric cantrips and one level 1 Cleric spell.',
+  'Magic Initiate (Druid)': 'Learn two Druid cantrips and one level 1 Druid spell.',
+  Savage: 'Once per turn when you hit with a melee weapon, roll one damage die again and add it.',
+  Healer: 'You can use a Healer’s Kit to restore Hit Points as an action.',
+  'Magic Initiate': 'Learn two cantrips and one level 1 spell from the listed spell list.',
 };
 
 /** Every distinct Origin feat granted by a Background on the SRD roster. */

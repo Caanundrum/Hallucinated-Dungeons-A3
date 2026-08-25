@@ -338,7 +338,9 @@ function paintSemanticSvg(
       <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
     </div>
     <p class="record-meta" data-testid="map-hazard-layer-note">
-      Traps, locks, cover, and lighting are not a separate map layer in Alpha — declare searches and interactions in the play channel; the Director and rules resolve them against this scene.
+      Alpha map scope: lighting, hazards, cover, props, traps, and locks are not separate map layers.
+      The Director and rules resolve those concepts from play declarations against this shared scene.
+      Fog and structure here are spatial reference only — not a full tactical simulation.
     </p>`;
 
   if (!reduceMotion) {

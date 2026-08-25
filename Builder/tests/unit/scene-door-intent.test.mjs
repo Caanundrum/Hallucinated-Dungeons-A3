@@ -87,6 +87,35 @@ test('resolveDoorIntentForMap never claims an open floor when edges exist', () =
   assert.doesNotMatch(resolved.summary, /open floor/i);
 });
 
+test('PQA-155: inspect adjacent closed door narrates state instead of opening', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  map.edges = map.edges.map((edge) =>
+    edge.kind === 'door' ? { ...edge, doorState: 'closed' } : edge,
+  );
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I inspect the door carefully.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.equal(resolved.edgeId, 'e:9:6:east');
+  assert.match(resolved.summary, /closed/i);
+  assert.doesNotMatch(resolved.summary, /Ready to open|Investigation|Confirm to roll/i);
+});
+
+test('PQA-155: inspect adjacent open door narrates free swing', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I inspect the wooden door.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.match(resolved.summary, /already open|swings freely/i);
+});
+
 test('resolveBlankTableDoorBuild only applies to edgeless blank tables', () => {
   const blank = chamberMap({ tokenColumn: 7, tokenRow: 6 });
   blank.edges = [];

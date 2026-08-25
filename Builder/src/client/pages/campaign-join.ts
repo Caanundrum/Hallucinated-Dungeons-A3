@@ -169,6 +169,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
           title: 'Switch tables?',
           body: 'You are seated at another table. Leave that seat and join this one?',
           confirmLabel: 'Switch tables',
+          cancelLabel: 'Stay at current table',
           testId: 'confirm-switch-table',
         });
         if (ok) {
@@ -176,6 +177,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
           return;
         }
         error = null;
+        shell.announce('Stayed at your current table.');
         return;
       }
       if (
