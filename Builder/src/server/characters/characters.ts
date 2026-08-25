@@ -27,6 +27,7 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
   RULES_VERSION,
+  buildDraftOptions,
   coerceStoredChoices,
   completedSteps,
   deriveSheet,
@@ -129,6 +130,7 @@ function projectCharacter(
     progression !== null && classId !== null
       ? recomputeSheetForLevel(baseSheet, classId, level, experiencePoints)
       : baseSheet;
+  const withTrackers = applyProgressionTrackers(sheet, progression);
   return {
     characterId: stored.characterId,
     rulesVersion: stored.rulesVersion,
@@ -137,9 +139,67 @@ function projectCharacter(
     classLabel: labels.classLabel,
     speciesLabel: labels.speciesLabel,
     backgroundLabel: labels.backgroundLabel,
-    level: sheet.level,
+    level: withTrackers.level,
     choices,
-    sheet,
+    sheet: withTrackers,
+    editOptions: buildDraftOptions(choices),
+  };
+}
+
+function applyProgressionTrackers(
+  sheet: NonNullable<ReturnType<typeof deriveSheet>>,
+  progression: StoredProgression | null,
+): NonNullable<ReturnType<typeof deriveSheet>> {
+  if (progression === null) {
+    return sheet;
+  }
+  const maxHp = sheet.hitPoints.value;
+  const hitPointsCurrent =
+    typeof progression.hitPointsCurrent === 'number'
+      ? Math.max(0, Math.min(maxHp, progression.hitPointsCurrent))
+      : sheet.hitPointsCurrent;
+  const temporaryHitPoints =
+    typeof progression.temporaryHitPoints === 'number'
+      ? Math.max(0, progression.temporaryHitPoints)
+      : (sheet.temporaryHitPoints ?? 0);
+  const classResources = (sheet.classResources ?? []).map((resource) => {
+    const remaining = progression.resourceRemaining?.[resource.id];
+    if (typeof remaining !== 'number') {
+      return resource;
+    }
+    return {
+      ...resource,
+      remaining: Math.max(0, Math.min(resource.maximum, remaining)),
+    };
+  });
+  const spellcasting =
+    sheet.spellcasting === null
+      ? null
+      : {
+          ...sheet.spellcasting,
+          level1SlotsRemaining:
+            typeof progression.level1SlotsRemaining === 'number'
+              ? Math.max(
+                  0,
+                  Math.min(sheet.spellcasting.level1SlotCount, progression.level1SlotsRemaining),
+                )
+              : sheet.spellcasting.level1SlotsRemaining,
+        };
+  const equipment =
+    progression.equipmentOverrides !== undefined && progression.equipmentOverrides.length > 0
+      ? progression.equipmentOverrides.map((item) => ({
+          name: item.name,
+          quantity: Math.max(0, item.quantity),
+          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
+        }))
+      : sheet.equipment;
+  return {
+    ...sheet,
+    hitPointsCurrent,
+    temporaryHitPoints,
+    classResources,
+    spellcasting,
+    equipment,
   };
 }
 
@@ -577,4 +637,106 @@ export async function updateCharacterIdentity(options: {
     ? (progressionSnap.data() as StoredProgression)
     : null;
   return projectCharacter(updated, progression);
+}
+
+/** PQA-207/211: update prepared spells, starting kits, and mastery picks. */
+export async function updateCharacterLoadout(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+  readonly spellIds?: readonly string[];
+  readonly classEquipmentOptionId?: string | null;
+  readonly backgroundEquipmentOptionId?: string | null;
+  readonly weaponMasteryWeaponNames?: readonly string[];
+}): Promise<CharacterProjection> {
+  const { firestore, accountId, characterId } = options;
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
+  const nextChoices = normalizeChoices({
+    ...stored.choices,
+    ...(options.spellIds !== undefined ? { spellIds: [...options.spellIds] } : {}),
+    ...(options.classEquipmentOptionId !== undefined
+      ? { classEquipmentOptionId: options.classEquipmentOptionId }
+      : {}),
+    ...(options.backgroundEquipmentOptionId !== undefined
+      ? { backgroundEquipmentOptionId: options.backgroundEquipmentOptionId }
+      : {}),
+    ...(options.weaponMasteryWeaponNames !== undefined
+      ? { weaponMasteryWeaponNames: [...options.weaponMasteryWeaponNames] }
+      : {}),
+  });
+  const problems = validateChoices(nextChoices);
+  if (problems.length > 0) {
+    throw new CharacterIncompleteError();
+  }
+  const updated: StoredCharacter = {
+    ...stored,
+    choices: nextChoices,
+    revisions: [
+      ...stored.revisions,
+      { at: new Date().toISOString(), reason: 'Loadout updated' },
+    ],
+  };
+  await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updated);
+  return readCharacter({ firestore, accountId, characterId });
+}
+
+/** PQA-213/214/215/216: persist HP, resources, slots, and inventory overrides. */
+export async function updateCharacterTrackers(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly characterId: string;
+  readonly hitPointsCurrent?: number;
+  readonly temporaryHitPoints?: number;
+  readonly resourceRemaining?: Readonly<Record<string, number>>;
+  readonly level1SlotsRemaining?: number;
+  readonly equipmentOverrides?: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
+}): Promise<CharacterProjection> {
+  const { firestore, accountId, characterId } = options;
+  const stored = await loadOwnedCharacter(firestore, accountId, characterId);
+  const progressionRef = firestore.collection(COLLECTIONS.characterProgressions).doc(characterId);
+  const progressionSnap = await progressionRef.get();
+  const classId = stored.choices.classId;
+  if (classId === null) {
+    throw new CharacterIncompleteError();
+  }
+  const now = new Date().toISOString();
+  const prior = progressionSnap.exists
+    ? (progressionSnap.data() as StoredProgression)
+    : {
+        characterId,
+        classId,
+        experiencePoints: 0,
+        level: 1,
+        updatedAt: now,
+      };
+  const next: StoredProgression = {
+    ...prior,
+    updatedAt: now,
+    ...(options.hitPointsCurrent !== undefined
+      ? { hitPointsCurrent: options.hitPointsCurrent }
+      : {}),
+    ...(options.temporaryHitPoints !== undefined
+      ? { temporaryHitPoints: options.temporaryHitPoints }
+      : {}),
+    ...(options.resourceRemaining !== undefined
+      ? {
+          resourceRemaining: {
+            ...(prior.resourceRemaining ?? {}),
+            ...options.resourceRemaining,
+          },
+        }
+      : {}),
+    ...(options.level1SlotsRemaining !== undefined
+      ? { level1SlotsRemaining: options.level1SlotsRemaining }
+      : {}),
+    ...(options.equipmentOverrides !== undefined
+      ? { equipmentOverrides: options.equipmentOverrides }
+      : {}),
+  };
+  await progressionRef.set(next);
+  return projectCharacter(stored, next);
 }

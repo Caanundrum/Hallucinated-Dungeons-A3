@@ -115,7 +115,7 @@ export function mountCharactersPage(host: PageHost): void {
             ? ''
             : `<section class="panel" aria-labelledby="drafts-heading">
                 <h2 id="drafts-heading">Unfinished drafts</h2>
-                <p>A draft is saved after every confirmed step. Resuming continues the same draft rather than starting a second one.</p>
+                <p data-testid="one-draft-vault-note">Alpha keeps one unfinished draft at a time. Resuming continues the same draft; starting a new character from this vault discards it after you confirm.</p>
                 <ul class="record-list" data-testid="draft-list">
                   ${drafts
                     .map((draft) => {

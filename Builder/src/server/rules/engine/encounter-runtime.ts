@@ -30,6 +30,16 @@ export interface StoredProgression {
   readonly updatedAt: string;
   /** Encounter that already granted an XP award, if any. */
   readonly lastAwardedEncounterId?: string | null;
+  /** Persisted sheet trackers (PQA-213/214/215/216). */
+  readonly hitPointsCurrent?: number;
+  readonly temporaryHitPoints?: number;
+  readonly resourceRemaining?: Readonly<Record<string, number>>;
+  readonly level1SlotsRemaining?: number;
+  readonly equipmentOverrides?: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
 }
 
 export async function loadEncounter(

@@ -110,9 +110,10 @@ function explained(
 
 export function renderCharacterSheet(
   sheet: DerivedCharacterSheet,
-  options: { readonly compact?: boolean } = {},
+  options: { readonly compact?: boolean; readonly interactive?: boolean } = {},
 ): string {
   const compact = options.compact === true;
+  const interactive = options.interactive !== false;
   const abilityBlock = ABILITIES.map((ability) => {
     const score = sheet.abilityScores[ability];
     return `
@@ -202,11 +203,15 @@ export function renderCharacterSheet(
           <b data-testid="sheet-spell-slots-remaining">${sheet.spellcasting.level1SlotsRemaining}</b>
           / <b data-testid="sheet-spell-slots-maximum">${sheet.spellcasting.level1SlotCount}</b> remaining ·
           Spells are ${escapeHtml(sheet.spellcasting.preparationStyle)}
-          <button type="button" class="secondary compact" data-sheet-spell-slot="level1"
+          ${
+            interactive
+              ? `<button type="button" class="secondary compact" data-sheet-spell-slot="level1"
             data-testid="spend-spell-slot"
             aria-disabled="${sheet.spellcasting.level1SlotsRemaining <= 0 ? 'true' : 'false'}">
             Spend slot
-          </button>
+          </button>`
+              : ''
+          }
         </p>
         <p><b>Cantrips:</b> ${
           sheet.spellcasting.cantrips.length === 0
@@ -244,29 +249,55 @@ export function renderCharacterSheet(
                   ${resource.remaining} / ${resource.maximum} remaining · recharges on ${escapeHtml(resource.recharge)}
                   · ${escapeHtml(resource.summary)}
                 </span>
-                <button type="button" class="secondary compact" data-sheet-resource="${escapeHtml(resource.id)}"
+                ${
+                  interactive
+                    ? `<button type="button" class="secondary compact" data-sheet-resource="${escapeHtml(resource.id)}"
                   data-testid="spend-${escapeHtml(resource.id)}"
                   aria-disabled="${resource.remaining <= 0 ? 'true' : 'false'}">
                   Spend
-                </button>
+                </button>`
+                    : ''
+                }
               </li>`,
               )
               .join('')}
           </ul>
-          <p class="record-meta">Spending a resource updates your local tracker until you rest or refresh the sheet.</p>
+          <p class="record-meta" data-testid="sheet-resource-persistence-note">
+            Spending a resource or spell slot saves to your character and survives reload.
+          </p>
         </section>`;
 
+  const assignedMasteries = (sheet.weaponMasteries ?? []).filter((entry) => entry.assigned !== false);
+  const unassignedCount = (sheet.weaponMasteries ?? []).filter((entry) => entry.assigned === false).length;
+  const masterySlotCount = sheet.weaponMasterySlotCount ?? (sheet.weaponMasteries?.length ?? 0);
   const masteryBlock =
     sheet.weaponMasteries === undefined || sheet.weaponMasteries.length === 0
       ? ''
-      : `<p data-testid="sheet-weapon-masteries"><b>Weapon mastery:</b> ${escapeHtml(
-          sheet.weaponMasteries.map((entry) => `${entry.name} (${entry.property})`).join(', '),
-        )}</p>`;
+      : `<p data-testid="sheet-weapon-masteries"><b>Weapon mastery:</b> ${
+          assignedMasteries.length === 0
+            ? 'None assigned'
+            : escapeHtml(assignedMasteries.map((entry) => `${entry.name} (${entry.property})`).join(', '))
+        } · <span data-testid="sheet-weapon-mastery-slots">${assignedMasteries.length} / ${masterySlotCount}</span>${
+          unassignedCount > 0
+            ? ` · <span data-testid="sheet-weapon-mastery-unassigned">${unassignedCount} Unassigned</span>`
+            : ''
+        }</p>`;
 
   const subclassLine =
     sheet.subclassLabel === undefined || sheet.subclassLabel === null
       ? ''
       : `<p data-testid="sheet-subclass"><b>Subclass / style:</b> ${escapeHtml(sheet.subclassLabel)}</p>`;
+
+  const tempHp = sheet.temporaryHitPoints ?? 0;
+  const hpControls = interactive
+    ? `<div class="actions sheet-hp-controls" data-testid="sheet-hp-controls">
+        <button type="button" class="secondary compact" data-sheet-hp="damage" data-testid="sheet-hp-damage">Damage 1</button>
+        <button type="button" class="secondary compact" data-sheet-hp="heal" data-testid="sheet-hp-heal">Heal 1</button>
+        <button type="button" class="secondary compact" data-sheet-hp="temp" data-testid="sheet-hp-temp">+1 temp HP</button>
+        <button type="button" class="secondary compact" data-sheet-hp="clear-temp" data-testid="sheet-hp-clear-temp"
+          aria-disabled="${tempHp <= 0 ? 'true' : 'false'}">Clear temp</button>
+      </div>`
+    : '';
 
   return `
     <p class="sheet-legend" data-testid="sheet-breakdown-legend">
@@ -284,6 +315,10 @@ export function renderCharacterSheet(
             ${explained('Proficiency Bonus', sheet.proficiencyBonus, 'sheet-proficiency-bonus', formatModifier)}
             ${explained('Passive Perception', sheet.passivePerception, 'sheet-passive-perception')}
           </div>
+          <p class="record-meta" data-testid="sheet-temp-hp">
+            Temporary Hit Points: <b data-testid="sheet-temp-hp-value">${tempHp}</b>
+          </p>
+          ${hpControls}
           <p class="record-meta">Hit Dice ${escapeHtml(sheet.hitDice)} · Level ${sheet.level} · ${sheet.experiencePoints} XP</p>
         </section>
 
@@ -337,19 +372,42 @@ export function renderCharacterSheet(
               ? '<p data-testid="sheet-equipment">No starting equipment chosen.</p>'
               : `<ul class="record-list" data-testid="sheet-equipment-list">
                   ${sheet.equipment
-                    .map(
-                      (item) => `
-                    <li data-testid="sheet-equipment-item">
-                      <span class="record-note">${escapeHtml(item.name)}${item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
-                      <span class="record-meta">Carried · declare use at the table or mark consumed below</span>
-                      <button type="button" class="secondary compact" data-testid="sheet-mark-consumed-${escapeHtml(item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">
-                        Mark consumed
-                      </button>
-                    </li>`,
-                    )
+                    .map((item, index) => {
+                      const slug = item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                      const equipped = item.equipped === true;
+                      return `
+                    <li data-testid="sheet-equipment-item" data-equipment-index="${index}">
+                      <span class="record-note">${escapeHtml(item.name)}${
+                        item.quantity > 1 ? ` × <span data-testid="sheet-equipment-qty-${escapeHtml(slug)}">${item.quantity}</span>` : ''
+                      }</span>
+                      <span class="record-meta">${
+                        equipped ? 'Equipped' : 'Carried'
+                      } · Alpha tracks equip and quantity; attunement and encumbrance are out of Alpha scope.</span>
+                      ${
+                        interactive
+                          ? `<div class="actions">
+                        <button type="button" class="secondary compact" data-sheet-equip="${index}"
+                          data-testid="sheet-equip-${escapeHtml(slug)}">${equipped ? 'Unequip' : 'Equip'}</button>
+                        <button type="button" class="secondary compact" data-sheet-qty="${index}" data-delta="-1"
+                          data-testid="sheet-qty-dec-${escapeHtml(slug)}"
+                          aria-disabled="${item.quantity <= 0 ? 'true' : 'false'}">−</button>
+                        <button type="button" class="secondary compact" data-sheet-qty="${index}" data-delta="1"
+                          data-testid="sheet-qty-inc-${escapeHtml(slug)}">+</button>
+                        <button type="button" class="secondary compact" data-sheet-consume="${index}"
+                          data-testid="sheet-mark-consumed-${escapeHtml(slug)}">
+                          Mark consumed
+                        </button>
+                      </div>`
+                          : ''
+                      }
+                    </li>`;
+                    })
                     .join('')}
                 </ul>`
           }
+          <p class="record-meta" data-testid="sheet-encumbrance-scope">
+            Encumbrance and attunement are not tracked in Alpha — carry what your table agrees is reasonable.
+          </p>
           <p><b>Gold:</b> ${sheet.currencyGold} GP</p>
           <p><b>Senses:</b> ${sheet.senses.length === 0 ? 'Normal vision' : escapeHtml(sheet.senses.join(', '))}</p>
           <p><b>Languages:</b> ${escapeHtml(sheet.languages.join(', '))}</p>

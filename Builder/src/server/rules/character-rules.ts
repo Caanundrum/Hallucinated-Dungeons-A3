@@ -64,6 +64,22 @@ import {
 const LEVEL_1_PROFICIENCY_BONUS = 2;
 const STARTING_LEVEL = 1;
 
+/** SRD 5.2.1 weapon mastery properties for starting weapons. */
+const WEAPON_MASTERY_BY_NAME: Readonly<Record<string, string>> = {
+  Greataxe: 'Cleave',
+  Greatsword: 'Graze',
+  Longsword: 'Sap',
+  Scimitar: 'Nick',
+  Shortsword: 'Vex',
+  Longbow: 'Slow',
+  Javelin: 'Slow',
+  Handaxe: 'Vex',
+  Dagger: 'Nick',
+  Spear: 'Sap',
+  Quarterstaff: 'Topple',
+  Sickle: 'Nick',
+};
+
 export function emptyChoices(): CharacterChoices {
   return {
     classId: null,
@@ -87,6 +103,7 @@ export function emptyChoices(): CharacterChoices {
     originFeatCantripIds: [],
     originFeatSpellIds: [],
     classChoiceIds: {},
+    weaponMasteryWeaponNames: [],
     identity: { name: '', pronouns: '', appearance: '', concept: '' },
   };
 }
@@ -115,6 +132,9 @@ export function coerceStoredChoices(choices: CharacterChoices): CharacterChoices
     backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
     originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
     originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
+    weaponMasteryWeaponNames: Array.isArray(choices.weaponMasteryWeaponNames)
+      ? choices.weaponMasteryWeaponNames
+      : base.weaponMasteryWeaponNames,
     identity: choices.identity ?? base.identity,
     rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
     abilityRollAttempts:
@@ -1015,6 +1035,15 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     ...speciesRecord.features
       .filter((feature) => (feature.minLevel ?? 1) <= STARTING_LEVEL)
       .filter((feature) => !speciesRecord.choices.some((choice) => choice.label.startsWith(feature.name)))
+      // PQA-195: once Human picks Versatile's Origin feat, drop the unfilled promise line.
+      .filter(
+        (feature) =>
+          !(
+            speciesRecord.id === 'human' &&
+            feature.name === 'Versatile' &&
+            choices.chosenOriginFeatId !== null
+          ),
+      )
       .map((feature) => ({ name: feature.name, source: speciesRecord.label, summary: feature.summary })),
     ...speciesRecord.choices.flatMap((choice) => {
       const selected = choices.speciesChoiceIds[choice.id];
@@ -1038,9 +1067,9 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
   const activeOriginFeat = resolveActiveOriginFeat(choices, backgroundRecord, speciesRecord);
   if (speciesRecord.id === 'human' && activeOriginFeat !== null) {
     features.push({
-      name: activeOriginFeat,
-      source: speciesRecord.label,
-      summary: originFeatSummary(activeOriginFeat, 'Origin feat chosen through Versatile.'),
+      name: `Versatile: ${activeOriginFeat}`,
+      source: `${speciesRecord.label} · Versatile`,
+      summary: originFeatSummary(activeOriginFeat, 'Origin feat chosen through Human Versatile.'),
     });
   }
   if (activeOriginFeat !== null && magicInitiateSpellListId(activeOriginFeat) !== null) {
@@ -1184,21 +1213,6 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       ? 3
       : 2
     : 0;
-  /** SRD 5.2.1 weapon mastery properties for starting weapons. */
-  const WEAPON_MASTERY_BY_NAME: Readonly<Record<string, string>> = {
-    Greataxe: 'Cleave',
-    Greatsword: 'Graze',
-    Longsword: 'Sap',
-    Scimitar: 'Nick',
-    Shortsword: 'Vex',
-    Longbow: 'Slow',
-    Javelin: 'Slow',
-    Handaxe: 'Vex',
-    Dagger: 'Nick',
-    Spear: 'Sap',
-    Quarterstaff: 'Topple',
-    Sickle: 'Nick',
-  };
   const masteryWeapons = [
     ...new Set(
       [
@@ -1207,13 +1221,31 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       ].filter((name) => WEAPON_MASTERY_BY_NAME[name] !== undefined),
     ),
   ];
+  const explicitMasteryPicks = (choices.weaponMasteryWeaponNames ?? []).filter(
+    (name) => WEAPON_MASTERY_BY_NAME[name] !== undefined,
+  );
+  // PQA-208: once the player has made explicit mastery picks, honor only
+  // those — do not backfill remaining slots from starting gear.
+  const assignedMasteryNames =
+    explicitMasteryPicks.length > 0
+      ? explicitMasteryPicks.slice(0, masteryCount)
+      : masteryWeapons.slice(0, masteryCount);
   const weaponMasteries =
     masteryCount === 0
       ? []
-      : masteryWeapons.slice(0, masteryCount).map((name) => ({
-          name,
-          property: WEAPON_MASTERY_BY_NAME[name] ?? 'Mastery',
-        }));
+      : [
+          ...assignedMasteryNames.map((name) => ({
+            name,
+            property: WEAPON_MASTERY_BY_NAME[name] ?? 'Mastery',
+            assigned: true as const,
+          })),
+          ...Array.from({ length: Math.max(0, masteryCount - assignedMasteryNames.length) }, () => ({
+            name: 'Unassigned',
+            property: 'Choose a proficient mastery weapon',
+            assigned: false as const,
+          })),
+        ];
+  const weaponMasterySlotCount = masteryCount;
   const classResources: Array<{
     id: string;
     label: string;
@@ -1260,6 +1292,8 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     spellcasting,
     subclassLabel,
     weaponMasteries,
+    weaponMasterySlotCount,
+    temporaryHitPoints: 0,
     classResources,
   };
 }
@@ -1412,6 +1446,16 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
         : null,
     backgroundFeatDetail: magicInitiateDetail(backgroundRecord?.originFeat ?? null),
     originFeatDetail: magicInitiateDetail(activeOriginFeat),
+    weaponMastery:
+      classRecord === null || !classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
+        ? null
+        : {
+            slotCount: classRecord.id === 'fighter' ? 3 : 2,
+            options: Object.entries(WEAPON_MASTERY_BY_NAME).map(([weaponName, property]) => ({
+              id: weaponName,
+              label: `${weaponName} (${property})`,
+            })),
+          },
   };
 }
 

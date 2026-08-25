@@ -17,6 +17,7 @@ import {
   PARTY_CHAT_MODE_LABELS,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
+  CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
   dmThreadFromChronicleEntries,
   formatDirectorProse,
@@ -75,6 +76,7 @@ import {
   requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
+  updateCharacterTrackers,
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -99,6 +101,12 @@ import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
   return formatPlayerFacingTimestamp(iso);
+}
+
+/** Table-only statuses layered on top of SRD conditions (PQA-251). */
+const TABLE_STATUS_CONDITION_IDS = new Set(['guiding-bolt-marked', 'shielded']);
+function isTableStatusConditionId(conditionId: string): boolean {
+  return TABLE_STATUS_CONDITION_IDS.has(conditionId);
 }
 
 /** Clarification-only sync drafts stay Got-it; skill checks start with Ready to. */
@@ -194,6 +202,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
+  let chronicleKindFilter: string = 'all';
   let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
@@ -428,8 +437,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     readonly map: MapBundleProjection;
     readonly start: { readonly column: number; readonly row: number };
   }): string {
-    const { path, map, start } = options;
-    const dest = path[path.length - 1] ?? start;
+    const { path, map } = options;
     const squares = path.length;
     const feet = squares * map.coordinateSpace.feetPerSquare;
     const scene = map.title.trim().length > 0 ? map.title : 'the map';
@@ -466,7 +474,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ) {
         return null;
       }
-      return { ...parsed, interceptState: 'ready' };
+      return { ...parsed, interceptState: 'draft' };
     } catch {
       return null;
     }
@@ -919,8 +927,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const combatant =
           encounter!.combatants.find((entry) => entry.combatantId === combatantId) ?? null;
         const active = combatantId === encounter!.activeCombatantId;
+        const context =
+          combatant === null
+            ? combatantId
+            : combatant.seatId !== null
+              ? `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}`
+              : `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · ${formatCombatantHealth(combatant)}`;
         return `<li class="${active ? 'initiative-active' : ''}" data-testid="initiative-entry-${escapeHtml(combatantId)}">
-          ${escapeHtml(combatant?.name ?? combatantId)}${active ? ' · now' : ''}
+          ${escapeHtml(context)}${active ? ' · now' : ''}
         </li>`;
       })
       .join('');
@@ -1026,15 +1040,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (conditions.length === 0) {
       return 'No conditions';
     }
-    return conditions
-      .map((condition) => {
-        const tableStatus =
-          condition.conditionId === 'guiding-bolt-marked' || condition.conditionId === 'shielded';
-        return tableStatus
-          ? `Table status: ${condition.label}`
-          : condition.label;
-      })
-      .join(', ');
+    const srdLabels = conditions
+      .filter((condition) => !isTableStatusConditionId(condition.conditionId))
+      .map((condition) => condition.label);
+    const tableStatusLabels = conditions
+      .filter((condition) => isTableStatusConditionId(condition.conditionId))
+      .map((condition) => condition.label);
+    if (srdLabels.length > 0 && tableStatusLabels.length > 0) {
+      return `SRD conditions: ${srdLabels.join(', ')} · Table statuses: ${tableStatusLabels.join(', ')}`;
+    }
+    if (tableStatusLabels.length > 0) {
+      return `Table status: ${tableStatusLabels.join(', ')}`;
+    }
+    return srdLabels.join(', ');
   }
 
   function playerFacingMechanicsCopy(text: string): string {
@@ -1342,10 +1360,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function dockBody(): string {
     if (activeTab === 'chronicle') {
-      const entries = chronicle?.entries ?? [];
+      const allEntries = chronicle?.entries ?? [];
+      const entries =
+        chronicleKindFilter === 'all'
+          ? allEntries
+          : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
       return `
         <div class="dock-pane" data-testid="chronicle-pane">
+          <h3 data-testid="session-record-heading">Session record</h3>
           <p class="record-meta">Campaign history only. Players cannot post here.</p>
+          <p class="record-meta" data-testid="session-record-privacy-note">
+            Play declarations, rulings, narration, and map events appear here. Private Ask the Game
+            Director advice stays in Ask DM and is never merged into this public session record.
+          </p>
+          <label class="field">
+            <span>Filter by kind</span>
+            <select data-testid="chronicle-kind-filter">
+              <option value="all" ${chronicleKindFilter === 'all' ? 'selected' : ''}>All kinds</option>
+              ${CHRONICLE_ENTRY_KINDS.map(
+                (kind) =>
+                  `<option value="${escapeHtml(kind)}" ${
+                    chronicleKindFilter === kind ? 'selected' : ''
+                  }>${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[kind])}</option>`,
+              ).join('')}
+            </select>
+          </label>
           ${
             entries.length === 0
               ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
@@ -1998,7 +2037,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <option value="">Choose a square…</option>
             ${moveDestinations
               .map(
-                (square) =>
+                (square, index) =>
                   `<option value="${square.column},${square.row}" ${
                     moveTarget?.column === square.column && moveTarget?.row === square.row
                       ? 'selected'
@@ -2491,51 +2530,81 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function bindPanelEvents(root: HTMLElement): void {
     root.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
       button.addEventListener('click', () => {
-        if (progression === null || button.getAttribute('aria-disabled') === 'true') {
-          return;
-        }
-        const resourceId = button.dataset.sheetResource;
-        const resources = progression.sheet.classResources;
-        if (resourceId === undefined || resources === undefined) {
-          return;
-        }
-        progression = {
-          ...progression,
-          sheet: {
-            ...progression.sheet,
-            classResources: resources.map((resource) =>
-              resource.id === resourceId && resource.remaining > 0
-                ? { ...resource, remaining: resource.remaining - 1 }
-                : resource,
-            ),
-          },
-        };
-        shell.announce(`Spent ${resourceId.replace(/-/g, ' ')}.`);
-        render();
+        void (async () => {
+          if (
+            progression === null ||
+            candidate === null ||
+            busy ||
+            button.getAttribute('aria-disabled') === 'true'
+          ) {
+            return;
+          }
+          const resourceId = button.dataset.sheetResource;
+          const resource = progression.sheet.classResources?.find(
+            (entry) => entry.id === resourceId,
+          );
+          if (resourceId === undefined || resource === undefined || resource.remaining <= 0) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const updated = await updateCharacterTrackers({
+              candidateId: candidate.candidateId,
+              characterId: progression.characterId,
+              resourceRemaining: { [resourceId]: resource.remaining - 1 },
+            });
+            // updated.sheet is the same DerivedCharacterSheet shape as progression.sheet.
+            progression = { ...progression, sheet: updated.sheet };
+            shell.announce(`Spent ${resourceId.replace(/-/g, ' ')}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'That resource could not be spent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
       });
     });
     root
       .querySelector<HTMLButtonElement>('[data-testid="spend-spell-slot"]')
       ?.addEventListener('click', () => {
-        if (
-          progression === null ||
-          progression.sheet.spellcasting === null ||
-          progression.sheet.spellcasting.level1SlotsRemaining <= 0
-        ) {
-          return;
-        }
-        progression = {
-          ...progression,
-          sheet: {
-            ...progression.sheet,
-            spellcasting: {
-              ...progression.sheet.spellcasting,
+        void (async () => {
+          if (
+            progression === null ||
+            candidate === null ||
+            busy ||
+            progression.sheet.spellcasting === null ||
+            progression.sheet.spellcasting.level1SlotsRemaining <= 0
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const updated = await updateCharacterTrackers({
+              candidateId: candidate.candidateId,
+              characterId: progression.characterId,
               level1SlotsRemaining: progression.sheet.spellcasting.level1SlotsRemaining - 1,
-            },
-          },
-        };
-        shell.announce('Spent a level 1 spell slot.');
-        render();
+            });
+            // updated.sheet is the same DerivedCharacterSheet shape as progression.sheet.
+            progression = { ...progression, sheet: updated.sheet };
+            shell.announce('Spent a level 1 spell slot.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'That spell slot could not be spent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
       });
 
     root.querySelectorAll<HTMLButtonElement>('[data-info-tab]').forEach((button) => {
@@ -2708,6 +2777,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
       });
     });
+
+    root
+      .querySelector<HTMLSelectElement>('[data-testid="chronicle-kind-filter"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          chronicleKindFilter = event.target.value;
+          render();
+        }
+      });
 
     root
       .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')
@@ -3871,10 +3949,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           data-event-sequence="${tableState?.lastEventSequence ?? 0}">
           ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
         </p>
+        <p class="record-meta" data-testid="shared-scene-status">
+          Everyone at this table sees the same current scene. When the Director changes the map, you will hear a brief update.
+        </p>
         ${
           mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
             ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                 This blank table starts fully unexplored. Declare what you do or use training tools to place your first chamber.
+                 This blank table starts unexplored. Ask the Director to establish the first scene, or declare what you do so the scene can unfold.
                </p>`
             : ''
         }
@@ -4089,6 +4170,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       chronicleFeed.entries.length !== priorChronicleCount ||
       (memoryFeed?.updatedAt ?? null) !== priorMemoryUpdatedAt ||
       nextSpotlightKey !== priorSpotlightKey;
+    // Only announce scene changes after the first load has a prior map to compare against (PQA-183).
+    if (priorMap.length > 0 && mapSyncFingerprint(mapFeed) !== priorMap) {
+      shell.announce(`Scene updated: ${mapFeed.title || 'Map changed'}.`);
+    }
     if (changed) {
       if (chronicleFeed.entries.length !== priorChronicleCount) {
         syncDmThreadFromChronicle();

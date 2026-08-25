@@ -14,6 +14,7 @@ import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
 type TablesTab = 'mine' | 'open';
+type TablesSort = 'updated-desc' | 'updated-asc' | 'name-asc' | 'seats-desc';
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -30,13 +31,33 @@ export function mountCampaignsPage(host: PageHost): void {
   let gateError: string | null = null;
   let searchQuery = '';
   let tab: TablesTab = 'mine';
+  let sort: TablesSort = 'updated-desc';
   const mountToken = beginPageMount(container);
+
+  function sortTables<T extends { name: string; updatedAt: string; activeSeatCount: number }>(
+    tables: readonly T[],
+  ): T[] {
+    const copy = [...tables];
+    copy.sort((left, right) => {
+      if (sort === 'name-asc') {
+        return left.name.localeCompare(right.name);
+      }
+      if (sort === 'seats-desc') {
+        return right.activeSeatCount - left.activeSeatCount || left.name.localeCompare(right.name);
+      }
+      if (sort === 'updated-asc') {
+        return left.updatedAt.localeCompare(right.updatedAt);
+      }
+      return right.updatedAt.localeCompare(left.updatedAt);
+    });
+    return copy;
+  }
 
   function renderSignedIn(): void {
     const myTables = hub?.myTables ?? [];
     const openTables = hub?.openTables ?? [];
     const needle = searchQuery.trim().toLowerCase();
-    const filteredMine =
+    const filteredMine = sortTables(
       needle.length === 0
         ? myTables
         : myTables.filter((table) =>
@@ -44,8 +65,9 @@ export function mountCampaignsPage(host: PageHost): void {
               .join(' ')
               .toLowerCase()
               .includes(needle),
-          );
-    const filteredOpen =
+          ),
+    );
+    const filteredOpen = sortTables(
       needle.length === 0
         ? openTables
         : openTables.filter((table) =>
@@ -53,7 +75,8 @@ export function mountCampaignsPage(host: PageHost): void {
               .join(' ')
               .toLowerCase()
               .includes(needle),
-          );
+          ),
+    );
 
     container.innerHTML = `
       <div class="page">
@@ -86,6 +109,15 @@ export function mountCampaignsPage(host: PageHost): void {
             <span>Search</span>
             <input type="search" data-testid="campaigns-search" placeholder="Name or Director"
               value="${escapeHtml(searchQuery)}" />
+          </label>
+          <label class="field">
+            <span>Sort</span>
+            <select data-testid="campaigns-sort">
+              <option value="updated-desc" ${sort === 'updated-desc' ? 'selected' : ''}>Newest updated</option>
+              <option value="updated-asc" ${sort === 'updated-asc' ? 'selected' : ''}>Oldest updated</option>
+              <option value="name-asc" ${sort === 'name-asc' ? 'selected' : ''}>Name A–Z</option>
+              <option value="seats-desc" ${sort === 'seats-desc' ? 'selected' : ''}>Most seats filled</option>
+            </select>
           </label>
           <div class="actions" role="tablist" aria-label="Table lists">
             <button type="button" role="tab" data-testid="tables-tab-mine"
@@ -159,6 +191,14 @@ export function mountCampaignsPage(host: PageHost): void {
       ?.addEventListener('input', (event) => {
         if (event.target instanceof HTMLInputElement) {
           searchQuery = event.target.value;
+          renderSignedIn();
+        }
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="campaigns-sort"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          sort = event.target.value as TablesSort;
           renderSignedIn();
         }
       });
