@@ -1823,7 +1823,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
           ${
             movePreviewNote === null
-              ? ''
+              ? seated && !sessionIsSuspended()
+                ? `<p class="table-move-status" data-testid="move-preview-hint">Click an adjacent map square to preview a move, then Confirm or Cancel. After a committed move, Undo last move appears here.</p>`
+                : ''
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
           ${
@@ -1848,7 +1850,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                    <button type="button" class="table-secondary-action" data-testid="cancel-pending-move"
                      aria-disabled="${busy}">Cancel move</button>
                  </div>`
-              : undoMoveAnchor !== null && canDescribeTurn
+              : undoMoveAnchor !== null && seated && !sessionIsSuspended()
                 ? `<div class="table-player-actions" data-testid="undo-move-actions">
                      <button type="button" class="table-secondary-action" data-testid="undo-last-move-play"
                        aria-disabled="${busy}">Undo last move</button>
@@ -3708,11 +3710,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           const draft = intentDraft;
           if (isRulesIntentDraftCommand(draft.proposedCommandType)) {
+            const chainInitiative =
+              draft.proposedCommandType === 'encounter.begin' &&
+              /initiative/i.test(draft.summary);
             setIntentDraft(null);
             await submitRulesAction(
               draft.proposedCommandType,
               fieldsFromIntentDraft(draft),
             );
+            if (chainInitiative && encounter !== null && encounter.status === 'setup') {
+              await submitRulesAction('initiative.roll');
+            }
             return;
           }
           busy = true;

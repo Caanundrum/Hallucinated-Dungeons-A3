@@ -644,6 +644,19 @@ test('PQA-195 Human Versatile names the Origin feat separately from the Backgrou
   assert.ok(backgroundFeat || sheet.features.some((feature) => /Soldier/i.test(feature.source)));
 });
 
+test('PQA-195 Human without Origin feat still labels Versatile as Unassigned', () => {
+  const choices = legalCharacterFor('fighter', {
+    speciesId: 'human',
+    chosenOriginFeatId: null,
+  });
+  const sheet = deriveSheet(choices);
+  assert.equal(
+    sheet.features.some((feature) => feature.name === 'Versatile'),
+    false,
+  );
+  assert.ok(sheet.features.some((feature) => feature.name === 'Versatile: Unassigned'));
+});
+
 test('PQA-211 Fighter mastery slots pad Unassigned and honor explicit picks', () => {
   const auto = deriveSheet(legalCharacterFor('fighter', { classEquipmentOptionId: 'fighter-a' }));
   assert.equal(auto.weaponMasterySlotCount, 3);

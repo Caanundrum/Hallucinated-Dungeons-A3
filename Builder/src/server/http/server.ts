@@ -1738,6 +1738,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
                   (name): name is string => typeof name === 'string' && name.length <= 120,
                 )
               : undefined;
+            const chosenOriginFeatId =
+              loadout.chosenOriginFeatId === null
+                ? null
+                : typeof loadout.chosenOriginFeatId === 'string'
+                  ? loadout.chosenOriginFeatId
+                  : undefined;
             const classEquipmentOptionId =
               loadout.classEquipmentOptionId === null
                 ? null
@@ -1758,6 +1764,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               ...(classEquipmentOptionId !== undefined ? { classEquipmentOptionId } : {}),
               ...(backgroundEquipmentOptionId !== undefined ? { backgroundEquipmentOptionId } : {}),
               ...(weaponMasteryWeaponNames !== undefined ? { weaponMasteryWeaponNames } : {}),
+              ...(chosenOriginFeatId !== undefined ? { chosenOriginFeatId } : {}),
             });
             sendJson(response, 200, character);
             return;
