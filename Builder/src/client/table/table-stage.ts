@@ -24,8 +24,6 @@ import {
 import { escapeHtml } from '../dom-utils.js';
 
 function edgeAccessibleLabel(edge: MapEdgeRecord): string {
-  const column = edge.column + 1;
-  const row = edge.row + 1;
   const facing =
     edge.orientation === 'north'
       ? 'north'
@@ -36,9 +34,9 @@ function edgeAccessibleLabel(edge: MapEdgeRecord): string {
           : 'west';
   if (edge.kind === 'door') {
     const state = edge.doorState === 'open' ? 'open' : 'closed';
-    return `Wooden door (${state}) facing ${facing} at column ${column}, row ${row}`;
+    return `Wooden door (${state}) facing ${facing}`;
   }
-  return `Wall facing ${facing} at column ${column}, row ${row}`;
+  return `Wall facing ${facing}`;
 }
 
 function edgeHitBox(
@@ -279,7 +277,7 @@ function paintSemanticSvg(
       const transform = animate
         ? `translate(${prior.x - box.x}px, ${prior.y - box.y}px)`
         : 'translate(0px, 0px)';
-      return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token at column ${token.footprint.anchor.column + 1}, row ${token.footprint.anchor.row + 1}" data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
+      return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token on the map" data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
         <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="8" fill="#f0c043" stroke="#1a1208" stroke-width="2" />
         <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="${labelSize}" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
       </g>`;

@@ -1035,14 +1035,9 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     ...speciesRecord.features
       .filter((feature) => (feature.minLevel ?? 1) <= STARTING_LEVEL)
       .filter((feature) => !speciesRecord.choices.some((choice) => choice.label.startsWith(feature.name)))
-      // PQA-195: once Human picks Versatile's Origin feat, drop the unfilled promise line.
+      // PQA-195: never leave bare Human Versatile — name the feat or mark Unassigned.
       .filter(
-        (feature) =>
-          !(
-            speciesRecord.id === 'human' &&
-            feature.name === 'Versatile' &&
-            choices.chosenOriginFeatId !== null
-          ),
+        (feature) => !(speciesRecord.id === 'human' && feature.name === 'Versatile'),
       )
       .map((feature) => ({ name: feature.name, source: speciesRecord.label, summary: feature.summary })),
     ...speciesRecord.choices.flatMap((choice) => {
@@ -1065,11 +1060,14 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     { name: backgroundRecord.originFeat, source: backgroundRecord.label, summary: originFeatSummary(backgroundRecord.originFeat, 'Origin feat granted by your Background.') },
   ];
   const activeOriginFeat = resolveActiveOriginFeat(choices, backgroundRecord, speciesRecord);
-  if (speciesRecord.id === 'human' && activeOriginFeat !== null) {
+  if (speciesRecord.id === 'human') {
     features.push({
-      name: `Versatile: ${activeOriginFeat}`,
+      name: activeOriginFeat !== null ? `Versatile: ${activeOriginFeat}` : 'Versatile: Unassigned',
       source: `${speciesRecord.label} · Versatile`,
-      summary: originFeatSummary(activeOriginFeat, 'Origin feat chosen through Human Versatile.'),
+      summary:
+        activeOriginFeat !== null
+          ? originFeatSummary(activeOriginFeat, 'Origin feat chosen through Human Versatile.')
+          : 'Choose an Origin feat through Edit loadout or character creation.',
     });
   }
   if (activeOriginFeat !== null && magicInitiateSpellListId(activeOriginFeat) !== null) {

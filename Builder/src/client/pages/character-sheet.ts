@@ -46,6 +46,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let loadoutClassEquipment: string | null = null;
   let loadoutBackgroundEquipment: string | null = null;
   let loadoutMasteries: string[] = [];
+  let loadoutOriginFeat: string | null = null;
   let identityBusy = false;
   let identityError: string | null = null;
   let loadoutBusy = false;
@@ -70,6 +71,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
     const classKits = options.classDetail?.equipmentOptions ?? [];
     const backgroundKits = options.backgroundDetail?.equipmentOptions ?? [];
     const mastery = options.weaponMastery;
+    const originFeatOptions = options.originFeatOptions;
     return `
       <section class="panel" aria-labelledby="loadout-edit-heading" data-testid="loadout-panel">
         <h2 id="loadout-edit-heading">Edit loadout</h2>
@@ -77,6 +79,24 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           loadoutError === null
             ? ''
             : `<div class="message error" role="alert" data-testid="loadout-edit-error">${escapeHtml(loadoutError)}</div>`
+        }
+        ${
+          originFeatOptions !== null && originFeatOptions.length > 0
+            ? `<h3>Human Versatile Origin feat</h3>
+          <p class="record-meta">Names the Human Versatile choice on your sheet (PQA-195).</p>
+          <ul class="record-list" data-testid="loadout-origin-feat-options">
+            ${originFeatOptions
+              .map(
+                (feat) => `<li><label>
+              <input type="radio" name="loadout-origin-feat" value="${escapeHtml(feat.id)}"
+                data-testid="loadout-origin-feat-${escapeHtml(feat.id.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}"
+                ${loadoutOriginFeat === feat.id ? 'checked' : ''} ${loadoutBusy ? 'disabled' : ''} />
+              ${escapeHtml(feat.label)}
+            </label></li>`,
+              )
+              .join('')}
+          </ul>`
+            : ''
         }
         ${
           spellOptions.length > 0
@@ -442,6 +462,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       loadoutClassEquipment = character.choices.classEquipmentOptionId;
       loadoutBackgroundEquipment = character.choices.backgroundEquipmentOptionId;
       loadoutMasteries = [...character.choices.weaponMasteryWeaponNames];
+      loadoutOriginFeat = character.choices.chosenOriginFeatId;
       loadoutError = null;
       editingLoadout = true;
       renderSignedIn();
@@ -505,6 +526,16 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
         });
       });
 
+    container
+      .querySelectorAll<HTMLInputElement>('input[name="loadout-origin-feat"]')
+      .forEach((input) => {
+        input.addEventListener('change', () => {
+          if (input.checked) {
+            loadoutOriginFeat = input.value;
+          }
+        });
+      });
+
     container.querySelector<HTMLButtonElement>('[data-testid="save-loadout"]')?.addEventListener('click', () => {
       void (async () => {
         if (candidate === null || character === null || loadoutBusy) {
@@ -521,6 +552,9 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             classEquipmentOptionId: loadoutClassEquipment,
             backgroundEquipmentOptionId: loadoutBackgroundEquipment,
             weaponMasteryWeaponNames: loadoutMasteries,
+            ...(character.editOptions.originFeatOptions !== null
+              ? { chosenOriginFeatId: loadoutOriginFeat }
+              : {}),
           });
           editingLoadout = false;
           shell.announce('Loadout saved.');

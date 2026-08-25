@@ -1231,61 +1231,138 @@ function mutateRules(options: {
     affectedCombatantIds = [actor.combatantId];
   } else if (commandType === 'combat.short_rest') {
     requireOutOfCombat(encounter, 'A Short Rest');
-    const current = requireEncounter(encounter);
-    const actor = findActor(current, seat.seatId);
-    if (actor.hitDiceRemaining < 1) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No Hit Dice remain for a Short Rest.');
-    }
-    if (actor.deathSaves.dead) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Short Rest.');
-    }
-    const hitDie = Number(/d(\d+)/.exec(projectProgression(source, progression).derived.hitDice)?.[1] ?? 8);
-    const healingRoll = rollDamage(`1d${hitDie}`, rng);
-    const healing = Math.max(0, healingRoll.total + baseSheetFor(source).abilityModifiers.constitution);
-    rolls.push(...healingRoll.rolls);
-    const beforeHp = actor.currentHitPoints;
-    const healed = applyHealing(actor, healing);
-    const effective = healed.currentHitPoints - beforeHp;
-    const rested = {
-      ...healed,
-      hitDiceRemaining: actor.hitDiceRemaining - 1,
+    const projected = projectProgression(source, progression);
+    const sheet = projected.sheet;
+    const resourceRemaining: Record<string, number> = {
+      ...(progression.resourceRemaining ?? {}),
     };
-    encounter = replaceCombatants(current, [rested]);
-    summary =
-      effective === healing
-        ? `${actor.name} completed a Short Rest and recovered ${effective} Hit Points.`
-        : `${actor.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum).`;
-    affectedCombatantIds = [actor.combatantId];
+    for (const resource of sheet.classResources ?? []) {
+      if (/short rest/i.test(resource.recharge)) {
+        resourceRemaining[resource.id] = resource.maximum;
+      }
+    }
+    let healing = 0;
+    let healingRolls: number[] = [];
+    const maxHp = sheet.hitPoints.value;
+    const currentHp =
+      typeof progression.hitPointsCurrent === 'number'
+        ? progression.hitPointsCurrent
+        : sheet.hitPointsCurrent;
+    // Prefer encounter combatant when one exists (ended fight); otherwise rest from sheet trackers.
+    if (encounter !== null) {
+      const current = requireEncounter(encounter);
+      const actor = findActor(current, seat.seatId);
+      if (actor.deathSaves.dead) {
+        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Short Rest.');
+      }
+      if (actor.hitDiceRemaining < 1) {
+        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No Hit Dice remain for a Short Rest.');
+      }
+      const hitDie = Number(/d(\d+)/.exec(projected.derived.hitDice)?.[1] ?? 8);
+      const healingRoll = rollDamage(`1d${hitDie}`, rng);
+      healing = Math.max(0, healingRoll.total + baseSheetFor(source).abilityModifiers.constitution);
+      healingRolls = [...healingRoll.rolls];
+      rolls.push(...healingRolls);
+      const beforeHp = actor.currentHitPoints;
+      const healed = applyHealing(actor, healing);
+      const effective = healed.currentHitPoints - beforeHp;
+      const rested = {
+        ...healed,
+        hitDiceRemaining: actor.hitDiceRemaining - 1,
+      };
+      encounter = replaceCombatants(current, [rested]);
+      progression = {
+        ...progression,
+        updatedAt: now.toISOString(),
+        hitPointsCurrent: rested.currentHitPoints,
+        resourceRemaining,
+      };
+      summary =
+        effective === healing
+          ? `${actor.name} completed a Short Rest and recovered ${effective} Hit Points. Short-rest class resources recharged.`
+          : `${actor.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`;
+      affectedCombatantIds = [actor.combatantId];
+    } else {
+      // Exploration rest (no encounter record): recharge short-rest resources and heal with one Hit Die.
+      const hitDie = Number(/d(\d+)/.exec(projected.derived.hitDice)?.[1] ?? 8);
+      const healingRoll = rollDamage(`1d${hitDie}`, rng);
+      healing = Math.max(0, healingRoll.total + baseSheetFor(source).abilityModifiers.constitution);
+      healingRolls = [...healingRoll.rolls];
+      rolls.push(...healingRolls);
+      const nextHp = Math.min(maxHp, currentHp + healing);
+      const effective = nextHp - currentHp;
+      progression = {
+        ...progression,
+        updatedAt: now.toISOString(),
+        hitPointsCurrent: nextHp,
+        resourceRemaining,
+      };
+      summary =
+        effective === healing
+          ? `${source.choices.identity.name} completed a Short Rest and recovered ${effective} Hit Points. Short-rest class resources recharged.`
+          : `${source.choices.identity.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`;
+      affectedCombatantIds = [];
+    }
   } else if (commandType === 'combat.long_rest') {
     requireOutOfCombat(encounter, 'A Long Rest');
-    const current = requireEncounter(encounter);
-    const actor = findActor(current, seat.seatId);
-    if (actor.deathSaves.dead) {
-      throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Long Rest.');
-    }
-    const restored = {
-      ...actor,
-      currentHitPoints: actor.maxHitPoints,
-      temporaryHitPoints: 0,
-      hitDiceRemaining: Math.min(
-        actor.level,
-        actor.hitDiceRemaining + Math.max(1, Math.floor(actor.level / 2)),
-      ),
-      conditions: removeCondition(
-        removeCondition(actor.conditions, 'exhaustion'),
-        'unconscious',
-      ),
-      deathSaves: emptyDeathSaves(),
-      spellResources: {
-        ...actor.spellResources,
-        remainingSlots: actor.spellResources.maximumSlots,
-      },
-      concentrationSpellId: null,
-      actionEconomy: actionEconomy(),
+    const projected = projectProgression(source, progression);
+    const sheet = projected.sheet;
+    const resourceRemaining: Record<string, number> = {
+      ...(progression.resourceRemaining ?? {}),
     };
-    encounter = replaceCombatants(current, [restored]);
-    summary = `${actor.name} completed a Long Rest, restoring Hit Points, Hit Dice, and spell slots.`;
-    affectedCombatantIds = [actor.combatantId];
+    for (const resource of sheet.classResources ?? []) {
+      resourceRemaining[resource.id] = resource.maximum;
+    }
+    const level1SlotsRemaining = sheet.spellcasting?.level1SlotCount;
+    if (encounter !== null) {
+      const current = requireEncounter(encounter);
+      const actor = findActor(current, seat.seatId);
+      if (actor.deathSaves.dead) {
+        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Long Rest.');
+      }
+      const restored = {
+        ...actor,
+        currentHitPoints: actor.maxHitPoints,
+        temporaryHitPoints: 0,
+        hitDiceRemaining: Math.min(
+          actor.level,
+          actor.hitDiceRemaining + Math.max(1, Math.floor(actor.level / 2)),
+        ),
+        conditions: removeCondition(
+          removeCondition(actor.conditions, 'exhaustion'),
+          'unconscious',
+        ),
+        deathSaves: emptyDeathSaves(),
+        spellResources: {
+          ...actor.spellResources,
+          remainingSlots: actor.spellResources.maximumSlots,
+        },
+        concentrationSpellId: null,
+        actionEconomy: actionEconomy(),
+      };
+      encounter = replaceCombatants(current, [restored]);
+      progression = {
+        ...progression,
+        updatedAt: now.toISOString(),
+        hitPointsCurrent: restored.currentHitPoints,
+        temporaryHitPoints: 0,
+        resourceRemaining,
+        ...(level1SlotsRemaining === undefined ? {} : { level1SlotsRemaining }),
+      };
+      summary = `${actor.name} completed a Long Rest, restoring Hit Points, Hit Dice, spell slots, and class resources.`;
+      affectedCombatantIds = [actor.combatantId];
+    } else {
+      progression = {
+        ...progression,
+        updatedAt: now.toISOString(),
+        hitPointsCurrent: sheet.hitPoints.value,
+        temporaryHitPoints: 0,
+        resourceRemaining,
+        ...(level1SlotsRemaining === undefined ? {} : { level1SlotsRemaining }),
+      };
+      summary = `${source.choices.identity.name} completed a Long Rest, restoring Hit Points, spell slots, and class resources.`;
+      affectedCombatantIds = [];
+    }
   } else if (commandType === 'combat.ready') {
     const current = requireEncounter(encounter);
     const actor = requireActiveActor(current, seat.seatId);

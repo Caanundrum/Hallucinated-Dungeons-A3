@@ -39,6 +39,7 @@ import {
 } from '../rules/character-rules.js';
 import {
   type StoredProgression,
+  applyProgressionTrackers,
 } from '../rules/engine/encounter-runtime.js';
 import { recomputeSheetForLevel } from '../rules/engine/xp-progression.js';
 
@@ -143,63 +144,6 @@ function projectCharacter(
     choices,
     sheet: withTrackers,
     editOptions: buildDraftOptions(choices),
-  };
-}
-
-function applyProgressionTrackers(
-  sheet: NonNullable<ReturnType<typeof deriveSheet>>,
-  progression: StoredProgression | null,
-): NonNullable<ReturnType<typeof deriveSheet>> {
-  if (progression === null) {
-    return sheet;
-  }
-  const maxHp = sheet.hitPoints.value;
-  const hitPointsCurrent =
-    typeof progression.hitPointsCurrent === 'number'
-      ? Math.max(0, Math.min(maxHp, progression.hitPointsCurrent))
-      : sheet.hitPointsCurrent;
-  const temporaryHitPoints =
-    typeof progression.temporaryHitPoints === 'number'
-      ? Math.max(0, progression.temporaryHitPoints)
-      : (sheet.temporaryHitPoints ?? 0);
-  const classResources = (sheet.classResources ?? []).map((resource) => {
-    const remaining = progression.resourceRemaining?.[resource.id];
-    if (typeof remaining !== 'number') {
-      return resource;
-    }
-    return {
-      ...resource,
-      remaining: Math.max(0, Math.min(resource.maximum, remaining)),
-    };
-  });
-  const spellcasting =
-    sheet.spellcasting === null
-      ? null
-      : {
-          ...sheet.spellcasting,
-          level1SlotsRemaining:
-            typeof progression.level1SlotsRemaining === 'number'
-              ? Math.max(
-                  0,
-                  Math.min(sheet.spellcasting.level1SlotCount, progression.level1SlotsRemaining),
-                )
-              : sheet.spellcasting.level1SlotsRemaining,
-        };
-  const equipment =
-    progression.equipmentOverrides !== undefined && progression.equipmentOverrides.length > 0
-      ? progression.equipmentOverrides.map((item) => ({
-          name: item.name,
-          quantity: Math.max(0, item.quantity),
-          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
-        }))
-      : sheet.equipment;
-  return {
-    ...sheet,
-    hitPointsCurrent,
-    temporaryHitPoints,
-    classResources,
-    spellcasting,
-    equipment,
   };
 }
 
@@ -648,6 +592,7 @@ export async function updateCharacterLoadout(options: {
   readonly classEquipmentOptionId?: string | null;
   readonly backgroundEquipmentOptionId?: string | null;
   readonly weaponMasteryWeaponNames?: readonly string[];
+  readonly chosenOriginFeatId?: string | null;
 }): Promise<CharacterProjection> {
   const { firestore, accountId, characterId } = options;
   const stored = await loadOwnedCharacter(firestore, accountId, characterId);
@@ -662,6 +607,9 @@ export async function updateCharacterLoadout(options: {
       : {}),
     ...(options.weaponMasteryWeaponNames !== undefined
       ? { weaponMasteryWeaponNames: [...options.weaponMasteryWeaponNames] }
+      : {}),
+    ...(options.chosenOriginFeatId !== undefined
+      ? { chosenOriginFeatId: options.chosenOriginFeatId }
       : {}),
   });
   const problems = validateChoices(nextChoices);
