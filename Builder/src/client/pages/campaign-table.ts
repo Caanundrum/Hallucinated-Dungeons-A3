@@ -134,8 +134,6 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
 };
 
 function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
-  const column = edge.column + 1;
-  const row = edge.row + 1;
   const facing =
     edge.orientation === 'north'
       ? 'north'
@@ -146,9 +144,23 @@ function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
           : 'west';
   if (edge.kind === 'door') {
     const state = edge.doorState === 'open' ? 'open' : 'closed';
-    return `Wooden door (${state}) facing ${facing} at column ${column}, row ${row}`;
+    return `Wooden door (${state}) facing ${facing}`;
   }
-  return `Wall facing ${facing} at column ${column}, row ${row}`;
+  return `Wall facing ${facing}`;
+}
+
+function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
+  const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
+  const state = edge.doorState === 'open' ? 'open' : 'closed';
+  const facing =
+    edge.orientation === 'north'
+      ? 'north'
+      : edge.orientation === 'south'
+        ? 'south'
+        : edge.orientation === 'east'
+          ? 'east'
+          : 'west';
+  return `Selected wooden door in ${scene} — ${state}, facing ${facing}. Use Open adjacent door when you are next to a closed door, or declare an interaction in the play channel.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -193,7 +205,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let seated = false;
   let ownSeatId: string | null = null;
   let moveTarget: { column: number; row: number } | null = null;
+  let movePreviewPath: { column: number; row: number }[] | null = null;
   let movePreviewNote: string | null = null;
+  let pendingMoveConfirm = false;
   let undoMoveAnchor: { column: number; row: number } | null = null;
   let selectedEdgeId: string | null = null;
   let draft = '';
@@ -1773,6 +1787,35 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ? ''
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
+          ${
+            (() => {
+              const edge =
+                selectedEdgeId === null || mapBundle === null
+                  ? undefined
+                  : mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
+              if (edge === undefined || edge.kind !== 'door') {
+                return '';
+              }
+              return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
+                doorDetailCopy(edge, mapBundle?.title ?? ''),
+              )}</p>`;
+            })()
+          }
+          ${
+            pendingMoveConfirm
+              ? `<div class="table-player-actions" data-testid="pending-move-actions">
+                   <button type="button" class="table-primary-action" data-testid="confirm-pending-move"
+                     aria-disabled="${busy}">Confirm move</button>
+                   <button type="button" class="table-secondary-action" data-testid="cancel-pending-move"
+                     aria-disabled="${busy}">Cancel move</button>
+                 </div>`
+              : undoMoveAnchor !== null && canDescribeTurn
+                ? `<div class="table-player-actions" data-testid="undo-move-actions">
+                     <button type="button" class="table-secondary-action" data-testid="undo-last-move-play"
+                       aria-disabled="${busy}">Undo last move</button>
+                   </div>`
+                : ''
+          }
         </section>
         <div class="dm-play-thread" data-testid="dm-play-thread">
           <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
@@ -1960,7 +2003,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     moveTarget?.column === square.column && moveTarget?.row === square.row
                       ? 'selected'
                       : ''
-                  }>Column ${square.column}, row ${square.row}</option>`,
+                  }>Near destination ${index + 1}</option>`,
               )
               .join('')}
           </select>
@@ -2084,9 +2127,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           selectedEdgeId = edgeId;
           const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
           if (edge !== null) {
-            const label = edgeAccessibleLabelFromEdge(edge);
-            movePreviewNote = `Selected ${label}. Declare an interaction in the play channel.`;
-            shell.announce(`Selected ${label}.`);
+            movePreviewNote =
+              edge.kind === 'door'
+                ? doorDetailCopy(edge, mapBundle?.title ?? '')
+                : `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+            shell.announce(movePreviewNote);
           }
           render();
         });
@@ -2113,9 +2158,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           selectedEdgeId = edgeId;
           const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
           if (edge !== null) {
-            const label = edgeAccessibleLabelFromEdge(edge);
-            movePreviewNote = `Selected ${label}. Declare an interaction in the play channel.`;
-            shell.announce(`Selected ${label}.`);
+            movePreviewNote =
+              edge.kind === 'door'
+                ? doorDetailCopy(edge, mapBundle?.title ?? '')
+                : `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+            shell.announce(movePreviewNote);
           }
           render();
         });
@@ -2134,6 +2181,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (candidate === null || !seated || mapBundle === null || ownSeatId === null) {
       movePreviewNote = 'Seat a character before moving on the map.';
       moveTarget = square;
+      movePreviewPath = null;
+      pendingMoveConfirm = false;
       render();
       return;
     }
@@ -2145,12 +2194,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (start === null) {
       movePreviewNote = 'Your token is not on the map yet.';
       moveTarget = square;
+      movePreviewPath = null;
+      pendingMoveConfirm = false;
       render();
       return;
     }
     if (start.column === square.column && start.row === square.row) {
       moveTarget = null;
+      movePreviewPath = null;
       movePreviewNote = null;
+      pendingMoveConfirm = false;
       stageHandle?.setMoveTarget(null);
       render();
       return;
@@ -2160,7 +2213,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     error = null;
     moveTarget = square;
     stageHandle?.setMoveTarget(square);
-    movePreviewNote = 'Moving…';
+    movePreviewNote = 'Checking path…';
+    pendingMoveConfirm = false;
+    movePreviewPath = null;
     render();
 
     try {
@@ -2191,6 +2246,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       if (!preview.legal) {
         movePreviewNote = preview.rejectionMessage ?? 'That square is not reachable.';
+        movePreviewPath = null;
+        pendingMoveConfirm = false;
         return;
       }
 
@@ -2198,7 +2255,62 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         column: step.column,
         row: step.row,
       }));
-      movePreviewNote = formatMoveSummary({ path: commitPath, map: mapBundle, start });
+      movePreviewPath = commitPath;
+      pendingMoveConfirm = true;
+      movePreviewNote = `${formatMoveSummary({ path: commitPath, map: mapBundle, start })} Confirm to commit, or Cancel to clear.`;
+      shell.announce('Move ready — confirm or cancel.');
+    } catch (failure) {
+      movePreviewNote =
+        failure instanceof ApiFailure ? failure.message : 'That move could not be previewed.';
+      movePreviewPath = null;
+      pendingMoveConfirm = false;
+      if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        presentTableConflict(failure);
+        try {
+          tableState = await fetchTableState(campaignId);
+          mapBundle = await fetchCampaignMap(campaignId);
+        } catch {
+          // Keep the move error visible.
+        }
+      }
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function cancelPendingMove(): void {
+    moveTarget = null;
+    movePreviewPath = null;
+    movePreviewNote = null;
+    pendingMoveConfirm = false;
+    stageHandle?.setMoveTarget(null);
+    shell.announce('Move canceled.');
+    render();
+  }
+
+  async function confirmPendingMove(): Promise<void> {
+    if (
+      candidate === null ||
+      !seated ||
+      mapBundle === null ||
+      ownSeatId === null ||
+      tableState === null ||
+      movePreviewPath === null ||
+      !pendingMoveConfirm ||
+      busy
+    ) {
+      return;
+    }
+    const start = ownTokenAnchor(mapBundle, ownSeatId);
+    if (start === null) {
+      return;
+    }
+    const commitPath = movePreviewPath;
+    busy = true;
+    error = null;
+    render();
+    try {
       const accepted = await submitTableCommand({
         candidateId: candidate.candidateId,
         campaignId,
@@ -2214,6 +2326,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       mapBundle = await fetchCampaignMap(campaignId);
       undoMoveAnchor = start;
       moveTarget = null;
+      movePreviewPath = null;
+      pendingMoveConfirm = false;
       movePreviewNote = null;
       stageHandle?.setMoveTarget(null);
       shell.announce(
@@ -2243,6 +2357,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } finally {
       busy = false;
       render();
+    }
+  }
+
+  async function undoLastMove(): Promise<void> {
+    if (undoMoveAnchor === null || mapBundle === null || ownSeatId === null) {
+      return;
+    }
+    const target = undoMoveAnchor;
+    undoMoveAnchor = null;
+    moveTarget = target;
+    pendingMoveConfirm = false;
+    movePreviewPath = null;
+    await onSquareSelected(target);
+    if (pendingMoveConfirm) {
+      await confirmPendingMove();
     }
   }
 
@@ -2488,15 +2617,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
+      .querySelector<HTMLButtonElement>('[data-testid="confirm-pending-move"]')
+      ?.addEventListener('click', () => {
+        void confirmPendingMove();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="cancel-pending-move"]')
+      ?.addEventListener('click', () => {
+        cancelPendingMove();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="undo-last-move-play"]')
+      ?.addEventListener('click', () => {
+        void undoLastMove();
+      });
+
+    root
       .querySelector<HTMLButtonElement>('[data-testid="undo-last-move"]')
       ?.addEventListener('click', () => {
-        if (undoMoveAnchor === null || mapBundle === null || ownSeatId === null) {
-          return;
-        }
-        const target = undoMoveAnchor;
-        undoMoveAnchor = null;
-        moveTarget = target;
-        void onSquareSelected(target);
+        void undoLastMove();
       });
 
     root
@@ -3374,7 +3515,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             source: 'action_composer_interpret',
             campaignId,
             proposedCommandType: 'table.move',
-            summary: `Intent Intercept draft: move to column ${moveTarget.column}, row ${moveTarget.row}.`,
+            summary: 'Intent Intercept draft: move toward the marked destination.',
             path: [moveTarget],
             interceptState: 'awaiting_confirmation',
             createdAt: new Date().toISOString(),
@@ -3710,6 +3851,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const focusRestore = container.querySelector<HTMLElement>('[data-testid="table-focus-restore"]');
     if (focusRestore !== null) {
       focusRestore.hidden = !focusMode;
+      focusRestore.innerHTML = focusMode
+        ? `<div class="table-focus-restore-actions" data-testid="table-focus-restore-actions">
+             <button type="button" class="table-secondary-action" data-testid="expand-info-rail">Show reference</button>
+             <button type="button" class="table-secondary-action" data-testid="expand-comms-rail">Show chat</button>
+           </div>`
+        : '';
     }
 
     footer.innerHTML = `
@@ -3740,7 +3887,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   .map(
                     (feature) => `
                   <li data-testid="map-notable-feature">
-                    ${escapeHtml(feature.label)} · column ${feature.column}, row ${feature.row}
+                    ${escapeHtml(feature.label)}
                   </li>`,
                   )
                   .join('')}

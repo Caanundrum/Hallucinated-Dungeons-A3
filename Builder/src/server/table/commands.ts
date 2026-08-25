@@ -923,12 +923,11 @@ export async function acceptTableCommand(options: {
         body: `${seat.characterName || 'A player'} opened a door on the table.`,
       });
     } else if (eventType === 'table.token_moved' && movePath !== undefined && movePath.length > 0) {
-      const destination = movePath[movePath.length - 1]!;
       await appendChronicleEntry({
         firestore,
         campaignId,
         kind: 'token_moved',
-        body: `${seat.characterName || 'A player'} moved to column ${destination.column + 1}, row ${destination.row + 1}.`,
+        body: `${seat.characterName || 'A player'} moved across the table toward a marked destination.`,
       });
     }
     if (skillResolution !== null) {

@@ -89,15 +89,31 @@ function looksMechanical(text: string): boolean {
   );
 }
 
+/** Trap/lock language that must stay on the skill-check path (PQA-155). */
+function mentionsDoorHazardIntent(text: string): boolean {
+  return /(trap|disarm|lock|thieves|pick|unlock|lockpick|lock\s*pick)/.test(text);
+}
+
+/**
+ * Door state / manipulation without a hazard check (PQA-155).
+ * Plain inspect/check/examine of a visible door reads state — it is not Investigation.
+ */
 function mentionsDoorStateIntent(text: string): boolean {
+  if (mentionsDoorHazardIntent(text)) {
+    return false;
+  }
   return (
-    /(swing|ajar|hinge|free\s*swing|push|pull|test).*(door|gate|entry)/.test(text) ||
-    /(door|gate|entry).*(swing|ajar|hinge|stuck|free|push|pull|test)/.test(text)
+    /(swing|ajar|hinge|free\s*swing|push|pull|test|inspect|check|examine|look\s*at|study).*(door|gate|entry)/.test(
+      text,
+    ) ||
+    /(door|gate|entry).*(swing|ajar|hinge|stuck|free|push|pull|test|inspect|check|examine|state)/.test(
+      text,
+    )
   );
 }
 
 function mentionsSkillCheckIntent(text: string): boolean {
-  if (mentionsDoorStateIntent(text) && !/(trap|disarm|lock|thieves|pick|unlock)/.test(text)) {
+  if (mentionsDoorStateIntent(text)) {
     return false;
   }
   return (
@@ -490,7 +506,8 @@ export async function interpretNaturalLanguageIntent(options: {
     if (legalStep) {
       proposedCommandType = 'table.move';
       path = [options.moveTarget];
-      summary = `Ready to move toward column ${options.moveTarget.column}, row ${options.moveTarget.row}. Confirm to commit the step.`;
+      summary =
+        'Ready to move toward the marked destination on the map. Confirm to commit the step.';
     } else {
       proposedCommandType = 'table.sync';
       summary =
@@ -791,6 +808,14 @@ export async function narrateVisibleBeat(options: {
     visibleFactScope: 'table_visible',
     directorIdentity: director.identity,
     directorPersonality: director.personality,
+  });
+
+  // Persist Director narration into Story so far / play-thread rebuild (PQA-159).
+  await appendChronicleEntry({
+    firestore: options.firestore,
+    campaignId: options.campaignId,
+    kind: 'director_ruling',
+    body,
   });
 
   return {
