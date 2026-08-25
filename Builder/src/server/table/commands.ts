@@ -284,7 +284,7 @@ export function classifyExplorationConflict(options: {
         message:
           'Another adventurer already stands on that square. Pick a different path or wait for them to move.',
         contestedSquares: [{ column: destination.column, row: destination.row }],
-        competingSummary: `Square ${destination.column},${destination.row} is occupied.`,
+        competingSummary: 'That destination square is occupied.',
         serverStateVersion: current.stateVersion,
       };
     }

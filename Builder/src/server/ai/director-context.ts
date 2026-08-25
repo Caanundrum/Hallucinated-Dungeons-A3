@@ -105,7 +105,7 @@ function formatMap(map: MapBundleProjection): string {
     `Scene: ${map.title}`,
     `Banner: ${map.sceneBanner}`,
     ownToken
-      ? `Your token at column ${ownToken.footprint.anchor.column}, row ${ownToken.footprint.anchor.row}`
+      ? 'Your token is on the current scene map.'
       : 'No seated token on the map for this viewer.',
     `Visible squares: ${map.visibleSquareIds.length}; explored: ${map.exploredSquareIds.length}`,
     visibleDoors.length > 0 ? `Doors known: ${visibleDoors.join('; ')}` : 'No doors in the visible projection.',

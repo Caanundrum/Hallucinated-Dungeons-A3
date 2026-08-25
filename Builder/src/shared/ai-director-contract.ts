@@ -110,9 +110,13 @@ export interface IntentInterpretResponse {
 export function scrubPlayerFacingIntentCopy(text: string): string {
   return text
     .replace(/\btable\.(?:open_door|move|sync|build_scene)\b/gi, 'that action')
-    .replace(/\bcombat\.(?:attack|cast_spell|reaction)\b/gi, 'that action')
+    .replace(/\bcombat\.(?:attack|cast_spell|reaction|short_rest|long_rest)\b/gi, 'that action')
+    .replace(/\bencounter\.(?:begin|end|next_turn)\b/gi, 'that action')
+    .replace(/\binitiative\.roll\b/gi, 'that action')
     .replace(/\binventory\.use_item\b/gi, 'that item')
     .replace(/\bedgeId\b/gi, 'door')
+    .replace(/\bcolumn\s+\d+\s*,?\s*row\s+\d+\b/gi, 'that spot')
+    .replace(/\bat\s+c\d+r\d+\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
