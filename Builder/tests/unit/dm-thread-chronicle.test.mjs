@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import {
   dmThreadFromChronicleEntries,
   formatDirectorProse,
+  formatPlayerFacingTimestamp,
+  isEpochPlaceholderTimestamp,
 } from '../../dist/shared/communication-contract.js';
 
 test('PQA-157/159: dmThreadFromChronicleEntries rebuilds play thread from Chronicle', () => {
@@ -44,9 +46,11 @@ test('PQA-157/159: dmThreadFromChronicleEntries rebuilds play thread from Chroni
 });
 
 test('dmThreadFromChronicleEntries seeds opening prompt when Chronicle has no play beats', () => {
+  const now = new Date('2026-08-24T18:00:00.000Z');
   const thread = dmThreadFromChronicleEntries({
     directorLabel: 'Garrick',
     sceneBanner: 'An empty table.',
+    now,
     entries: [
       {
         entryId: 'e1',
@@ -60,9 +64,36 @@ test('dmThreadFromChronicleEntries seeds opening prompt when Chronicle has no pl
   });
   assert.equal(thread.length, 1);
   assert.equal(thread[0].kind, 'prompt');
+  assert.equal(thread[0].messageId, 'opening-prompt');
   assert.match(thread[0].body, /What do you do\?/);
-  assert.notEqual(thread[0].createdAt, '1970-01-01T00:00:00.000Z');
-  assert.ok(Date.parse(thread[0].createdAt) > 0);
+  assert.equal(thread[0].createdAt, now.toISOString());
+  assert.ok(!isEpochPlaceholderTimestamp(thread[0].createdAt));
+  assert.equal(formatPlayerFacingTimestamp(thread[0].createdAt, now), 'Just now');
+});
+
+test('TBL-QA-003: epoch placeholders never surface as 1969/1970 wall times', () => {
+  assert.equal(isEpochPlaceholderTimestamp('1970-01-01T00:00:00.000Z'), true);
+  assert.equal(formatPlayerFacingTimestamp('1970-01-01T00:00:00.000Z'), 'Just now');
+  assert.equal(formatPlayerFacingTimestamp('12/31/1969, 6:00:00 PM'), 'Just now');
+
+  const now = new Date('2026-08-24T18:00:00.000Z');
+  const thread = dmThreadFromChronicleEntries({
+    directorLabel: 'Veyra',
+    sceneBanner: 'The table is ready.',
+    now,
+    entries: [
+      {
+        entryId: 'bad-epoch',
+        campaignId: 'camp-1',
+        kind: 'director_ruling',
+        body: 'Legacy epoch stamp.',
+        createdAt: '1970-01-01T00:00:00.000Z',
+        sequence: 1,
+      },
+    ],
+  });
+  assert.equal(thread[0].createdAt, now.toISOString());
+  assert.equal(formatPlayerFacingTimestamp(thread[0].createdAt, now), 'Just now');
 });
 
 test('formatDirectorProse strips bold markers', () => {

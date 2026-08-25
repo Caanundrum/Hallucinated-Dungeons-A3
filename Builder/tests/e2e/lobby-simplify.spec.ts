@@ -208,6 +208,37 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await ownerContext.close();
   });
 
+  test('active My-tables link opens table; opening prompt is Just now; Session Zero copy stays open', async ({
+    page,
+  }) => {
+    await signIn(page);
+    await createQuickCharacter(page, 'Timestamp Hero');
+    const tableName = `Timestamp Table ${Date.now()}`;
+    await createPublicTable(page, { name: tableName });
+    await joinTableWithFirstCharacter(page);
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('dm-play-thread-list')).toBeVisible();
+    const timestamps = page.getByTestId('dm-thread-timestamp');
+    await expect(timestamps.first()).toHaveText('Just now');
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText('1969');
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText('1970');
+
+    await page.getByTestId('nav-campaigns').click();
+    await expect(page.getByTestId('my-table-open')).toContainText(tableName);
+    await page.getByTestId('my-table-open').click();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('join-table-heading')).toHaveCount(0);
+
+    await page.getByTestId('table-settings').click();
+    await expect(page.getByTestId('session-zero-status')).toContainText('Recorded');
+    await expect(page.getByTestId('settings-save-hint')).not.toContainText(
+      'required before seating',
+    );
+    await expect(page.getByTestId('session-zero-defaults-notice')).toContainText(
+      'seating and live play stay open',
+    );
+  });
+
   test('legal acceptance is recorded once and play routes stay open after reload', async ({
     page,
   }) => {

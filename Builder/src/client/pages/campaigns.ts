@@ -102,11 +102,16 @@ export function mountCampaignsPage(host: PageHost): void {
                 ? '<p class="empty-state" data-testid="campaigns-empty">You have not created or joined a table yet.</p>'
                 : `<ul class="record-list" data-testid="campaign-list">
                     ${filteredMine
-                      .map(
-                        (table) => `
+                      .map((table) => {
+                        const seatedHere = hub?.activeSeat?.campaignId === table.campaignId;
+                        const href = seatedHere
+                          ? `/campaigns/${escapeHtml(table.campaignId)}/table`
+                          : `/campaigns/${escapeHtml(table.campaignId)}/join`;
+                        return `
                       <li data-testid="campaign-item">
-                        <a class="record-note" href="/campaigns/${escapeHtml(table.campaignId)}/join" data-link>
-                          ${escapeHtml(table.name)}
+                        <a class="record-note" href="${href}" data-link
+                          data-testid="${seatedHere ? 'my-table-open' : 'my-table-join'}">
+                          ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}
                         </a>
                         <span class="record-meta">
                           ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
@@ -114,10 +119,11 @@ export function mountCampaignsPage(host: PageHost): void {
                           · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
                           · ${escapeHtml(table.visibility)}
                           ${table.passwordProtected ? ' · 🔒' : ''}
+                          ${seatedHere ? ' · your active seat' : ''}
                           · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
                         </span>
-                      </li>`,
-                      )
+                      </li>`;
+                      })
                       .join('')}
                   </ul>`
               : filteredOpen.length === 0
