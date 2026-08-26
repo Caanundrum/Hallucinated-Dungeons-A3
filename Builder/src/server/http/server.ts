@@ -2684,6 +2684,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           itemId?: unknown;
           summary?: unknown;
           declaredFoes?: unknown;
+          arcaneRecovery?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
@@ -2703,6 +2704,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               .filter((entry): entry is { name: string } => entry !== null)
               .slice(0, 4)
           : undefined;
+        const arcaneRecovery = payload.arcaneRecovery === true;
         const result = await acceptTableCommand({
           firestore,
           accountId,
@@ -2739,6 +2741,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           ...(typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
           ...(typeof payload.summary === 'string' ? { summary: payload.summary } : {}),
           ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
+          ...(arcaneRecovery ? { arcaneRecovery: true } : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;

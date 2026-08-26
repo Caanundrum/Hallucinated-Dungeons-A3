@@ -522,6 +522,27 @@ function findActor(encounter: EncounterProjection, seatId: string): CombatantPro
   return actor;
 }
 
+function findActorOrNull(
+  encounter: EncounterProjection,
+  seatId: string,
+): CombatantProjection | null {
+  return encounter.combatants.find((combatant) => combatant.seatId === seatId) ?? null;
+}
+
+/**
+ * NEW-PQA-04: ended encounters keep combatant records for participants who fought,
+ * but a later seated character must rest via exploration trackers — not membership gates.
+ */
+function actorForEndedEncounterRest(
+  encounter: EncounterProjection | null,
+  seatId: string,
+): CombatantProjection | null {
+  if (encounter === null || encounter.status !== 'ended') {
+    return null;
+  }
+  return findActorOrNull(encounter, seatId);
+}
+
 function requireEncounter(encounter: EncounterProjection | null): EncounterProjection {
   if (encounter === null) {
     throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Begin an encounter first.');
@@ -1207,7 +1228,8 @@ function mutateRules(options: {
         window.state === 'open' ? { ...window, state: 'expired' as const } : window,
       ),
     };
-    summary = 'Encounter ended by the table. Combatants remain for recovery and rests.';
+    summary =
+      'Encounter ended by the table. Participants who fought may still recover here; newly seated characters rest in free exploration without needing combat membership.';
     affectedCombatantIds = current.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'combat.attack') {
     const current = requireEncounter(encounter);
@@ -1456,6 +1478,49 @@ function mutateRules(options: {
         resourceRemaining[resource.id] = resource.maximum;
       }
     }
+    const wantsArcaneRecovery = fields.arcaneRecovery === true;
+    let arcaneRecoveryNote = '';
+    let nextLevel1Slots =
+      typeof progression.level1SlotsRemaining === 'number'
+        ? progression.level1SlotsRemaining
+        : (sheet.spellcasting?.level1SlotsRemaining ?? sheet.spellcasting?.level1SlotCount);
+    let arcaneRecoveryUsedAt = progression.arcaneRecoveryUsedAt ?? null;
+    if (wantsArcaneRecovery) {
+      if (source.choices.classId !== 'wizard') {
+        throw new RulesCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Arcane Recovery is available only to Wizards.',
+        );
+      }
+      if (sheet.spellcasting === null) {
+        throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No spell slots are available to recover.');
+      }
+      const usedDay =
+        typeof arcaneRecoveryUsedAt === 'string' ? arcaneRecoveryUsedAt.slice(0, 10) : null;
+      const today = now.toISOString().slice(0, 10);
+      if (usedDay === today) {
+        throw new RulesCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Arcane Recovery was already used today. It returns after a Long Rest or the next day.',
+        );
+      }
+      const maxSlots = sheet.spellcasting.level1SlotCount;
+      const currentSlots =
+        typeof nextLevel1Slots === 'number' ? nextLevel1Slots : maxSlots;
+      const missing = Math.max(0, maxSlots - currentSlots);
+      // Half Wizard level (rounded up) in slot levels — Alpha tracks level-1 slots only.
+      const budget = Math.max(1, Math.ceil(projected.level / 2));
+      const recovered = Math.min(budget, missing);
+      if (recovered <= 0) {
+        throw new RulesCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'No expended level-1 spell slots remain to recover with Arcane Recovery.',
+        );
+      }
+      nextLevel1Slots = currentSlots + recovered;
+      arcaneRecoveryUsedAt = now.toISOString();
+      arcaneRecoveryNote = ` Arcane Recovery restored ${recovered} level-1 spell slot${recovered === 1 ? '' : 's'} (${nextLevel1Slots}/${maxSlots}).`;
+    }
     let healing = 0;
     let healingRolls: number[] = [];
     const maxHp = sheet.hitPoints.value;
@@ -1463,10 +1528,11 @@ function mutateRules(options: {
       typeof progression.hitPointsCurrent === 'number'
         ? progression.hitPointsCurrent
         : sheet.hitPointsCurrent;
-    // Prefer encounter combatant when one exists (ended fight); otherwise rest from sheet trackers.
-    if (encounter !== null) {
+    const endedActor = actorForEndedEncounterRest(encounter, seat.seatId);
+    // Prefer ended-encounter combatant when this seat fought; otherwise exploration trackers (NEW-PQA-04).
+    if (endedActor !== null && encounter !== null) {
       const current = requireEncounter(encounter);
-      const actor = findActor(current, seat.seatId);
+      const actor = endedActor;
       if (actor.deathSaves.dead) {
         throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Short Rest.');
       }
@@ -1484,6 +1550,16 @@ function mutateRules(options: {
       const rested = {
         ...healed,
         hitDiceRemaining: actor.hitDiceRemaining - 1,
+        ...(wantsArcaneRecovery && typeof nextLevel1Slots === 'number'
+          ? {
+              spellResources: {
+                ...healed.spellResources,
+                remainingSlots: healed.spellResources.remainingSlots.map((count, index) =>
+                  index === 0 ? nextLevel1Slots! : count,
+                ),
+              },
+            }
+          : {}),
       };
       encounter = replaceCombatants(current, [rested]);
       progression = {
@@ -1491,14 +1567,19 @@ function mutateRules(options: {
         updatedAt: now.toISOString(),
         hitPointsCurrent: rested.currentHitPoints,
         resourceRemaining,
+        ...(typeof nextLevel1Slots === 'number' && wantsArcaneRecovery
+          ? { level1SlotsRemaining: nextLevel1Slots }
+          : {}),
+        ...(wantsArcaneRecovery ? { arcaneRecoveryUsedAt } : {}),
       };
       summary =
-        effective === healing
+        (effective === healing
           ? `${actor.name} completed a Short Rest and recovered ${effective} Hit Points. Short-rest class resources recharged.`
-          : `${actor.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`;
+          : `${actor.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`) +
+        arcaneRecoveryNote;
       affectedCombatantIds = [actor.combatantId];
     } else {
-      // Exploration rest (no encounter record): recharge short-rest resources and heal with one Hit Die.
+      // Exploration rest (no encounter, or ended encounter without this seat): recharge resources.
       const hitDie = Number(/d(\d+)/.exec(projected.derived.hitDice)?.[1] ?? 8);
       const healingRoll = rollDamage(`1d${hitDie}`, rng);
       healing = Math.max(0, healingRoll.total + baseSheetFor(source).abilityModifiers.constitution);
@@ -1511,11 +1592,16 @@ function mutateRules(options: {
         updatedAt: now.toISOString(),
         hitPointsCurrent: nextHp,
         resourceRemaining,
+        ...(typeof nextLevel1Slots === 'number' && wantsArcaneRecovery
+          ? { level1SlotsRemaining: nextLevel1Slots }
+          : {}),
+        ...(wantsArcaneRecovery ? { arcaneRecoveryUsedAt } : {}),
       };
       summary =
-        effective === healing
+        (effective === healing
           ? `${source.choices.identity.name} completed a Short Rest and recovered ${effective} Hit Points. Short-rest class resources recharged.`
-          : `${source.choices.identity.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`;
+          : `${source.choices.identity.name} completed a Short Rest and recovered ${effective} Hit Points (rolled ${healing}; capped at maximum). Short-rest class resources recharged.`) +
+        arcaneRecoveryNote;
       affectedCombatantIds = [];
     }
   } else if (commandType === 'combat.long_rest') {
@@ -1529,9 +1615,10 @@ function mutateRules(options: {
       resourceRemaining[resource.id] = resource.maximum;
     }
     const level1SlotsRemaining = sheet.spellcasting?.level1SlotCount;
-    if (encounter !== null) {
+    const endedActor = actorForEndedEncounterRest(encounter, seat.seatId);
+    if (endedActor !== null && encounter !== null) {
       const current = requireEncounter(encounter);
-      const actor = findActor(current, seat.seatId);
+      const actor = endedActor;
       if (actor.deathSaves.dead) {
         throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'A dead combatant cannot take a Long Rest.');
       }
@@ -1563,6 +1650,7 @@ function mutateRules(options: {
         temporaryHitPoints: 0,
         resourceRemaining,
         ...(level1SlotsRemaining === undefined ? {} : { level1SlotsRemaining }),
+        arcaneRecoveryUsedAt: null,
       };
       summary = `${actor.name} completed a Long Rest, restoring Hit Points, Hit Dice, spell slots, and class resources.`;
       affectedCombatantIds = [actor.combatantId];
@@ -1574,6 +1662,7 @@ function mutateRules(options: {
         temporaryHitPoints: 0,
         resourceRemaining,
         ...(level1SlotsRemaining === undefined ? {} : { level1SlotsRemaining }),
+        arcaneRecoveryUsedAt: null,
       };
       summary = `${source.choices.identity.name} completed a Long Rest, restoring Hit Points, spell slots, and class resources.`;
       affectedCombatantIds = [];

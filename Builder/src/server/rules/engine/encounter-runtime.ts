@@ -35,6 +35,8 @@ export interface StoredProgression {
   readonly temporaryHitPoints?: number;
   readonly resourceRemaining?: Readonly<Record<string, number>>;
   readonly level1SlotsRemaining?: number;
+  /** ISO timestamp of the last Arcane Recovery use (once per day). */
+  readonly arcaneRecoveryUsedAt?: string | null;
   readonly equipmentOverrides?: readonly {
     readonly name: string;
     readonly quantity: number;

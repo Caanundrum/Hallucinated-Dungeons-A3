@@ -91,6 +91,7 @@ export interface TableCommandRequest {
   readonly xpAmount?: number;
   readonly itemId?: string;
   readonly declaredFoes?: readonly { readonly name: string }[];
+  readonly arcaneRecovery?: boolean;
 }
 
 /** One immutable event in the campaign table log. */

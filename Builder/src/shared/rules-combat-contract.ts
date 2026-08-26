@@ -207,6 +207,8 @@ export interface RulesCommandFields {
   readonly itemId?: string;
   /** When set on encounter.begin, spawn these instead of training Dummy/Goblin. */
   readonly declaredFoes?: readonly DeclaredStoryFoe[];
+  /** Wizard Arcane Recovery during a Short Rest (PQA-214). */
+  readonly arcaneRecovery?: boolean;
 }
 
 export interface RulesCommandResult {

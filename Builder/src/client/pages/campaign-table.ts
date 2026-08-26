@@ -560,6 +560,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ...(interpreted.declaredFoes !== undefined && interpreted.declaredFoes.length > 0
         ? { declaredFoes: interpreted.declaredFoes.map((foe) => ({ name: foe.name })) }
         : {}),
+      ...(interpreted.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
       ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
       interceptState: interpreted.interceptState,
       createdAt: interpreted.createdAt,
@@ -661,6 +662,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ...(draft.declaredFoes !== undefined && draft.declaredFoes.length > 0
         ? { declaredFoes: draft.declaredFoes.map((foe) => ({ name: foe.name })) }
         : {}),
+      ...(draft.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
     };
   }
 
