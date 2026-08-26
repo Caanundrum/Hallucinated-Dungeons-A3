@@ -940,8 +940,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           combatant === null
             ? combatantId
             : combatant.seatId !== null
-              ? `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}`
-              : `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · ${formatCombatantHealth(combatant)}`;
+              ? `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side, combatant.combatantId)} · HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}`
+              : `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side, combatant.combatantId)} · ${formatCombatantHealth(combatant)}`;
         return `<li class="${active ? 'initiative-active' : ''}" data-testid="initiative-entry-${escapeHtml(combatantId)}">
           ${escapeHtml(context)}${active ? ' · now' : ''}
         </li>`;
@@ -995,9 +995,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .trim();
   }
 
-  function formatCombatantSide(side: string): string {
+  function formatCombatantSide(
+    side: string,
+    combatantId?: string,
+  ): string {
     if (side === 'foe') {
-      return 'hostile (practice)';
+      if (
+        combatantId === 'training-dummy' ||
+        combatantId === 'practice-goblin'
+      ) {
+        return 'hostile (practice)';
+      }
+      return 'hostile';
     }
     if (side === 'party') {
       return 'party';
