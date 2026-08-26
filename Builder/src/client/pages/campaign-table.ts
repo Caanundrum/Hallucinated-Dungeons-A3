@@ -1735,7 +1735,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       ${combatant.seatId !== null ? 'data-own-combatant="true"' : ''}>
                       <strong>${escapeHtml(formatCombatantLabel(combatant.name, combatant.combatantId))}</strong>
                       <span data-testid="${combatant.seatId !== null ? 'own-combatant-hp' : `combatant-hp-${escapeHtml(combatant.combatantId)}`}">${escapeHtml(formatCombatantHealth(combatant))}</span>
-                      <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(formatCombatantSide(combatant.side))}</span>
+                      <span>Initiative ${combatant.initiative ?? '—'} · ${escapeHtml(formatCombatantSide(combatant.side, combatant.combatantId))}</span>
                       <span data-testid="${combatant.seatId !== null ? 'own-combatant-conditions' : `combatant-conditions-${escapeHtml(combatant.combatantId)}`}">${escapeHtml(formatCombatantConditions(combatant.conditions))}</span>
                       ${
                         combatant.seatId !== null && combatant.inventory.length > 0

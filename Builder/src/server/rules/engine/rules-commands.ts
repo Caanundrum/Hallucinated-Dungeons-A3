@@ -330,6 +330,7 @@ function buildPlayerCombatant(
   source: StoredCharacterRulesSource,
   progression: CharacterProgressionProjection,
   seat: StoredSeat,
+  options: { readonly includeTrainingInventory?: boolean } = {},
 ): CombatantProjection {
   const sheet = progression.sheet;
   const weaponModifier = Math.max(sheet.abilityModifiers.strength, sheet.abilityModifiers.dexterity);
@@ -385,9 +386,20 @@ function buildPlayerCombatant(
       remainingSlots: spellSlots,
     },
     concentrationSpellId: null,
-    inventory: [{ itemId: 'healing-potion', label: 'Potion of Healing', quantity: 2 }],
+    // NEW-PQA-03: training potions only for the practice Dummy/Goblin encounter.
+    inventory:
+      options.includeTrainingInventory === true
+        ? [{ itemId: 'healing-potion', label: 'Potion of Healing', quantity: 2 }]
+        : [],
     ready: null,
   };
+}
+
+function isTrainingEncounter(encounter: EncounterProjection): boolean {
+  return encounter.combatants.some(
+    (combatant) =>
+      combatant.combatantId === 'training-dummy' || combatant.combatantId === 'practice-goblin',
+  );
 }
 
 function foe(
@@ -597,8 +609,9 @@ function performFoeAutoAttack(options: {
   const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
   const spent = spendAction(active);
   const foeAttack = spent.attacks[0]!;
-  const nonlethalTarget =
-    attack.target.currentHitPoints === 0
+  const trainingMode = isTrainingEncounter(encounter);
+  const resolvedTarget =
+    trainingMode && attack.target.currentHitPoints === 0
       ? {
           ...attack.target,
           currentHitPoints: 1,
@@ -610,19 +623,26 @@ function performFoeAutoAttack(options: {
     combatant.combatantId === spent.combatantId
       ? spent
       : combatant.combatantId === partyTarget.combatantId
-        ? nonlethalTarget
+        ? resolvedTarget
         : combatant,
   );
+  const attackLabel = trainingMode
+    ? `${foeAttack.label} (nonlethal training)`
+    : foeAttack.label;
   let summaryExtra = ` ${formatAttackSummary({
     attackerName: spent.name,
     targetName: partyTarget.name,
-    attackLabel: `${foeAttack.label} (nonlethal training)`,
+    attackLabel,
     attackBonus: foeAttack.attackBonus,
     armorClass: partyTarget.armorClass,
-    resolution: { ...attack, target: nonlethalTarget },
+    resolution: { ...attack, target: resolvedTarget },
     attackRolls: attack.rolls,
   })}`;
-  if (attack.target.currentHitPoints === 0 && nonlethalTarget.currentHitPoints === 1) {
+  if (
+    trainingMode &&
+    attack.target.currentHitPoints === 0 &&
+    resolvedTarget.currentHitPoints === 1
+  ) {
     summaryExtra +=
       ' Training safeguard: damage that would drop the character to 0 instead leaves them at 1 Hit Point.';
   }
@@ -1054,12 +1074,18 @@ function mutateRules(options: {
     if (encounter !== null && encounter.status !== 'ended') {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'An encounter is already in progress.');
     }
-    const player = buildPlayerCombatant(source, projectProgression(source, progression), seat);
     const declared =
       fields.declaredFoes
         ?.map((entry) => ({ name: entry.name.trim().slice(0, 80) }))
         .filter((entry) => entry.name.length > 0) ?? [];
-    const foes = declared.length > 0 ? buildStoryFoes(declared) : buildTrainingFoes();
+    const trainingMode = declared.length === 0;
+    const player = buildPlayerCombatant(
+      source,
+      projectProgression(source, progression),
+      seat,
+      { includeTrainingInventory: trainingMode },
+    );
+    const foes = trainingMode ? buildTrainingFoes() : buildStoryFoes(declared);
     encounter = {
       encounterId: `encounter:${idSource}`,
       campaignId: seat.campaignId,
@@ -1075,11 +1101,11 @@ function mutateRules(options: {
       log: [],
       updatedAt: now.toISOString(),
     };
-    if (declared.length > 0) {
-      const foeList = foes.map((combatant) => combatant.name).join(' and ');
-      summary = `${player.name} faces ${foeList} — the threat established in the declaration. Two Potions of Healing were added to ${player.name}’s inventory.`;
-    } else {
+    if (trainingMode) {
       summary = `${player.name} faces a Training Dummy and a Practice Goblin for rules practice — practice foes with no story arrival. Two Potions of Healing were added to ${player.name}’s inventory.`;
+    } else {
+      const foeList = foes.map((combatant) => combatant.name).join(' and ');
+      summary = `${player.name} faces ${foeList} — the threat established in the declaration.`;
     }
     affectedCombatantIds = encounter.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'initiative.roll') {
