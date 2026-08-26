@@ -16,6 +16,7 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'inventory.use_item',
   'encounter.begin',
   'initiative.roll',
+  'encounter.end',
   'combat.short_rest',
   'combat.long_rest',
 ] as const;
@@ -35,6 +36,7 @@ export function isRulesIntentDraftCommand(commandType: IntentDraftCommandType): 
     commandType === 'inventory.use_item' ||
     commandType === 'encounter.begin' ||
     commandType === 'initiative.roll' ||
+    commandType === 'encounter.end' ||
     commandType === 'combat.short_rest' ||
     commandType === 'combat.long_rest'
   );

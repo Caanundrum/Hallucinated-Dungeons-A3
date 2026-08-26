@@ -430,6 +430,7 @@ export async function acceptTableCommand(options: {
     readyTrigger,
     xpAmount,
     itemId,
+    declaredFoes,
     summary: playBeatSummary,
   } = options;
 
@@ -466,6 +467,7 @@ export async function acceptTableCommand(options: {
       ...(readyTrigger === undefined ? {} : { readyTrigger }),
       ...(xpAmount === undefined ? {} : { xpAmount }),
       ...(itemId === undefined ? {} : { itemId }),
+      ...(declaredFoes === undefined ? {} : { declaredFoes }),
     });
   }
 

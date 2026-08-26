@@ -190,6 +190,11 @@ export interface RuleExplanationProjection {
   readonly source: 'SRD 5.2' | 'Hallucinated Dungeons Phase 3';
 }
 
+/** Story foes declared in natural-language play (PQA-170/171). */
+export interface DeclaredStoryFoe {
+  readonly name: string;
+}
+
 export interface RulesCommandFields {
   readonly targetCombatantId?: string;
   readonly spellId?: string;
@@ -200,6 +205,8 @@ export interface RulesCommandFields {
   readonly readyTrigger?: string;
   readonly xpAmount?: number;
   readonly itemId?: string;
+  /** When set on encounter.begin, spawn these instead of training Dummy/Goblin. */
+  readonly declaredFoes?: readonly DeclaredStoryFoe[];
 }
 
 export interface RulesCommandResult {

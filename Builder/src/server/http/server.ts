@@ -2683,11 +2683,26 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           xpAmount?: unknown;
           itemId?: unknown;
           summary?: unknown;
+          declaredFoes?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
           return;
         }
+        const declaredFoes = Array.isArray(payload.declaredFoes)
+          ? payload.declaredFoes
+              .map((entry) => {
+                if (typeof entry !== 'object' || entry === null) {
+                  return null;
+                }
+                const name = (entry as { name?: unknown }).name;
+                return typeof name === 'string' && name.trim().length > 0
+                  ? { name: name.trim().slice(0, 80) }
+                  : null;
+              })
+              .filter((entry): entry is { name: string } => entry !== null)
+              .slice(0, 4)
+          : undefined;
         const result = await acceptTableCommand({
           firestore,
           accountId,
@@ -2723,6 +2738,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           ...(typeof payload.xpAmount === 'number' ? { xpAmount: payload.xpAmount } : {}),
           ...(typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
           ...(typeof payload.summary === 'string' ? { summary: payload.summary } : {}),
+          ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;

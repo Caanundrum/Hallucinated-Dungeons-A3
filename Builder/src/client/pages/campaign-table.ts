@@ -557,6 +557,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ...(interpreted.itemId !== undefined ? { itemId: interpreted.itemId } : {}),
       ...(interpreted.attackId !== undefined ? { attackId: interpreted.attackId } : {}),
       ...(interpreted.area !== undefined ? { area: interpreted.area } : {}),
+      ...(interpreted.declaredFoes !== undefined && interpreted.declaredFoes.length > 0
+        ? { declaredFoes: interpreted.declaredFoes.map((foe) => ({ name: foe.name })) }
+        : {}),
       ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
       interceptState: interpreted.interceptState,
       createdAt: interpreted.createdAt,
@@ -655,6 +658,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ...(draft.itemId !== undefined ? { itemId: draft.itemId } : {}),
       ...(draft.attackId !== undefined ? { attackId: draft.attackId } : {}),
       ...(draft.area !== undefined ? { area: draft.area } : {}),
+      ...(draft.declaredFoes !== undefined && draft.declaredFoes.length > 0
+        ? { declaredFoes: draft.declaredFoes.map((foe) => ({ name: foe.name })) }
+        : {}),
     };
   }
 
@@ -899,7 +905,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return {
           tone: 'waiting',
           title: `${active.name}'s turn`,
-          detail: 'The Game Director is running the scene. Review your sheet, chat, or ask the Game Director while you wait.',
+          detail:
+            active.side === 'foe'
+              ? 'Hostile turns resolve automatically. If the fight stalls, use End encounter on this play bar.'
+              : 'The Game Director is running the scene. Review your sheet, chat, or ask the Game Director while you wait.',
         };
       }
     }
@@ -931,8 +940,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           combatant === null
             ? combatantId
             : combatant.seatId !== null
-              ? `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}`
-              : `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side)} · ${formatCombatantHealth(combatant)}`;
+              ? `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side, combatant.combatantId)} · HP ${combatant.currentHitPoints}/${combatant.maxHitPoints}`
+              : `${formatCombatantLabel(combatant.name, combatant.combatantId)} · ${formatCombatantSide(combatant.side, combatant.combatantId)} · ${formatCombatantHealth(combatant)}`;
         return `<li class="${active ? 'initiative-active' : ''}" data-testid="initiative-entry-${escapeHtml(combatantId)}">
           ${escapeHtml(context)}${active ? ' · now' : ''}
         </li>`;
@@ -986,9 +995,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .trim();
   }
 
-  function formatCombatantSide(side: string): string {
+  function formatCombatantSide(
+    side: string,
+    combatantId?: string,
+  ): string {
     if (side === 'foe') {
-      return 'hostile (practice)';
+      if (
+        combatantId === 'training-dummy' ||
+        combatantId === 'practice-goblin'
+      ) {
+        return 'hostile (practice)';
+      }
+      return 'hostile';
     }
     if (side === 'party') {
       return 'party';
@@ -1809,6 +1827,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const showEndTurn = isOwnCombatTurn() && !sessionIsSuspended();
     const canDescribeTurn =
       seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
+    // NEW-PQA-02: hosted has no Tools tab — End encounter must stay on the play bar.
+    const showEndEncounter =
+      seated &&
+      !sessionIsSuspended() &&
+      encounter !== null &&
+      encounter.status !== 'ended';
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
@@ -1856,6 +1880,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                        aria-disabled="${busy}">Undo last move</button>
                    </div>`
                 : ''
+          }
+          ${
+            showEndEncounter
+              ? `<div class="table-player-actions" data-testid="end-encounter-play-actions">
+                   <button type="button" class="table-secondary-action" data-testid="end-encounter-play"
+                     aria-disabled="${busy}">End encounter</button>
+                 </div>`
+              : ''
           }
         </section>
         <div class="dm-play-thread" data-testid="dm-play-thread">
@@ -2419,13 +2451,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   async function submitRulesAction(
     commandType: string,
     fields: RulesCommandFields = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     const setupCommand =
       commandType === 'encounter.begin' ||
       commandType === 'initiative.roll' ||
       commandType === 'encounter.end';
+    const explorationRest =
+      (commandType === 'combat.short_rest' || commandType === 'combat.long_rest') &&
+      explorationMode();
     if (candidate === null || tableState === null) {
-      return;
+      return false;
     }
     if (busy) {
       // A prior command is still committing — do not drop this click silently.
@@ -2435,16 +2470,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       if (busy || tableState === null || candidate === null) {
         error = 'The table is still resolving the previous action. Try again in a moment.';
         render();
-        return;
+        return false;
       }
     }
     if (
       !setupCommand &&
+      !explorationRest &&
       commandType !== 'encounter.next_turn' &&
       !holdsOwnAuthority() &&
       encounter?.status === 'active'
     ) {
-      return;
+      return false;
     }
     busy = true;
     error = null;
@@ -2459,6 +2495,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             ) ?? null);
       const omitTimingAuthority =
         setupCommand ||
+        explorationRest ||
         timingAuthority === null ||
         (commandType === 'encounter.next_turn' && activeCombatant?.side === 'foe');
       const accepted = await submitTableCommand({
@@ -2508,6 +2545,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           // Authority refresh is best-effort after a successful commit.
         }
       }
+      return true;
     } catch (failure) {
       error =
         failure instanceof ApiFailure
@@ -2523,6 +2561,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         encounter = rulesFeed.encounter;
         progression = rulesFeed.progression;
       }
+      return false;
     } finally {
       busy = false;
       render();
@@ -2703,6 +2742,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="undo-last-move-play"]')
       ?.addEventListener('click', () => {
         void undoLastMove();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="end-encounter-play"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('encounter.end');
       });
 
     root
@@ -3714,12 +3759,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               draft.proposedCommandType === 'encounter.begin' &&
               /initiative/i.test(draft.summary);
             setIntentDraft(null);
-            await submitRulesAction(
+            const began = await submitRulesAction(
               draft.proposedCommandType,
               fieldsFromIntentDraft(draft),
             );
+            if (!began) {
+              setIntentDraft({
+                ...draft,
+                interceptState: 'failed',
+                summary: playerFacingMechanicsCopy(
+                  `${draft.summary} — ${error ?? 'That action could not be confirmed.'}`,
+                ),
+              });
+              render();
+              return;
+            }
             if (chainInitiative && encounter !== null && encounter.status === 'setup') {
-              await submitRulesAction('initiative.roll');
+              const rolled = await submitRulesAction('initiative.roll');
+              if (!rolled) {
+                error =
+                  error ??
+                  'Encounter began, but initiative could not be rolled. Declare roll initiative again.';
+                render();
+              }
             }
             return;
           }
