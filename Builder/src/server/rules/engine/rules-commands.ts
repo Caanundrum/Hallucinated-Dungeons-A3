@@ -399,6 +399,7 @@ function foe(
   initiativeBonus: number,
   attackBonus: number,
   damageExpression: string,
+  attackLabel?: string,
 ): CombatantProjection {
   return {
     combatantId,
@@ -429,7 +430,9 @@ function foe(
     actionEconomy: actionEconomy(),
     attacks: [{
       attackId: 'training-weapon',
-      label: name === 'Practice Goblin' ? 'Practice Scimitar' : 'Padded Slam',
+      label:
+        attackLabel ??
+        (name === 'Practice Goblin' ? 'Practice Scimitar' : 'Padded Slam'),
       attackBonus,
       damageExpression,
       damageType: 'bludgeoning',
@@ -443,6 +446,60 @@ function foe(
     inventory: [],
     ready: null,
   };
+}
+
+function slugifyFoeId(name: string, index: number): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36);
+  return `${base.length > 0 ? base : 'story-foe'}-${index + 1}`;
+}
+
+function buildStoryFoes(
+  declared: readonly { readonly name: string }[],
+): CombatantProjection[] {
+  return declared.slice(0, 4).map((entry, index) => {
+    const trimmed = entry.name.trim().slice(0, 80);
+    const label = trimmed.length > 0 ? trimmed : `Hostile ${index + 1}`;
+    return foe(
+      slugifyFoeId(label, index),
+      label,
+      { column: 3 - (index % 2), row: 1 + Math.floor(index / 2), elevationFeet: 0 },
+      13,
+      12 + index * 2,
+      2,
+      5,
+      '1d8+2',
+      'Strike',
+    );
+  });
+}
+
+function buildTrainingFoes(): CombatantProjection[] {
+  return [
+    foe(
+      'training-dummy',
+      'Training Dummy',
+      { column: 3, row: 1, elevationFeet: 0 },
+      10,
+      20,
+      0,
+      2,
+      '1',
+    ),
+    foe(
+      'practice-goblin',
+      'Practice Goblin',
+      { column: 2, row: 1, elevationFeet: 0 },
+      13,
+      12,
+      2,
+      6,
+      '2d6+2',
+    ),
+  ];
 }
 
 function findActor(encounter: EncounterProjection, seatId: string): CombatantProjection {
@@ -499,6 +556,218 @@ function endEncounterIfFoesDefeated(
       window.state === 'open' ? { ...window, state: 'expired' } : window,
     ),
   };
+}
+
+function livingInitiativeOrder(encounter: EncounterProjection): string[] {
+  return encounter.initiativeOrder.filter((combatantId) => {
+    const combatant = encounter.combatants.find((entry) => entry.combatantId === combatantId);
+    return (
+      combatant !== undefined &&
+      combatant.currentHitPoints > 0 &&
+      !combatant.deathSaves.dead
+    );
+  });
+}
+
+function performFoeAutoAttack(options: {
+  readonly encounter: EncounterProjection;
+  readonly active: CombatantProjection;
+  readonly rng: RandomSource;
+}): {
+  readonly encounter: EncounterProjection;
+  readonly summaryExtra: string;
+  readonly rolls: number[];
+  readonly affectedCombatantIds: string[];
+} {
+  const { encounter, active, rng } = options;
+  const partyTarget = encounter.combatants.find(
+    (combatant) =>
+      combatant.side === 'party' &&
+      combatant.currentHitPoints > 0 &&
+      !combatant.deathSaves.dead,
+  );
+  if (partyTarget === undefined) {
+    return {
+      encounter,
+      summaryExtra: '',
+      rolls: [],
+      affectedCombatantIds: [],
+    };
+  }
+  const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
+  const spent = spendAction(active);
+  const foeAttack = spent.attacks[0]!;
+  const nonlethalTarget =
+    attack.target.currentHitPoints === 0
+      ? {
+          ...attack.target,
+          currentHitPoints: 1,
+          conditions: removeCondition(attack.target.conditions, 'unconscious'),
+          deathSaves: emptyDeathSaves(),
+        }
+      : attack.target;
+  const combatants = encounter.combatants.map((combatant) =>
+    combatant.combatantId === spent.combatantId
+      ? spent
+      : combatant.combatantId === partyTarget.combatantId
+        ? nonlethalTarget
+        : combatant,
+  );
+  let summaryExtra = ` ${formatAttackSummary({
+    attackerName: spent.name,
+    targetName: partyTarget.name,
+    attackLabel: `${foeAttack.label} (nonlethal training)`,
+    attackBonus: foeAttack.attackBonus,
+    armorClass: partyTarget.armorClass,
+    resolution: { ...attack, target: nonlethalTarget },
+    attackRolls: attack.rolls,
+  })}`;
+  if (attack.target.currentHitPoints === 0 && nonlethalTarget.currentHitPoints === 1) {
+    summaryExtra +=
+      ' Training safeguard: damage that would drop the character to 0 instead leaves them at 1 Hit Point.';
+  }
+  return {
+    encounter: endEncounterIfFoesDefeated({
+      ...encounter,
+      combatants,
+    }),
+    summaryExtra,
+    rolls: [...attack.rolls],
+    affectedCombatantIds: [partyTarget.combatantId],
+  };
+}
+
+/** Advance initiative once without resolving a foe attack. */
+function advanceInitiativeOnce(current: EncounterProjection): {
+  readonly encounter: EncounterProjection;
+  readonly summary: string;
+  readonly affectedCombatantIds: string[];
+} {
+  const livingOrder = livingInitiativeOrder(current);
+  if (livingOrder.length === 0 || livingFoes(current).length === 0) {
+    const ended: EncounterProjection = {
+      ...current,
+      status: 'ended',
+      activeCombatantId: null,
+      decisionWindows: current.decisionWindows.map((window) =>
+        window.state === 'open' ? { ...window, state: 'expired' as const } : window,
+      ),
+    };
+    return {
+      encounter: ended,
+      summary:
+        livingFoes(current).length === 0
+          ? 'Encounter ended — all foes are defeated.'
+          : 'Encounter ended — no living combatants remain in initiative.',
+      affectedCombatantIds: [],
+    };
+  }
+  const previousActive = current.activeCombatantId;
+  const previousLivingIndex =
+    previousActive === null ? -1 : livingOrder.indexOf(previousActive);
+  const nextLivingIndex = (previousLivingIndex + 1) % livingOrder.length;
+  const advancedRound =
+    previousLivingIndex >= 0 && nextLivingIndex <= previousLivingIndex
+      ? current.round + 1
+      : Math.max(1, current.round);
+  const activeCombatantId = livingOrder[nextLivingIndex]!;
+  const combatants = current.combatants.map((combatant) => {
+    const expired = expireConditions(combatant.conditions, advancedRound);
+    if (combatant.combatantId !== activeCombatantId) {
+      return {
+        ...combatant,
+        conditions: expired,
+        ready: combatant.combatantId === previousActive ? null : combatant.ready,
+      };
+    }
+    const shieldExpired = expired.some((condition) => condition.conditionId === 'shielded');
+    return {
+      ...combatant,
+      armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
+      conditions: removeCondition(expired, 'shielded'),
+      actionEconomy: actionEconomy(),
+      ready: null,
+    };
+  });
+  const decisionWindows = current.decisionWindows.map((window) =>
+    window.state === 'open' && window.eligibleCombatantId === previousActive
+      ? { ...window, state: 'expired' as const }
+      : window,
+  );
+  const active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
+  return {
+    encounter: {
+      ...current,
+      turnIndex: nextLivingIndex,
+      round: advancedRound,
+      activeCombatantId,
+      combatants,
+      decisionWindows,
+      initiativeOrder: livingOrder,
+    },
+    summary: `Round ${advancedRound}: ${active.name} is active.`,
+    affectedCombatantIds: [activeCombatantId],
+  };
+}
+
+/**
+ * NEW-PQA-02: when initiative opens on (or advances to) a foe, resolve foe attacks
+ * and keep advancing until a living party combatant is active — hosted has no Tools Next turn.
+ */
+function resolveLeadingFoeTurns(options: {
+  readonly encounter: EncounterProjection;
+  readonly rng: RandomSource;
+  readonly summary: string;
+  readonly rolls: number[];
+  readonly affectedCombatantIds: string[];
+}): {
+  readonly encounter: EncounterProjection;
+  readonly summary: string;
+  readonly rolls: number[];
+  readonly affectedCombatantIds: string[];
+} {
+  let encounter = options.encounter;
+  let summary = options.summary;
+  let rolls = [...options.rolls];
+  let affectedCombatantIds = [...options.affectedCombatantIds];
+  const maxSteps = Math.max(8, encounter.combatants.length * 3);
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (encounter.status !== 'active') {
+      break;
+    }
+    const active =
+      encounter.combatants.find(
+        (combatant) => combatant.combatantId === encounter.activeCombatantId,
+      ) ?? null;
+    if (
+      active === null ||
+      active.side !== 'foe' ||
+      active.currentHitPoints <= 0 ||
+      active.deathSaves.dead
+    ) {
+      break;
+    }
+    const attacked = performFoeAutoAttack({ encounter, active, rng: options.rng });
+    encounter = attacked.encounter;
+    summary += attacked.summaryExtra;
+    rolls.push(...attacked.rolls);
+    affectedCombatantIds.push(...attacked.affectedCombatantIds);
+    if (encounter.status === 'ended') {
+      summary += ' Encounter ended — all foes are defeated.';
+      break;
+    }
+    const advanced = advanceInitiativeOnce(encounter);
+    encounter = endEncounterIfFoesDefeated(advanced.encounter);
+    summary += ` ${advanced.summary}`;
+    affectedCombatantIds.push(...advanced.affectedCombatantIds);
+    if (encounter.status === 'ended') {
+      if (!/Encounter ended/.test(summary)) {
+        summary += ' Encounter ended — all foes are defeated.';
+      }
+      break;
+    }
+  }
+  return { encounter, summary, rolls, affectedCombatantIds };
 }
 
 function formatAttackSummary(options: {
@@ -580,6 +849,12 @@ const RULES_SETUP_COMMANDS = new Set<RulesCommandType>([
   'encounter.end',
 ]);
 
+/** Out-of-combat rests must work on hosted NL without Claim Active Turn (PQA-213/214). */
+const RULES_EXPLORATION_REST_COMMANDS = new Set<RulesCommandType>([
+  'combat.short_rest',
+  'combat.long_rest',
+]);
+
 async function requireRulesCommandTimingAuthority(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
@@ -591,6 +866,12 @@ async function requireRulesCommandTimingAuthority(options: {
 }): Promise<void> {
   const { commandType, encounter, seatId, ...authorityOptions } = options;
   if (RULES_SETUP_COMMANDS.has(commandType)) {
+    return;
+  }
+  if (
+    RULES_EXPLORATION_REST_COMMANDS.has(commandType) &&
+    (encounter === null || encounter.status !== 'active')
+  ) {
     return;
   }
   if (commandType === 'encounter.next_turn') {
@@ -774,6 +1055,11 @@ function mutateRules(options: {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'An encounter is already in progress.');
     }
     const player = buildPlayerCombatant(source, projectProgression(source, progression), seat);
+    const declared =
+      fields.declaredFoes
+        ?.map((entry) => ({ name: entry.name.trim().slice(0, 80) }))
+        .filter((entry) => entry.name.length > 0) ?? [];
+    const foes = declared.length > 0 ? buildStoryFoes(declared) : buildTrainingFoes();
     encounter = {
       encounterId: `encounter:${idSource}`,
       campaignId: seat.campaignId,
@@ -783,35 +1069,18 @@ function mutateRules(options: {
       turnIndex: 0,
       activeCombatantId: null,
       initiativeOrder: [],
-      combatants: [
-        player,
-        foe(
-          'training-dummy',
-          'Training Dummy',
-          { column: 3, row: 1, elevationFeet: 0 },
-          10,
-          20,
-          0,
-          2,
-          '1',
-        ),
-        foe(
-          'practice-goblin',
-          'Practice Goblin',
-          { column: 2, row: 1, elevationFeet: 0 },
-          13,
-          12,
-          2,
-          6,
-          '2d6+2',
-        ),
-      ],
+      combatants: [player, ...foes],
       areaCells: [],
       decisionWindows: [],
       log: [],
       updatedAt: now.toISOString(),
     };
-    summary = `${player.name} faces a Training Dummy and a Practice Goblin for rules practice — practice foes with no story arrival. Two Potions of Healing were added to ${player.name}’s inventory.`;
+    if (declared.length > 0) {
+      const foeList = foes.map((combatant) => combatant.name).join(' and ');
+      summary = `${player.name} faces ${foeList} — the threat established in the declaration. Two Potions of Healing were added to ${player.name}’s inventory.`;
+    } else {
+      summary = `${player.name} faces a Training Dummy and a Practice Goblin for rules practice — practice foes with no story arrival. Two Potions of Healing were added to ${player.name}’s inventory.`;
+    }
     affectedCombatantIds = encounter.combatants.map((combatant) => combatant.combatantId);
   } else if (commandType === 'initiative.roll') {
     const current = requireEncounter(encounter);
@@ -848,7 +1117,10 @@ function mutateRules(options: {
         }
         const side =
           combatant.side === 'foe'
-            ? 'hostile practice'
+            ? combatant.combatantId === 'training-dummy' ||
+              combatant.combatantId === 'practice-goblin'
+              ? 'hostile practice'
+              : 'hostile'
             : combatant.side === 'party'
               ? 'party'
               : combatant.side;
@@ -856,128 +1128,45 @@ function mutateRules(options: {
       })
       .join('; ')}.`;
     affectedCombatantIds = initiativeOrder;
+    const resolved = resolveLeadingFoeTurns({
+      encounter,
+      rng,
+      summary,
+      rolls,
+      affectedCombatantIds,
+    });
+    encounter = resolved.encounter;
+    summary = resolved.summary;
+    rolls = resolved.rolls;
+    affectedCombatantIds = resolved.affectedCombatantIds;
   } else if (commandType === 'encounter.next_turn') {
     const current = requireEncounter(encounter);
     if (current.status !== 'active' || current.initiativeOrder.length === 0) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'No active initiative order can advance.');
     }
-    const livingOrder = current.initiativeOrder.filter((combatantId) => {
-      const combatant = current.combatants.find((entry) => entry.combatantId === combatantId);
-      return (
-        combatant !== undefined &&
-        combatant.currentHitPoints > 0 &&
-        !combatant.deathSaves.dead
-      );
-    });
-    if (livingOrder.length === 0 || livingFoes(current).length === 0) {
-      encounter = {
-        ...current,
-        status: 'ended',
-        activeCombatantId: null,
-        decisionWindows: current.decisionWindows.map((window) =>
-          window.state === 'open' ? { ...window, state: 'expired' as const } : window,
-        ),
-      };
-      summary =
-        livingFoes(current).length === 0
-          ? 'Encounter ended — all foes are defeated.'
-          : 'Encounter ended — no living combatants remain in initiative.';
-      affectedCombatantIds = [];
+    const advanced = advanceInitiativeOnce(current);
+    encounter = endEncounterIfFoesDefeated(advanced.encounter);
+    summary = advanced.summary;
+    affectedCombatantIds = [...advanced.affectedCombatantIds];
+    if (encounter.status === 'ended') {
+      if (!/Encounter ended/.test(summary)) {
+        summary +=
+          livingFoes(current).length === 0
+            ? ' Encounter ended — all foes are defeated.'
+            : ' Encounter ended — no living combatants remain in initiative.';
+      }
     } else {
-      const previousActive = current.activeCombatantId;
-      const previousLivingIndex =
-        previousActive === null ? -1 : livingOrder.indexOf(previousActive);
-      const nextLivingIndex = (previousLivingIndex + 1) % livingOrder.length;
-      const advancedRound =
-        previousLivingIndex >= 0 && nextLivingIndex <= previousLivingIndex
-          ? current.round + 1
-          : Math.max(1, current.round);
-      const activeCombatantId = livingOrder[nextLivingIndex]!;
-      let combatants = current.combatants.map((combatant) => {
-        const expired = expireConditions(combatant.conditions, advancedRound);
-        if (combatant.combatantId !== activeCombatantId) {
-          return {
-            ...combatant,
-            conditions: expired,
-            ready: combatant.combatantId === previousActive ? null : combatant.ready,
-          };
-        }
-        const shieldExpired = expired.some((condition) => condition.conditionId === 'shielded');
-        return {
-          ...combatant,
-          armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
-          conditions: removeCondition(expired, 'shielded'),
-          actionEconomy: actionEconomy(),
-          ready: null,
-        };
+      const resolved = resolveLeadingFoeTurns({
+        encounter,
+        rng,
+        summary,
+        rolls,
+        affectedCombatantIds,
       });
-      const decisionWindows = current.decisionWindows.map((window) =>
-        window.state === 'open' && window.eligibleCombatantId === previousActive
-          ? { ...window, state: 'expired' as const }
-          : window,
-      );
-      let active = combatants.find((combatant) => combatant.combatantId === activeCombatantId)!;
-      summary = `Round ${advancedRound}: ${active.name} is active.`;
-      affectedCombatantIds = [activeCombatantId];
-      if (active.side === 'foe' && active.currentHitPoints > 0) {
-        const partyTarget = combatants.find(
-          (combatant) =>
-            combatant.side === 'party' &&
-            combatant.currentHitPoints > 0 &&
-            !combatant.deathSaves.dead,
-        );
-        if (partyTarget !== undefined) {
-          const attack = resolveAttack({ attacker: active, target: partyTarget, rng });
-          rolls.push(...attack.rolls);
-          active = spendAction(active);
-          const foeAttack = active.attacks[0]!;
-          const nonlethalTarget =
-            attack.target.currentHitPoints === 0
-              ? {
-                  ...attack.target,
-                  currentHitPoints: 1,
-                  conditions: removeCondition(attack.target.conditions, 'unconscious'),
-                  deathSaves: emptyDeathSaves(),
-                }
-              : attack.target;
-          combatants = combatants.map((combatant) =>
-            combatant.combatantId === active.combatantId
-              ? active
-              : combatant.combatantId === partyTarget.combatantId
-                ? nonlethalTarget
-                : combatant,
-          );
-          summary += ` ${formatAttackSummary({
-            attackerName: active.name,
-            targetName: partyTarget.name,
-            attackLabel: `${foeAttack.label} (nonlethal training)`,
-            attackBonus: foeAttack.attackBonus,
-            armorClass: partyTarget.armorClass,
-            resolution: { ...attack, target: nonlethalTarget },
-            attackRolls: attack.rolls,
-          })}`;
-          if (
-            attack.target.currentHitPoints === 0 &&
-            nonlethalTarget.currentHitPoints === 1
-          ) {
-            summary +=
-              ' Training safeguard: damage that would drop the character to 0 instead leaves them at 1 Hit Point.';
-          }
-          affectedCombatantIds.push(partyTarget.combatantId);
-        }
-      }
-      encounter = endEncounterIfFoesDefeated({
-        ...current,
-        turnIndex: nextLivingIndex,
-        round: advancedRound,
-        activeCombatantId,
-        combatants,
-        decisionWindows,
-        initiativeOrder: livingOrder,
-      });
-      if (encounter.status === 'ended') {
-        summary += ' Encounter ended — all foes are defeated.';
-      }
+      encounter = resolved.encounter;
+      summary = resolved.summary;
+      rolls = resolved.rolls;
+      affectedCombatantIds = resolved.affectedCombatantIds;
     }
   } else if (commandType === 'encounter.end') {
     const current = requireEncounter(encounter);

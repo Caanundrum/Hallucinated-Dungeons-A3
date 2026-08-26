@@ -385,6 +385,43 @@ async function loadDirectorConfig(
   };
 }
 
+function titleCaseWords(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Pull fiction hostiles from a declaration (PQA-170/171).
+ * Prefers "a hostile ashfang raider named Kest" → "Ashfang Raider Kest".
+ */
+export function extractDeclaredFoesFromText(
+  rawText: string,
+): readonly { readonly name: string }[] {
+  const foes: { name: string }[] = [];
+  const patterned = rawText.matchAll(
+    /\b(?:a|an|the)\s+(?:hostile\s+|enemy\s+|foe\s+)?([A-Za-z][\w' -]{1,48}?)\s+named\s+([A-Z][\w'-]+)/gi,
+  );
+  for (const match of patterned) {
+    const kind = titleCaseWords(match[1]!.replace(/\s+/g, ' ').trim());
+    const personal = match[2]!;
+    const name = `${kind} ${personal}`.replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (name.length > 0 && !foes.some((entry) => entry.name === name)) {
+      foes.push({ name });
+    }
+  }
+  if (foes.length > 0) {
+    return foes.slice(0, 4);
+  }
+  const namedOnly = /\bnamed\s+([A-Z][\w'-]+)/.exec(rawText);
+  if (namedOnly !== null) {
+    return [{ name: namedOnly[1]!.slice(0, 80) }];
+  }
+  return [];
+}
+
 export async function interpretNaturalLanguageIntent(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
@@ -405,6 +442,7 @@ export async function interpretNaturalLanguageIntent(options: {
   let targetCombatantId: string | undefined;
   let spellId: string | undefined;
   let itemId: string | undefined;
+  let declaredFoes: readonly { readonly name: string }[] | undefined;
   let projectionVersionAtIssue: number | undefined;
 
   let encounter: EncounterProjection | null = null;
@@ -514,6 +552,19 @@ export async function interpretNaturalLanguageIntent(options: {
         'That destination is not a legal next step from where you stand. Pick an adjacent square on the map, or declare a door or scene action instead.';
     }
   } else if (
+    /(end (the )?(encounter|fight|combat)|stop (the )?fight|withdraw from (combat|the fight))/i.test(
+      text,
+    )
+  ) {
+    if (encounter !== null && encounter.status !== 'ended') {
+      proposedCommandType = 'encounter.end';
+      summary =
+        'Ready to end the encounter and leave combat. Confirm to clear initiative so the table can rest or explore.';
+    } else {
+      proposedCommandType = 'table.sync';
+      summary = 'There is no active encounter to end right now.';
+    }
+  } else if (
     /(short\s*rest|take a short rest|rest briefly|catch my breath|recover.*(second wind|action surge|short.?rest))/i.test(
       text,
     )
@@ -546,6 +597,7 @@ export async function interpretNaturalLanguageIntent(options: {
     (/hostile|guardian|foe|enemy/.test(text) && /initiative|encounter|combat/.test(text))
   ) {
     const wantsInitiative = /initiative/.test(text);
+    const storyFoes = extractDeclaredFoesFromText(rawText);
     if (combatActive) {
       proposedCommandType = 'table.sync';
       summary = 'Combat is already active. Declare your attack or spell on your turn.';
@@ -555,15 +607,31 @@ export async function interpretNaturalLanguageIntent(options: {
         'Ready to roll initiative for this encounter. Confirm to establish turn order.';
     } else if (encounter !== null && encounter.status === 'ended') {
       proposedCommandType = 'encounter.begin';
-      summary = wantsInitiative
-        ? 'Ready to begin a new encounter with practice foes. Confirm to start; initiative follows once setup is ready.'
-        : 'Ready to begin a new encounter with practice foes. Confirm to start combat setup.';
+      if (storyFoes.length > 0) {
+        declaredFoes = storyFoes;
+        const foeNames = storyFoes.map((foe) => foe.name).join(' and ');
+        summary = wantsInitiative
+          ? `Ready to begin a new encounter against ${foeNames}. Confirm to start; initiative follows once setup is ready.`
+          : `Ready to begin a new encounter against ${foeNames}. Confirm to start combat setup.`;
+      } else {
+        summary = wantsInitiative
+          ? 'Ready to begin a new encounter with practice foes. Confirm to start; initiative follows once setup is ready.'
+          : 'Ready to begin a new encounter with practice foes. Confirm to start combat setup.';
+      }
     } else {
       // No encounter yet — begin is the supported path (hosted has no Tools tab).
       proposedCommandType = 'encounter.begin';
-      summary = wantsInitiative
-        ? 'Ready to begin the encounter and prepare initiative. Confirm to bring practice foes into play, then confirm rolling initiative.'
-        : 'Ready to begin the encounter. Confirm to bring practice foes into play.';
+      if (storyFoes.length > 0) {
+        declaredFoes = storyFoes;
+        const foeNames = storyFoes.map((foe) => foe.name).join(' and ');
+        summary = wantsInitiative
+          ? `Ready to begin the encounter against ${foeNames} and prepare initiative. Confirm to bring them into play, then confirm rolling initiative.`
+          : `Ready to begin the encounter against ${foeNames}. Confirm to bring them into play.`;
+      } else {
+        summary = wantsInitiative
+          ? 'Ready to begin the encounter and prepare initiative. Confirm to bring practice foes into play, then confirm rolling initiative.'
+          : 'Ready to begin the encounter. Confirm to bring practice foes into play.';
+      }
     }
   } else if (/(potion|drink.*heal|use.*heal|healing potion)/.test(text)) {
     const self = party.find((combatant) => combatant.seatId !== null) ?? party[0] ?? null;
@@ -582,8 +650,15 @@ export async function interpretNaturalLanguageIntent(options: {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
-      summary =
-        'Ready to begin an encounter so you can cast in combat. Confirm to start combat setup, then declare the spell again after initiative.';
+      const storyFoes = extractDeclaredFoesFromText(rawText);
+      if (storyFoes.length > 0) {
+        declaredFoes = storyFoes;
+        const foeNames = storyFoes.map((foe) => foe.name).join(' and ');
+        summary = `Ready to begin an encounter against ${foeNames} so you can cast in combat. Confirm to start combat setup, then declare the spell again after initiative.`;
+      } else {
+        summary =
+          'Ready to begin an encounter so you can cast in combat. Confirm to start combat setup, then declare the spell again after initiative.';
+      }
     } else if (matchedSpell === null) {
       summary =
         'Name which prepared spell you cast (for example Fire Bolt or Burning Hands), then declare again.';
@@ -616,8 +691,15 @@ export async function interpretNaturalLanguageIntent(options: {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
-      summary =
-        'Ready to begin an encounter so you can attack. Confirm to start combat setup, then declare the attack again after initiative.';
+      const storyFoes = extractDeclaredFoesFromText(rawText);
+      if (storyFoes.length > 0) {
+        declaredFoes = storyFoes;
+        const foeNames = storyFoes.map((foe) => foe.name).join(' and ');
+        summary = `Ready to begin an encounter against ${foeNames} so you can attack. Confirm to start combat setup, then declare the attack again after initiative.`;
+      } else {
+        summary =
+          'Ready to begin an encounter so you can attack. Confirm to start combat setup, then declare the attack again after initiative.';
+      }
     } else if (target === null) {
       const foeHint =
         foes
@@ -694,6 +776,7 @@ export async function interpretNaturalLanguageIntent(options: {
     ...(targetCombatantId !== undefined ? { targetCombatantId } : {}),
     ...(spellId !== undefined ? { spellId } : {}),
     ...(itemId !== undefined ? { itemId } : {}),
+    ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
     ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
     interceptState: 'awaiting_confirmation',
     source: 'action_composer_nl',

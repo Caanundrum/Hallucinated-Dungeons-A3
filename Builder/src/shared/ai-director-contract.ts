@@ -9,7 +9,7 @@
 
 import type { DirectorIdentity, DirectorPersonality } from './campaign-contract.js';
 import type { EpicFramingTag, IntentDraftCommandType } from './intent-draft-contract.js';
-import type { AreaTarget } from './rules-combat-contract.js';
+import type { AreaTarget, DeclaredStoryFoe } from './rules-combat-contract.js';
 import type { NarrationDensity } from './settings-contract.js';
 
 
@@ -99,6 +99,8 @@ export interface IntentInterpretResponse {
   readonly itemId?: string;
   readonly attackId?: string;
   readonly area?: AreaTarget;
+  /** Fiction hostiles from the declaration (PQA-170/171). */
+  readonly declaredFoes?: readonly DeclaredStoryFoe[];
   readonly projectionVersionAtIssue?: number;
   readonly interceptState: 'awaiting_confirmation';
   readonly source: 'action_composer_nl';

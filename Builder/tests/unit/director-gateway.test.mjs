@@ -260,6 +260,45 @@ test('NL begin encounter and roll initiative drafts encounter.begin when no comb
   assert.match(interpreted.summary, /Ready to begin|initiative|Confirm/i);
 });
 
+test('NL begin encounter with named hostile carries declaredFoes (PQA-170/171)', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I begin the encounter and roll initiative as a hostile ashfang raider named Kest attacks from beyond the doorway.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'encounter.begin');
+  assert.ok(interpreted.declaredFoes);
+  assert.equal(interpreted.declaredFoes.length, 1);
+  assert.match(interpreted.declaredFoes[0].name, /Kest/i);
+  assert.match(interpreted.summary, /Kest/i);
+  assert.doesNotMatch(interpreted.summary, /practice foes/i);
+});
+
+test('extractDeclaredFoesFromText prefers kind + personal name', async () => {
+  const { extractDeclaredFoesFromText } = await import(
+    '../../dist/server/ai/director-gateway.js'
+  );
+  const foes = extractDeclaredFoesFromText(
+    'a hostile ashfang raider named Kest lunges from the doorway',
+  );
+  assert.equal(foes.length, 1);
+  assert.match(foes[0].name, /Ashfang Raider Kest/i);
+});
+
+test('NL end encounter without an open fight clarifies instead of drafting end', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'End the encounter so we can take a Short Rest.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.match(interpreted.summary, /no active encounter/i);
+});
+
 test('NL short rest drafts combat.short_rest outside combat', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),

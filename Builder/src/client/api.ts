@@ -626,6 +626,7 @@ export async function submitTableCommand(options: {
   readonly xpAmount?: number;
   readonly itemId?: string;
   readonly summary?: string;
+  readonly declaredFoes?: readonly { readonly name: string }[];
 }): Promise<TableCommandAcceptResponse> {
   return (await request(`/api/campaigns/${options.campaignId}/commands`, {
     method: 'POST',
@@ -655,6 +656,7 @@ export async function submitTableCommand(options: {
       ...(options.xpAmount !== undefined ? { xpAmount: options.xpAmount } : {}),
       ...(options.itemId !== undefined ? { itemId: options.itemId } : {}),
       ...(options.summary !== undefined ? { summary: options.summary } : {}),
+      ...(options.declaredFoes !== undefined ? { declaredFoes: options.declaredFoes } : {}),
     }),
   })) as TableCommandAcceptResponse;
 }
