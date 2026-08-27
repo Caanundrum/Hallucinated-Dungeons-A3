@@ -95,6 +95,7 @@ export interface ActionDraftSuggestion {
   readonly attackId?: string;
   readonly area?: AreaTarget;
   readonly declaredFoes?: readonly { readonly name: string }[];
+  readonly arcaneRecovery?: boolean;
   readonly projectionVersionAtIssue?: number;
   readonly interceptState: IntentInterceptState;
   readonly createdAt: string;

@@ -443,6 +443,7 @@ export async function interpretNaturalLanguageIntent(options: {
   let spellId: string | undefined;
   let itemId: string | undefined;
   let declaredFoes: readonly { readonly name: string }[] | undefined;
+  let arcaneRecovery: boolean | undefined;
   let projectionVersionAtIssue: number | undefined;
 
   let encounter: EncounterProjection | null = null;
@@ -565,6 +566,21 @@ export async function interpretNaturalLanguageIntent(options: {
       summary = 'There is no active encounter to end right now.';
     }
   } else if (
+    /arcane recovery/i.test(text) ||
+    (/(short\s*rest|take a short rest)/i.test(text) &&
+      /arcane recovery|recover.*(spell )?slot|restore.*(spell )?slot/i.test(text))
+  ) {
+    if (combatActive) {
+      proposedCommandType = 'table.sync';
+      summary =
+        'Arcane Recovery needs the fight to end first. End the encounter, then declare a Short Rest with Arcane Recovery.';
+    } else {
+      proposedCommandType = 'combat.short_rest';
+      arcaneRecovery = true;
+      summary =
+        'Ready to take a Short Rest and use Arcane Recovery to restore expended level-1 spell slots (up to half your Wizard level, rounded up; once per day). Confirm to resolve the rest.';
+    }
+  } else if (
     /(short\s*rest|take a short rest|rest briefly|catch my breath|recover.*(second wind|action surge|short.?rest))/i.test(
       text,
     )
@@ -579,9 +595,7 @@ export async function interpretNaturalLanguageIntent(options: {
         'Ready to take a Short Rest and recover short-rest resources (and spend a Hit Die if available). Confirm to resolve the rest.';
     }
   } else if (
-    /(long\s*rest|take a long rest|camp for the night|sleep until morning|recover.*spell slot|arcane recovery)/i.test(
-      text,
-    )
+    /(long\s*rest|take a long rest|camp for the night|sleep until morning)/i.test(text)
   ) {
     if (combatActive) {
       proposedCommandType = 'table.sync';
@@ -777,6 +791,7 @@ export async function interpretNaturalLanguageIntent(options: {
     ...(spellId !== undefined ? { spellId } : {}),
     ...(itemId !== undefined ? { itemId } : {}),
     ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
+    ...(arcaneRecovery === true ? { arcaneRecovery: true } : {}),
     ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
     interceptState: 'awaiting_confirmation',
     source: 'action_composer_nl',

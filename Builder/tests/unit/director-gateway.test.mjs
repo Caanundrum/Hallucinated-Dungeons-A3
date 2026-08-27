@@ -299,16 +299,30 @@ test('NL end encounter without an open fight clarifies instead of drafting end',
   assert.match(interpreted.summary, /no active encounter/i);
 });
 
+test('NL Arcane Recovery drafts short rest with recovery flag (PQA-214)', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I take a Short Rest and use Arcane Recovery to restore one level-1 spell slot.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'combat.short_rest');
+  assert.equal(interpreted.arcaneRecovery, true);
+  assert.match(interpreted.summary, /Arcane Recovery|level-1/i);
+});
+
 test('NL long rest drafts combat.long_rest outside combat (PQA-214)', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
     campaignId: 'camp-1',
     accountId: 'acc-1',
-    text: 'I take a Long Rest to recover spell slots and Arcane Recovery.',
+    text: 'I take a Long Rest and camp for the night.',
     environmentClass: 'local',
   });
   assert.equal(interpreted.proposedCommandType, 'combat.long_rest');
   assert.match(interpreted.summary, /Ready to take a Long Rest|Confirm/i);
+  assert.equal(interpreted.arcaneRecovery, undefined);
 });
 
 test('NL short rest drafts combat.short_rest outside combat', async () => {

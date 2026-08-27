@@ -627,6 +627,7 @@ export async function submitTableCommand(options: {
   readonly itemId?: string;
   readonly summary?: string;
   readonly declaredFoes?: readonly { readonly name: string }[];
+  readonly arcaneRecovery?: boolean;
 }): Promise<TableCommandAcceptResponse> {
   return (await request(`/api/campaigns/${options.campaignId}/commands`, {
     method: 'POST',
@@ -657,6 +658,7 @@ export async function submitTableCommand(options: {
       ...(options.itemId !== undefined ? { itemId: options.itemId } : {}),
       ...(options.summary !== undefined ? { summary: options.summary } : {}),
       ...(options.declaredFoes !== undefined ? { declaredFoes: options.declaredFoes } : {}),
+      ...(options.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
     }),
   })) as TableCommandAcceptResponse;
 }

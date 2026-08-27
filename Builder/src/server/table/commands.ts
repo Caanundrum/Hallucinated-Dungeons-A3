@@ -431,6 +431,7 @@ export async function acceptTableCommand(options: {
     xpAmount,
     itemId,
     declaredFoes,
+    arcaneRecovery,
     summary: playBeatSummary,
   } = options;
 
@@ -468,6 +469,7 @@ export async function acceptTableCommand(options: {
       ...(xpAmount === undefined ? {} : { xpAmount }),
       ...(itemId === undefined ? {} : { itemId }),
       ...(declaredFoes === undefined ? {} : { declaredFoes }),
+      ...(arcaneRecovery === true ? { arcaneRecovery: true } : {}),
     });
   }
 

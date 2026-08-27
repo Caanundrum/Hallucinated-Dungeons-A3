@@ -101,6 +101,8 @@ export interface IntentInterpretResponse {
   readonly area?: AreaTarget;
   /** Fiction hostiles from the declaration (PQA-170/171). */
   readonly declaredFoes?: readonly DeclaredStoryFoe[];
+  /** Wizard Arcane Recovery on Short Rest (PQA-214). */
+  readonly arcaneRecovery?: boolean;
   readonly projectionVersionAtIssue?: number;
   readonly interceptState: 'awaiting_confirmation';
   readonly source: 'action_composer_nl';
