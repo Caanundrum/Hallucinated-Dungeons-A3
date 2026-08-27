@@ -84,3 +84,60 @@ export function deriveEpicFramingTags(
   }
   return tags;
 }
+
+/**
+ * Decide whether a persisted Intent Intercept draft may reopen after leave/rejoin.
+ * Terminal states (failed/stale/cancelled/confirmed) must not return as actionable.
+ */
+export function parseRestorableIntentDraft(
+  raw: string | null,
+  campaignId: string,
+): { readonly draft: Record<string, unknown>; readonly clearStored: boolean } | null {
+  if (raw === null || raw.length === 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      parsed.campaignId !== campaignId ||
+      typeof parsed.draftId !== 'string' ||
+      typeof parsed.proposedCommandType !== 'string' ||
+      typeof parsed.summary !== 'string'
+    ) {
+      return { draft: {}, clearStored: true };
+    }
+    const state = parsed.interceptState;
+    if (
+      state === 'failed' ||
+      state === 'stale' ||
+      state === 'cancelled' ||
+      state === 'confirmed'
+    ) {
+      return { draft: {}, clearStored: true };
+    }
+    if (state !== 'awaiting_confirmation' && state !== 'draft' && state !== undefined) {
+      return { draft: {}, clearStored: true };
+    }
+    return {
+      draft: {
+        ...parsed,
+        interceptState: 'awaiting_confirmation',
+      },
+      clearStored: false,
+    };
+  } catch {
+    return { draft: {}, clearStored: true };
+  }
+}
+
+/** Whether a live draft should be written to localStorage. */
+export function shouldPersistIntentDraftState(interceptState: string): boolean {
+  return (
+    interceptState !== 'failed' &&
+    interceptState !== 'stale' &&
+    interceptState !== 'cancelled' &&
+    interceptState !== 'confirmed'
+  );
+}
