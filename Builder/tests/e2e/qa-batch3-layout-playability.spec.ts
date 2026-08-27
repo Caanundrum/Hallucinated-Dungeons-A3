@@ -76,7 +76,7 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(page.getByTestId('collapse-comms-rail')).toBeVisible();
   });
 
-  test('PQA-141/143/145: blank-table door declaration offers build_scene draft', async ({
+  test('PQA-187/141: blank-table door declaration uses Quiet chamber doorway', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -85,20 +85,20 @@ test.describe('PQA layout and playability batch 3', () => {
     await enterAccountFromShell(page);
     await seatBlankCampaign(page, 'DoorBuild');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table|no seeded/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+    await expect(page.getByTestId('map-scene-banner')).not.toContainText(/empty table/i);
     await page.getByTestId('player-action-input').fill(
       'I walk to the far wall, open the wooden door, and enter the room beyond.',
     );
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/wall|door|blank|scene/i);
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/door|chamber|wall|open|move/i);
     await expect(page.locator('body')).not.toContainText('table.open_door');
     await expect(page.locator('body')).not.toContainText('edgeId');
     await expect(page.locator('body')).not.toContainText('column 0, row 0');
     await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
   });
-
   test('PQA-130/151: phone composer does not overlap map; compact character sheet', async ({
     page,
   }) => {

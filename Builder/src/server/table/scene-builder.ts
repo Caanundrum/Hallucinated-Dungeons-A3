@@ -1,8 +1,9 @@
 /**
- * Improvised scene geometry for blank tables (PQA-145).
+ * Improvised scene geometry for blank tables (PQA-145 / PQA-187).
  *
- * The Director can raise walls and doors ahead of a seated token so door
- * declarations become confirmable table commits instead of dead-end clarifications.
+ * Blank tables bootstrap a Quiet chamber at projection time. Players can still
+ * raise additional walls/doors ahead of a seated token via table.build_scene
+ * when no geometry exists yet.
  */
 
 import {
@@ -18,9 +19,16 @@ export interface DoorSceneProposal {
   readonly sceneTitle: string;
 }
 
+/** Default spawn used for blank-table first-scene bootstrap and seat placement. */
+export const BLANK_FIRST_SCENE_SPAWN: MapSquareCoordinate = { column: 2, row: 2 };
+
+/** Director-established first scene title for blank tables (PQA-187). */
+export const BLANK_FIRST_SCENE_TITLE = 'Quiet chamber';
+
 /** Places an east-facing wall segment with a closed door on the token's row. */
 export function proposeDoorSceneAhead(options: {
   readonly tokenAnchor: MapSquareCoordinate;
+  readonly sceneTitle?: string;
 }): DoorSceneProposal {
   const { column, row } = options.tokenAnchor;
   const wallColumn = Math.min(Math.max(column + 2, 3), STARTER_COLUMNS - 2);
@@ -43,7 +51,24 @@ export function proposeDoorSceneAhead(options: {
   return {
     edges,
     doorEdgeId: edgeId(wallColumn, row, 'east'),
-    sceneTitle: 'Improvised chamber',
+    sceneTitle: options.sceneTitle ?? 'Improvised chamber',
+  };
+}
+
+/**
+ * Thin first-scene bootstrap for blank tables — walls + one closed door ahead
+ * of the default spawn, without seeding Emberferry chapters or pack memory.
+ */
+export function bootstrapBlankFirstScene(): DoorSceneProposal & {
+  readonly sceneBanner: string;
+} {
+  const proposal = proposeDoorSceneAhead({
+    tokenAnchor: BLANK_FIRST_SCENE_SPAWN,
+    sceneTitle: BLANK_FIRST_SCENE_TITLE,
+  });
+  return {
+    ...proposal,
+    sceneBanner: `${BLANK_FIRST_SCENE_TITLE} — walls and a wooden doorway are established for this table.`,
   };
 }
 

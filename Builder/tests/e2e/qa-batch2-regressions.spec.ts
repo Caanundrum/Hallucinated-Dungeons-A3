@@ -161,7 +161,8 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('settings-notice')).toContainText(/Session Zero/i);
     await page.getByTestId('settings-back').click();
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
     await expect(page.locator('body')).not.toContainText('Local starter chamber');
+    await expect(page.locator('body')).not.toContainText(/empty table/i);
   });
 });

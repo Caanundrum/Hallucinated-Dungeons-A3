@@ -24,7 +24,7 @@ import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
 import { loadMapRuntime, type StoredMapRuntime } from './map-runtime.js';
-import { mergeRuntimeEdges } from './scene-builder.js';
+import { bootstrapBlankFirstScene, mergeRuntimeEdges } from './scene-builder.js';
 import { visibleSquaresFrom } from './path-validator.js';
 
 export class MapProjectionError extends Error {
@@ -91,7 +91,7 @@ export function buildStarterCells(): MapCellRecord[] {
   return cells;
 }
 
-/** Open floor grid for blank campaigns — no walls, doors, or starter chamber story. */
+/** Open floor grid — used only when a blank table has no first-scene geometry yet. */
 export function buildBlankOpenCells(): MapCellRecord[] {
   const cells: MapCellRecord[] = [];
   for (let row = 0; row < STARTER_ROWS; row += 1) {
@@ -100,6 +100,25 @@ export function buildBlankOpenCells(): MapCellRecord[] {
         column,
         row,
         terrain: 'floor',
+        elevationFeet: 0,
+        known: true,
+      });
+    }
+  }
+  return cells;
+}
+
+/** Chamber floor with a blocked perimeter so blank tables read as a room, not open void. */
+export function buildBlankChamberCells(): MapCellRecord[] {
+  const cells: MapCellRecord[] = [];
+  for (let row = 0; row < STARTER_ROWS; row += 1) {
+    for (let column = 0; column < STARTER_COLUMNS; column += 1) {
+      const blockedBorder =
+        row === 0 || column === 0 || row === STARTER_ROWS - 1 || column === STARTER_COLUMNS - 1;
+      cells.push({
+        column,
+        row,
+        terrain: blockedBorder ? 'blocked' : 'floor',
         elevationFeet: 0,
         known: true,
       });
@@ -282,23 +301,41 @@ export function buildAuthoritativeMapBundle(options: {
   );
   const scene = presentation?.scene ?? null;
   const isBlankTable = (options.adventureTemplateId ?? null) === null && scene === null;
-  const cells = scene !== null ? [...scene.cells] : isBlankTable ? buildBlankOpenCells() : buildStarterCells();
-  const baseEdges = scene !== null ? scene.edges : isBlankTable ? [] : buildStarterInteriorWalls();
+  const hasRuntimeGeometry = (runtime.runtimeEdges ?? []).length > 0;
+  const blankBootstrap =
+    isBlankTable && !hasRuntimeGeometry ? bootstrapBlankFirstScene() : null;
+  const cells =
+    scene !== null
+      ? [...scene.cells]
+      : isBlankTable
+        ? blankBootstrap !== null
+          ? buildBlankChamberCells()
+          : buildBlankOpenCells()
+        : buildStarterCells();
+  const baseEdges =
+    scene !== null
+      ? scene.edges
+      : isBlankTable
+        ? (blankBootstrap?.edges ?? [])
+        : buildStarterInteriorWalls();
   const mergedEdges = mergeRuntimeEdges(baseEdges, runtime.runtimeEdges ?? []);
   const improvisedTitle = runtime.sceneTitle?.trim();
-  const hasRuntimeGeometry = (runtime.runtimeEdges ?? []).length > 0;
   const sceneBanner =
     improvisedTitle !== undefined && improvisedTitle.length > 0
       ? `${improvisedTitle} — walls and doorways are committed on this table.`
       : hasRuntimeGeometry
         ? 'Improvised scene geometry is committed on this table.'
         : (presentation?.sceneBanner ??
-          (isBlankTable ? 'An empty table with no seeded chapters or map story.' : DEFAULT_SCENE_BANNER));
+          (blankBootstrap?.sceneBanner ??
+            (isBlankTable ? 'An empty table with no seeded chapters or map story.' : DEFAULT_SCENE_BANNER)));
   return {
     campaignId,
     mapBundleId: scene !== null ? `${scene.sceneId}:${campaignId}` : isBlankTable ? `blank:${campaignId}` : `starter:${campaignId}`,
     mapVersion: 1 + movementRevision(runtime),
-    title: runtime.sceneTitle ?? presentation?.title ?? (isBlankTable ? 'Blank table' : 'Local starter chamber'),
+    title:
+      runtime.sceneTitle ??
+      presentation?.title ??
+      (blankBootstrap?.sceneTitle ?? (isBlankTable ? 'Blank table' : 'Local starter chamber')),
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,

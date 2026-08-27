@@ -464,11 +464,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                          : memorySnapshot?.adventureTemplateId === null ||
                              memorySnapshot?.adventureTemplateId === undefined
                            ? ownSeat === null
-                             ? 'Seat a character before closing a chapter. Blank-table campaigns have no Emberferry chapter path.'
-                             : 'This blank table has no Emberferry chapter path. Closing a chapter only applies when a starter adventure is seeded.'
+                             ? 'Seat a character before closing a chapter. Blank-table campaigns have no chapter path until a starter adventure is seeded.'
+                             : 'This blank table has no chapter path. Closing a chapter only applies when a starter adventure is seeded.'
                            : ownSeat === null
-                             ? 'Seat a character before closing a chapter. Closing advances Emberferry to the next scene and needs confirmation.'
-                             : 'Closing the current chapter asks for confirmation, then advances Emberferry to the next tactical scene (Mist Dock → Mist-Cut Caves → Drowned Bell Tower). End any active encounter first.'
+                             ? 'Seat a character before closing a chapter. Closing advances the seeded adventure to the next scene and needs confirmation.'
+                             : 'Closing the current chapter asks for confirmation, then advances the seeded adventure to the next tactical scene. End any active encounter first.'
                      }
                    </p>
                  </section>`

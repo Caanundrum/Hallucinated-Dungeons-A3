@@ -347,8 +347,8 @@ test('PQA-141/143/145: door intent without scene doors clarifies instead of leak
   });
   assert.equal(interpreted.proposedCommandType, 'table.sync');
   assert.equal(interpreted.edgeId, undefined);
-  assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId/i);
-  assert.match(interpreted.summary, /no door|open floor|Emberferry/i);
+  assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId|Emberferry/i);
+  assert.match(interpreted.summary, /no door|interact with here|explore the chamber/i);
 });
 
 test('PQA-142: compound walk+door ignores stale non-adjacent moveTarget', async () => {
