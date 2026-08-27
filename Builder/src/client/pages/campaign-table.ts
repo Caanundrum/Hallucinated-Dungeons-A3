@@ -80,7 +80,7 @@ import {
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
-import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference } from '../browser-preferences.js';
+import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference, parseRestorableIntentDraft, shouldPersistIntentDraftState } from '../browser-preferences.js';
 import { renderCharacterSheet } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
@@ -445,7 +445,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function persistIntentDraft(draft: ActionDraftSuggestion | null): void {
-    if (draft === null) {
+    if (draft === null || !shouldPersistIntentDraftState(draft.interceptState)) {
       writeIntentDraftPreference(campaignId, null);
       return;
     }
@@ -458,26 +458,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function restoreIntentDraft(): ActionDraftSuggestion | null {
-    const raw = readIntentDraftPreference(campaignId);
-    if (raw === null || raw.length === 0) {
+    const restored = parseRestorableIntentDraft(readIntentDraftPreference(campaignId), campaignId);
+    if (restored === null) {
       return null;
     }
-    try {
-      const parsed = JSON.parse(raw) as ActionDraftSuggestion;
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        parsed.campaignId !== campaignId ||
-        typeof parsed.draftId !== 'string' ||
-        typeof parsed.proposedCommandType !== 'string' ||
-        typeof parsed.summary !== 'string'
-      ) {
-        return null;
-      }
-      return { ...parsed, interceptState: 'draft' };
-    } catch {
+    if (restored.clearStored) {
+      writeIntentDraftPreference(campaignId, null);
       return null;
     }
+    return restored.draft as unknown as ActionDraftSuggestion;
   }
 
   let narrationChain: Promise<void> = Promise.resolve();

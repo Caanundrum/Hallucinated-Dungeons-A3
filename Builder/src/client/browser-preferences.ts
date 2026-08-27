@@ -61,3 +61,8 @@ export function writeIntentDraftPreference(campaignId: string, draftJson: string
     // Non-authoritative draft recovery — ignore storage failures.
   }
 }
+
+export {
+  parseRestorableIntentDraft,
+  shouldPersistIntentDraftState,
+} from '../shared/intent-draft-contract.js';
