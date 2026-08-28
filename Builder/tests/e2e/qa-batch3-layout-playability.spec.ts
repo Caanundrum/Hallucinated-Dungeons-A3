@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, recordDefaultSessionZero } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -22,16 +22,14 @@ async function seatBlankCampaign(page: Page, name: string): Promise<void> {
   await page.getByTestId('start-campaign').click();
   await page.getByTestId('campaign-name').fill(`${name} Camp`);
   await page.getByTestId('campaign-name').dispatchEvent('change');
-  await page.getByTestId('adventure-template-blank').click();
   await page.getByTestId('identity-garrick').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toContainText(`${name} Camp`);
-  await recordDefaultSessionZero(page);
-  const seatSelect = page.getByTestId('seat-character-select');
-  const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-  await seatSelect.selectOption(characterId!);
-  await page.getByTestId('create-seat').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  await joinTableWithFirstCharacter(page);
+  await page.goto(`/campaigns/${match![1]}`);
   await expect(page.getByTestId('own-seat')).toBeVisible();
   await expect(page.getByTestId('leave-seat')).toBeVisible();
 }
