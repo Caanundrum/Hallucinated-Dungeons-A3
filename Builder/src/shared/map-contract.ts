@@ -149,6 +149,22 @@ export interface MapNotableFeatureRecord {
   readonly column: number;
   readonly row: number;
   readonly label: string;
+  /**
+   * Optional Alpha reference-marker kind (PQA-177). Markers are presentation
+   * only — they never change movement, combat, cover math, or detection.
+   */
+  readonly referenceKind?: MapReferenceMarkerKind;
+}
+
+/** Non-authoritative map reference markers for lighting / atmosphere cues. */
+export const MAP_REFERENCE_MARKER_KINDS = ['lighting', 'hazard', 'cover', 'prop'] as const;
+export type MapReferenceMarkerKind = (typeof MAP_REFERENCE_MARKER_KINDS)[number];
+
+export function isMapReferenceMarkerKind(value: unknown): value is MapReferenceMarkerKind {
+  return (
+    typeof value === 'string' &&
+    (MAP_REFERENCE_MARKER_KINDS as readonly string[]).includes(value)
+  );
 }
 
 export interface MapCoordinateSpace {

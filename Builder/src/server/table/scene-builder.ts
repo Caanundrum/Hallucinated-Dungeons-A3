@@ -9,6 +9,7 @@
 import {
   edgeId,
   type MapEdgeRecord,
+  type MapNotableFeatureRecord,
   type MapSquareCoordinate,
 } from '../../shared/map-contract.js';
 import { STARTER_COLUMNS, STARTER_ROWS } from './map-projection.js';
@@ -24,6 +25,31 @@ export const BLANK_FIRST_SCENE_SPAWN: MapSquareCoordinate = { column: 2, row: 2 
 
 /** Director-established first scene title for blank tables (PQA-187). */
 export const BLANK_FIRST_SCENE_TITLE = 'Quiet chamber';
+
+/**
+ * Quiet chamber atmosphere markers (PQA-177).
+ * Presentation-only — never affect pathing, combat, or detection.
+ */
+export const BLANK_FIRST_SCENE_REFERENCE_MARKERS: readonly MapNotableFeatureRecord[] = [
+  {
+    column: 1,
+    row: 1,
+    label: 'Wall sconce — lighting reference',
+    referenceKind: 'lighting',
+  },
+  {
+    column: 2,
+    row: 4,
+    label: 'Rubble pile — cover reference',
+    referenceKind: 'cover',
+  },
+  {
+    column: 3,
+    row: 3,
+    label: 'Damp stones — hazard reference',
+    referenceKind: 'hazard',
+  },
+];
 
 /** Places an east-facing wall segment with a closed door on the token's row. */
 export function proposeDoorSceneAhead(options: {
@@ -61,6 +87,7 @@ export function proposeDoorSceneAhead(options: {
  */
 export function bootstrapBlankFirstScene(): DoorSceneProposal & {
   readonly sceneBanner: string;
+  readonly notableFeatures: readonly MapNotableFeatureRecord[];
 } {
   const proposal = proposeDoorSceneAhead({
     tokenAnchor: BLANK_FIRST_SCENE_SPAWN,
@@ -69,6 +96,7 @@ export function bootstrapBlankFirstScene(): DoorSceneProposal & {
   return {
     ...proposal,
     sceneBanner: `${BLANK_FIRST_SCENE_TITLE} — walls and a wooden doorway are established for this table.`,
+    notableFeatures: BLANK_FIRST_SCENE_REFERENCE_MARKERS,
   };
 }
 
