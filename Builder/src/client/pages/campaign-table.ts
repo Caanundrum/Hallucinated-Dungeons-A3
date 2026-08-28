@@ -2129,6 +2129,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }`;
   }
 
+  function handleMapEdgeSelected(edgeId: string): void {
+    selectedEdgeId = edgeId;
+    const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
+    if (edge === null) {
+      render();
+      return;
+    }
+    if (edge.kind === 'door') {
+      // Visible copy lives in door-selection-detail; announce once for assistive tech.
+      shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
+    } else {
+      movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+      shell.announce(movePreviewNote);
+    }
+    render();
+  }
+
   function ensurePageShell(): void {
     if (container.querySelector('[data-testid="table-page-shell"]')) {
       return;
@@ -2187,16 +2204,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           void onSquareSelected(square);
         });
         stageHandle.setEdgeClickHandler((edgeId) => {
-          selectedEdgeId = edgeId;
-          const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
-          if (edge !== null) {
-            movePreviewNote =
-              edge.kind === 'door'
-                ? doorDetailCopy(edge, mapBundle?.title ?? '')
-                : `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
-            shell.announce(movePreviewNote);
-          }
-          render();
+          handleMapEdgeSelected(edgeId);
         });
       }
       return;
@@ -2218,16 +2226,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           void onSquareSelected(square);
         });
         stageHandle.setEdgeClickHandler((edgeId) => {
-          selectedEdgeId = edgeId;
-          const edge = mapBundle?.edges.find((entry) => entry.edgeId === edgeId) ?? null;
-          if (edge !== null) {
-            movePreviewNote =
-              edge.kind === 'door'
-                ? doorDetailCopy(edge, mapBundle?.title ?? '')
-                : `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
-            shell.announce(movePreviewNote);
-          }
-          render();
+          handleMapEdgeSelected(edgeId);
         });
       }
     } catch (failure) {
