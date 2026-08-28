@@ -147,4 +147,20 @@ test.describe('PQA batch 2 regressions', () => {
       await expect(terrain).not.toHaveText(/^49 floor, 47 unexplored$/);
     }
   });
+
+  test('PQA-177: Quiet chamber shows reference markers and Alpha scope note', async ({ page }) => {
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatFreshCampaign(page, 'MapMarkers');
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-hazard-layer-note')).toContainText(/reference markers/i);
+    await expect(page.getByTestId('map-hazard-layer-note')).toContainText(/Traps and locks/i);
+    await expect(page.locator('[data-notable-feature*="lighting reference"]')).toBeVisible();
+    await expect(page.locator('[data-notable-feature*="cover reference"]')).toBeVisible();
+    await expect(page.locator('[data-notable-feature*="hazard reference"]')).toBeVisible();
+    await page.getByTestId('presence-section').locator('summary').click();
+    await expect(page.getByTestId('map-notable-features')).toBeVisible();
+    await expect(page.getByTestId('map-notable-feature').filter({ hasText: /lighting reference/i })).toBeVisible();
+  });
 });

@@ -27,6 +27,28 @@ test('PQA-187: blank tables bootstrap Quiet chamber with walls and a door', () =
   assert.notEqual(map.title, 'Blank table');
 });
 
+test('PQA-177: Quiet chamber seeds non-authoritative reference markers', () => {
+  const map = buildAuthoritativeMapBundle({
+    campaignId: 'camp-blank-markers',
+    seats: [],
+    runtime: {
+      tokenPositions: [],
+      doorStates: {},
+      runtimeEdges: [],
+      exploredByAccount: {},
+    },
+    adventureTemplateId: null,
+    currentChapterId: null,
+  });
+  assert.ok(map.notableFeatures.length >= 3);
+  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'lighting'));
+  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'cover'));
+  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'hazard'));
+  assert.ok(
+    map.notableFeatures.every((feature) => /reference/i.test(feature.label)),
+  );
+});
+
 test('PQA-160: scene banner reflects improvised chamber title and geometry', () => {
   const map = buildAuthoritativeMapBundle({
     campaignId: 'camp-1',

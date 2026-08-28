@@ -283,16 +283,23 @@ function paintSemanticSvg(
       </g>`;
     })
     .join('');
-  const features = map.notableFeatures
-    .map((feature) => {
-      const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
-      const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
-      return `<g data-notable-feature="${escapeHtml(feature.label)}">
-        <circle cx="${x}" cy="${y}" r="6" fill="#f2d38a" stroke="#1a1208" stroke-width="1.5" />
-        <text x="${x + 8}" y="${y + 4}" fill="#f8e7b0" font-size="11" font-family="Georgia, serif" font-style="italic">${escapeHtml(feature.label)}</text>
-      </g>`;
-    })
-    .join('');
+  const hazardFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'hazard',
+  );
+  const groundFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind !== 'hazard',
+  );
+  const paintFeature = (feature: (typeof map.notableFeatures)[number]): string => {
+    const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+    const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+    const fill = feature.referenceKind === 'hazard' ? '#c47a4a' : '#f2d38a';
+    return `<g data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(feature.referenceKind ?? 'prop')}">
+      <circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+      <text x="${x + 8}" y="${y + 4}" fill="#f8e7b0" font-size="11" font-family="Georgia, serif" font-style="italic">${escapeHtml(feature.label)}</text>
+    </g>`;
+  };
+  const hazardLayer = hazardFeatures.map(paintFeature).join('');
+  const groundLayer = groundFeatures.map(paintFeature).join('');
 
   let wrap = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
   if (wrap === null) {
@@ -322,8 +329,10 @@ function paintSemanticSvg(
         <g data-layer="terrain_art">${cells}</g>
         <g data-layer="grid_reference">${gridLines.join('')}</g>
         <g data-layer="structural_underlays">${edges}</g>
+        <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
+        <g data-layer="ground_markers" data-testid="table-stage-ground-markers">${groundLayer}</g>
         <g data-layer="tokens_entities">${tokens}</g>
-        <g data-layer="overhead_environment" data-testid="table-stage-notable-features">${features}</g>
+        <g data-layer="overhead_environment" data-testid="table-stage-notable-features"></g>
       </svg>
     </div>
     <div class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend">
@@ -334,11 +343,13 @@ function paintSemanticSvg(
       <span><span class="swatch" style="background:#f0c043"></span> Party token</span>
       <span><span class="swatch" style="background:#b86b2b"></span> Door</span>
       <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
+      <span><span class="swatch" style="background:#f2d38a"></span> Reference marker</span>
+      <span><span class="swatch" style="background:#c47a4a"></span> Hazard reference</span>
     </div>
     <p class="record-meta" data-testid="map-hazard-layer-note">
-      Alpha map scope: lighting, hazards, cover, props, traps, and locks are not separate map layers.
-      The Director and rules resolve those concepts from play declarations against this shared scene.
-      Fog and structure here are spatial reference only — not a full tactical simulation.
+      Alpha map scope: walls and doors are structural. Lighting, hazards, cover, and props may appear as named reference markers only — they do not change movement, combat, or detection.
+      Traps and locks are not map layers; resolve them through play declarations.
+      Fog and structure here are spatial reference — not a full tactical simulation.
     </p>`;
 
   if (!reduceMotion) {
@@ -557,9 +568,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     for (const feature of map.notableFeatures) {
       const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      const isHazard = feature.referenceKind === 'hazard';
       const marker = new Graphics();
-      marker.circle(x, y, 6).fill({ color: 0xf2d38a, alpha: 0.95 });
-      layers.overhead_environment.addChild(marker);
+      marker.circle(x, y, 6).fill({ color: isHazard ? 0xc47a4a : 0xf2d38a, alpha: 0.95 });
+      const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
+      layer.addChild(marker);
       const featureLabel = new Text({
         text: feature.label,
         style: {
@@ -571,7 +584,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       });
       featureLabel.x = x + 8;
       featureLabel.y = y - 6;
-      layers.overhead_environment.addChild(featureLabel);
+      layer.addChild(featureLabel);
     }
 
     const viewWidth = application.screen.width;

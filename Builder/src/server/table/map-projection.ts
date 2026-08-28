@@ -263,11 +263,17 @@ function applyViewerFog(
     return visibleIds.has(id) || token.seatId === viewerSeatId;
   });
 
+  const notableFeatures = full.notableFeatures.filter((feature) => {
+    const id = squareId(feature.column, feature.row);
+    return exploredIds.has(id) || visibleIds.has(id);
+  });
+
   return {
     ...full,
     cells,
     edges,
     tokens,
+    notableFeatures,
     viewerSeatId,
     exploredSquareIds: [...exploredIds].sort(),
     visibleSquareIds: [...visibleIds].sort(),
@@ -352,7 +358,10 @@ export function buildAuthoritativeMapBundle(options: {
     }),
     artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
     sceneBanner,
-    notableFeatures: presentation?.notableFeatures ?? (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES),
+    notableFeatures:
+      presentation?.notableFeatures ??
+      (blankBootstrap?.notableFeatures ??
+        (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES)),
     viewerSeatId: null,
     exploredSquareIds: [],
     visibleSquareIds: [],

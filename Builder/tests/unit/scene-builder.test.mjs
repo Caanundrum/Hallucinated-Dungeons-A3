@@ -24,6 +24,8 @@ test('bootstrapBlankFirstScene establishes Quiet chamber at the default spawn', 
   assert.match(bootstrap.sceneBanner, /Quiet chamber/i);
   assert.ok(bootstrap.edges.some((edge) => edge.kind === 'door' && edge.doorState === 'closed'));
   assert.equal(bootstrap.doorEdgeId, bootstrap.edges.find((edge) => edge.kind === 'door')?.edgeId);
+  assert.ok(bootstrap.notableFeatures.some((feature) => feature.referenceKind === 'lighting'));
+  assert.ok(bootstrap.notableFeatures.some((feature) => feature.referenceKind === 'hazard'));
 });
 
 test('mergeRuntimeEdges overlays runtime geometry without duplicate ids', () => {
