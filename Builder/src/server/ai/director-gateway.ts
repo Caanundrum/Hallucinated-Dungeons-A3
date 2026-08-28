@@ -510,14 +510,14 @@ export async function interpretNaturalLanguageIntent(options: {
           } else {
             proposedCommandType = 'table.sync';
             summary =
-              'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+              'This scene has no door to open yet. Ask the Director what you can interact with here, or declare how you explore the chamber.';
           }
         }
       }
     } catch {
       proposedCommandType = 'table.sync';
       summary =
-        'This scene has no door to open yet — the map is still an open floor. Start Emberferry Crossing for walls and doors, or ask the Director what you can interact with here.';
+        'This scene has no door to open yet. Ask the Director what you can interact with here, or declare how you explore the chamber.';
     }
   } else if (mentionsSkillCheckIntent(text)) {
     proposedCommandType = 'table.sync';

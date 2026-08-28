@@ -1928,10 +1928,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ${
           doorRecoveryVisible
             ? `<div class="door-recovery-panel" data-testid="door-recovery-panel">
-                <p class="record-meta">This blank table has no walls yet. You can improvise a door ahead or start a seeded adventure.</p>
+                <p class="record-meta">No door is ready on this scene yet. Place one ahead, or ask the Director what you can interact with.</p>
                 <div class="door-recovery-actions">
                   <button type="button" class="table-secondary-action" data-testid="place-door-ahead">Place door ahead</button>
-                  <a href="/campaigns" data-link data-testid="door-recovery-emberferry">Start Emberferry Crossing</a>
                 </div>
               </div>`
             : ''
@@ -3399,7 +3398,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               setIntentDraft(null);
               doorRecoveryVisible =
                 (mapBundle?.edges.length ?? 0) === 0 &&
-                /no door|open floor|Emberferry/i.test(scrubbedSummary);
+                /no door|open floor|interact with here/i.test(scrubbedSummary);
               appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
@@ -4018,7 +4017,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             ? `<p class="record-meta" data-testid="blank-table-start-hint">
                  This blank table starts unexplored. Ask the Director to establish the first scene, or declare what you do so the scene can unfold.
                </p>`
-            : ''
+            : mapBundle?.title === 'Quiet chamber'
+              ? `<p class="record-meta" data-testid="blank-table-start-hint">
+                   Quiet chamber is ready — inspect or open the wooden doorway, or declare what you do next.
+                 </p>`
+              : ''
         }
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
         ${

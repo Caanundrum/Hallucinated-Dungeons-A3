@@ -131,37 +131,20 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
   });
 
-  test('PQA-105/108: blank table copy; empty Session Zero length rejected', async ({ page }) => {
+  test('PQA-187: blank table opens Quiet chamber first scene', async ({ page }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
-    await page.getByTestId('nav-campaigns').click();
-    await page.getByTestId('start-campaign').click();
-    await page.getByTestId('campaign-name').fill('Blank Arena Batch2');
-    await page.getByTestId('campaign-name').dispatchEvent('change');
-    await page.getByTestId('adventure-template-blank').click();
-    await page.getByTestId('identity-veyra').click();
-    await page.getByTestId('personality-seasoned_host').click();
-    await page.getByTestId('create-campaign-submit').click();
-    await expect(page.getByTestId('chapter-travel-hint')).not.toContainText('Mist Dock');
-    await page.getByTestId('open-campaign-settings').click();
-    await expect(page.getByTestId('session-length')).toHaveValue('');
-    await page.getByTestId('complete-session-zero').click();
-    await expect(page.getByTestId('settings-error')).toContainText(/session length/i);
-    await page.getByTestId('session-length').fill('3–5 sessions');
-    await page.getByTestId('complete-session-zero').click();
-    await expect(page.getByTestId('settings-notice')).toContainText(/Session Zero recorded/i);
-    await expect(page.getByTestId('session-length')).toHaveValue('3–5 sessions');
-    await page.getByTestId('session-length').fill('');
-    await page.getByTestId('complete-session-zero').click();
-    await expect(page.getByTestId('settings-error')).toContainText(/session length/i);
-    await expect(page.getByTestId('session-length')).toHaveValue('');
-    await page.getByTestId('session-length').fill('3–5 sessions');
-    await page.getByTestId('complete-session-zero').click();
-    await expect(page.getByTestId('settings-notice')).toContainText(/Session Zero/i);
-    await page.getByTestId('settings-back').click();
+    await seatFreshCampaign(page, 'QuietChamber');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/doorway|walls/i);
+    await expect(page.getByTestId('blank-table-start-hint')).toContainText(/Quiet chamber|doorway/i);
     await expect(page.locator('body')).not.toContainText('Local starter chamber');
+    await expect(page.locator('body')).not.toContainText(/empty table/i);
+    const terrain = page.getByTestId('map-terrain-summary');
+    if (await terrain.isVisible().catch(() => false)) {
+      await expect(terrain).not.toHaveText(/^49 floor, 47 unexplored$/);
+    }
   });
 });

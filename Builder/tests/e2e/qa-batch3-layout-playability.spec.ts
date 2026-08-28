@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, recordDefaultSessionZero } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -22,16 +22,14 @@ async function seatBlankCampaign(page: Page, name: string): Promise<void> {
   await page.getByTestId('start-campaign').click();
   await page.getByTestId('campaign-name').fill(`${name} Camp`);
   await page.getByTestId('campaign-name').dispatchEvent('change');
-  await page.getByTestId('adventure-template-blank').click();
   await page.getByTestId('identity-garrick').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  await expect(page.getByTestId('campaign-detail-heading')).toContainText(`${name} Camp`);
-  await recordDefaultSessionZero(page);
-  const seatSelect = page.getByTestId('seat-character-select');
-  const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-  await seatSelect.selectOption(characterId!);
-  await page.getByTestId('create-seat').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  await joinTableWithFirstCharacter(page);
+  await page.goto(`/campaigns/${match![1]}`);
   await expect(page.getByTestId('own-seat')).toBeVisible();
   await expect(page.getByTestId('leave-seat')).toBeVisible();
 }
@@ -76,7 +74,7 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(page.getByTestId('collapse-comms-rail')).toBeVisible();
   });
 
-  test('PQA-141/143/145: blank-table door declaration offers build_scene draft', async ({
+  test('PQA-187/141: blank-table door declaration uses Quiet chamber doorway', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -85,20 +83,20 @@ test.describe('PQA layout and playability batch 3', () => {
     await enterAccountFromShell(page);
     await seatBlankCampaign(page, 'DoorBuild');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/empty table|no seeded/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+    await expect(page.getByTestId('map-scene-banner')).not.toContainText(/empty table/i);
     await page.getByTestId('player-action-input').fill(
       'I walk to the far wall, open the wooden door, and enter the room beyond.',
     );
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/wall|door|blank|scene/i);
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/door|chamber|wall|open|move/i);
     await expect(page.locator('body')).not.toContainText('table.open_door');
     await expect(page.locator('body')).not.toContainText('edgeId');
     await expect(page.locator('body')).not.toContainText('column 0, row 0');
     await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
   });
-
   test('PQA-130/151: phone composer does not overlap map; compact character sheet', async ({
     page,
   }) => {

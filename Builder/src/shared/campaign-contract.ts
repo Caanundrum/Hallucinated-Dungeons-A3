@@ -115,7 +115,7 @@ export const DIRECTOR_CREATION_PREVIEW: Record<
 
 /**
  * Adventure template at campaign creation. Only blank tables are supported —
- * an honest empty table for rules practice, never automated world generation.
+ * a Quiet chamber first scene for play, with no seeded adventure chapters.
  */
 export const ADVENTURE_TEMPLATES = ['blank'] as const;
 export type AdventureTemplate = (typeof ADVENTURE_TEMPLATES)[number];
@@ -126,7 +126,7 @@ export const ADVENTURE_TEMPLATE_LABELS: Record<AdventureTemplate, string> = {
 
 export const ADVENTURE_TEMPLATE_SUMMARIES: Record<AdventureTemplate, string> = {
   blank:
-    'An empty table with no seeded chapters, NPCs, or map presentation. You can improvise chambers during play, but there is no automated world generation.',
+    'A Quiet chamber with walls and a doorway for play. No seeded chapters or NPCs — invent the story at the table.',
 };
 
 /** Default on the creation form; blank is the only supported template. */
