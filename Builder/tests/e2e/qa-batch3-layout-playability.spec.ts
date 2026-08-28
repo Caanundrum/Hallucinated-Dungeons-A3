@@ -74,6 +74,25 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(page.getByTestId('collapse-comms-rail')).toBeVisible();
   });
 
+  test('NEW-PQA-05: selected door guidance renders once', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'DoorDedupe');
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+    const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]');
+    await expect(doorHit.first()).toBeVisible();
+    await doorHit.first().click();
+    const detail = page.getByTestId('door-selection-detail');
+    await expect(detail).toBeVisible();
+    await expect(detail).toContainText(/Selected wooden door in Quiet chamber/i);
+    await expect(page.getByTestId('move-target-meta')).toHaveCount(0);
+    const bannerText = await page.getByTestId('table-turn-banner').innerText();
+    expect((bannerText.match(/Selected wooden door in Quiet chamber/g) ?? []).length).toBe(1);
+  });
+
   test('PQA-187/141: blank-table door declaration uses Quiet chamber doorway', async ({
     page,
   }) => {
