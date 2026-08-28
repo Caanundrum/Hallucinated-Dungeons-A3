@@ -60,6 +60,22 @@ async function createPublicTable(
   return match![1]!;
 }
 
+async function createPrivateTable(page: Page, name: string): Promise<string> {
+  await page.getByTestId('nav-campaigns').click();
+  await page.getByTestId('start-campaign').click();
+  await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
+  await page.getByTestId('visibility-private').click();
+  await page.getByTestId('campaign-name').fill(name);
+  await page.getByTestId('campaign-name').dispatchEvent('change');
+  await page.getByTestId('identity-veyra').click();
+  await page.getByTestId('personality-seasoned_host').click();
+  await page.getByTestId('create-campaign-submit').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  return match![1]!;
+}
+
 test.describe('Lobby simplification — tables hub, join, and seat rules', () => {
   test('public table appears in open lobby and stranger can join without invite', async ({
     browser,
@@ -237,6 +253,31 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await expect(page.getByTestId('session-zero-defaults-notice')).toContainText(
       'seating and live play stay open',
     );
+  });
+
+  test('PQA-231: tables hub filters narrow my and open lists', async ({ page }) => {
+    await signIn(page);
+    await createQuickCharacter(page, 'Filter Host');
+    const publicName = `Filter Public ${Date.now()}`;
+    const privateName = `Filter Private ${Date.now()}`;
+    await createPublicTable(page, { name: publicName });
+    await createPrivateTable(page, privateName);
+
+    await page.getByTestId('nav-campaigns').click();
+    await expect(page.getByTestId('tables-filter-visibility')).toBeVisible();
+    await expect(page.getByTestId('tables-filter-session')).toBeVisible();
+    await expect(page.getByTestId('tables-filter-seats')).toBeVisible();
+    await expect(page.getByTestId('tables-filter-summary')).toContainText(/Showing/i);
+
+    await page.getByTestId('tables-filter-visibility').selectOption('public');
+    await expect(page.getByTestId('campaign-list')).toContainText(publicName);
+    await expect(page.getByTestId('campaign-list')).not.toContainText(privateName);
+
+    await page.getByTestId('tables-tab-open').click();
+    await expect(page.getByTestId('tables-filter-join')).toBeVisible();
+    await page.getByTestId('tables-filter-join').selectOption('open_join');
+    await expect(page.getByTestId('open-table-list')).toContainText(publicName);
+    await expect(page.getByTestId('tables-filter-summary')).toContainText('Filters are applied');
   });
 
   test('legal acceptance is recorded once and play routes stay open after reload', async ({
