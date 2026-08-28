@@ -4,6 +4,14 @@
 
 import type { TablesHubProjection } from '../../shared/campaign-contract.js';
 import { MAX_ACTIVE_PLAYERS } from '../../shared/campaign-contract.js';
+import {
+  filterMyTables,
+  filterOpenTables,
+  type TablesJoinFilter,
+  type TablesSeatsFilter,
+  type TablesSessionFilter,
+  type TablesVisibilityFilter,
+} from '../../shared/tables-hub-filters.js';
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -32,6 +40,10 @@ export function mountCampaignsPage(host: PageHost): void {
   let searchQuery = '';
   let tab: TablesTab = 'mine';
   let sort: TablesSort = 'updated-desc';
+  let visibilityFilter: TablesVisibilityFilter = 'all';
+  let sessionFilter: TablesSessionFilter = 'all';
+  let seatsFilter: TablesSeatsFilter = 'all';
+  let joinFilter: TablesJoinFilter = 'all';
   const mountToken = beginPageMount(container);
 
   function sortTables<T extends { name: string; updatedAt: string; activeSeatCount: number }>(
@@ -56,27 +68,28 @@ export function mountCampaignsPage(host: PageHost): void {
   function renderSignedIn(): void {
     const myTables = hub?.myTables ?? [];
     const openTables = hub?.openTables ?? [];
-    const needle = searchQuery.trim().toLowerCase();
     const filteredMine = sortTables(
-      needle.length === 0
-        ? myTables
-        : myTables.filter((table) =>
-            [table.name, table.director.identityLabel, table.director.personalityLabel]
-              .join(' ')
-              .toLowerCase()
-              .includes(needle),
-          ),
+      filterMyTables(myTables, {
+        searchNeedle: searchQuery,
+        visibility: visibilityFilter,
+        session: sessionFilter,
+        seats: seatsFilter,
+      }),
     );
     const filteredOpen = sortTables(
-      needle.length === 0
-        ? openTables
-        : openTables.filter((table) =>
-            [table.name, table.ownerDisplayLabel, table.directorIdentityLabel]
-              .join(' ')
-              .toLowerCase()
-              .includes(needle),
-          ),
+      filterOpenTables(openTables, {
+        searchNeedle: searchQuery,
+        seats: seatsFilter,
+        join: joinFilter,
+      }),
     );
+    const sourceCount = tab === 'mine' ? myTables.length : openTables.length;
+    const filteredCount = tab === 'mine' ? filteredMine.length : filteredOpen.length;
+    const filtersActive =
+      searchQuery.trim().length > 0 ||
+      (tab === 'mine' && (visibilityFilter !== 'all' || sessionFilter !== 'all')) ||
+      seatsFilter !== 'all' ||
+      (tab === 'open' && joinFilter !== 'all');
 
     container.innerHTML = `
       <div class="page">
@@ -107,7 +120,7 @@ export function mountCampaignsPage(host: PageHost): void {
         <div class="campaign-list-tools" data-testid="campaign-list-tools">
           <label class="field">
             <span>Search</span>
-            <input type="search" data-testid="campaigns-search" placeholder="Name or Director"
+            <input type="search" data-testid="campaigns-search" placeholder="Name, Director, or status"
               value="${escapeHtml(searchQuery)}" />
           </label>
           <label class="field">
@@ -119,6 +132,42 @@ export function mountCampaignsPage(host: PageHost): void {
               <option value="seats-desc" ${sort === 'seats-desc' ? 'selected' : ''}>Most seats filled</option>
             </select>
           </label>
+          ${
+            tab === 'mine'
+              ? `<label class="field">
+                   <span>Visibility</span>
+                   <select data-testid="tables-filter-visibility">
+                     <option value="all" ${visibilityFilter === 'all' ? 'selected' : ''}>All visibility</option>
+                     <option value="public" ${visibilityFilter === 'public' ? 'selected' : ''}>Public</option>
+                     <option value="private" ${visibilityFilter === 'private' ? 'selected' : ''}>Private</option>
+                   </select>
+                 </label>
+                 <label class="field">
+                   <span>Session</span>
+                   <select data-testid="tables-filter-session">
+                     <option value="all" ${sessionFilter === 'all' ? 'selected' : ''}>All sessions</option>
+                     <option value="active" ${sessionFilter === 'active' ? 'selected' : ''}>Active</option>
+                     <option value="suspended" ${sessionFilter === 'suspended' ? 'selected' : ''}>Suspended</option>
+                     <option value="not_started" ${sessionFilter === 'not_started' ? 'selected' : ''}>Not started</option>
+                   </select>
+                 </label>`
+              : `<label class="field">
+                   <span>Join</span>
+                   <select data-testid="tables-filter-join">
+                     <option value="all" ${joinFilter === 'all' ? 'selected' : ''}>All join rules</option>
+                     <option value="open_join" ${joinFilter === 'open_join' ? 'selected' : ''}>Open join</option>
+                     <option value="password" ${joinFilter === 'password' ? 'selected' : ''}>Password protected</option>
+                   </select>
+                 </label>`
+          }
+          <label class="field">
+            <span>Seats</span>
+            <select data-testid="tables-filter-seats">
+              <option value="all" ${seatsFilter === 'all' ? 'selected' : ''}>Any seat count</option>
+              <option value="open_seats" ${seatsFilter === 'open_seats' ? 'selected' : ''}>Has open seats</option>
+              <option value="full" ${seatsFilter === 'full' ? 'selected' : ''}>Full (${MAX_ACTIVE_PLAYERS}/${MAX_ACTIVE_PLAYERS})</option>
+            </select>
+          </label>
           <div class="actions" role="tablist" aria-label="Table lists">
             <button type="button" role="tab" data-testid="tables-tab-mine"
               aria-selected="${tab === 'mine' ? 'true' : 'false'}">My tables</button>
@@ -126,12 +175,21 @@ export function mountCampaignsPage(host: PageHost): void {
               aria-selected="${tab === 'open' ? 'true' : 'false'}">Open tables</button>
           </div>
         </div>
+        <p class="record-meta" data-testid="tables-filter-summary">
+          Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'joined tables' : 'open tables'}.
+          ${filtersActive ? 'Filters are applied client-side.' : 'Use filters to narrow the list.'}
+          Archive remains post-Alpha.
+        </p>
         <section class="panel" aria-labelledby="table-list-heading">
           <h2 id="table-list-heading">${tab === 'mine' ? 'My tables' : 'Open tables'}</h2>
           ${
             tab === 'mine'
               ? filteredMine.length === 0
-                ? '<p class="empty-state" data-testid="campaigns-empty">You have not created or joined a table yet.</p>'
+                ? `<p class="empty-state" data-testid="campaigns-empty">${
+                    myTables.length === 0
+                      ? 'You have not created or joined a table yet.'
+                      : 'No tables match the current search and filters.'
+                  }</p>`
                 : `<ul class="record-list" data-testid="campaign-list">
                     ${filteredMine
                       .map((table) => {
@@ -139,6 +197,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         const href = seatedHere
                           ? `/campaigns/${escapeHtml(table.campaignId)}/table`
                           : `/campaigns/${escapeHtml(table.campaignId)}/join`;
+                        const sessionLabel = table.sessionStatusLabel ?? 'Not started';
                         return `
                       <li data-testid="campaign-item">
                         <a class="record-note" href="${href}" data-link
@@ -148,6 +207,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         <span class="record-meta">
                           ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
                           · ${table.isCampaignOwner ? 'Owner' : 'Member'}
+                          · ${escapeHtml(sessionLabel)}
                           · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
                           · ${escapeHtml(table.visibility)}
                           ${table.passwordProtected ? ' · 🔒' : ''}
@@ -159,7 +219,11 @@ export function mountCampaignsPage(host: PageHost): void {
                       .join('')}
                   </ul>`
               : filteredOpen.length === 0
-                ? '<p class="empty-state" data-testid="open-tables-empty">No public tables are open right now.</p>'
+                ? `<p class="empty-state" data-testid="open-tables-empty">${
+                    openTables.length === 0
+                      ? 'No public tables are open right now.'
+                      : 'No open tables match the current search and filters.'
+                  }</p>`
                 : `<ul class="record-list" data-testid="open-table-list">
                     ${filteredOpen
                       .map(
@@ -199,6 +263,38 @@ export function mountCampaignsPage(host: PageHost): void {
       ?.addEventListener('change', (event) => {
         if (event.target instanceof HTMLSelectElement) {
           sort = event.target.value as TablesSort;
+          renderSignedIn();
+        }
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="tables-filter-visibility"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          visibilityFilter = event.target.value as TablesVisibilityFilter;
+          renderSignedIn();
+        }
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="tables-filter-session"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          sessionFilter = event.target.value as TablesSessionFilter;
+          renderSignedIn();
+        }
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="tables-filter-seats"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          seatsFilter = event.target.value as TablesSeatsFilter;
+          renderSignedIn();
+        }
+      });
+    container
+      .querySelector<HTMLSelectElement>('[data-testid="tables-filter-join"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          joinFilter = event.target.value as TablesJoinFilter;
           renderSignedIn();
         }
       });
