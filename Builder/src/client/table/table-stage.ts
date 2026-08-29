@@ -585,66 +585,79 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     let originY = 0;
     let scrollLeft = 0;
     let scrollTop = 0;
-    viewport.addEventListener(
-      'pointerdown',
-      (event) => {
-        if (event.button !== 0) {
-          return;
-        }
-        const target = event.target as Element | null;
-        if (
-          target instanceof Element &&
-          target.closest('button, a, summary, .map-edge-hit-target') !== null
-        ) {
-          return;
-        }
-        dragging = true;
-        moved = false;
-        originX = event.clientX;
-        originY = event.clientY;
-        scrollLeft = viewport.scrollLeft;
-        scrollTop = viewport.scrollTop;
-        viewport.classList.add('is-panning');
-        try {
-          viewport.setPointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is best-effort.
-        }
-      },
-      { passive: true },
-    );
-    viewport.addEventListener(
-      'pointermove',
-      (event) => {
-        if (!dragging) {
-          return;
-        }
-        const dx = event.clientX - originX;
-        const dy = event.clientY - originY;
-        if (!moved && Math.hypot(dx, dy) < 4) {
-          return;
-        }
-        moved = true;
-        viewport.scrollLeft = scrollLeft - dx;
-        viewport.scrollTop = scrollTop - dy;
-      },
-      { passive: true },
-    );
-    const endPan = (event: PointerEvent) => {
+    let activePointerId: number | null = null;
+
+    const onMove = (event: PointerEvent | MouseEvent) => {
       if (!dragging) {
         return;
       }
-      dragging = false;
-      viewport.classList.remove('is-panning');
-      try {
-        viewport.releasePointerCapture(event.pointerId);
-      } catch {
-        // Capture may already be released.
+      if (
+        'pointerId' in event &&
+        activePointerId !== null &&
+        event.pointerId !== activePointerId
+      ) {
+        return;
       }
+      const dx = event.clientX - originX;
+      const dy = event.clientY - originY;
+      if (!moved && Math.hypot(dx, dy) < 3) {
+        return;
+      }
+      moved = true;
+      event.preventDefault();
+      viewport.scrollLeft = scrollLeft - dx;
+      viewport.scrollTop = scrollTop - dy;
     };
-    viewport.addEventListener('pointerup', endPan);
-    viewport.addEventListener('pointercancel', endPan);
-    // Suppress square click after a drag so pan does not also select a cell.
+
+    const onUp = (event: PointerEvent | MouseEvent) => {
+      if (!dragging) {
+        return;
+      }
+      if (
+        'pointerId' in event &&
+        activePointerId !== null &&
+        event.pointerId !== activePointerId
+      ) {
+        return;
+      }
+      dragging = false;
+      activePointerId = null;
+      viewport.classList.remove('is-panning');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    const onDown = (event: PointerEvent | MouseEvent) => {
+      if ('button' in event && event.button !== 0) {
+        return;
+      }
+      const target = event.target as Element | null;
+      if (
+        target instanceof Element &&
+        target.closest('button, a, summary, .map-edge-hit-target') !== null
+      ) {
+        return;
+      }
+      dragging = true;
+      moved = false;
+      originX = event.clientX;
+      originY = event.clientY;
+      scrollLeft = viewport.scrollLeft;
+      scrollTop = viewport.scrollTop;
+      activePointerId = 'pointerId' in event ? event.pointerId : null;
+      viewport.classList.add('is-panning');
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+      window.addEventListener('mousemove', onMove, { passive: false });
+      window.addEventListener('mouseup', onUp);
+    };
+
+    viewport.addEventListener('pointerdown', onDown);
+    viewport.addEventListener('mousedown', onDown);
     viewport.addEventListener(
       'click',
       (event) => {
