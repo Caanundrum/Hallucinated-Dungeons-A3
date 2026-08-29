@@ -120,6 +120,38 @@ export function buildPresenceWithNpcsNarration(
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} are here. Address someone by name if you want to speak.`;
 }
 
+/**
+ * In-character NPC reply from the player's question and visible scene.
+ * Never quotes the NPC description/role field as spoken dialogue.
+ */
+export function buildNpcDialogueReply(options: {
+  readonly npc: { readonly name: string; readonly role: string; readonly motive: string };
+  readonly playerText: string;
+  readonly mapTitle: string | null;
+}): string {
+  const q = options.playerText.toLowerCase();
+  const name = options.npc.name;
+  const where = options.mapTitle?.trim() || 'this chamber';
+
+  if (
+    (/\b(beyond|past|behind|through)\b/.test(q) && /\bdoor\b/.test(q)) ||
+    /boots?\s+dry/.test(q) ||
+    /why should i keep/.test(q)
+  ) {
+    return `${name}: "Past that east door the stone stays wet. Keep your boots dry until you know what's pooling beyond — I won't invent a place you haven't opened."`;
+  }
+  if (/\bwho are you\b|\bwhat are you\b/.test(q)) {
+    return `${name}: "Name's ${name}. I map damp places so travelers don't walk blind. You're in ${where}."`;
+  }
+  if (/\bwhich door\b|\bleads to\b|\barchive\b/.test(q)) {
+    return `${name}: "Only one door shows from here. What's beyond it isn't settled until someone opens it — I won't invent an archive for you."`;
+  }
+  if (/\bwhat lies\b|\bwhat's (?:past|beyond|ahead)\b|\bwhat is past\b/.test(q)) {
+    return `${name}: "From here I can speak to ${where} — wet stone, the sconce light, that door. Beyond it stays unknown until the fiction opens it."`;
+  }
+  return `${name}: "Ask plainly about what we can see here. I answer from this chamber — not from places that aren't established yet."`;
+}
+
 async function resolveDirectorNarrateOutput(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
@@ -211,6 +243,8 @@ async function resolveDirectorNarrateOutput(options: {
             audience: 'public',
             causeActionId: null,
           },
+          // Chronicle after the player declaration via interpret's single ruling.
+          { writeChronicle: false },
         );
         if (applied.created) {
           return `A wary goblin cartographer answers from beside the rubble pile. Nib: "Keep your boots dry past the east door." Nib is present with the party.`;
@@ -232,11 +266,11 @@ async function resolveDirectorNarrateOutput(options: {
         (entry) => entry.name.toLowerCase() === name.toLowerCase() || entry.npcId === name,
       ) ?? null;
     if (npc !== null) {
-      const line =
-        npc.knowledge.trim().length > 0
-          ? `${npc.name} answers carefully. "${npc.knowledge.trim().slice(0, 160)}"`
-          : `${npc.name} regards you and waits for a clearer question.`;
-      return line;
+      return buildNpcDialogueReply({
+        npc,
+        playerText: options.structured.rawText,
+        mapTitle: map?.title ?? null,
+      });
     }
   }
 
@@ -698,6 +732,9 @@ export async function interpretNaturalLanguageIntent(options: {
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door');
 
+  /** Defer Director fiction until after the player declaration is chronicled. */
+  let deferDirectorNarrate = false;
+
   if (authorityShortCircuit) {
     if (
       authority.disposition === 'propose_command' &&
@@ -707,13 +744,8 @@ export async function interpretNaturalLanguageIntent(options: {
       summary = buildSkillCheckDraftSummary(seatedSheet, text);
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
-      summary = await resolveDirectorNarrateOutput({
-        firestore: options.firestore,
-        campaignId: options.campaignId,
-        accountId: options.accountId,
-        authority,
-        structured,
-      });
+      deferDirectorNarrate = true;
+      summary = authority.summary;
     } else {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
       summary = authority.clarificationPrompt ?? authority.summary;
@@ -1003,6 +1035,17 @@ export async function interpretNaturalLanguageIntent(options: {
       kind: 'play_declaration',
       body: declaration,
     });
+    if (deferDirectorNarrate) {
+      summary = scrubPlayerFacingIntentCopy(
+        await resolveDirectorNarrateOutput({
+          firestore: options.firestore,
+          campaignId: options.campaignId,
+          accountId: options.accountId,
+          authority,
+          structured,
+        }),
+      );
+    }
     await appendChronicleEntry({
       firestore: options.firestore,
       campaignId: options.campaignId,

@@ -125,10 +125,17 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     });
 
     await openTableAdvancedControls(page);
-    await page.getByTestId('nl-intent-input').fill('Nib, which door leads to the old archive?');
+    await page.getByTestId('nl-intent-input').fill(
+      'Loophole Lantern asks Nib, “What is past the east door, and why should I keep my boots dry?”',
+    );
     await page.getByTestId('interpret-nl-intent').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(/Nib/i);
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(
+      /Nib:.*"|(?:wet|boots dry|pooling)/i,
+    );
+    await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(
+      /A wary goblin cartographer/i,
+    );
     await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(/not established/i);
     await page.getByTestId('intent-intercept').screenshot({
       path: `${artifactDir}/npc-slice-known-dialogue.png`,
@@ -136,10 +143,17 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await page.getByTestId('cancel-intent-intercept').click();
 
     await page.getByTestId('dock-tab-chronicle').click();
+    const introSpeech = page
+      .getByTestId('chronicle-entry')
+      .filter({ hasText: /Keep your boots dry/i });
+    await expect(introSpeech).toHaveCount(1);
+    await expect(
+      page.getByTestId('chronicle-entry').filter({ hasText: /calls into the chamber/i }),
+    ).toBeVisible();
     await expect(
       page
         .getByTestId('chronicle-entry')
-        .filter({ hasText: /Nib:|goblin cartographer|Keep your boots dry/i })
+        .filter({ hasText: /past the east door|boots dry|pooling|wet/i })
         .first(),
     ).toBeVisible();
     await page.getByTestId('chronicle-list').screenshot({
