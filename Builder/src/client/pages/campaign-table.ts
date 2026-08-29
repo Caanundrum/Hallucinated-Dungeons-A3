@@ -1169,11 +1169,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
              </p>`
       }
       <h3 class="preview-subheading">NPCs encountered</h3>
-      <p class="empty-state" data-testid="table-npc-empty">None yet — declare an action that involves someone to record a meeting.</p>
       ${
-        memory.npcs.some((npc) => npc.audience === 'public')
-          ? `<p class="record-meta" data-testid="npc-roster-note">This adventure’s cast is introduced in chapter briefs and Story so far as you meet them.</p>`
-          : ''
+        memory.npcs.filter((npc) => npc.audience === 'public' || npc.audience === 'private')
+          .length === 0
+          ? `<p class="empty-state" data-testid="table-npc-empty">None yet — the Game Director introduces people during play. Players cannot invent NPCs.</p>`
+          : `<ul class="record-list compact" data-testid="table-npc-list">
+               ${memory.npcs
+                 .filter((npc) => npc.audience === 'public' || npc.audience === 'private')
+                 .map(
+                   (npc) => `
+                 <li data-testid="table-npc-item" data-npc-id="${escapeHtml(npc.npcId)}">
+                   <span class="record-note"><strong>${escapeHtml(npc.name)}</strong></span>
+                   <span class="record-meta" data-testid="table-npc-role">${escapeHtml(npc.role)}</span>
+                   <span class="record-meta" data-testid="table-npc-disposition">${escapeHtml(npc.motive)}</span>
+                 </li>`,
+                 )
+                 .join('')}
+             </ul>`
       }
       ${
         memory.quests.length === 0

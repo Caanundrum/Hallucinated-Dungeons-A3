@@ -512,7 +512,8 @@ export async function interpretNaturalLanguageIntent(options: {
     (authority.disposition === 'clarify' &&
       (structured.isInterrogative ||
         authority.actionSequence.length > 1 ||
-        structured.playerAssertedWorldFacts.length > 0)) ||
+        structured.playerAssertedWorldFacts.length > 0 ||
+        structured.addressee !== null)) ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door');
 
