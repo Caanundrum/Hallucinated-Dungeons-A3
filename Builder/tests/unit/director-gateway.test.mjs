@@ -347,8 +347,12 @@ test('PQA-141/143/145: door intent without scene doors clarifies instead of leak
   });
   assert.equal(interpreted.proposedCommandType, 'table.sync');
   assert.equal(interpreted.edgeId, undefined);
-  assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId|Emberferry/i);
-  assert.match(interpreted.summary, /no door|interact with here|explore the chamber/i);
+  assert.doesNotMatch(interpreted.summary, /table\.open_door|edgeId|Emberferry|^Ready to open/i);
+  // A1 authority: compound move+open asks for sequence; blank scenes may also say no door.
+  assert.match(
+    interpreted.summary,
+    /no door|interact with here|explore the chamber|more than one action|one at a time/i,
+  );
 });
 
 test('PQA-142: compound walk+door ignores stale non-adjacent moveTarget', async () => {
@@ -396,4 +400,55 @@ test('kill switch still refuses Director AI before Gemini', async () => {
       }),
     (error) => error instanceof AiDirectorUnavailableError,
   );
+});
+
+test('A1: which-door interrogative clarifies instead of opening', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Which door leads to the old archive?',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(interpreted.summary, /^Ready to open/i);
+  assert.match(interpreted.summary, /question|door action|ask/i);
+});
+
+test('A1: addressing Nib with a door question stays dialogue', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Nib, which door leads to the old archive?',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(interpreted.summary, /^Ready to open/i);
+  assert.match(interpreted.summary, /Nib|dialogue|Ask/i);
+});
+
+test('A1: unlocked-door state reference is not a lockpick draft', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Beyond the unlocked door I see mist.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(interpreted.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
+});
+
+test('A1: pick lock still drafts a skill check', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I try to unlock the wooden door with thieves tools.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.match(interpreted.summary, /^Ready to /i);
+  assert.match(interpreted.summary, /lock|Confirm to roll/i);
 });

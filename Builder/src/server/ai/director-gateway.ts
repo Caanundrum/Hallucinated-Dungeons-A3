@@ -53,6 +53,13 @@ import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
 import { resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
 import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
+import { loadCampaignMemory } from '../campaigns/campaign-memory.js';
+import {
+  parsePlayerDeclaration,
+  resolveIntentAuthority,
+  textReferencesUnlockedDoorState,
+  textRequestsLockPicking,
+} from '../../shared/play-authority-contract.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
@@ -91,7 +98,7 @@ function looksMechanical(text: string): boolean {
 
 /** Trap/lock language that must stay on the skill-check path (PQA-155). */
 function mentionsDoorHazardIntent(text: string): boolean {
-  return /(trap|disarm|lock|thieves|pick|unlock|lockpick|lock\s*pick)/.test(text);
+  return textRequestsLockPicking(text) || /(trap|disarm|lockpick|lock\s*pick)/.test(text);
 }
 
 /**
@@ -99,7 +106,7 @@ function mentionsDoorHazardIntent(text: string): boolean {
  * Plain inspect/check/examine of a visible door reads state — it is not Investigation.
  */
 function mentionsDoorStateIntent(text: string): boolean {
-  if (mentionsDoorHazardIntent(text)) {
+  if (mentionsDoorHazardIntent(text) || textReferencesUnlockedDoorState(text)) {
     return false;
   }
   return (
@@ -113,22 +120,30 @@ function mentionsDoorStateIntent(text: string): boolean {
 }
 
 function mentionsSkillCheckIntent(text: string): boolean {
-  if (mentionsDoorStateIntent(text)) {
+  if (mentionsDoorStateIntent(text) || textReferencesUnlockedDoorState(text)) {
     return false;
   }
   return (
     (/(trap|disarm|investigat|perception|search|examine|inspect)/.test(text) &&
       /(door|lock|way|trap|entry|gate)/.test(text)) ||
-    /(pick|unlock|thieves|lockpick|lock\s*pick)/.test(text)
+    textRequestsLockPicking(text)
   );
 }
 
 function mentionsDoorIntent(text: string): boolean {
+  if (textReferencesUnlockedDoorState(text) && !/(open|push|swing)\b/.test(text)) {
+    // State reference only — not a door action (A1).
+    return false;
+  }
   return (
     mentionsDoorStateIntent(text) ||
-    /(open|unlock|push).*(door|gate|entry)/.test(text) ||
-    /(door|gate|entryway).*(open|unlock|ahead|beyond|enter)/.test(text) ||
-    /\b(door|gate|entryway)\b/.test(text)
+    (/(open|push).*(door|gate|entry)/.test(text) && !textRequestsLockPicking(text)) ||
+    (/(door|gate|entryway).*(open|ahead|beyond|enter)/.test(text) &&
+      !textReferencesUnlockedDoorState(text) &&
+      !textRequestsLockPicking(text)) ||
+    (/\b(door|gate|entryway)\b/.test(text) &&
+      !textRequestsLockPicking(text) &&
+      !textReferencesUnlockedDoorState(text))
   );
 }
 
@@ -477,7 +492,45 @@ export async function interpretNaturalLanguageIntent(options: {
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
-  if (mentionsDoorIntent(text) && (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text))) {
+  let knownNpcs: { id: string; label: string }[] = [];
+  try {
+    const memory = await loadCampaignMemory(
+      options.firestore,
+      options.campaignId,
+      options.accountId,
+    );
+    knownNpcs = memory.npcs.map((npc) => ({ id: npc.npcId, label: npc.name }));
+  } catch {
+    knownNpcs = [];
+  }
+
+  const structured = parsePlayerDeclaration(rawText, { knownNpcs });
+  const authority = resolveIntentAuthority(structured);
+  const authorityShortCircuit =
+    authority.disposition === 'director_narrate_only' ||
+    authority.disposition === 'reject_world_authorship' ||
+    (authority.disposition === 'clarify' &&
+      (structured.isInterrogative ||
+        authority.actionSequence.length > 1 ||
+        structured.playerAssertedWorldFacts.length > 0)) ||
+    (authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'unlock_door');
+
+  if (authorityShortCircuit) {
+    if (
+      authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'unlock_door'
+    ) {
+      proposedCommandType = 'table.sync';
+      summary = buildSkillCheckDraftSummary(seatedSheet, text);
+    } else {
+      proposedCommandType = authority.proposedCommandType ?? 'table.sync';
+      summary = authority.clarificationPrompt ?? authority.summary;
+    }
+  } else if (
+    mentionsDoorIntent(text) &&
+    (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text))
+  ) {
     try {
       const map = await fetchCampaignMap({
         firestore: options.firestore,
