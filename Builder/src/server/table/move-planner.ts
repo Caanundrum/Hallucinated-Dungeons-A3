@@ -4,7 +4,8 @@
 
 import type { MapBundleProjection, MapSquareCoordinate } from '../../shared/map-contract.js';
 
-function doorPassageSquare(edge: {
+/** Square beyond an edge doorway (the far side of the door cell). */
+export function doorPassageSquare(edge: {
   readonly column: number;
   readonly row: number;
   readonly orientation: 'north' | 'south' | 'east' | 'west';
@@ -19,6 +20,20 @@ function doorPassageSquare(edge: {
     return { column: edge.column, row: edge.row + 1 };
   }
   return { column: edge.column, row: edge.row - 1 };
+}
+
+/** True when the token already stands on the far side of an open doorway. */
+export function isOnOpenDoorPassage(
+  anchor: MapSquareCoordinate,
+  map: MapBundleProjection,
+): boolean {
+  return map.edges.some((edge) => {
+    if (edge.kind !== 'door' || edge.doorState !== 'open') {
+      return false;
+    }
+    const passage = doorPassageSquare(edge);
+    return passage.column === anchor.column && passage.row === anchor.row;
+  });
 }
 
 function isBlocked(map: MapBundleProjection, square: MapSquareCoordinate): boolean {
