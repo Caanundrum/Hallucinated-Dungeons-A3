@@ -116,6 +116,42 @@ test('PQA-155: inspect adjacent open door narrates free swing', () => {
   assert.match(resolved.summary, /already open|swings freely/i);
 });
 
+test('open/step-through while not adjacent explains approach then re-declare', () => {
+  const map = chamberMap({ tokenColumn: 2, tokenRow: 2 });
+  map.edges = map.edges.map((edge) =>
+    edge.kind === 'door' ? { ...edge, doorState: 'unlocked' } : edge,
+  );
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 2, row: 2 },
+    'Loophole opens the unlocked doorway and steps through.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.match(resolved.summary, /Confirm moves you closer only/i);
+  assert.match(resolved.summary, /declare open|step through again/i);
+  assert.match(resolved.summary, /unlocked|closed/i);
+  assert.doesNotMatch(resolved.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
+});
+
+test('adjacent unlocked open/step-through drafts table.open_door with continue-through copy', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  map.edges = map.edges.map((edge) =>
+    edge.kind === 'door' ? { ...edge, doorState: 'unlocked' } : edge,
+  );
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I open the unlocked doorway and step through.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.open_door');
+  assert.equal(resolved.edgeId, 'e:9:6:east');
+  assert.match(resolved.summary, /Ready to open/i);
+  assert.match(resolved.summary, /continue through|unlocked/i);
+  assert.doesNotMatch(resolved.summary, /Sleight of Hand|attempt the lock|moves you closer only/i);
+});
+
 test('resolveBlankTableDoorBuild only applies to edgeless blank tables', () => {
   const blank = chamberMap({ tokenColumn: 7, tokenRow: 6 });
   blank.edges = [];
