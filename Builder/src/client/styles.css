@@ -490,6 +490,24 @@ a.account-chip-label:focus-visible {
   background: color-mix(in srgb, var(--color-surface) 92%, var(--color-ink) 8%);
 }
 
+.dm-play-thread-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--color-surface) 96%, var(--color-ink) 4%);
+  padding-bottom: var(--space-1);
+}
+
+.dm-thread-jump-latest {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.55rem;
+}
+
 .dm-thread-list {
   margin: 0;
   padding: 0;
