@@ -272,6 +272,22 @@ export function resolveIntentAuthority(
   }
 
   const only = actionable[0]!;
+
+  // Perception / presence checks are Director narration, never map or combat commands.
+  if (only.kind === 'inspect') {
+    const seekingPresence = only.outcomeHint === 'who_is_present';
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [only],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary: seekingPresence
+        ? 'You are looking for who is present. The Game Director will say whether anyone answers — players cannot invent NPCs.'
+        : 'Looking and listening — the Game Director narrates what is perceptible here. The map stays put unless fiction requires a change.',
+      proposedCommandType: 'table.sync',
+    };
+  }
+
   const proposedCommandType = commandTypeForActionKind(only.kind);
   return {
     disposition: proposedCommandType === null ? 'clarify' : 'propose_command',
@@ -380,7 +396,7 @@ export function parsePlayerDeclaration(
     if (
       new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(trimmed) ||
       new RegExp(`^(?:hey|hi|ask)\\s+${escaped}\\b`, 'i').test(trimmed) ||
-      new RegExp(`\\b(?:ask|tell)\\s+${escaped}\\b`, 'i').test(trimmed)
+      new RegExp(`\\b(?:asks?|tells?)\\s+${escaped}\\b`, 'i').test(trimmed)
     ) {
       addressee = npc.label;
       break;
@@ -390,6 +406,19 @@ export function parsePlayerDeclaration(
     const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(trimmed);
     if (leading !== null) {
       addressee = leading[1]!;
+    }
+  }
+  // Unknown named addressee: "asks Nib", "ask Nib,", "speaking to Nib" — even when not in memory.
+  if (addressee === null) {
+    const asked = /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to)\s+([A-Z][a-zA-Z'-]{1,24})\b/.exec(
+      trimmed,
+    );
+    if (asked !== null) {
+      const candidate = asked[1]!;
+      // Skip common false positives that are not personal names.
+      if (!/^(?:The|This|That|What|Which|Where|When|Why|How|Director|Garrick|Veyra)$/i.test(candidate)) {
+        addressee = candidate;
+      }
     }
   }
 
@@ -409,6 +438,19 @@ export function parsePlayerDeclaration(
     playerAssertedWorldFacts.push({ kind: 'npc', text: trimmed.slice(0, 120) });
   }
 
+  const seekingPresence =
+    /\b(?:call(?:s|ed|ing)?\s+(?:out|into)|is\s+anyone(?:\s+there|\s+here)?|anyone\s+(?:there|here)|who(?:'s|\s+is)\s+(?:there|here|present)|look(?:ing)?\s+for\s+(?:anyone|anybody|somebody|someone|a\s+person|people)|wait(?:s|ing)?\s+for\s+(?:whoever|someone|anyone|anybody))\b/i.test(
+      trimmed,
+    );
+
+  const observingScene =
+    /\b(?:survey(?:s|ing)?|look(?:s|ing)?\s+and\s+listen|listen(?:s|ing)?\s+carefully|look(?:s|ing)?\s+carefully|peer(?:s|ing)?\s+around|take(?:s|ing)?\s+(?:a\s+)?look\s+around|describe\s+only\s+what)\b/i.test(
+      trimmed,
+    ) ||
+    (/\b(?:look(?:s|ing)?|listen(?:s|ing)?)\b/i.test(trimmed) &&
+      /\b(?:chamber|room|scene|surroundings|area)\b/i.test(trimmed) &&
+      !/\b(?:open|unlock|attack|strike|cast)\b/i.test(trimmed));
+
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
   const wantsOpenDoor =
@@ -423,7 +465,9 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
+  // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).
   if (
+    addressee === null &&
     isInterrogative &&
     /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed) &&
     !wantsUnlock &&
@@ -446,6 +490,14 @@ export function parsePlayerDeclaration(
     /\b(?:see|look|peer|glance|beyond|through)\b/i.test(trimmed)
   ) {
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'unlocked door' });
+  }
+
+  if (actionSequence.length === 0 && seekingPresence) {
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'who_is_present' });
+  }
+
+  if (actionSequence.length === 0 && observingScene) {
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
   if (/(?:\bmove\b|\bwalk\b|\bgo\b|\bstep\b|\bapproach\b)/i.test(trimmed) && !wantsUnlock) {
