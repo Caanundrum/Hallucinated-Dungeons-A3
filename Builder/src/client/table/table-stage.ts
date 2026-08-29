@@ -892,6 +892,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   function paint(map: MapBundleProjection): void {
     currentMap = map;
+    const priorViewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    const savedScroll =
+      priorViewport === null
+        ? null
+        : { left: priorViewport.scrollLeft, top: priorViewport.scrollTop };
     priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, selectedEdgeId, priorTokenBoxes, zoomScale);
     paintPixi(map);
     bindSquareClicks();
@@ -907,6 +912,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       });
     } else {
       applyZoom(zoomScale);
+      const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+      if (viewport !== null && savedScroll !== null) {
+        viewport.scrollLeft = savedScroll.left;
+        viewport.scrollTop = savedScroll.top;
+      }
     }
   }
 
