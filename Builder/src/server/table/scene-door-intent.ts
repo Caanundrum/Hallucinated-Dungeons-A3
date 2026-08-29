@@ -87,6 +87,18 @@ function doorBesideSummary(edge: MapEdgeRecord): string {
   return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} beside you`;
 }
 
+function doorApproachLabel(edge: MapEdgeRecord): string {
+  return formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(/^Wooden door/i, 'door');
+}
+
+function approachThenOpenCopy(sceneTitle: string, edge: MapEdgeRecord, wantsOpen: boolean): string {
+  const label = doorApproachLabel(edge);
+  if (wantsOpen) {
+    return `Ready to step toward the ${label} in ${sceneTitle}. Confirm moves you closer only — when you are beside it, declare open / step through again to finish the passage.`;
+  }
+  return `Ready to step toward the ${label} in ${sceneTitle}. Confirm to commit the step.`;
+}
+
 /**
  * Resolves door-related declarations against persisted scene geometry.
  * Returns null when the table is still a blank open floor with no edges.
@@ -146,10 +158,15 @@ export function resolveDoorIntentForMap(
           'The wooden door beside you is locked. Declare a lock attempt before opening it, or inspect it carefully first.',
       };
     }
+    const authority = doorAuthorityFromStored(adjacentClosed.doorState);
+    const unlockedNote =
+      authority.lock === 'unlocked' ? ' It is unlocked — no tools or roll required.' : '';
     return {
       proposedCommandType: 'table.open_door',
       edgeId: adjacentClosed.edgeId,
-      summary: 'Ready to open the door beside you. Confirm to commit it on the map.',
+      summary: wantsOpen
+        ? `Ready to open the door beside you and continue through.${unlockedNote} Confirm to open it on the map.`
+        : `Ready to open the door beside you.${unlockedNote} Confirm to commit it on the map.`,
     };
   }
 
@@ -169,21 +186,32 @@ export function resolveDoorIntentForMap(
     };
   }
 
-  if (mentionsMovementIntent(text)) {
+  if (mentionsMovementIntent(text) || wantsOpen) {
     const approachOpen = nextStepTowardOpenDoor(tokenAnchor, map);
     if (approachOpen !== null) {
       return {
         proposedCommandType: 'table.move',
         path: [approachOpen],
-        summary: `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
+        summary: wantsOpen
+          ? `Ready to step toward the open doorway in ${sceneTitle}. Confirm moves you closer only — when you are beside it, declare step through / enter again to continue.`
+          : `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
+    const nearestClosed =
+      closedDoors.length === 0
+        ? null
+        : closedDoors.reduce((best, door) => {
+            const distance = Math.abs(tokenAnchor.column - door.column) + Math.abs(tokenAnchor.row - door.row);
+            const bestDistance =
+              Math.abs(tokenAnchor.column - best.column) + Math.abs(tokenAnchor.row - best.row);
+            return distance < bestDistance ? door : best;
+          });
     const approachClosed = nextStepTowardClosedDoor(tokenAnchor, map);
-    if (approachClosed !== null) {
+    if (approachClosed !== null && nearestClosed !== null) {
       return {
         proposedCommandType: 'table.move',
         path: [approachClosed],
-        summary: `Ready to step toward the closed door in ${sceneTitle}. Confirm to commit the step.`,
+        summary: approachThenOpenCopy(sceneTitle, nearestClosed, wantsOpen),
       };
     }
   }
@@ -200,8 +228,9 @@ export function resolveDoorIntentForMap(
     return {
       proposedCommandType: 'table.sync',
       edgeId: door.edgeId,
-      summary:
-        'There is a closed door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
+      summary: wantsOpen
+        ? `There is a ${doorApproachLabel(door)} on this scene, but you are not next to it yet. Move adjacent, then declare open / step through again to finish.`
+        : 'There is a closed door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
     };
   }
 
