@@ -558,6 +558,84 @@ export async function fetchCampaignMemory(campaignId: string): Promise<CampaignM
   return (await request(`/api/campaigns/${campaignId}/memory`)) as CampaignMemoryProjection;
 }
 
+/** Director-owned NPC establish — not a player Confirm scene control. */
+export async function applyDirectorNpc(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly directive: {
+    readonly schemaVersion: 'play-authority-npc-v1';
+    readonly npcId: string;
+    readonly name: string;
+    readonly publicDescription: string;
+    readonly disposition: 'friendly' | 'wary' | 'neutral' | 'hostile' | 'allied' | 'unknown';
+    readonly location: { readonly column: number; readonly row: number } | null;
+    readonly placeToken: boolean;
+    readonly firstDialogue: string | null;
+    readonly audience: 'public' | 'private';
+    readonly causeActionId: string | null;
+  };
+}): Promise<{
+  readonly memory: CampaignMemoryProjection;
+  readonly created: boolean;
+  readonly chronicleBody: string | null;
+}> {
+  return (await request(`/api/campaigns/${options.campaignId}/director/npc`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify(options.directive),
+  })) as {
+    readonly memory: CampaignMemoryProjection;
+    readonly created: boolean;
+    readonly chronicleBody: string | null;
+  };
+}
+
+/** Director-owned scene establish — validates + chronicles; map geometry apply is follow-on. */
+export async function applyDirectorScene(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+  readonly directive: {
+    readonly schemaVersion: 'play-authority-scene-v1';
+    readonly sceneId: string;
+    readonly revision: number;
+    readonly title: string;
+    readonly displayMode: 'ambient' | 'exploration' | 'combat';
+    readonly bounds: { readonly columns: number; readonly rows: number };
+    readonly causeActionId: string | null;
+    readonly continuity: {
+      readonly previousSceneId: string | null;
+      readonly boundaryCrossed: boolean;
+    };
+    readonly structure: { readonly edges: readonly unknown[] };
+    readonly markers: readonly unknown[];
+    readonly entities: readonly unknown[];
+    readonly visibility: 'public' | 'discovered' | 'hidden' | 'dm_only';
+    readonly rejectedMechanics: readonly string[];
+  };
+}): Promise<{
+  readonly ok: true;
+  readonly sceneId: string;
+  readonly revision: number;
+  readonly title: string;
+  readonly mapApplied: false;
+  readonly rejectedMechanics: readonly string[];
+  readonly chronicleBody: string;
+}> {
+  return (await request(`/api/campaigns/${options.campaignId}/director/scene`, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify(options.directive),
+  })) as {
+    readonly ok: true;
+    readonly sceneId: string;
+    readonly revision: number;
+    readonly title: string;
+    readonly mapApplied: false;
+    readonly rejectedMechanics: readonly string[];
+    readonly chronicleBody: string;
+  };
+}
+
 export async function fetchPersonalRecap(campaignId: string): Promise<PersonalRecapProjection> {
   return (await request(`/api/campaigns/${campaignId}/recap`)) as PersonalRecapProjection;
 }

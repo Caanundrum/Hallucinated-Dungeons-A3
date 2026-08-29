@@ -186,16 +186,25 @@ export function resolveIntentAuthority(
           ref.id === parsed.addressee),
     );
 
-  if (addresseeIsNpc || (parsed.isInterrogative && parsed.addressee !== null)) {
+  if (addresseeIsNpc) {
     return {
       disposition: 'director_narrate_only',
       actionSequence: [{ kind: 'dialogue', targetRef: parsed.addressee, outcomeHint: null }],
       ignoredWorldFacts,
       clarificationPrompt: null,
-      summary:
-        parsed.addressee !== null
-          ? `Ask ${parsed.addressee} — this is dialogue, not a map action.`
-          : 'That sounds like a question for someone at the table — name who you address.',
+      summary: `Ask ${parsed.addressee} — this is dialogue, not a map action.`,
+      proposedCommandType: 'table.sync',
+    };
+  }
+
+  // Named addressee who is not in campaign memory — do not treat as dialogue or door action.
+  if (parsed.addressee !== null && !addresseeIsNpc) {
+    return {
+      disposition: 'clarify',
+      actionSequence: [],
+      ignoredWorldFacts,
+      clarificationPrompt: `${parsed.addressee} is not an established NPC at this table yet. Only the Game Director can introduce someone new — declare what your character does, or ask the Director who is present.`,
+      summary: `${parsed.addressee} is not established here — the Game Director introduces NPCs.`,
       proposedCommandType: 'table.sync',
     };
   }
@@ -534,3 +543,50 @@ export const PLAY_AUTHORITY_SPIKE = {
     noFixedIntentKeywordPrecedence: true,
   },
 } as const;
+
+/**
+ * Minimum validation for a DM scene directive before any map apply (vertical-slice gate).
+ * Does not mutate state — callers apply only after this returns ok.
+ */
+export function validateDmSceneDirective(directive: DmSceneDirective): {
+  readonly ok: boolean;
+  readonly errors: readonly string[];
+} {
+  const errors: string[] = [];
+  if (directive.schemaVersion !== PLAY_AUTHORITY_SPIKE.schemaVersions.scene) {
+    errors.push('Unsupported scene directive schemaVersion.');
+  }
+  if (directive.sceneId.trim().length === 0) {
+    errors.push('sceneId is required.');
+  }
+  if (directive.revision < 1) {
+    errors.push('revision must be >= 1.');
+  }
+  if (directive.bounds.columns < 1 || directive.bounds.rows < 1) {
+    errors.push('bounds must be positive.');
+  }
+  if (directive.title.trim().length === 0) {
+    errors.push('title is required.');
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Minimum validation for a DM NPC directive before memory apply.
+ */
+export function validateDmNpcDirective(directive: DmNpcDirective): {
+  readonly ok: boolean;
+  readonly errors: readonly string[];
+} {
+  const errors: string[] = [];
+  if (directive.schemaVersion !== PLAY_AUTHORITY_SPIKE.schemaVersions.npc) {
+    errors.push('Unsupported NPC directive schemaVersion.');
+  }
+  if (directive.npcId.trim().length === 0) {
+    errors.push('npcId is required.');
+  }
+  if (directive.name.trim().length === 0) {
+    errors.push('name is required.');
+  }
+  return { ok: errors.length === 0, errors };
+}

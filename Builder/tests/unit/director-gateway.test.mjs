@@ -415,7 +415,7 @@ test('A1: which-door interrogative clarifies instead of opening', async () => {
   assert.match(interpreted.summary, /question|door action|ask/i);
 });
 
-test('A1: addressing Nib with a door question stays dialogue', async () => {
+test('A1: addressing unknown Nib clarifies — NPC not established', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
     campaignId: 'camp-1',
@@ -425,7 +425,8 @@ test('A1: addressing Nib with a door question stays dialogue', async () => {
   });
   assert.equal(interpreted.proposedCommandType, 'table.sync');
   assert.doesNotMatch(interpreted.summary, /^Ready to open/i);
-  assert.match(interpreted.summary, /Nib|dialogue|Ask/i);
+  // Without known NPCs in fake firestore, Nib is not established.
+  assert.match(interpreted.summary, /not established|Game Director/i);
 });
 
 test('A1: unlocked-door state reference is not a lockpick draft', async () => {

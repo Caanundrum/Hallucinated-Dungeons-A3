@@ -16,6 +16,7 @@
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 import type { AdventureTemplate } from '../../shared/campaign-contract.js';
+import { ERROR_CODES } from '../../shared/contract.js';
 import {
   type CampaignChapterProjection,
   type CampaignFactionProjection,
@@ -32,6 +33,12 @@ import {
   type SessionState,
 } from '../../shared/campaign-memory-contract.js';
 import type { MapArtProvenance } from '../../shared/map-contract.js';
+import {
+  validateDmNpcDirective,
+  validateDmSceneDirective,
+  type DmNpcDirective,
+  type DmSceneDirective,
+} from '../../shared/play-authority-contract.js';
 import {
   EMBERFERRY_CROSSING_PACK,
   STARTER_CAMPAIGN_PACK_ID,
@@ -853,4 +860,137 @@ export async function seedCampaignMemoryForTemplate(
 ): Promise<void> {
   const pack = resolveStarterPack(adventureTemplateId);
   await ensureCampaignMemory(firestore, campaignId, pack ?? undefined);
+}
+
+/**
+ * Apply a Director-authored NPC directive into campaign memory (vertical slice).
+ * Players never confirm this as a scene — only the Director / director service.
+ */
+export async function applyDmNpcDirective(
+  firestore: Firestore,
+  campaignId: string,
+  accountId: string,
+  directive: DmNpcDirective,
+): Promise<{
+  readonly memory: CampaignMemoryProjection;
+  readonly created: boolean;
+  readonly chronicleBody: string | null;
+}> {
+  const checked = validateDmNpcDirective(directive);
+  if (!checked.ok) {
+    throw new CampaignMemoryError(
+      ERROR_CODES.BAD_REQUEST,
+      checked.errors.join(' ') || 'Invalid NPC directive.',
+    );
+  }
+  await requireMembership(firestore, campaignId, accountId);
+  await assertSessionAllowsPlay(firestore, campaignId);
+
+  const memory = await loadStoredMemory(firestore, campaignId);
+  const now = new Date();
+  const audience = directive.audience === 'private' ? ('private' as const) : ('public' as const);
+  const record: CampaignNpcRecordProjection = {
+    npcId: directive.npcId.trim(),
+    name: directive.name.trim(),
+    role: directive.publicDescription.trim() || directive.disposition,
+    motive: `Disposition: ${directive.disposition}.`,
+    knowledge: directive.publicDescription.trim(),
+    audience,
+  };
+  const existingIndex = memory.npcs.findIndex(
+    (npc) =>
+      npc.npcId === record.npcId || npc.name.toLowerCase() === record.name.toLowerCase(),
+  );
+  const nextNpcs =
+    existingIndex >= 0
+      ? memory.npcs.map((npc, index) => (index === existingIndex ? record : npc))
+      : [...memory.npcs, record];
+  const updated: StoredCampaignMemory = {
+    ...memory,
+    npcs: nextNpcs,
+    updatedAt: now,
+  };
+  await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated);
+
+  let chronicleBody: string | null = null;
+  if (directive.firstDialogue !== null && directive.firstDialogue.trim().length > 0) {
+    const speech = `${record.name}: ${directive.firstDialogue.trim()}`;
+    const placeNote = directive.placeToken ? ` ${record.name} is present with the party.` : '';
+    chronicleBody = `${speech}${placeNote}`;
+    await appendChronicleEntry({
+      firestore,
+      campaignId,
+      kind: 'director_ruling',
+      body: chronicleBody,
+    });
+  } else if (existingIndex < 0) {
+    chronicleBody = `The Game Director introduces ${record.name} (${record.role}).`;
+    await appendChronicleEntry({
+      firestore,
+      campaignId,
+      kind: 'director_ruling',
+      body: chronicleBody,
+    });
+  }
+
+  const session = await loadStoredSession(firestore, campaignId);
+  return {
+    memory: projectMemory(updated, session),
+    created: existingIndex < 0,
+    chronicleBody,
+  };
+}
+
+/**
+ * Apply a Director-authored scene directive (vertical slice).
+ * Validates schema, records a director_ruling, and does not mutate map geometry yet —
+ * map cell/edge/token apply is a follow-on. Players never confirm this.
+ */
+export async function applyDmSceneDirective(
+  firestore: Firestore,
+  campaignId: string,
+  accountId: string,
+  directive: DmSceneDirective,
+): Promise<{
+  readonly ok: true;
+  readonly sceneId: string;
+  readonly revision: number;
+  readonly title: string;
+  readonly mapApplied: false;
+  readonly rejectedMechanics: readonly string[];
+  readonly chronicleBody: string;
+}> {
+  const checked = validateDmSceneDirective(directive);
+  if (!checked.ok) {
+    throw new CampaignMemoryError(
+      ERROR_CODES.BAD_REQUEST,
+      checked.errors.join(' ') || 'Invalid scene directive.',
+    );
+  }
+  await requireMembership(firestore, campaignId, accountId);
+  await assertSessionAllowsPlay(firestore, campaignId);
+
+  const title = directive.title.trim();
+  const rejected =
+    directive.rejectedMechanics.length > 0
+      ? ` Rejected unsupported mechanics: ${directive.rejectedMechanics.join(', ')}.`
+      : '';
+  const chronicleBody = `Scene established: ${title} (revision ${directive.revision}). Mode: ${directive.displayMode}. Bounds ${directive.bounds.columns}×${directive.bounds.rows}.${rejected}`;
+
+  await appendChronicleEntry({
+    firestore,
+    campaignId,
+    kind: 'director_ruling',
+    body: chronicleBody,
+  });
+
+  return {
+    ok: true,
+    sceneId: directive.sceneId.trim(),
+    revision: directive.revision,
+    title,
+    mapApplied: false,
+    rejectedMechanics: directive.rejectedMechanics,
+    chronicleBody,
+  };
 }

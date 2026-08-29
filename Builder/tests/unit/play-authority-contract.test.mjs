@@ -12,6 +12,8 @@ import {
   textIsInterrogative,
   textReferencesUnlockedDoorState,
   textRequestsLockPicking,
+  validateDmNpcDirective,
+  validateDmSceneDirective,
 } from '../../dist/shared/play-authority-contract.js';
 
 test('spike locks product rules Nick approved', () => {
@@ -62,6 +64,28 @@ test('addressing Nib makes dialogue the primary intent', () => {
   assert.equal(resolved.actionSequence[0]?.kind, 'dialogue');
   assert.equal(resolved.proposedCommandType, 'table.sync');
   assert.match(resolved.summary, /dialogue/i);
+});
+
+test('addressing unknown Nib clarifies that the NPC is not established', () => {
+  const parsed = {
+    rawText: 'Nib, which door leads to the old archive?',
+    speaker: 'player_character',
+    addressee: 'Nib',
+    intendedActions: [{ kind: 'dialogue', targetRef: 'Nib', outcomeHint: null }],
+    primaryTarget: 'Nib',
+    requestedOutcome: null,
+    actionSequence: [
+      { kind: 'dialogue', targetRef: 'Nib', outcomeHint: null },
+      { kind: 'open_door', targetRef: null, outcomeHint: null },
+    ],
+    playerAssertedWorldFacts: [],
+    knownCanonicalReferences: [],
+    isInterrogative: true,
+  };
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'clarify');
+  assert.match(resolved.summary, /not established/i);
+  assert.match(resolved.clarificationPrompt ?? '', /Game Director/i);
 });
 
 test('which-door interrogative without addressee clarifies instead of opening', () => {
@@ -151,4 +175,54 @@ test('parsePlayerDeclaration: pick lock is unlock_door', () => {
   const resolved = resolveIntentAuthority(parsed);
   assert.equal(resolved.disposition, 'propose_command');
   assert.equal(resolved.proposedCommandType, 'table.sync');
+});
+
+test('validateDmNpcDirective and validateDmSceneDirective gate schema', () => {
+  assert.equal(PLAY_AUTHORITY_SPIKE.rules.noPlayerConfirmSceneControl, true);
+  const npcOk = validateDmNpcDirective({
+    schemaVersion: 'play-authority-npc-v1',
+    npcId: 'npc-nib',
+    name: 'Nib',
+    publicDescription: 'A wary goblin cartographer',
+    disposition: 'wary',
+    location: { column: 4, row: 3 },
+    placeToken: true,
+    firstDialogue: 'Keep your boots dry past the east door.',
+    audience: 'public',
+    causeActionId: null,
+  });
+  assert.equal(npcOk.ok, true);
+  const sceneOk = validateDmSceneDirective({
+    schemaVersion: 'play-authority-scene-v1',
+    sceneId: 'scene-quiet-chamber',
+    revision: 1,
+    title: 'Quiet chamber',
+    displayMode: 'exploration',
+    bounds: { columns: 8, rows: 8 },
+    causeActionId: null,
+    continuity: { previousSceneId: null, boundaryCrossed: false },
+    structure: { edges: [] },
+    markers: [],
+    entities: [],
+    visibility: 'public',
+    rejectedMechanics: [],
+  });
+  assert.equal(sceneOk.ok, true);
+  const sceneBad = validateDmSceneDirective({
+    schemaVersion: 'play-authority-scene-v1',
+    sceneId: '',
+    revision: 0,
+    title: '',
+    displayMode: 'exploration',
+    bounds: { columns: 0, rows: 0 },
+    causeActionId: null,
+    continuity: { previousSceneId: null, boundaryCrossed: false },
+    structure: { edges: [] },
+    markers: [],
+    entities: [],
+    visibility: 'public',
+    rejectedMechanics: [],
+  });
+  assert.equal(sceneBad.ok, false);
+  assert.ok(sceneBad.errors.length >= 2);
 });

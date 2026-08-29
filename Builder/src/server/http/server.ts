@@ -151,10 +151,13 @@ import {
   TableCommandError,
 } from '../table/commands.js';
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
+import type { DmSceneDirective } from '../../shared/play-authority-contract.js';
 import {
   CampaignMemoryError,
   closeCurrentChapter,
   loadCampaignMemory,
+  applyDmNpcDirective,
+  applyDmSceneDirective,
   readPersonalRecap,
   recordSessionSuspend,
   resumeSession,
@@ -2153,6 +2156,173 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         }
         const campaignId = campaignMemoryMatch[1]!;
         sendJson(response, 200, await loadCampaignMemory(firestore, campaignId, accountId));
+        return;
+      }
+
+      const directorNpcMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/director\/npc$/.exec(path);
+      if (directorNpcMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = directorNpcMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          schemaVersion?: unknown;
+          npcId?: unknown;
+          name?: unknown;
+          publicDescription?: unknown;
+          disposition?: unknown;
+          location?: unknown;
+          placeToken?: unknown;
+          firstDialogue?: unknown;
+          audience?: unknown;
+          causeActionId?: unknown;
+        };
+        if (
+          payload.schemaVersion !== 'play-authority-npc-v1' ||
+          typeof payload.npcId !== 'string' ||
+          typeof payload.name !== 'string' ||
+          typeof payload.publicDescription !== 'string' ||
+          typeof payload.disposition !== 'string' ||
+          typeof payload.placeToken !== 'boolean' ||
+          (payload.audience !== 'public' && payload.audience !== 'private')
+        ) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const location =
+          payload.location !== null &&
+          payload.location !== undefined &&
+          typeof payload.location === 'object' &&
+          typeof (payload.location as { column?: unknown }).column === 'number' &&
+          typeof (payload.location as { row?: unknown }).row === 'number'
+            ? {
+                column: (payload.location as { column: number }).column,
+                row: (payload.location as { row: number }).row,
+              }
+            : null;
+        const applied = await applyDmNpcDirective(firestore, campaignId, accountId, {
+          schemaVersion: 'play-authority-npc-v1',
+          npcId: payload.npcId,
+          name: payload.name,
+          publicDescription: payload.publicDescription,
+          disposition: payload.disposition as
+            | 'friendly'
+            | 'wary'
+            | 'neutral'
+            | 'hostile'
+            | 'allied'
+            | 'unknown',
+          location,
+          placeToken: payload.placeToken,
+          firstDialogue:
+            typeof payload.firstDialogue === 'string' ? payload.firstDialogue : null,
+          audience: payload.audience,
+          causeActionId:
+            typeof payload.causeActionId === 'string' ? payload.causeActionId : null,
+        });
+        sendJson(response, 200, applied);
+        return;
+      }
+
+      const directorSceneMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/director\/scene$/.exec(
+        path,
+      );
+      if (directorSceneMatch !== null) {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = directorSceneMatch[1]!;
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = body as {
+          schemaVersion?: unknown;
+          sceneId?: unknown;
+          revision?: unknown;
+          title?: unknown;
+          displayMode?: unknown;
+          bounds?: unknown;
+          causeActionId?: unknown;
+          continuity?: unknown;
+          structure?: unknown;
+          markers?: unknown;
+          entities?: unknown;
+          visibility?: unknown;
+          rejectedMechanics?: unknown;
+        };
+        if (
+          payload.schemaVersion !== 'play-authority-scene-v1' ||
+          typeof payload.sceneId !== 'string' ||
+          typeof payload.revision !== 'number' ||
+          typeof payload.title !== 'string' ||
+          (payload.displayMode !== 'ambient' &&
+            payload.displayMode !== 'exploration' &&
+            payload.displayMode !== 'combat') ||
+          payload.bounds === null ||
+          typeof payload.bounds !== 'object' ||
+          typeof (payload.bounds as { columns?: unknown }).columns !== 'number' ||
+          typeof (payload.bounds as { rows?: unknown }).rows !== 'number' ||
+          (payload.visibility !== 'public' &&
+            payload.visibility !== 'discovered' &&
+            payload.visibility !== 'hidden' &&
+            payload.visibility !== 'dm_only') ||
+          !Array.isArray(payload.rejectedMechanics)
+        ) {
+          sendError(response, ERROR_CODES.BAD_REQUEST);
+          return;
+        }
+        const continuity =
+          payload.continuity !== null &&
+          typeof payload.continuity === 'object' &&
+          typeof (payload.continuity as { boundaryCrossed?: unknown }).boundaryCrossed ===
+            'boolean'
+            ? {
+                previousSceneId:
+                  typeof (payload.continuity as { previousSceneId?: unknown }).previousSceneId ===
+                  'string'
+                    ? ((payload.continuity as { previousSceneId: string }).previousSceneId as string)
+                    : null,
+                boundaryCrossed: (payload.continuity as { boundaryCrossed: boolean })
+                  .boundaryCrossed,
+              }
+            : { previousSceneId: null, boundaryCrossed: false };
+        const applied = await applyDmSceneDirective(firestore, campaignId, accountId, {
+          schemaVersion: 'play-authority-scene-v1',
+          sceneId: payload.sceneId,
+          revision: payload.revision,
+          title: payload.title,
+          displayMode: payload.displayMode,
+          bounds: {
+            columns: (payload.bounds as { columns: number }).columns,
+            rows: (payload.bounds as { rows: number }).rows,
+          },
+          causeActionId:
+            typeof payload.causeActionId === 'string' ? payload.causeActionId : null,
+          continuity,
+          structure: {
+            edges: Array.isArray((payload.structure as { edges?: unknown } | undefined)?.edges)
+              ? ((payload.structure as { edges: DmSceneDirective['structure']['edges'] }).edges)
+              : [],
+          },
+          markers: Array.isArray(payload.markers)
+            ? (payload.markers as DmSceneDirective['markers'])
+            : [],
+          entities: Array.isArray(payload.entities)
+            ? (payload.entities as DmSceneDirective['entities'])
+            : [],
+          visibility: payload.visibility,
+          rejectedMechanics: payload.rejectedMechanics.filter(
+            (entry): entry is string => typeof entry === 'string',
+          ),
+        });
+        sendJson(response, 200, applied);
         return;
       }
 
