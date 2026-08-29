@@ -38,7 +38,10 @@ test('A2: successful unlock yields closed + unlocked, not open', () => {
 
 test('unlocked door language is state reference, not lock-picking', () => {
   assert.equal(textReferencesUnlockedDoorState('Beyond the unlocked door I see mist.'), true);
+  assert.equal(textReferencesUnlockedDoorState('opens the unlocked doorway and steps through'), true);
   assert.equal(textRequestsLockPicking('Beyond the unlocked door I see mist.'), false);
+  assert.equal(textRequestsLockPicking('opens the unlocked doorway and steps through'), false);
+  assert.equal(textRequestsLockPicking('enters the room beyond the unlocked doorway'), false);
   assert.equal(textRequestsLockPicking('I pick the lock on the wooden door.'), true);
   assert.equal(textRequestsLockPicking('I unlock the door with thieves tools.'), true);
 });
@@ -213,6 +216,21 @@ test('parsePlayerDeclaration: conjugations open/step and compound step-through',
   );
   assert.ok(enterBeyond.actionSequence.some((step) => step.kind === 'open_door'));
   assert.ok(enterBeyond.actionSequence.every((step) => step.kind !== 'move'));
+  const doorway = parsePlayerDeclaration(
+    'Loophole opens the unlocked doorway and steps through.',
+  );
+  assert.equal(
+    doorway.actionSequence.some((step) => step.kind === 'unlock_door'),
+    false,
+  );
+  assert.ok(doorway.actionSequence.some((step) => step.kind === 'open_door'));
+  assert.equal(resolveIntentAuthority(doorway).proposedCommandType, 'table.open_door');
+  const enters = parsePlayerDeclaration(
+    'She enters the room beyond the unlocked doorway.',
+  );
+  assert.equal(enters.actionSequence.some((step) => step.kind === 'unlock_door'), false);
+  assert.ok(enters.actionSequence.some((step) => step.kind === 'open_door'));
+  assert.equal(resolveIntentAuthority(enters).proposedCommandType, 'table.open_door');
 });
 
 test('parsePlayerDeclaration: invent scenery with move preserves the move', () => {
@@ -226,6 +244,14 @@ test('parsePlayerDeclaration: invent scenery with move preserves the move', () =
   assert.equal(resolved.proposedCommandType, 'table.move');
   assert.ok(resolved.ignoredWorldFacts.length >= 1);
   assert.match(resolved.summary, /ignored|Game Director/i);
+  const throughUnlocked = parsePlayerDeclaration(
+    'I enter the moonlit flooded crypt through the unlocked doorway.',
+  );
+  const throughResolved = resolveIntentAuthority(throughUnlocked);
+  assert.equal(throughResolved.disposition, 'propose_command');
+  assert.equal(throughResolved.proposedCommandType, 'table.open_door');
+  assert.ok(throughResolved.ignoredWorldFacts.length >= 1);
+  assert.equal(throughResolved.actionSequence.some((step) => step.kind === 'unlock_door'), false);
 });
 
 test('parsePlayerDeclaration: unlocked-door prose is not lock-picking', () => {

@@ -1991,6 +1991,16 @@ a.record-note:focus-visible {
   max-height: min(90vh, 56rem);
 }
 
+body.sheet-modal-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.sheet-modal-backdrop {
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
 .sheet-modal-chrome {
   display: flex;
   align-items: center;

@@ -57,7 +57,8 @@ export function buildSkillCheckDraftSummary(
 ): string {
   const wantsTrap = /(trap|disarm)/.test(text);
   const wantsLock =
-    textRequestsLockPicking(text) || (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
+    textRequestsLockPicking(text) ||
+    (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
   if (sheet === null) {
     return wantsTrap
       ? 'Ready to search the doorway for traps, then attempt the lock if it looks safe. Confirm to roll the checks on the table.'

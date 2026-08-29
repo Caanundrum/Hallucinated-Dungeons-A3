@@ -107,7 +107,10 @@ export function resolveDoorIntentForMap(
   const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const wantsUnlock = textRequestsLockPicking(text);
   const wantsOpen =
-    !wantsUnlock && /(open|push\s+open|swing\s+open)/.test(text);
+    !wantsUnlock &&
+    /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open|enter(?:s|ing)?|steps?\s+through)\b/i.test(
+      text,
+    );
   const wantsInspect =
     /(inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)/.test(text) &&
     !wantsOpen &&
