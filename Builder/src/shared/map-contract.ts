@@ -49,7 +49,14 @@ export type EdgeOrientation = (typeof EDGE_ORIENTATIONS)[number];
 export const EDGE_KINDS = ['open', 'wall', 'door'] as const;
 export type EdgeKind = (typeof EDGE_KINDS)[number];
 
-export const DOOR_STATES = ['open', 'closed', 'locked'] as const;
+/**
+ * Stored door edge state.
+ * - `open` — leaf open (lock treated as unlocked)
+ * - `closed` — leaf closed; lock unknown / none (legacy)
+ * - `locked` — leaf closed, lock locked
+ * - `unlocked` — leaf closed, lock unlocked (A2 / TQA-034)
+ */
+export const DOOR_STATES = ['open', 'closed', 'locked', 'unlocked'] as const;
 export type DoorState = (typeof DOOR_STATES)[number];
 
 export const TERRAIN_KINDS = ['floor', 'difficult', 'blocked'] as const;

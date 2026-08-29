@@ -49,7 +49,62 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
+import {
+  doorStateAfterUnlockSuccess,
+  storedDoorStateFromAuthority,
+} from '../../shared/play-authority-contract.js';
+import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
 import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
+
+function isAdjacentToDoorEdge(anchor: MapSquareCoordinate, edge: MapEdgeRecord): boolean {
+  return (
+    (edge.orientation === 'east' &&
+      edge.row === anchor.row &&
+      (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
+    (edge.orientation === 'north' &&
+      edge.column === anchor.column &&
+      (edge.row === anchor.row || edge.row === anchor.row - 1)) ||
+    (edge.orientation === 'west' &&
+      edge.row === anchor.row &&
+      (edge.column === anchor.column || edge.column === anchor.column + 1)) ||
+    (edge.orientation === 'south' &&
+      edge.column === anchor.column &&
+      (edge.row === anchor.row || edge.row === anchor.row - 1))
+  );
+}
+
+/** Prefer an adjacent closed/locked door for unlock success; else nearest on the scene. */
+function resolveUnlockTargetEdge(
+  map: MapBundleProjection,
+  anchor: MapSquareCoordinate | null,
+): MapEdgeRecord | null {
+  const candidates = map.edges.filter(
+    (edge) =>
+      edge.kind === 'door' &&
+      edge.doorState !== 'open' &&
+      edge.doorState !== 'unlocked',
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (anchor !== null) {
+    const adjacent = candidates.find((edge) => isAdjacentToDoorEdge(anchor, edge));
+    if (adjacent !== undefined) {
+      return adjacent;
+    }
+    let nearest = candidates[0]!;
+    let nearestDistance = Infinity;
+    for (const door of candidates) {
+      const distance = Math.abs(anchor.column - door.column) + Math.abs(anchor.row - door.row);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = door;
+      }
+    }
+    return nearest;
+  }
+  return candidates[0] ?? null;
+}
 import {
   baseSheetFor,
   loadCharacterRulesSource,
@@ -572,7 +627,12 @@ export async function acceptTableCommand(options: {
   let buildSceneTitle: string | null | undefined;
   let eventType: TableEventType = 'table.state_synced';
   let syncVisionSquares: { column: number; row: number }[] = [];
-  let skillResolution: { summary: string; rolls: readonly number[] } | null = null;
+  let skillResolution: {
+    summary: string;
+    rolls: readonly number[];
+    lockYielded: boolean;
+  } | null = null;
+  let unlockEdgeId: string | undefined;
 
   if (commandType === 'table.move') {
     if (!Array.isArray(path) || path.length === 0) {
@@ -634,6 +694,12 @@ export async function acceptTableCommand(options: {
     }
     if (edge.doorState === 'open') {
       throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is already open.');
+    }
+    if (edge.doorState === 'locked') {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'That door is locked. Declare a lock attempt before opening it.',
+      );
     }
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token === undefined) {
@@ -725,6 +791,15 @@ export async function acceptTableCommand(options: {
         sheet = null;
       }
       skillResolution = resolveSkillAttemptFromSummary(sheet, trimmedPlaySummary);
+      if (skillResolution?.lockYielded === true) {
+        const unlockTarget = resolveUnlockTargetEdge(
+          map,
+          token?.footprint.anchor ?? null,
+        );
+        if (unlockTarget !== null) {
+          unlockEdgeId = unlockTarget.edgeId;
+        }
+      }
     }
   }
 
@@ -825,11 +900,16 @@ export async function acceptTableCommand(options: {
       }
     }
 
-    if (commandType === 'table.sync' && syncVisionSquares.length > 0) {
-      exploredByAccount[accountId] = mergeExplored(
-        exploredByAccount[accountId],
-        syncVisionSquares,
-      );
+    if (commandType === 'table.sync') {
+      if (syncVisionSquares.length > 0) {
+        exploredByAccount[accountId] = mergeExplored(
+          exploredByAccount[accountId],
+          syncVisionSquares,
+        );
+      }
+      if (unlockEdgeId !== undefined) {
+        doorStates[unlockEdgeId] = storedDoorStateFromAuthority(doorStateAfterUnlockSuccess());
+      }
     }
 
     const command: StoredCommand = {

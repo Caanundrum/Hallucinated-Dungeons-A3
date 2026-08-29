@@ -46,11 +46,28 @@ export function doorAuthorityFromStored(doorState: DoorState | null): DoorAuthor
   if (doorState === 'locked') {
     return { leaf: 'closed', lock: 'locked' };
   }
+  if (doorState === 'unlocked') {
+    return { leaf: 'closed', lock: 'unlocked' };
+  }
   if (doorState === 'closed') {
     // Legacy storage: closed alone does not prove lock status.
     return { leaf: 'closed', lock: 'none' };
   }
   return { leaf: 'closed', lock: 'none' };
+}
+
+/** Persist leaf/lock back to the single stored `DoorState` field. */
+export function storedDoorStateFromAuthority(state: DoorAuthorityState): DoorState {
+  if (state.leaf === 'open') {
+    return 'open';
+  }
+  if (state.lock === 'locked') {
+    return 'locked';
+  }
+  if (state.lock === 'unlocked') {
+    return 'unlocked';
+  }
+  return 'closed';
 }
 
 /**
@@ -326,6 +343,120 @@ export function textIsInterrogative(text: string): boolean {
       trimmed,
     )
   );
+}
+
+export interface ParsePlayerDeclarationOptions {
+  readonly knownNpcs?: readonly { readonly id: string; readonly label: string }[];
+}
+
+/**
+ * Heuristic structured parse for A1 — feeds `resolveIntentAuthority`.
+ * Not a fixed dialogue > skill > door > move precedence list.
+ */
+export function parsePlayerDeclaration(
+  rawText: string,
+  options: ParsePlayerDeclarationOptions = {},
+): StructuredDeclarationParse {
+  const trimmed = rawText.trim();
+  const knownNpcs = options.knownNpcs ?? [];
+  const knownCanonicalReferences: CanonicalReference[] = knownNpcs.map((npc) => ({
+    kind: 'npc',
+    id: npc.id,
+    label: npc.label,
+  }));
+
+  let addressee: string | null = null;
+  for (const npc of knownNpcs) {
+    const escaped = npc.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (
+      new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(trimmed) ||
+      new RegExp(`^(?:hey|hi|ask)\\s+${escaped}\\b`, 'i').test(trimmed) ||
+      new RegExp(`\\b(?:ask|tell)\\s+${escaped}\\b`, 'i').test(trimmed)
+    ) {
+      addressee = npc.label;
+      break;
+    }
+  }
+  if (addressee === null) {
+    const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(trimmed);
+    if (leading !== null) {
+      addressee = leading[1]!;
+    }
+  }
+
+  const isInterrogative = textIsInterrogative(trimmed);
+  const actionSequence: DeclarationActionStep[] = [];
+  const playerAssertedWorldFacts: PlayerAssertedWorldFact[] = [];
+
+  const appearsNamed =
+    /\b(?:a|an)\s+[a-z][\w' -]{0,40}\s+named\s+[A-Z][\w'-]+/i.test(trimmed) &&
+    /\b(?:appear|appears|walks?\s+up|comes?\s+forward|introduce)/i.test(trimmed);
+  if (appearsNamed) {
+    actionSequence.push({
+      kind: 'introduce_npc_request',
+      targetRef: addressee,
+      outcomeHint: null,
+    });
+    playerAssertedWorldFacts.push({ kind: 'npc', text: trimmed.slice(0, 120) });
+  }
+
+  const wantsUnlock = textRequestsLockPicking(trimmed);
+  const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
+  const wantsOpenDoor =
+    !wantsUnlock &&
+    (/(?:open|push\s+open|swing\s+open)\b/i.test(trimmed) &&
+      /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed));
+
+  if (wantsUnlock) {
+    actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
+  }
+  if (wantsOpenDoor) {
+    actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
+  }
+  // Interrogative door mention without an unlock/open verb — surface for authority clarify.
+  if (
+    isInterrogative &&
+    /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed) &&
+    !wantsUnlock &&
+    !wantsOpenDoor
+  ) {
+    actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
+  }
+
+  if (addressee !== null) {
+    actionSequence.unshift({
+      kind: 'dialogue',
+      targetRef: addressee,
+      outcomeHint: null,
+    });
+  }
+
+  if (
+    actionSequence.length === 0 &&
+    refsUnlocked &&
+    /\b(?:see|look|peer|glance|beyond|through)\b/i.test(trimmed)
+  ) {
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'unlocked door' });
+  }
+
+  if (/(?:\bmove\b|\bwalk\b|\bgo\b|\bstep\b|\bapproach\b)/i.test(trimmed) && !wantsUnlock) {
+    if (!actionSequence.some((step) => step.kind === 'move')) {
+      actionSequence.push({ kind: 'move', targetRef: null, outcomeHint: null });
+    }
+  }
+
+  return {
+    rawText: trimmed,
+    speaker: 'player_character',
+    addressee,
+    intendedActions: actionSequence,
+    primaryTarget: addressee,
+    requestedOutcome: null,
+    actionSequence,
+    playerAssertedWorldFacts,
+    knownCanonicalReferences,
+    isInterrogative,
+  };
 }
 
 /**
