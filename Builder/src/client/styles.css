@@ -2482,6 +2482,7 @@ html.hd-low-effects .map-square-fog,
   display: block;
   cursor: grab;
   overscroll-behavior: contain;
+  touch-action: none;
   background:
     radial-gradient(circle at 1px 1px, color-mix(in srgb, #3a4a5c 35%, transparent) 1px, transparent 0) 0 0 / 16px 16px,
     #0a0c10;

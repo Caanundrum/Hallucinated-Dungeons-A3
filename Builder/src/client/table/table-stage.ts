@@ -430,7 +430,7 @@ function paintSemanticSvg(
         </svg>
       </div>
     </div>
-    <details class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend">
+    <details class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend" open>
       <summary>Map legend</summary>
       <div class="map-legend-groups">
         <div class="map-legend-group" data-testid="map-legend-terrain">
@@ -580,33 +580,56 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
     viewport.dataset.panBound = '1';
     let dragging = false;
+    let moved = false;
     let originX = 0;
     let originY = 0;
     let scrollLeft = 0;
     let scrollTop = 0;
-    viewport.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) {
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('button, a, [data-edge], summary') !== null) {
-        return;
-      }
-      dragging = true;
-      originX = event.clientX;
-      originY = event.clientY;
-      scrollLeft = viewport.scrollLeft;
-      scrollTop = viewport.scrollTop;
-      viewport.classList.add('is-panning');
-      viewport.setPointerCapture(event.pointerId);
-    });
-    viewport.addEventListener('pointermove', (event) => {
-      if (!dragging) {
-        return;
-      }
-      viewport.scrollLeft = scrollLeft - (event.clientX - originX);
-      viewport.scrollTop = scrollTop - (event.clientY - originY);
-    });
+    viewport.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        const target = event.target as Element | null;
+        if (
+          target instanceof Element &&
+          target.closest('button, a, summary, .map-edge-hit-target') !== null
+        ) {
+          return;
+        }
+        dragging = true;
+        moved = false;
+        originX = event.clientX;
+        originY = event.clientY;
+        scrollLeft = viewport.scrollLeft;
+        scrollTop = viewport.scrollTop;
+        viewport.classList.add('is-panning');
+        try {
+          viewport.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is best-effort.
+        }
+      },
+      { passive: true },
+    );
+    viewport.addEventListener(
+      'pointermove',
+      (event) => {
+        if (!dragging) {
+          return;
+        }
+        const dx = event.clientX - originX;
+        const dy = event.clientY - originY;
+        if (!moved && Math.hypot(dx, dy) < 4) {
+          return;
+        }
+        moved = true;
+        viewport.scrollLeft = scrollLeft - dx;
+        viewport.scrollTop = scrollTop - dy;
+      },
+      { passive: true },
+    );
     const endPan = (event: PointerEvent) => {
       if (!dragging) {
         return;
@@ -621,6 +644,18 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     };
     viewport.addEventListener('pointerup', endPan);
     viewport.addEventListener('pointercancel', endPan);
+    // Suppress square click after a drag so pan does not also select a cell.
+    viewport.addEventListener(
+      'click',
+      (event) => {
+        if (moved) {
+          event.stopPropagation();
+          event.preventDefault();
+          moved = false;
+        }
+      },
+      true,
+    );
   }
 
   function bindToolbar(): void {
