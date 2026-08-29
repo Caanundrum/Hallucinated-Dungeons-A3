@@ -21,6 +21,11 @@ import {
   type MapSquareCoordinate,
   type WebGlRenderLayer,
 } from '../../shared/map-contract.js';
+import {
+  doorStrokeColor,
+  layoutMapLabels,
+  type MapLabelAnchor,
+} from '../../shared/map-label-layout.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
   doorAuthorityFromStored,
@@ -93,7 +98,7 @@ function isEmberferryScene(map: MapBundleProjection): boolean {
 
 function terrainColor(terrain: string, known = true, emberferry = false): number {
   if (!known) {
-    return 0x050403;
+    return 0x1c2430; // fog — distinct from empty void (TQA-057)
   }
   if (emberferry) {
     switch (terrain) {
@@ -117,7 +122,7 @@ function terrainColor(terrain: string, known = true, emberferry = false): number
 
 function terrainCss(terrain: string, known: boolean, emberferry = false): string {
   if (!known) {
-    return '#050403';
+    return '#1c2430';
   }
   if (emberferry) {
     switch (terrain) {
@@ -165,6 +170,7 @@ function tokenLabelFontSize(
 }
 
 function mapTerrainSummary(map: MapBundleProjection): string {
+  const { columns, rows } = map.coordinateSpace;
   let floor = 0;
   let difficult = 0;
   let blocked = 0;
@@ -180,12 +186,18 @@ function mapTerrainSummary(map: MapBundleProjection): string {
       floor += 1;
     }
   }
-  const parts: string[] = [];
-  if (floor > 0) parts.push(`${floor} floor`);
-  if (difficult > 0) parts.push(`${difficult} difficult`);
-  if (blocked > 0) parts.push(`${blocked} blocked`);
-  if (unexplored > 0) parts.push(`${unexplored} unexplored`);
-  return parts.length === 0 ? 'No terrain data yet.' : parts.join(', ');
+  const scene = map.title.trim().length > 0 ? map.title : 'Scene';
+  const exits = map.edges.filter((edge) => edge.kind === 'door').length;
+  const party =
+    map.tokens.length > 0
+      ? map.tokens
+          .map(
+            (token) =>
+              `${token.label} at ${token.footprint.anchor.column},${token.footprint.anchor.row}`,
+          )
+          .join('; ')
+      : 'no party token';
+  return `${scene} · ${columns}×${rows} · ${party} · ${exits} door${exits === 1 ? '' : 's'} · ${floor} floor, ${difficult} difficult, ${blocked} blocked, ${unexplored} fog`;
 }
 
 function paintSemanticSvg(
@@ -240,8 +252,9 @@ function paintSemanticSvg(
     .map((edge) => {
       const x = edge.column * pixelsPerSquare;
       const y = edge.row * pixelsPerSquare;
-      const color = edge.kind === 'door' ? '#b86b2b' : '#8a7a62';
-      const widthStroke = edge.kind === 'door' ? 4 : 5;
+      const color =
+        edge.kind === 'door' ? doorStrokeColor(edge.doorState) : '#8a7a62';
+      const widthStroke = edge.kind === 'door' ? 5 : 5;
       let x1 = x;
       let y1 = y;
       let x2 = x;
@@ -262,12 +275,53 @@ function paintSemanticSvg(
       const hit = edgeHitBox(edge, pixelsPerSquare);
       const label = edgeAccessibleLabel(edge);
       const selected = selectedEdgeId === edge.edgeId ? ' map-edge-selected' : '';
+      const dash =
+        edge.kind === 'door' && edge.doorState === 'locked'
+          ? ' stroke-dasharray="6 4"'
+          : edge.kind === 'door' && edge.doorState === 'unlocked'
+            ? ' stroke-dasharray="2 3"'
+            : '';
       return `<g role="button" tabindex="0" aria-label="${escapeHtml(label)}" data-edge="${escapeHtml(edge.edgeId)}" class="map-edge-hit-target${selected}" aria-pressed="${selectedEdgeId === edge.edgeId ? 'true' : 'false'}">
         <rect x="${hit.x}" y="${hit.y}" width="${hit.w}" height="${hit.h}" fill="transparent" stroke="none" />
-        <line aria-hidden="true" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}" pointer-events="none" />
+        <line aria-hidden="true" data-edge="${escapeHtml(edge.edgeId)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke}"${dash} pointer-events="none" />
       </g>`;
     })
     .join('');
+
+  const labelAnchors: MapLabelAnchor[] = [
+    ...map.tokens.map((token) => {
+      const box = tokenPixelBox(map, token);
+      return {
+        id: `token:${token.tokenId}`,
+        kind: 'token' as const,
+        x: box.x + box.w / 2,
+        y: box.y + box.h / 2,
+        obstacle: { x: box.x, y: box.y, w: box.w, h: box.h },
+        fullLabel: token.label,
+        referenceKind: null,
+      };
+    }),
+    ...map.notableFeatures.map((feature, index) => {
+      const cx = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const cy = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      return {
+        id: `marker:${feature.column}:${feature.row}:${index}`,
+        kind: 'marker' as const,
+        x: cx,
+        y: cy,
+        obstacle: { x: cx - 7, y: cy - 7, w: 14, h: 14 },
+        fullLabel: feature.label,
+        referenceKind: feature.referenceKind ?? 'prop',
+      };
+    }),
+  ];
+  const labelPlacements = layoutMapLabels(labelAnchors, {
+    mapWidth: width,
+    mapHeight: height,
+    pixelsPerSquare,
+    zoomScale,
+  });
+
   const tokens = map.tokens
     .map((token) => {
       const box = tokenPixelBox(map, token);
@@ -280,29 +334,45 @@ function paintSemanticSvg(
       const transform = animate
         ? `translate(${prior.x - box.x}px, ${prior.y - box.y}px)`
         : 'translate(0px, 0px)';
+      const initial = token.label.trim().charAt(0).toUpperCase() || '?';
       return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token on the map" data-token="${escapeHtml(token.tokenId)}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="${animate ? 'token-moving' : ''}" style="transform:${transform}">
-        <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="8" fill="#f0c043" stroke="#1a1208" stroke-width="2" />
-        <text x="${box.x + 6}" y="${box.y + box.h / 2 + 4}" fill="#1a1208" font-size="${labelSize}" font-family="Georgia, serif" font-weight="700">${escapeHtml(token.label)}</text>
+        <circle cx="${box.x + box.w / 2}" cy="${box.y + box.h / 2}" r="${Math.min(box.w, box.h) / 2}" fill="#c9a227" stroke="#f8e7b0" stroke-width="2.5" />
+        <circle cx="${box.x + box.w / 2}" cy="${box.y + box.h / 2}" r="${Math.min(box.w, box.h) / 2 - 3}" fill="#5a3d12" stroke="none" />
+        <text x="${box.x + box.w / 2}" y="${box.y + box.h / 2 + labelSize * 0.35}" text-anchor="middle" fill="#f8e7b0" font-size="${Math.max(10, labelSize * 0.85)}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700">${escapeHtml(initial)}</text>
       </g>`;
     })
     .join('');
+
   const hazardFeatures = map.notableFeatures.filter(
     (feature) => feature.referenceKind === 'hazard',
   );
   const groundFeatures = map.notableFeatures.filter(
     (feature) => feature.referenceKind !== 'hazard',
   );
-  const paintFeature = (feature: (typeof map.notableFeatures)[number]): string => {
+  const paintFeatureDot = (feature: (typeof map.notableFeatures)[number]): string => {
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
     const fill = feature.referenceKind === 'hazard' ? '#c47a4a' : '#f2d38a';
     return `<g data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(feature.referenceKind ?? 'prop')}">
       <circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
-      <text x="${x + 8}" y="${y + 4}" fill="#f8e7b0" font-size="11" font-family="Georgia, serif" font-style="italic">${escapeHtml(feature.label)}</text>
     </g>`;
   };
-  const hazardLayer = hazardFeatures.map(paintFeature).join('');
-  const groundLayer = groundFeatures.map(paintFeature).join('');
+  const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
+  const groundLayer = groundFeatures.map(paintFeatureDot).join('');
+  const labelLayer = labelPlacements
+    .map((placement) => {
+      const leader =
+        placement.leader === null
+          ? ''
+          : `<line class="map-label-leader" x1="${placement.leader.x1}" y1="${placement.leader.y1}" x2="${placement.leader.x2}" y2="${placement.leader.y2}" stroke="#c4a574" stroke-opacity="0.55" stroke-width="1" />`;
+      return `<g class="map-label-chip" data-label-id="${escapeHtml(placement.id)}" data-label-kind="${placement.kind}" data-testid="map-label-chip">
+        ${leader}
+        <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="4" class="map-label-plate" fill="#16110c" fill-opacity="0.92" stroke="#c4a574" stroke-opacity="0.7" />
+        <text x="${placement.x + 7}" y="${placement.y + placement.height / 2 + placement.fontSize * 0.35}" fill="#f8e7b0" font-size="${placement.fontSize}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="600">${escapeHtml(placement.displayText)}</text>
+        <title>${escapeHtml(placement.fullLabel)}</title>
+      </g>`;
+    })
+    .join('');
 
   let wrap = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
   if (wrap === null) {
@@ -312,48 +382,88 @@ function paintSemanticSvg(
     wrap.className = 'table-stage-semantic';
     host.appendChild(wrap);
   }
+  const sceneTitle = map.title.trim().length > 0 ? map.title : 'Shared scene';
   wrap.innerHTML = `
     <div class="table-stage-toolbar" data-testid="map-stage-toolbar">
-      <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
-      <button type="button" data-map-zoom="center" aria-label="Center map on origin">Center</button>
+      <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
+      <button type="button" data-map-zoom="preset" data-zoom-preset="0.75" aria-label="Zoom 75%">75%</button>
+      <button type="button" data-map-zoom="preset" data-zoom-preset="1" aria-label="Zoom 100%">100%</button>
+      <button type="button" data-map-zoom="preset" data-zoom-preset="1.5" aria-label="Zoom 150%">150%</button>
       <span class="record-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom ${Math.round(zoomScale * 100)}%</span>
     </div>
-    <p class="record-meta" data-testid="map-zoom-help">
-      Fit resets zoom to 100% so the whole map fills this frame. Center scrolls the map origin into view without changing zoom.
-    </p>
+    <details class="map-stage-help" data-testid="map-zoom-help">
+      <summary>Map controls</summary>
+      <p class="record-meta">Fit scales the scene to fill this frame. Drag to pan when zoomed. Center focuses the party token. Labels route around tokens to avoid collisions.</p>
+    </details>
+    <p class="map-scene-title" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
     <p class="map-terrain-summary" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
       ${escapeHtml(mapTerrainSummary(map))}
     </p>
-    <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" style="transform: scale(${zoomScale}); transform-origin: center center;">
-      <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
-        <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
-        <g data-layer="terrain_art">${cells}</g>
-        <g data-layer="grid_reference">${gridLines.join('')}</g>
-        <g data-layer="structural_underlays">${edges}</g>
-        <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
-        <g data-layer="ground_markers" data-testid="table-stage-ground-markers">${groundLayer}</g>
-        <g data-layer="tokens_entities">${tokens}</g>
-        <g data-layer="overhead_environment" data-testid="table-stage-notable-features"></g>
-      </svg>
+    <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" data-pan-enabled="true">
+      <div class="table-stage-svg-scaler" data-testid="table-stage-svg-scaler" style="width:${width * zoomScale}px;height:${height * zoomScale}px;">
+        <svg viewBox="0 0 ${width} ${height}" width="${width * zoomScale}" height="${height * zoomScale}" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
+          <defs>
+            <pattern id="map-fog-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
+              <rect width="8" height="8" fill="#1c2430" />
+              <path d="M0 8 L8 0" stroke="#3a4a5c" stroke-width="1" stroke-opacity="0.7" />
+            </pattern>
+          </defs>
+          <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
+          <g data-layer="terrain_art">${cells}</g>
+          <g data-layer="fog_hatch">${map.cells
+            .filter((cell) => !cell.known)
+            .map(
+              (cell) =>
+                `<rect aria-hidden="true" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" class="map-square-fog-hatch" />`,
+            )
+            .join('')}</g>
+          <g data-layer="grid_reference">${gridLines.join('')}</g>
+          <g data-layer="structural_underlays">${edges}</g>
+          <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
+          <g data-layer="ground_markers" data-testid="table-stage-ground-markers">${groundLayer}</g>
+          <g data-layer="tokens_entities">${tokens}</g>
+          <g data-layer="label_chips" data-testid="table-stage-label-chips">${labelLayer}</g>
+          <g data-layer="overhead_environment" data-testid="table-stage-notable-features"></g>
+        </svg>
+      </div>
     </div>
-    <div class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend">
-      <span><span class="swatch" style="background:#2a241c"></span> Floor</span>
-      <span><span class="swatch" style="background:#3a3328"></span> Difficult</span>
-      <span><span class="swatch" style="background:#1a1410"></span> Blocked</span>
-      <span><span class="swatch" style="background:#050403"></span> Unexplored</span>
-      <span><span class="swatch" style="background:#f0c043"></span> Party token</span>
-      <span><span class="swatch" style="background:#b86b2b"></span> Door</span>
-      <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
-      <span><span class="swatch" style="background:#f2d38a"></span> Reference marker</span>
-      <span><span class="swatch" style="background:#c47a4a"></span> Hazard reference</span>
-    </div>
-    <p class="record-meta" data-testid="map-hazard-layer-note">
-      Alpha map scope: walls and doors are structural. Lighting, hazards, cover, and props may appear as named reference markers only — they do not change movement, combat, or detection.
-      Traps and locks are not map layers; resolve them through play declarations.
-      Fog and structure here are spatial reference — not a full tactical simulation.
-    </p>`;
+    <details class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend">
+      <summary>Map legend</summary>
+      <div class="map-legend-groups">
+        <div class="map-legend-group" data-testid="map-legend-terrain">
+          <span class="map-legend-heading">Terrain</span>
+          <span><span class="swatch" style="background:#2a241c"></span> Floor</span>
+          <span><span class="swatch" style="background:#3a3328"></span> Difficult</span>
+          <span><span class="swatch" style="background:#1a1410"></span> Blocked</span>
+          <span><span class="swatch map-legend-fog" style="background:#1c2430"></span> Fog (unexplored)</span>
+        </div>
+        <div class="map-legend-group" data-testid="map-legend-structure">
+          <span class="map-legend-heading">Structure</span>
+          <span><span class="swatch" style="background:#b86b2b"></span> Door closed</span>
+          <span><span class="swatch" style="background:#3d8f6a"></span> Door unlocked</span>
+          <span><span class="swatch" style="background:#a33b2b"></span> Door locked</span>
+          <span><span class="swatch" style="background:#d4a017"></span> Door open</span>
+          <span><span class="swatch" style="background:#8a7a62"></span> Wall</span>
+        </div>
+        <div class="map-legend-group" data-testid="map-legend-entities">
+          <span class="map-legend-heading">Entities &amp; references</span>
+          <span><span class="swatch" style="background:#c9a227;border-radius:50%"></span> Party token</span>
+          <span><span class="swatch" style="background:#f2d38a;border-radius:50%"></span> Reference (lighting/cover/prop)</span>
+          <span><span class="swatch" style="background:#c47a4a;border-radius:50%"></span> Hazard reference</span>
+        </div>
+      </div>
+    </details>
+    <details class="map-stage-help" data-testid="map-hazard-layer-note">
+      <summary>Alpha map scope</summary>
+      <p class="record-meta">
+        Walls and doors are structural. Lighting, hazards, cover, and props may appear as named reference markers only — they do not change movement, combat, or detection.
+        Traps and locks are not map layers; resolve them through play declarations.
+        Fog marks unexplored squares — not empty void.
+      </p>
+    </details>`;
 
   if (!reduceMotion) {
     requestAnimationFrame(() => {
@@ -387,14 +497,32 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let root: Container | null = null;
   let layers: Record<WebGlRenderLayer, Container> | null = null;
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
+  /** Absolute display scale: map pixel → CSS pixel (Fit sets this to fill the frame). */
   let zoomScale = 1;
+  let hasFittedOnce = false;
+
+  function mapPixelSize(): { width: number; height: number } | null {
+    if (currentMap === null) {
+      return null;
+    }
+    return {
+      width: currentMap.coordinateSpace.columns * currentMap.coordinateSpace.pixelsPerSquare,
+      height: currentMap.coordinateSpace.rows * currentMap.coordinateSpace.pixelsPerSquare,
+    };
+  }
 
   function applyZoom(next: number): void {
-    zoomScale = Math.max(0.6, Math.min(2.4, next));
-    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
-    if (viewport !== null) {
-      viewport.style.transform = `scale(${zoomScale})`;
-      viewport.style.transformOrigin = 'center center';
+    const size = mapPixelSize();
+    zoomScale = Math.max(0.35, Math.min(3.2, next));
+    const scaler = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-scaler"]');
+    const svg = host.querySelector<SVGSVGElement>('[data-testid="table-stage-svg"]');
+    if (size !== null && scaler !== null && svg !== null) {
+      const displayW = size.width * zoomScale;
+      const displayH = size.height * zoomScale;
+      scaler.style.width = `${displayW}px`;
+      scaler.style.height = `${displayH}px`;
+      svg.setAttribute('width', `${displayW}`);
+      svg.setAttribute('height', `${displayH}`);
     }
     const indicator = host.querySelector<HTMLElement>('[data-testid="map-zoom-indicator"]');
     if (indicator !== null) {
@@ -403,11 +531,96 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function fitMapToViewport(): void {
-    // CSS max-width/max-height already fit the SVG at zoomScale 1; zoom buttons
-    // apply transform on top of that baseline. Fit resets to the fitted view.
-    applyZoom(1);
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
-    viewport?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    const size = mapPixelSize();
+    if (viewport === null || size === null) {
+      applyZoom(1);
+      return;
+    }
+    const pad = 12;
+    const vw = Math.max(48, viewport.clientWidth - pad);
+    const vh = Math.max(48, viewport.clientHeight - pad);
+    const fit = Math.min(vw / size.width, vh / size.height);
+    applyZoom(fit);
+    viewport.scrollTo({
+      left: Math.max(0, (size.width * fit - viewport.clientWidth) / 2),
+      top: Math.max(0, (size.height * fit - viewport.clientHeight) / 2),
+      behavior: 'smooth',
+    });
+  }
+
+  function centerOnParty(): void {
+    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    if (viewport === null || currentMap === null) {
+      return;
+    }
+    const token =
+      currentMap.viewerSeatId === null
+        ? currentMap.tokens[0]
+        : (currentMap.tokens.find((entry) => entry.seatId === currentMap!.viewerSeatId) ??
+          currentMap.tokens[0]);
+    if (token === undefined) {
+      viewport.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      return;
+    }
+    const { pixelsPerSquare } = currentMap.coordinateSpace;
+    const cx = (token.footprint.anchor.column + 0.5) * pixelsPerSquare * zoomScale;
+    const cy = (token.footprint.anchor.row + 0.5) * pixelsPerSquare * zoomScale;
+    viewport.scrollTo({
+      left: Math.max(0, cx - viewport.clientWidth / 2),
+      top: Math.max(0, cy - viewport.clientHeight / 2),
+      behavior: 'smooth',
+    });
+  }
+
+  function bindPan(): void {
+    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    if (viewport === null || viewport.dataset.panBound === '1') {
+      return;
+    }
+    viewport.dataset.panBound = '1';
+    let dragging = false;
+    let originX = 0;
+    let originY = 0;
+    let scrollLeft = 0;
+    let scrollTop = 0;
+    viewport.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('button, a, [data-edge], summary') !== null) {
+        return;
+      }
+      dragging = true;
+      originX = event.clientX;
+      originY = event.clientY;
+      scrollLeft = viewport.scrollLeft;
+      scrollTop = viewport.scrollTop;
+      viewport.classList.add('is-panning');
+      viewport.setPointerCapture(event.pointerId);
+    });
+    viewport.addEventListener('pointermove', (event) => {
+      if (!dragging) {
+        return;
+      }
+      viewport.scrollLeft = scrollLeft - (event.clientX - originX);
+      viewport.scrollTop = scrollTop - (event.clientY - originY);
+    });
+    const endPan = (event: PointerEvent) => {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      viewport.classList.remove('is-panning');
+      try {
+        viewport.releasePointerCapture(event.pointerId);
+      } catch {
+        // Capture may already be released.
+      }
+    };
+    viewport.addEventListener('pointerup', endPan);
+    viewport.addEventListener('pointercancel', endPan);
   }
 
   function bindToolbar(): void {
@@ -415,14 +628,27 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       button.onclick = () => {
         const mode = button.getAttribute('data-map-zoom');
         if (mode === 'in') {
-          applyZoom(zoomScale + 0.15);
+          applyZoom(zoomScale * 1.15);
         } else if (mode === 'out') {
-          applyZoom(zoomScale - 0.15);
+          applyZoom(zoomScale / 1.15);
         } else if (mode === 'fit') {
           fitMapToViewport();
         } else if (mode === 'center') {
+          centerOnParty();
+        } else if (mode === 'preset') {
+          const preset = Number(button.getAttribute('data-zoom-preset') ?? '1');
+          const size = mapPixelSize();
           const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
-          viewport?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+          if (size !== null && viewport !== null) {
+            const pad = 12;
+            const fit = Math.min(
+              Math.max(48, viewport.clientWidth - pad) / size.width,
+              Math.max(48, viewport.clientHeight - pad) / size.height,
+            );
+            applyZoom(fit * preset);
+          } else {
+            applyZoom(preset);
+          }
         }
       };
     });
@@ -603,6 +829,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     bindSquareClicks();
     bindEdgeClicks();
     bindToolbar();
+    bindPan();
+    if (!hasFittedOnce) {
+      hasFittedOnce = true;
+      requestAnimationFrame(() => fitMapToViewport());
+    } else {
+      applyZoom(zoomScale);
+    }
   }
 
   try {
