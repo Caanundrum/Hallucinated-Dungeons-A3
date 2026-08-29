@@ -75,7 +75,11 @@ function shortFeatureLabel(label: string): string {
 /** Player-facing fiction from the validated map — never invents unseen locations. */
 export function buildSceneSurveyNarration(map: MapBundleProjection): string {
   const title = map.title.trim() || 'this chamber';
-  const banner = map.sceneBanner.trim();
+  const banner = map.sceneBanner
+    .trim()
+    .replace(/\s*[—-]\s*walls and a wooden doorway are established for this table\.?/gi, '')
+    .replace(/\s+are established for this table\.?/gi, '')
+    .trim();
   const features = map.notableFeatures
     .slice(0, 4)
     .map((feature) => shortFeatureLabel(feature.label))
@@ -92,7 +96,7 @@ export function buildSceneSurveyNarration(map: MapBundleProjection): string {
       ? 'Little else stands out in the lantern light.'
       : `You note ${features.join(', ')}.`;
   const lead = banner.length > 0 ? banner : `You take in ${title}.`;
-  return `${lead} ${doorLine} ${featureLine} Nothing beyond this place reveals itself unless you cross a boundary the fiction has already opened.`;
+  return `${lead}. ${doorLine} ${featureLine}`;
 }
 
 /** Presence fiction from campaign memory — Director may decline or refer to established NPCs. */
