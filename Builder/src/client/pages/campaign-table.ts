@@ -2791,7 +2791,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         if (mode === 'sheet') {
           activeInfoTab = 'character';
           infoRailCollapsed = false;
-          sheetModalOpen = seated && progression !== null;
         } else if (mode === 'chat') {
           commsRailCollapsed = false;
           activeTab = 'party_chat';

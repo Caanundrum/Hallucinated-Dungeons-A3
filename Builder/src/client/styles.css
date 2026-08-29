@@ -736,6 +736,10 @@ a.account-chip-label:focus-visible {
   }
 }
 
+.table-mobile-task-nav {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .table-dashboard.page-wide {
     height: auto;
@@ -843,6 +847,13 @@ a.account-chip-label:focus-visible {
     height: min(42vh, 360px);
     aspect-ratio: auto;
     flex: 0 0 auto;
+    overflow: auto;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-stage-frame {
+    height: auto;
+    min-height: min(70vh, 28rem);
+    max-height: none;
   }
 
   /* Keep chat from covering the map: dock is a document block below play (PQA-113). */
@@ -1973,10 +1984,6 @@ a.record-note:focus-visible {
   gap: var(--space-3);
   margin-top: var(--space-5);
   justify-content: flex-end;
-}
-
-.table-mobile-task-nav {
-  display: none;
 }
 
 .sheet-modal-dialog {

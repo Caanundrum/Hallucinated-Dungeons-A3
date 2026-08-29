@@ -486,7 +486,8 @@ export function parsePlayerDeclaration(
   const stepThroughPassage =
     /\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(trimmed) ||
     /\bthrough\s+(?:the\s+)?(?:door|gate|entry(?:way)?)\b/i.test(trimmed) ||
-    /\binto\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed);
+    /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
+    /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
