@@ -871,6 +871,7 @@ export async function applyDmNpcDirective(
   campaignId: string,
   accountId: string,
   directive: DmNpcDirective,
+  options: { readonly writeChronicle?: boolean } = {},
 ): Promise<{
   readonly memory: CampaignMemoryProjection;
   readonly created: boolean;
@@ -917,14 +918,15 @@ export async function applyDmNpcDirective(
     const speech = `${record.name}: ${directive.firstDialogue.trim()}`;
     const placeNote = directive.placeToken ? ` ${record.name} is present with the party.` : '';
     chronicleBody = `${speech}${placeNote}`;
-    await appendChronicleEntry({
-      firestore,
-      campaignId,
-      kind: 'director_ruling',
-      body: chronicleBody,
-    });
   } else if (existingIndex < 0) {
     chronicleBody = `The Game Director introduces ${record.name} (${record.role}).`;
+  }
+
+  // When the caller will append a single ordered director_ruling after the
+  // player declaration, skip writing here so intro speech is not duplicated
+  // and does not appear before its cause.
+  const writeChronicle = options.writeChronicle !== false;
+  if (writeChronicle && chronicleBody !== null) {
     await appendChronicleEntry({
       firestore,
       campaignId,
@@ -951,6 +953,7 @@ export async function applyDmSceneDirective(
   campaignId: string,
   accountId: string,
   directive: DmSceneDirective,
+  options: { readonly writeChronicle?: boolean } = {},
 ): Promise<{
   readonly ok: true;
   readonly sceneId: string;
@@ -977,12 +980,14 @@ export async function applyDmSceneDirective(
       : '';
   const chronicleBody = `Scene established: ${title} (revision ${directive.revision}). Mode: ${directive.displayMode}. Bounds ${directive.bounds.columns}×${directive.bounds.rows}.${rejected}`;
 
-  await appendChronicleEntry({
-    firestore,
-    campaignId,
-    kind: 'director_ruling',
-    body: chronicleBody,
-  });
+  if (options.writeChronicle !== false) {
+    await appendChronicleEntry({
+      firestore,
+      campaignId,
+      kind: 'director_ruling',
+      body: chronicleBody,
+    });
+  }
 
   return {
     ok: true,

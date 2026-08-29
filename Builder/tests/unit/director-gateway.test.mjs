@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   AiDirectorUnavailableError,
   answerDirectorAddress,
+  buildNpcDialogueReply,
   buildPresenceDeclineNarration,
   buildSceneSurveyNarration,
   interpretNaturalLanguageIntent,
@@ -474,6 +475,32 @@ test('A1: scene survey yields perceptible-scene fiction, not combat or policy co
     interpreted.summary,
     /Looking and listening — the Game Director narrates what is perceptible here/i,
   );
+});
+
+test('buildNpcDialogueReply answers the question instead of echoing description', () => {
+  const npc = {
+    name: 'Nib',
+    role: 'A wary goblin cartographer',
+    motive: 'Disposition: wary.',
+  };
+  const beyond = buildNpcDialogueReply({
+    npc,
+    playerText:
+      'Loophole Lantern asks Nib, “What is past the east door, and why should I keep my boots dry?”',
+    mapTitle: 'Quiet chamber',
+  });
+  assert.match(beyond, /^Nib:/);
+  assert.match(beyond, /wet|boots dry|door/i);
+  assert.doesNotMatch(beyond, /A wary goblin cartographer/i);
+  assert.doesNotMatch(beyond, /answers carefully/i);
+
+  const who = buildNpcDialogueReply({
+    npc,
+    playerText: 'Nib, who are you?',
+    mapTitle: 'Quiet chamber',
+  });
+  assert.match(who, /Name's Nib/i);
+  assert.doesNotMatch(who, /"A wary goblin cartographer"/i);
 });
 
 test('buildSceneSurveyNarration stays inside the validated map', () => {
