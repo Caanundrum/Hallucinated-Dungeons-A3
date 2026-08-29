@@ -92,7 +92,7 @@ test.describe('Phase 2d exploration and initiative turns', () => {
     await page.getByTestId('open-campaign-table').click();
 
     await expect(page.getByTestId('table-turn-title')).toContainText('Exploring freely');
-    await expect(page.getByTestId('table-character-sheet-panel')).toBeVisible();
+    await expect(page.getByTestId('open-table-sheet-modal')).toBeVisible();
     await openAdvancedControls(page);
     await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await expect(page.getByTestId('commit-table-sync')).toHaveAttribute('aria-disabled', 'false');

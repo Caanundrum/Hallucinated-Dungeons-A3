@@ -490,6 +490,10 @@ a.account-chip-label:focus-visible {
   background: color-mix(in srgb, var(--color-surface) 92%, var(--color-ink) 8%);
 }
 
+.dm-play-thread.is-expanded {
+  max-height: min(70vh, 36rem);
+}
+
 .dm-play-thread-chrome {
   display: flex;
   align-items: center;
@@ -502,7 +506,15 @@ a.account-chip-label:focus-visible {
   padding-bottom: var(--space-1);
 }
 
-.dm-thread-jump-latest {
+.dm-play-thread-chrome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.dm-thread-jump-latest,
+.dm-thread-expand {
   flex-shrink: 0;
   font-size: 0.85rem;
   padding: 0.2rem 0.55rem;
@@ -724,6 +736,10 @@ a.account-chip-label:focus-visible {
   }
 }
 
+.table-mobile-task-nav {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .table-dashboard.page-wide {
     height: auto;
@@ -731,6 +747,23 @@ a.account-chip-label:focus-visible {
     max-height: none;
     overflow: visible;
     padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .table-mobile-task-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-1);
+    margin: 0 0 var(--space-2);
+  }
+
+  .table-mobile-task-nav button {
+    font-size: 0.85rem;
+    padding: 0.45rem 0.35rem;
+  }
+
+  .table-mobile-task-nav button[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface));
   }
 
   .table-dashboard-body {
@@ -752,6 +785,30 @@ a.account-chip-label:focus-visible {
     left: auto;
     top: auto;
     max-height: none;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-info-rail,
+  .table-dashboard[data-mobile-task='map'] .table-comms-rail,
+  .table-dashboard[data-mobile-task='map'] .table-action-bar,
+  .table-dashboard[data-mobile-task='map'] .dm-play-thread {
+    display: none;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .table-info-rail,
+  .table-dashboard[data-mobile-task='play'] .table-comms-rail {
+    display: none;
+  }
+
+  .table-dashboard[data-mobile-task='sheet'] .table-play-column,
+  .table-dashboard[data-mobile-task='sheet'] .table-comms-rail {
+    display: none;
+  }
+
+  .table-dashboard[data-mobile-task='chat'] .table-info-rail,
+  .table-dashboard[data-mobile-task='chat'] .table-stage-frame,
+  .table-dashboard[data-mobile-task='chat'] .table-action-bar,
+  .table-dashboard[data-mobile-task='chat'] .dm-play-thread {
+    display: none;
   }
 
   .table-play-column {
@@ -790,6 +847,13 @@ a.account-chip-label:focus-visible {
     height: min(42vh, 360px);
     aspect-ratio: auto;
     flex: 0 0 auto;
+    overflow: auto;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-stage-frame {
+    height: auto;
+    min-height: min(70vh, 28rem);
+    max-height: none;
   }
 
   /* Keep chat from covering the map: dock is a document block below play (PQA-113). */
@@ -1920,6 +1984,33 @@ a.record-note:focus-visible {
   gap: var(--space-3);
   margin-top: var(--space-5);
   justify-content: flex-end;
+}
+
+.sheet-modal-dialog {
+  width: min(52rem, 100%);
+  max-height: min(90vh, 56rem);
+}
+
+.sheet-modal-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.sheet-modal-chrome h2 {
+  margin: 0;
+}
+
+.npc-disposition-badge {
+  display: inline-block;
+  margin-top: 0.15rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 85%, transparent);
+  border-radius: var(--radius-control);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
 }
 
 .sheet-legend {

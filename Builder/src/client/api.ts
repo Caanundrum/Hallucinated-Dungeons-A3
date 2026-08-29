@@ -704,6 +704,7 @@ export async function submitTableCommand(options: {
   readonly xpAmount?: number;
   readonly itemId?: string;
   readonly summary?: string;
+  readonly declaration?: string;
   readonly declaredFoes?: readonly { readonly name: string }[];
   readonly arcaneRecovery?: boolean;
 }): Promise<TableCommandAcceptResponse> {
@@ -735,6 +736,7 @@ export async function submitTableCommand(options: {
       ...(options.xpAmount !== undefined ? { xpAmount: options.xpAmount } : {}),
       ...(options.itemId !== undefined ? { itemId: options.itemId } : {}),
       ...(options.summary !== undefined ? { summary: options.summary } : {}),
+      ...(options.declaration !== undefined ? { declaration: options.declaration } : {}),
       ...(options.declaredFoes !== undefined ? { declaredFoes: options.declaredFoes } : {}),
       ...(options.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
     }),

@@ -272,6 +272,10 @@ export function resolveIntentAuthority(
   }
 
   const only = actionable[0]!;
+  const inventIgnoredNote =
+    ignoredWorldFacts.length > 0
+      ? ' Player-authored places, NPCs, or rules were ignored — only the Game Director establishes those.'
+      : '';
 
   // Perception / presence checks are Director narration, never map or combat commands.
   if (only.kind === 'inspect') {
@@ -281,9 +285,10 @@ export function resolveIntentAuthority(
       actionSequence: [only],
       ignoredWorldFacts,
       clarificationPrompt: null,
-      summary: seekingPresence
-        ? 'You are looking for who is present — the Game Director will answer in fiction.'
-        : 'You look and listen — the Game Director narrates what is perceptible.',
+      summary:
+        (seekingPresence
+          ? 'You are looking for who is present — the Game Director will answer in fiction.'
+          : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
       proposedCommandType: 'table.sync',
     };
   }
@@ -295,7 +300,7 @@ export function resolveIntentAuthority(
     ignoredWorldFacts,
     clarificationPrompt:
       proposedCommandType === null ? 'That action is not supported yet — try a simpler declaration.' : null,
-    summary: summaryForActionStep(only),
+    summary: summaryForActionStep(only) + inventIgnoredNote,
     proposedCommandType,
   };
 }
@@ -438,6 +443,27 @@ export function parsePlayerDeclaration(
     playerAssertedWorldFacts.push({ kind: 'npc', text: trimmed.slice(0, 120) });
   }
 
+  const inventsPlace =
+    /\b(?:flooded\s+crypt|secret\s+(?:room|passage|chamber)|hidden\s+(?:room|passage|chamber))\b/i.test(
+      trimmed,
+    ) ||
+    (/\b(?:appears|materializes|opens\s+up|springs\s+into\s+being)\b/i.test(trimmed) &&
+      /\b(?:room|chamber|crypt|passage|hallway|corridor)\b/i.test(trimmed)) ||
+    (/\b(?:reveal|reveals|revealing)\s+(?:a|an|the)\s+[\w\s-]{0,40}\b(?:room|chamber|crypt|passage|hallway|corridor)\b/i.test(
+      trimmed,
+    ) ||
+      /\bthere\s+is\s+now\s+(?:a|an|the)\s+[\w\s-]{0,40}\b(?:room|chamber|crypt|passage|hallway|corridor)\b/i.test(
+        trimmed,
+      ));
+  if (inventsPlace) {
+    actionSequence.push({
+      kind: 'scene_rule_request',
+      targetRef: null,
+      outcomeHint: 'invented_place',
+    });
+    playerAssertedWorldFacts.push({ kind: 'place', text: trimmed.slice(0, 120) });
+  }
+
   const seekingPresence =
     /\b(?:call(?:s|ed|ing)?\s+(?:out|into)|is\s+anyone(?:\s+there|\s+here)?|anyone\s+(?:there|here)|who(?:'s|\s+is)\s+(?:there|here|present)|look(?:ing)?\s+for\s+(?:anyone|anybody|somebody|someone|a\s+person|people)|wait(?:s|ing)?\s+for\s+(?:whoever|someone|anyone|anybody))\b/i.test(
       trimmed,
@@ -449,14 +475,19 @@ export function parsePlayerDeclaration(
     ) ||
     (/\b(?:look(?:s|ing)?|listen(?:s|ing)?)\b/i.test(trimmed) &&
       /\b(?:chamber|room|scene|surroundings|area)\b/i.test(trimmed) &&
-      !/\b(?:open|unlock|attack|strike|cast)\b/i.test(trimmed));
+      !/\b(?:open|opens|opening|unlock|attack|strike|cast)\b/i.test(trimmed));
 
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
   const wantsOpenDoor =
     !wantsUnlock &&
-    (/(?:open|push\s+open|swing\s+open)\b/i.test(trimmed) &&
+    (/(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(trimmed) &&
       /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed));
+  const stepThroughPassage =
+    /\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(trimmed) ||
+    /\bthrough\s+(?:the\s+)?(?:door|gate|entry(?:way)?)\b/i.test(trimmed) ||
+    /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
+    /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
@@ -500,10 +531,25 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
-  if (/(?:\bmove\b|\bwalk\b|\bgo\b|\bstep\b|\bapproach\b)/i.test(trimmed) && !wantsUnlock) {
+  const wantsMove =
+    /(?:\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b)/i.test(
+      trimmed,
+    ) && !wantsUnlock;
+  if (wantsMove) {
     if (!actionSequence.some((step) => step.kind === 'move')) {
       actionSequence.push({ kind: 'move', targetRef: null, outcomeHint: null });
     }
+  }
+
+  // "Open the unlocked door and step through" is one passage action, not open-then-move clarify.
+  if (
+    actionSequence.some((step) => step.kind === 'open_door') &&
+    actionSequence.some((step) => step.kind === 'move') &&
+    stepThroughPassage
+  ) {
+    const collapsed = actionSequence.filter((step) => step.kind !== 'move');
+    actionSequence.length = 0;
+    actionSequence.push(...collapsed);
   }
 
   return {

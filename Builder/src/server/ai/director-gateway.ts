@@ -1027,25 +1027,35 @@ export async function interpretNaturalLanguageIntent(options: {
   }
   summary = scrubPlayerFacingIntentCopy(summary);
 
+  if (deferDirectorNarrate) {
+    summary = scrubPlayerFacingIntentCopy(
+      await resolveDirectorNarrateOutput({
+        firestore: options.firestore,
+        campaignId: options.campaignId,
+        accountId: options.accountId,
+        authority,
+        structured,
+      }),
+    );
+  }
+  summary = scrubPlayerFacingIntentCopy(summary);
+
   const declaration = rawText.trim().slice(0, 500);
-  if (declaration.length > 0) {
+  // Confirmable drafts must not pollute Story so far until Confirm (TQA-005 / TQA-078).
+  // Clarifications and Director-only narration chronicle immediately.
+  const chronicleImmediately =
+    declaration.length > 0 &&
+    proposedCommandType === 'table.sync' &&
+    edgeId === undefined &&
+    path === undefined &&
+    !/^Ready to /i.test(summary);
+  if (chronicleImmediately) {
     await appendChronicleEntry({
       firestore: options.firestore,
       campaignId: options.campaignId,
       kind: 'play_declaration',
       body: declaration,
     });
-    if (deferDirectorNarrate) {
-      summary = scrubPlayerFacingIntentCopy(
-        await resolveDirectorNarrateOutput({
-          firestore: options.firestore,
-          campaignId: options.campaignId,
-          accountId: options.accountId,
-          authority,
-          structured,
-        }),
-      );
-    }
     await appendChronicleEntry({
       firestore: options.firestore,
       campaignId: options.campaignId,

@@ -2853,6 +2853,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           xpAmount?: unknown;
           itemId?: unknown;
           summary?: unknown;
+          declaration?: unknown;
           declaredFoes?: unknown;
           arcaneRecovery?: unknown;
         };
@@ -2910,6 +2911,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           ...(typeof payload.xpAmount === 'number' ? { xpAmount: payload.xpAmount } : {}),
           ...(typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
           ...(typeof payload.summary === 'string' ? { summary: payload.summary } : {}),
+          ...(typeof payload.declaration === 'string'
+            ? { declaration: payload.declaration }
+            : {}),
           ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
           ...(arcaneRecovery ? { arcaneRecovery: true } : {}),
         });
