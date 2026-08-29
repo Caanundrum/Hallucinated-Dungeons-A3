@@ -631,6 +631,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     };
 
     const onDown = (event: PointerEvent | MouseEvent) => {
+      if (dragging) {
+        return;
+      }
       if ('button' in event && event.button !== 0) {
         return;
       }
@@ -657,7 +660,6 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     };
 
     viewport.addEventListener('pointerdown', onDown);
-    viewport.addEventListener('mousedown', onDown);
     viewport.addEventListener(
       'click',
       (event) => {
@@ -870,6 +872,24 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     root.y = Math.max(12, (viewHeight - height) / 2);
   }
 
+  function ensureViewportHeight(): void {
+    const semantic = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
+    const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+    if (semantic === null || viewport === null) {
+      return;
+    }
+    let used = 0;
+    for (const child of Array.from(semantic.children)) {
+      if (child === viewport) {
+        continue;
+      }
+      used += (child as HTMLElement).offsetHeight;
+    }
+    const available = Math.max(200, semantic.clientHeight - used - 8);
+    viewport.style.minHeight = `${available}px`;
+    viewport.style.height = `${available}px`;
+  }
+
   function paint(map: MapBundleProjection): void {
     currentMap = map;
     priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, selectedEdgeId, priorTokenBoxes, zoomScale);
@@ -878,9 +898,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     bindEdgeClicks();
     bindToolbar();
     bindPan();
+    ensureViewportHeight();
     if (!hasFittedOnce) {
       hasFittedOnce = true;
-      requestAnimationFrame(() => fitMapToViewport());
+      requestAnimationFrame(() => {
+        ensureViewportHeight();
+        fitMapToViewport();
+      });
     } else {
       applyZoom(zoomScale);
     }

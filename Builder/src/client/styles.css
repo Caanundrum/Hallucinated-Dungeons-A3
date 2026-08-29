@@ -2476,8 +2476,9 @@ html.hd-low-effects .map-square-fog,
 }
 
 .table-stage-svg-viewport {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 220px;
+  height: 100%;
   overflow: auto;
   display: block;
   cursor: grab;
@@ -2522,7 +2523,9 @@ html.hd-low-effects .map-square-fog,
   margin-top: var(--space-1);
   font-size: 0.76rem;
   color: var(--text-secondary);
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  max-height: min(30%, 9rem);
+  overflow: auto;
 }
 
 .map-fog-legend > summary {
