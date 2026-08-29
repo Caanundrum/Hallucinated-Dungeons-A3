@@ -134,7 +134,7 @@ test('open/step-through while not adjacent explains approach then re-declare', (
   assert.doesNotMatch(resolved.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
 });
 
-test('adjacent unlocked open/step-through drafts table.open_door with continue-through copy', () => {
+test('adjacent unlocked open/step-through drafts table.open_door with cross-on-confirm copy', () => {
   const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
   map.edges = map.edges.map((edge) =>
     edge.kind === 'door' ? { ...edge, doorState: 'unlocked' } : edge,
@@ -148,8 +148,34 @@ test('adjacent unlocked open/step-through drafts table.open_door with continue-t
   assert.equal(resolved.proposedCommandType, 'table.open_door');
   assert.equal(resolved.edgeId, 'e:9:6:east');
   assert.match(resolved.summary, /Ready to open/i);
-  assert.match(resolved.summary, /continue through|unlocked/i);
+  assert.match(resolved.summary, /step through|cross the doorway|unlocked/i);
   assert.doesNotMatch(resolved.summary, /Sleight of Hand|attempt the lock|moves you closer only/i);
+});
+
+test('adjacent open door step-through drafts table.move onto the passage square', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I step through the open doorway.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.deepEqual(resolved.path, [{ column: 10, row: 6 }]);
+  assert.match(resolved.summary, /Ready to step through the open doorway/i);
+  assert.doesNotMatch(resolved.summary, /already through|confirm when you are ready|declare what you do next/i);
+});
+
+test('open-door enter-beyond while adjacent to open door is a move, not already-through', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I enter the room beyond.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.deepEqual(resolved.path, [{ column: 10, row: 6 }]);
 });
 
 test('resolveBlankTableDoorBuild only applies to edgeless blank tables', () => {

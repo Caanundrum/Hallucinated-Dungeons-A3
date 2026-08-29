@@ -574,17 +574,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
-  async function resumeCompoundDeclarationAfterBuild(declaration: string): Promise<void> {
-    if (candidate === null || !/\b(walk|go|step|approach|enter|room beyond)\b/i.test(declaration)) {
+  async function resumeCompoundDeclarationAfterBuild(
+    declaration: string,
+    options: { readonly narrateSteps?: boolean } = {},
+  ): Promise<void> {
+    if (
+      candidate === null ||
+      !/\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declaration)
+    ) {
       return;
     }
+    const narrateSteps = options.narrateSteps !== false;
     const maxSteps = 12;
     for (let step = 0; step < maxSteps; step += 1) {
       if (candidate === null || tableState === null) {
         break;
       }
       const moveTargetForInterpret =
-        moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+        moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond|through)\b/i.test(declaration)
           ? moveTarget
           : undefined;
       let interpreted: Awaited<ReturnType<typeof interpretNaturalLanguage>>;
@@ -630,7 +637,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           accepted.event.summary?.trim() ||
           'Action committed on the table.';
         appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
-        if (shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
+        if (narrateSteps && shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
           await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
         }
       } catch {
@@ -749,19 +756,35 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       lastNarration = narration.body;
       const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
-      appendDmThread(
-        'dm',
-        narration.directorIdentityLabel || directorIdentityLabel,
-        narration.body,
-        'narration',
+      // Narration is persisted to Chronicle server-side. Re-sync so Story so far does not
+      // keep both the optimistic append and the chronicle copy of the same beat.
+      try {
+        chronicle = await fetchChronicle(campaignId);
+        dmThreadOptimistic = [];
+        lastChronicleSyncCount = chronicle.entries.length;
+        syncDmThreadFromChronicle();
+      } catch {
+        // Fall through to optimistic append when chronicle refresh fails.
+      }
+      const alreadyOnThread = dmThread.some(
+        (message) => message.speaker === 'dm' && message.body === narration.body,
       );
-      if (tags.length > 0) {
+      if (!alreadyOnThread) {
         appendDmThread(
-          'system',
-          'Table',
-          `Epic framing (outcome unchanged): ${tags.map((tag) => tag.replace(/_/g, ' ')).join(', ')}.`,
-          'system',
+          'dm',
+          narration.directorIdentityLabel || directorIdentityLabel,
+          narration.body,
+          'narration',
         );
+      }
+      if (tags.length > 0) {
+        const framingBody = `Epic framing (outcome unchanged): ${tags.map((tag) => tag.replace(/_/g, ' ')).join(', ')}.`;
+        const framingAlready = dmThread.some(
+          (message) => message.speaker === 'system' && message.body === framingBody,
+        );
+        if (!framingAlready) {
+          appendDmThread('system', 'Table', framingBody, 'system');
+        }
       }
       if (textToSpeechEnabled && 'speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(narration.body);
@@ -4078,7 +4101,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           busy = true;
           error = null;
+          const declarationText = lastSubmittedDeclaration.trim();
           const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
+          const resumeAfterOpenCross =
+            draft.proposedCommandType === 'table.open_door' &&
+            declarationText.length > 0 &&
+            /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+          const resumeCompound = resumeAfterSceneBuild || resumeAfterOpenCross;
           render();
           try {
             const accepted = await submitTableCommand({
@@ -4093,32 +4122,44 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(draft.path !== undefined ? { path: draft.path } : {}),
               ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
               ...(draft.summary.trim().length > 0 ? { summary: draft.summary.trim() } : {}),
-              ...(lastSubmittedDeclaration.trim().length > 0
-                ? { declaration: lastSubmittedDeclaration.trim() }
-                : {}),
+              ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
             const summary =
               accepted.event.summary?.trim() ||
               'Action committed on the table.';
-            if (lastSubmittedDeclaration.trim().length > 0) {
-              appendDmThread('player', 'You', lastSubmittedDeclaration.trim(), 'declaration');
+            if (declarationText.length > 0) {
+              appendDmThread('player', 'You', declarationText, 'declaration');
             }
             appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
             shell.announce('Action confirmed on the table.');
             setIntentDraft(null);
             doorRecoveryVisible = false;
-            if (
+            if (resumeCompound && declarationText.length > 0) {
+              // Open/build first, then chain the through-step without double-narrating.
+              await resumeCompoundDeclarationAfterBuild(declarationText, {
+                narrateSteps: false,
+              });
+              const passageSummary =
+                resumeAfterOpenCross
+                  ? 'Opened the door and stepped through the doorway.'
+                  : summary;
+              if (
+                shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
+                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(summary)
+              ) {
+                await narrateIntoDmThread(passageSummary, accepted.event.rolls ?? []);
+              } else {
+                patchDmPlayThread();
+              }
+            } else if (
               shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
               /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(summary)
             ) {
-              void narrateIntoDmThread(summary, accepted.event.rolls ?? []);
+              await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();
-            }
-            if (resumeAfterSceneBuild && lastSubmittedDeclaration.trim().length > 0) {
-              await resumeCompoundDeclarationAfterBuild(lastSubmittedDeclaration.trim());
             }
           } catch (failure) {
             const raw =

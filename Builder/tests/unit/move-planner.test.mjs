@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { nextStepTowardOpenDoor } from '../../dist/server/table/move-planner.js';
+import { isOnOpenDoorPassage, nextStepTowardOpenDoor } from '../../dist/server/table/move-planner.js';
 
 function blankMapWithOpenDoor(options) {
   const cells = [];
@@ -58,4 +58,15 @@ test('nextStepTowardOpenDoor steps east toward an open doorway', () => {
   assert.deepEqual(nextStepTowardOpenDoor({ column: 8, row: 6 }, map), { column: 9, row: 6 });
   assert.deepEqual(nextStepTowardOpenDoor({ column: 9, row: 6 }, map), { column: 10, row: 6 });
   assert.equal(nextStepTowardOpenDoor({ column: 10, row: 6 }, map), null);
+});
+
+test('isOnOpenDoorPassage is true only on the far side of an open door', () => {
+  const map = blankMapWithOpenDoor({
+    tokenColumn: 9,
+    tokenRow: 6,
+    doorColumn: 9,
+    doorRow: 6,
+  });
+  assert.equal(isOnOpenDoorPassage({ column: 9, row: 6 }, map), false);
+  assert.equal(isOnOpenDoorPassage({ column: 10, row: 6 }, map), true);
 });
