@@ -282,8 +282,8 @@ export function resolveIntentAuthority(
       ignoredWorldFacts,
       clarificationPrompt: null,
       summary: seekingPresence
-        ? 'You are looking for who is present. The Game Director will say whether anyone answers — players cannot invent NPCs.'
-        : 'Looking and listening — the Game Director narrates what is perceptible here. The map stays put unless fiction requires a change.',
+        ? 'You are looking for who is present — the Game Director will answer in fiction.'
+        : 'You look and listen — the Game Director narrates what is perceptible.',
       proposedCommandType: 'table.sync',
     };
   }
