@@ -197,6 +197,32 @@ test('parsePlayerDeclaration: scene survey is perception, not combat', () => {
   assert.doesNotMatch(resolved.summary, /attack|encounter|combat/i);
 });
 
+test('parsePlayerDeclaration: conjugations open/step and compound step-through', () => {
+  const opens = parsePlayerDeclaration('Loophole Lantern opens the wooden door.');
+  assert.ok(opens.actionSequence.some((step) => step.kind === 'open_door'));
+  const stepped = parsePlayerDeclaration(
+    'I open the unlocked door and step through.',
+  );
+  assert.ok(stepped.actionSequence.some((step) => step.kind === 'open_door'));
+  assert.ok(stepped.actionSequence.every((step) => step.kind !== 'move'));
+  const resolved = resolveIntentAuthority(stepped);
+  assert.equal(resolved.disposition, 'propose_command');
+  assert.equal(resolved.proposedCommandType, 'table.open_door');
+});
+
+test('parsePlayerDeclaration: invent scenery with move preserves the move', () => {
+  const parsed = parsePlayerDeclaration(
+    'I walk toward the flooded crypt that materializes ahead.',
+  );
+  assert.ok(parsed.playerAssertedWorldFacts.some((fact) => fact.kind === 'place'));
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'move'));
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'propose_command');
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.ok(resolved.ignoredWorldFacts.length >= 1);
+  assert.match(resolved.summary, /ignored|Game Director/i);
+});
+
 test('parsePlayerDeclaration: unlocked-door prose is not lock-picking', () => {
   const parsed = parsePlayerDeclaration('Beyond the unlocked door I see mist.');
   assert.equal(textRequestsLockPicking(parsed.rawText), false);

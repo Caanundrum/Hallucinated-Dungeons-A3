@@ -13,7 +13,7 @@ import { recordDefaultSessionZero, enterAccountFromShell, openTableAdvancedContr
 
 const TABLE_PRIMARY_CONTROLS = [
   'submit-player-action',
-  'table-character-sheet-panel',
+  'open-table-sheet-modal',
   'refresh-table-projection',
   'commit-table-sync',
   'commit-table-move',

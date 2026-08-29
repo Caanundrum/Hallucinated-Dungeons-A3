@@ -193,6 +193,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let lastSubmittedDeclaration = '';
   /** When true, the play timeline sticks to the newest beat (A3). */
   let dmThreadFollowLatest = true;
+  /** Taller play timeline for reading long narration (TQA-074). */
+  let dmThreadExpanded = false;
+  /** Table character sheet overlay (TQA-061–066). */
+  let sheetModalOpen = false;
+  /** Mobile task surface: map / play / sheet / chat (TQA-098). */
+  type MobileTaskMode = 'map' | 'play' | 'sheet' | 'chat';
+  let mobileTaskMode: MobileTaskMode = 'play';
+  /** Speak-as address helper from People NPCs (TQA-019). */
+  let speakAsNpcName = '';
   let activeTab: DockTab = 'party_chat';
   let memory: CampaignMemoryProjection | null = null;
   let tableNotes = '';
@@ -253,6 +262,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let presenceTimer: ReturnType<typeof setInterval> | null = null;
   let pollInFlight = false;
+  let sheetEscapeListener: ((event: KeyboardEvent) => void) | null = null;
   const presenceTabId = crypto.randomUUID();
   const mountToken = beginPageMount(container);
 
@@ -1006,17 +1016,36 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const sheet = progression.sheet;
     const label =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
-    const compact = `
+    return `
       <div class="table-character-compact" data-testid="table-character-compact">
         <p><strong>${escapeHtml(label)}</strong> · Level ${sheet.level}</p>
         <p class="record-meta">HP ${sheet.hitPoints.value} · AC ${sheet.armorClass.value} · Speed ${sheet.speed.value} ft</p>
-        <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet</a>
+        <button type="button" class="table-secondary-action" data-testid="open-table-sheet-modal">
+          Open sheet at table
+        </button>
+        <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
       </div>`;
-    return `${compact}
-      <details class="table-character-sheet-panel" data-testid="table-character-sheet-panel">
-        <summary>Full character sheet</summary>
-        <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, { compact: true })}</div>
-      </details>`;
+  }
+
+  function characterSheetModalHtml(): string {
+    if (!sheetModalOpen || !seated || progression === null) {
+      return '';
+    }
+    const sheet = progression.sheet;
+    const label =
+      mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    return `
+      <div class="modal-backdrop sheet-modal-backdrop" data-testid="table-sheet-modal" role="presentation">
+        <div class="modal-dialog sheet-modal-dialog" role="dialog" aria-modal="true"
+          aria-labelledby="table-sheet-modal-title" tabindex="-1">
+          <div class="sheet-modal-chrome">
+            <h2 id="table-sheet-modal-title">${escapeHtml(label)}</h2>
+            <button type="button" class="table-secondary-action" data-testid="close-table-sheet-modal">Close</button>
+          </div>
+          <p class="record-meta">Escape or backdrop closes this overlay and keeps you at the table.</p>
+          <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, { compact: true })}</div>
+        </div>
+      </div>`;
   }
 
   function loadTableNotesPreference(): string {
@@ -1181,7 +1210,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                  <li data-testid="table-npc-item" data-npc-id="${escapeHtml(npc.npcId)}">
                    <span class="record-note"><strong>${escapeHtml(npc.name)}</strong></span>
                    <span class="record-meta" data-testid="table-npc-role">${escapeHtml(npc.role)}</span>
-                   <span class="record-meta" data-testid="table-npc-disposition">${escapeHtml(npc.motive)}</span>
+                   <span class="npc-disposition-badge" data-testid="table-npc-disposition">${escapeHtml(npc.motive)}</span>
                  </li>`,
                  )
                  .join('')}
@@ -1660,11 +1689,39 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${
             !seated
               ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to use Speak as Character.</p>'
-              : ''
+              : chatMode === 'speak_as_character'
+                ? (() => {
+                    const known = memory?.npcs.filter(
+                      (npc) => npc.audience === 'public' || npc.audience === 'private',
+                    ) ?? [];
+                    if (known.length === 0) {
+                      return '<p class="record-meta" data-testid="speak-as-npc-empty">No established NPCs yet — the Game Director introduces people first.</p>';
+                    }
+                    return `
+                      <label class="field" data-testid="speak-as-npc-picker">
+                        <span>Address NPC</span>
+                        <select data-testid="speak-as-npc-select">
+                          <option value="">Choose who you speak to…</option>
+                          ${known
+                            .map(
+                              (npc) => `
+                            <option value="${escapeHtml(npc.name)}" ${
+                              speakAsNpcName === npc.name ? 'selected' : ''
+                            }>${escapeHtml(npc.name)}</option>`,
+                            )
+                            .join('')}
+                        </select>
+                      </label>`;
+                  })()
+                : ''
           }
           <label class="field">
             <span>Message</span>
-            <textarea data-testid="party-chat-input" rows="3" placeholder="Talk with your party…">${escapeHtml(draft)}</textarea>
+            <textarea data-testid="party-chat-input" rows="3" placeholder="${
+              chatMode === 'speak_as_character'
+                ? 'Speak in character to an established NPC…'
+                : 'Talk with your party…'
+            }">${escapeHtml(draft)}</textarea>
           </label>
           <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null || draft.trim().length === 0}">
             ${busy ? 'Sending…' : 'Send'}
@@ -1946,12 +2003,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               : ''
           }
         </section>
-        <div class="dm-play-thread" data-testid="dm-play-thread">
+        <div class="dm-play-thread${dmThreadExpanded ? ' is-expanded' : ''}" data-testid="dm-play-thread">
           <div class="dm-play-thread-chrome">
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
-            <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
-              Jump to latest
-            </button>
+            <div class="dm-play-thread-chrome-actions">
+              <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
+                aria-pressed="${dmThreadExpanded}">
+                ${dmThreadExpanded ? 'Compact timeline' : 'Expand timeline'}
+              </button>
+              <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
+                Jump to latest
+              </button>
+            </div>
           </div>
           <p class="record-meta" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
@@ -1965,6 +2028,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     ? ' intent-stale'
                     : ''
                 }" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
+                  ${
+                    lastSubmittedDeclaration.trim().length > 0
+                      ? `<p class="record-meta" data-testid="intent-intercept-declaration">You declared: ${escapeHtml(lastSubmittedDeclaration.trim())}</p>`
+                      : ''
+                  }
                   <p data-testid="intent-intercept-summary">${escapeHtml(
                     playerFacingMechanicsCopy(intentDraft.summary),
                   )}</p>
@@ -2014,7 +2082,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="2"
-                    placeholder="What do you do? ${escapeHtml(directorIdentityLabel)} narrates from here.">${escapeHtml(playerActionDraft)}</textarea>
+                    placeholder="Examples: open the door · step through · follow the passage · return to the courtyard">${escapeHtml(playerActionDraft)}</textarea>
                 </label>
                 <div class="table-player-actions" data-testid="table-player-actions">
                   <button type="button" class="table-primary-action" data-testid="submit-player-action"
@@ -2181,7 +2249,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>
       <label class="field">
         <span>Describe your action</span>
-        <textarea data-testid="nl-intent-input" rows="2" placeholder="Example: I open the door carefully and listen." ${sessionIsSuspended() ? 'disabled' : ''}>${escapeHtml(nlIntentText)}</textarea>
+        <textarea data-testid="nl-intent-input" rows="2" placeholder="Examples: open the door · step through · follow the passage · return to the courtyard" ${sessionIsSuspended() ? 'disabled' : ''}>${escapeHtml(nlIntentText)}</textarea>
       </label>
       <button type="button" data-testid="interpret-nl-intent"
         aria-disabled="${interpretDisabled}"
@@ -2218,11 +2286,38 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function ensurePageShell(): void {
     if (container.querySelector('[data-testid="table-page-shell"]')) {
+      const shellEl = container.querySelector<HTMLElement>('[data-testid="table-page-shell"]');
+      if (shellEl !== null && shellEl.querySelector('[data-testid="table-sheet-modal-slot"]') === null) {
+        const modalSlot = document.createElement('div');
+        modalSlot.dataset.testid = 'table-sheet-modal-slot';
+        shellEl.appendChild(modalSlot);
+      }
+      if (shellEl !== null && shellEl.querySelector('[data-testid="table-mobile-task-nav"]') === null) {
+        const nav = document.createElement('nav');
+        nav.className = 'table-mobile-task-nav';
+        nav.dataset.testid = 'table-mobile-task-nav';
+        nav.setAttribute('aria-label', 'Table task');
+        nav.innerHTML = `
+          <button type="button" data-mobile-task="map" data-testid="mobile-task-map" aria-pressed="false">Map</button>
+          <button type="button" data-mobile-task="play" data-testid="mobile-task-play" aria-pressed="true">Play</button>
+          <button type="button" data-mobile-task="sheet" data-testid="mobile-task-sheet" aria-pressed="false">Sheet</button>
+          <button type="button" data-mobile-task="chat" data-testid="mobile-task-chat" aria-pressed="false">Chat</button>`;
+        const body = shellEl.querySelector('.table-dashboard-body');
+        if (body !== null) {
+          shellEl.insertBefore(nav, body);
+        }
+      }
       return;
     }
     container.innerHTML = `
-      <div class="page page-wide table-dashboard" data-testid="table-page-shell">
+      <div class="page page-wide table-dashboard" data-testid="table-page-shell" data-mobile-task="${mobileTaskMode}">
         <header class="table-dashboard-header" data-testid="table-heading-slot"></header>
+        <nav class="table-mobile-task-nav" data-testid="table-mobile-task-nav" aria-label="Table task">
+          <button type="button" data-mobile-task="map" data-testid="mobile-task-map" aria-pressed="false">Map</button>
+          <button type="button" data-mobile-task="play" data-testid="mobile-task-play" aria-pressed="true">Play</button>
+          <button type="button" data-mobile-task="sheet" data-testid="mobile-task-sheet" aria-pressed="false">Sheet</button>
+          <button type="button" data-mobile-task="chat" data-testid="mobile-task-chat" aria-pressed="false">Chat</button>
+        </nav>
         <div class="table-dashboard-body">
           <aside class="table-info-rail panel" aria-label="Reference" data-testid="table-info-rail">
             <div data-testid="table-info-slot"></div>
@@ -2242,6 +2337,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </aside>
         </div>
         <footer class="table-dashboard-footer" data-testid="table-footer-slot"></footer>
+        <div data-testid="table-sheet-modal-slot"></div>
       </div>`;
   }
 
@@ -2639,6 +2735,79 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('click', () => {
         scrollDmPlayThreadToLatest('smooth');
         shell.announce('Jumped to the latest table beat.');
+      });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="dm-thread-expand"]')
+      ?.addEventListener('click', () => {
+        dmThreadExpanded = !dmThreadExpanded;
+        render();
+        shell.announce(dmThreadExpanded ? 'Timeline expanded.' : 'Timeline compacted.');
+      });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="open-table-sheet-modal"]')
+      ?.addEventListener('click', () => {
+        sheetModalOpen = true;
+        render();
+        root.querySelector<HTMLElement>('[data-testid="close-table-sheet-modal"]')?.focus();
+      });
+    const closeSheetModal = () => {
+      if (!sheetModalOpen) {
+        return;
+      }
+      sheetModalOpen = false;
+      if (sheetEscapeListener !== null) {
+        document.removeEventListener('keydown', sheetEscapeListener, true);
+        sheetEscapeListener = null;
+      }
+      render();
+      root.querySelector<HTMLButtonElement>('[data-testid="open-table-sheet-modal"]')?.focus();
+    };
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="close-table-sheet-modal"]')
+      ?.addEventListener('click', () => closeSheetModal());
+    root
+      .querySelector<HTMLElement>('[data-testid="table-sheet-modal"]')
+      ?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+          closeSheetModal();
+        }
+      });
+    if (sheetModalOpen && sheetEscapeListener === null) {
+      sheetEscapeListener = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeSheetModal();
+        }
+      };
+      document.addEventListener('keydown', sheetEscapeListener, true);
+    }
+    root.querySelectorAll<HTMLButtonElement>('[data-mobile-task]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.mobileTask as MobileTaskMode | undefined;
+        if (mode === undefined) {
+          return;
+        }
+        mobileTaskMode = mode;
+        if (mode === 'sheet') {
+          activeInfoTab = 'character';
+          infoRailCollapsed = false;
+          sheetModalOpen = seated && progression !== null;
+        } else if (mode === 'chat') {
+          commsRailCollapsed = false;
+          activeTab = 'party_chat';
+        }
+        render();
+      });
+    });
+    root
+      .querySelector<HTMLSelectElement>('[data-testid="speak-as-npc-select"]')
+      ?.addEventListener('change', (event) => {
+        const select = event.currentTarget as HTMLSelectElement;
+        speakAsNpcName = select.value;
+        if (speakAsNpcName.length > 0 && !draft.trim().startsWith(`${speakAsNpcName},`)) {
+          draft = `${speakAsNpcName}, ${draft}`.trim();
+        }
+        render();
       });
     root.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -3472,10 +3641,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: declaration,
               ...(moveTargetForInterpret !== undefined ? { moveTarget: moveTargetForInterpret } : {}),
             });
-            appendDmThread('player', 'You', declaration, 'declaration');
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
+              appendDmThread('player', 'You', declaration, 'declaration');
               setIntentDraft(null);
               doorRecoveryVisible =
                 (mapBundle?.edges.length ?? 0) === 0 &&
@@ -3873,12 +4042,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(draft.path !== undefined ? { path: draft.path } : {}),
               ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
               ...(draft.summary.trim().length > 0 ? { summary: draft.summary.trim() } : {}),
+              ...(lastSubmittedDeclaration.trim().length > 0
+                ? { declaration: lastSubmittedDeclaration.trim() }
+                : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
             const summary =
               accepted.event.summary?.trim() ||
               'Action committed on the table.';
+            if (lastSubmittedDeclaration.trim().length > 0) {
+              appendDmThread('player', 'You', lastSubmittedDeclaration.trim(), 'declaration');
+            }
             appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
             shell.announce('Action confirmed on the table.');
             setIntentDraft(null);
@@ -4006,16 +4181,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const actionSlot = container.querySelector<HTMLElement>('[data-testid="table-action-slot"]');
     const commsSlot = container.querySelector<HTMLElement>('[data-testid="table-comms-slot"]');
     const footer = container.querySelector<HTMLElement>('[data-testid="table-footer-slot"]');
+    const sheetModalSlot = container.querySelector<HTMLElement>(
+      '[data-testid="table-sheet-modal-slot"]',
+    );
     if (
       pageShell === null ||
       heading === null ||
       infoSlot === null ||
       actionSlot === null ||
       commsSlot === null ||
-      footer === null
+      footer === null ||
+      sheetModalSlot === null
     ) {
       return;
     }
+
+    pageShell.dataset.mobileTask = mobileTaskMode;
+    pageShell.querySelectorAll<HTMLButtonElement>('[data-mobile-task]').forEach((button) => {
+      const mode = button.dataset.mobileTask;
+      button.setAttribute('aria-pressed', String(mode === mobileTaskMode));
+    });
 
     const focused = captureFocusedField(pageShell);
     const scrollY = window.scrollY;
@@ -4059,6 +4244,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     infoSlot.innerHTML = infoRailBody();
     actionSlot.innerHTML = playerActionBar();
     commsSlot.innerHTML = commsDockBody();
+    sheetModalSlot.innerHTML = characterSheetModalHtml();
 
     const infoRail = container.querySelector<HTMLElement>('[data-testid="table-info-rail"]');
     const commsRail = container.querySelector<HTMLElement>('[data-testid="communication-dock"]');

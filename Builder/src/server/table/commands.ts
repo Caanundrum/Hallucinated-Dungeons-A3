@@ -464,6 +464,8 @@ export async function acceptTableCommand(options: {
   readonly edgeId?: string;
   /** Player-facing beat summary for Chronicle (table commands only). */
   readonly summary?: string;
+  /** Confirmed player declaration — chronicled only after Confirm (TQA-005). */
+  readonly declaration?: string;
 } & RulesCommandFields): Promise<TableCommandAcceptResponse> {
   const {
     firestore,
@@ -488,11 +490,16 @@ export async function acceptTableCommand(options: {
     declaredFoes,
     arcaneRecovery,
     summary: playBeatSummary,
+    declaration: playDeclaration,
   } = options;
 
   const trimmedPlaySummary =
     typeof playBeatSummary === 'string' && playBeatSummary.trim().length > 0
       ? playBeatSummary.trim().slice(0, 500)
+      : undefined;
+  const trimmedDeclaration =
+    typeof playDeclaration === 'string' && playDeclaration.trim().length > 0
+      ? playDeclaration.trim().slice(0, 500)
       : undefined;
 
   try {
@@ -988,6 +995,14 @@ export async function acceptTableCommand(options: {
     : [...recentEvents, eventProjection];
 
   if (!committed.duplicate) {
+    if (trimmedDeclaration !== undefined) {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_declaration',
+        body: trimmedDeclaration,
+      });
+    }
     if (eventType === 'table.scene_built') {
       const title = buildSceneTitle?.trim();
       await appendChronicleEntry({

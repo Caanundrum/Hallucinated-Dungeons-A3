@@ -137,7 +137,8 @@ test.describe('PQA layout and playability batch 3', () => {
 
     await page.getByTestId('table-info-tab-character').click();
     await expect(page.getByTestId('table-character-compact')).toBeVisible();
-    await expect(page.getByTestId('table-character-sheet-panel')).not.toHaveAttribute('open', '');
+    await expect(page.getByTestId('open-table-sheet-modal')).toBeVisible();
+    await expect(page.getByTestId('table-sheet-modal')).toHaveCount(0);
     const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
     expect(pageHeight).toBeLessThan(5000);
   });
