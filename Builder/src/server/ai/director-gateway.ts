@@ -53,7 +53,11 @@ import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
 import { resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
 import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
-import { loadCampaignMemory } from '../campaigns/campaign-memory.js';
+import {
+  applyDmNpcDirective,
+  applyDmSceneDirective,
+  loadCampaignMemory,
+} from '../campaigns/campaign-memory.js';
 import {
   parsePlayerDeclaration,
   resolveIntentAuthority,
@@ -61,6 +65,183 @@ import {
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
+import type { MapBundleProjection } from '../../shared/map-contract.js';
+import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
+
+function shortFeatureLabel(label: string): string {
+  return label.replace(/\s+[—-]\s+.*$/u, '').trim();
+}
+
+/** Player-facing fiction from the validated map — never invents unseen locations. */
+export function buildSceneSurveyNarration(map: MapBundleProjection): string {
+  const title = map.title.trim() || 'this chamber';
+  const banner = map.sceneBanner
+    .trim()
+    .replace(/\s*[—-]\s*walls and a wooden doorway are established for this table\.?/gi, '')
+    .replace(/\s+are established for this table\.?/gi, '')
+    .trim();
+  const features = map.notableFeatures
+    .slice(0, 4)
+    .map((feature) => shortFeatureLabel(feature.label))
+    .filter((label) => label.length > 0);
+  const doorCount = map.edges.filter((edge) => edge.kind === 'door').length;
+  const doorLine =
+    doorCount === 0
+      ? 'No doorway is marked on the walls you can see.'
+      : doorCount === 1
+        ? 'A single wooden doorway breaks the wall ahead.'
+        : `${doorCount} doorways break the walls you can see.`;
+  const featureLine =
+    features.length === 0
+      ? 'Little else stands out in the lantern light.'
+      : `You note ${features.join(', ')}.`;
+  const lead = banner.length > 0 ? banner : `You take in ${title}.`;
+  return `${lead}. ${doorLine} ${featureLine}`;
+}
+
+/** Presence fiction from campaign memory — Director may decline or refer to established NPCs. */
+export function buildPresenceDeclineNarration(map: MapBundleProjection | null): string {
+  const where = map?.title.trim() || 'the chamber';
+  return `Nobody answers from ${where}. You hear only your own movement and the quiet of the room — no other person is present here yet.`;
+}
+
+export function buildPresenceWithNpcsNarration(
+  memory: CampaignMemoryProjection,
+): string {
+  const names = memory.npcs
+    .filter((npc) => npc.audience === 'public' || npc.audience === 'private')
+    .map((npc) => npc.name);
+  if (names.length === 0) {
+    return 'Nobody else is established as present here.';
+  }
+  if (names.length === 1) {
+    return `${names[0]} is here with you. Address them by name if you want to speak.`;
+  }
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} are here. Address someone by name if you want to speak.`;
+}
+
+async function resolveDirectorNarrateOutput(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+  readonly authority: ReturnType<typeof resolveIntentAuthority>;
+  readonly structured: ReturnType<typeof parsePlayerDeclaration>;
+}): Promise<string> {
+  const inspectHint = options.authority.actionSequence[0]?.kind === 'inspect'
+    ? options.authority.actionSequence[0]?.outcomeHint
+    : null;
+  const isDialogue =
+    options.authority.actionSequence[0]?.kind === 'dialogue' &&
+    options.structured.addressee !== null;
+
+  let map: MapBundleProjection | null = null;
+  let memory: CampaignMemoryProjection | null = null;
+  try {
+    map = await fetchCampaignMap({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      campaignId: options.campaignId,
+    });
+  } catch {
+    map = null;
+  }
+  try {
+    memory = await loadCampaignMemory(
+      options.firestore,
+      options.campaignId,
+      options.accountId,
+    );
+  } catch {
+    memory = null;
+  }
+
+  if (inspectHint === 'scene_perception' || inspectHint === 'unlocked door') {
+    if (map !== null) {
+      try {
+        await applyDmSceneDirective(options.firestore, options.campaignId, options.accountId, {
+          schemaVersion: 'play-authority-scene-v1',
+          sceneId: map.mapBundleId || 'current-scene',
+          revision: Math.max(1, map.mapVersion),
+          title: map.title.trim() || 'Current scene',
+          displayMode: 'exploration',
+          bounds: {
+            columns: Math.max(1, map.coordinateSpace.columns),
+            rows: Math.max(1, map.coordinateSpace.rows),
+          },
+          causeActionId: null,
+          continuity: { previousSceneId: null, boundaryCrossed: false },
+          structure: { edges: [] },
+          markers: [],
+          entities: [],
+          visibility: 'public',
+          rejectedMechanics: [],
+        });
+      } catch {
+        // Scene chronicle is best-effort; narration still returns.
+      }
+      return buildSceneSurveyNarration(map);
+    }
+    return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
+  }
+
+  if (inspectHint === 'who_is_present') {
+    const established =
+      memory?.npcs.filter((npc) => npc.audience === 'public' || npc.audience === 'private') ?? [];
+    if (established.length > 0 && memory !== null) {
+      return buildPresenceWithNpcsNarration(memory);
+    }
+    const quietChamber =
+      map !== null &&
+      (/quiet chamber/i.test(map.title) || /quiet chamber/i.test(map.sceneBanner));
+    if (quietChamber) {
+      try {
+        const applied = await applyDmNpcDirective(
+          options.firestore,
+          options.campaignId,
+          options.accountId,
+          {
+            schemaVersion: 'play-authority-npc-v1',
+            npcId: 'npc-nib',
+            name: 'Nib',
+            publicDescription: 'A wary goblin cartographer',
+            disposition: 'wary',
+            location: { column: 4, row: 3 },
+            placeToken: true,
+            firstDialogue: 'Keep your boots dry past the east door.',
+            audience: 'public',
+            causeActionId: null,
+          },
+        );
+        if (applied.created) {
+          return `A wary goblin cartographer answers from beside the rubble pile. Nib: "Keep your boots dry past the east door." Nib is present with the party.`;
+        }
+        if (memory !== null || applied.memory.npcs.length > 0) {
+          return buildPresenceWithNpcsNarration(applied.memory);
+        }
+      } catch {
+        // Fall through to decline fiction.
+      }
+    }
+    return buildPresenceDeclineNarration(map);
+  }
+
+  if (isDialogue && options.structured.addressee !== null && memory !== null) {
+    const name = options.structured.addressee;
+    const npc =
+      memory.npcs.find(
+        (entry) => entry.name.toLowerCase() === name.toLowerCase() || entry.npcId === name,
+      ) ?? null;
+    if (npc !== null) {
+      const line =
+        npc.knowledge.trim().length > 0
+          ? `${npc.name} answers carefully. "${npc.knowledge.trim().slice(0, 160)}"`
+          : `${npc.name} regards you and waits for a clearer question.`;
+      return line;
+    }
+  }
+
+  return options.authority.clarificationPrompt ?? options.authority.summary;
+}
 
 const OMITTED_DEFAULT: readonly AiChannelClass[] = [
   'party_chat_ooc',
@@ -524,6 +705,15 @@ export async function interpretNaturalLanguageIntent(options: {
     ) {
       proposedCommandType = 'table.sync';
       summary = buildSkillCheckDraftSummary(seatedSheet, text);
+    } else if (authority.disposition === 'director_narrate_only') {
+      proposedCommandType = authority.proposedCommandType ?? 'table.sync';
+      summary = await resolveDirectorNarrateOutput({
+        firestore: options.firestore,
+        campaignId: options.campaignId,
+        accountId: options.accountId,
+        authority,
+        structured,
+      });
     } else {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
       summary = authority.clarificationPrompt ?? authority.summary;

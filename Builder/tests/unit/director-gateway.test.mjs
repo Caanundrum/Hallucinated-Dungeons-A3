@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import {
   AiDirectorUnavailableError,
   answerDirectorAddress,
+  buildPresenceDeclineNarration,
+  buildSceneSurveyNarration,
   interpretNaturalLanguageIntent,
   narrateVisibleBeat,
   PROVIDER_COMPLIANCE_REGISTRY,
@@ -443,7 +445,7 @@ test('A1: asks Nib mid-sentence clarifies not established — not Say who you as
   assert.doesNotMatch(interpreted.summary, /^Ready to open/i);
 });
 
-test('A1: calling for who is present is Director narration, not empty clarify', async () => {
+test('A1: calling for who is present yields presence fiction, not policy handbook', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
     campaignId: 'camp-1',
@@ -452,11 +454,12 @@ test('A1: calling for who is present is Director narration, not empty clarify', 
     environmentClass: 'local',
   });
   assert.equal(interpreted.proposedCommandType, 'table.sync');
-  assert.match(interpreted.summary, /who is present|cannot invent NPCs/i);
+  assert.match(interpreted.summary, /Nobody answers|no other person|Nib|present/i);
   assert.doesNotMatch(interpreted.summary, /What is your character attempting/i);
+  assert.doesNotMatch(interpreted.summary, /employee handbook|Looking and listening — the Game Director narrates/i);
 });
 
-test('A1: scene survey is not a combat/attack draft', async () => {
+test('A1: scene survey yields perceptible-scene fiction, not combat or policy copy', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
     campaignId: 'camp-1',
@@ -466,7 +469,55 @@ test('A1: scene survey is not a combat/attack draft', async () => {
   });
   assert.equal(interpreted.proposedCommandType, 'table.sync');
   assert.doesNotMatch(interpreted.summary, /encounter|attack|combat setup|Confirm to start/i);
-  assert.match(interpreted.summary, /Looking and listening|perceptible|Game Director/i);
+  assert.match(interpreted.summary, /look and listen|visible scene|holds steady|doorway|chamber|Quiet/i);
+  assert.doesNotMatch(
+    interpreted.summary,
+    /Looking and listening — the Game Director narrates what is perceptible here/i,
+  );
+});
+
+test('buildSceneSurveyNarration stays inside the validated map', () => {
+  const narration = buildSceneSurveyNarration({
+    campaignId: 'camp-1',
+    mapBundleId: 'map-1',
+    mapVersion: 1,
+    title: 'Quiet chamber',
+    artProvenance: 'procedural',
+    coordinateSpace: {
+      coordinateSpaceId: 'space-1',
+      schemaVersion: 'map-coordinate-v1',
+      columns: 12,
+      rows: 8,
+      feetPerSquare: 5,
+      pixelsPerSquare: 48,
+    },
+    cells: [],
+    edges: [
+      {
+        edgeId: 'e1',
+        column: 4,
+        row: 2,
+        orientation: 'east',
+        kind: 'door',
+        doorState: 'closed',
+      },
+    ],
+    tokens: [],
+    exploredSquareIds: [],
+    visibleSquareIds: [],
+    sceneBanner: 'Quiet chamber — walls and a wooden doorway are established for this table.',
+    notableFeatures: [
+      { column: 1, row: 1, label: 'Wall sconce — lighting reference', referenceKind: 'lighting' },
+      { column: 3, row: 3, label: 'Damp stones — hazard reference', referenceKind: 'hazard' },
+    ],
+    viewerSeatId: null,
+  });
+  assert.match(narration, /Quiet chamber/i);
+  assert.match(narration, /wooden doorway|doorway/i);
+  assert.match(narration, /Wall sconce/i);
+  assert.match(narration, /Damp stones/i);
+  assert.doesNotMatch(narration, /flooded crypt|Game Director narrates/i);
+  assert.match(buildPresenceDeclineNarration(null), /Nobody answers/i);
 });
 
 test('A1: unlocked-door state reference is not a lockpick draft', async () => {

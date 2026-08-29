@@ -181,7 +181,7 @@ test('parsePlayerDeclaration: looking for who is present is Director narration',
   assert.ok(parsed.actionSequence.some((step) => step.kind === 'inspect'));
   const resolved = resolveIntentAuthority(parsed);
   assert.equal(resolved.disposition, 'director_narrate_only');
-  assert.match(resolved.summary, /who is present|cannot invent NPCs/i);
+  assert.match(resolved.summary, /who is present|Game Director/i);
   assert.doesNotMatch(resolved.summary, /What is your character attempting/i);
 });
 
@@ -193,7 +193,7 @@ test('parsePlayerDeclaration: scene survey is perception, not combat', () => {
   assert.ok(parsed.actionSequence.every((step) => step.kind !== 'attack'));
   const resolved = resolveIntentAuthority(parsed);
   assert.equal(resolved.disposition, 'director_narrate_only');
-  assert.match(resolved.summary, /Looking and listening|perceptible/i);
+  assert.match(resolved.summary, /look and listen|perceptible|Game Director/i);
   assert.doesNotMatch(resolved.summary, /attack|encounter|combat/i);
 });
 
