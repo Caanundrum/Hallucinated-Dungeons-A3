@@ -51,8 +51,13 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-scene-banner')).toBeVisible();
 
+    const artifactDir = process.env.HD_E2E_ARTIFACT_DIR ?? '/opt/cursor/artifacts';
+
     await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-empty')).toBeVisible();
+    await page.getByTestId('table-people-panel').screenshot({
+      path: `${artifactDir}/npc-slice-people-empty.png`,
+    });
 
     await openTableAdvancedControls(page);
     await page.getByTestId('nl-intent-input').fill('Nib, which door leads to the old archive?');
@@ -61,6 +66,9 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await expect(page.getByTestId('intent-intercept-summary')).toContainText(
       /not established|Game Director/i,
     );
+    await page.getByTestId('intent-intercept').screenshot({
+      path: `${artifactDir}/npc-slice-unknown-clarify.png`,
+    });
     await page.getByTestId('cancel-intent-intercept').click();
 
     const candidate = await readCandidate(page);
@@ -101,6 +109,9 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-list')).toBeVisible();
     await expect(page.getByTestId('table-npc-item')).toContainText('Nib');
+    await page.getByTestId('table-people-panel').screenshot({
+      path: `${artifactDir}/npc-slice-people-nib.png`,
+    });
 
     await openTableAdvancedControls(page);
     await page.getByTestId('nl-intent-input').fill('Nib, which door leads to the old archive?');
@@ -108,6 +119,9 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
     await expect(page.getByTestId('intent-intercept-summary')).toContainText(/dialogue|Ask Nib/i);
     await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(/not established/i);
+    await page.getByTestId('intent-intercept').screenshot({
+      path: `${artifactDir}/npc-slice-known-dialogue.png`,
+    });
     await page.getByTestId('cancel-intent-intercept').click();
 
     const sceneResponse = await page.request.post(`/api/campaigns/${campaignId}/director/scene`, {
@@ -146,5 +160,9 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await expect(
       page.getByTestId('chronicle-entry').filter({ hasText: /Scene established: Quiet chamber/i }),
     ).toBeVisible();
+    await page.getByTestId('chronicle-list').scrollIntoViewIfNeeded();
+    await page.getByTestId('chronicle-list').screenshot({
+      path: `${artifactDir}/npc-slice-chronicle.png`,
+    });
   });
 });
