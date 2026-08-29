@@ -163,6 +163,40 @@ test('parsePlayerDeclaration: Nib question is dialogue, not door open', () => {
   assert.equal(resolved.actionSequence[0]?.kind, 'dialogue');
 });
 
+test('parsePlayerDeclaration: asks Nib mid-sentence sets unknown addressee', () => {
+  const parsed = parsePlayerDeclaration(
+    'Loophole Lantern asks Nib, “Which door leads to the old archive?”',
+  );
+  assert.equal(parsed.addressee, 'Nib');
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'clarify');
+  assert.match(resolved.clarificationPrompt ?? '', /not an established NPC/i);
+  assert.doesNotMatch(resolved.clarificationPrompt ?? '', /Say who you ask/i);
+});
+
+test('parsePlayerDeclaration: looking for who is present is Director narration', () => {
+  const parsed = parsePlayerDeclaration(
+    'Loophole Lantern calls into the chamber and waits for whoever is present.',
+  );
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'inspect'));
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'director_narrate_only');
+  assert.match(resolved.summary, /who is present|cannot invent NPCs/i);
+  assert.doesNotMatch(resolved.summary, /What is your character attempting/i);
+});
+
+test('parsePlayerDeclaration: scene survey is perception, not combat', () => {
+  const text =
+    'Loophole Lantern pauses and surveys the current chamber, looking and listening carefully. Garrick, describe only what she can perceive and reveal any scene change only if the established fiction requires one.';
+  const parsed = parsePlayerDeclaration(text);
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'inspect'));
+  assert.ok(parsed.actionSequence.every((step) => step.kind !== 'attack'));
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'director_narrate_only');
+  assert.match(resolved.summary, /Looking and listening|perceptible/i);
+  assert.doesNotMatch(resolved.summary, /attack|encounter|combat/i);
+});
+
 test('parsePlayerDeclaration: unlocked-door prose is not lock-picking', () => {
   const parsed = parsePlayerDeclaration('Beyond the unlocked door I see mist.');
   assert.equal(textRequestsLockPicking(parsed.rawText), false);

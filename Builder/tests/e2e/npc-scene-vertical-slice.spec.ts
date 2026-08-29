@@ -60,14 +60,47 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     });
 
     await openTableAdvancedControls(page);
-    await page.getByTestId('nl-intent-input').fill('Nib, which door leads to the old archive?');
+    await page.getByTestId('nl-intent-input').fill(
+      'Loophole Lantern asks Nib, “Who are you, and what lies beyond the wooden door?”',
+    );
     await page.getByTestId('interpret-nl-intent').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible();
     await expect(page.getByTestId('intent-intercept-summary')).toContainText(
-      /not established|Game Director/i,
+      /not an established NPC|not established/i,
+    );
+    await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(/Say who you ask/i);
+    await page.getByTestId('intent-intercept').screenshot({
+      path: `${artifactDir}/npc-playpath-asks-nib-clarify.png`,
+    });
+    await page.getByTestId('cancel-intent-intercept').click();
+
+    await page.getByTestId('nl-intent-input').fill(
+      'Loophole Lantern calls into the chamber and waits for whoever is present.',
+    );
+    await page.getByTestId('interpret-nl-intent').click();
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(
+      /who is present|cannot invent NPCs/i,
+    );
+    await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(
+      /What is your character attempting/i,
     );
     await page.getByTestId('intent-intercept').screenshot({
-      path: `${artifactDir}/npc-slice-unknown-clarify.png`,
+      path: `${artifactDir}/npc-playpath-seek-presence.png`,
+    });
+    await page.getByTestId('cancel-intent-intercept').click();
+
+    await page.getByTestId('nl-intent-input').fill(
+      'Loophole Lantern pauses and surveys the current chamber, looking and listening carefully. Garrick, describe only what she can perceive and reveal any scene change only if the established fiction requires one.',
+    );
+    await page.getByTestId('interpret-nl-intent').click();
+    await expect(page.getByTestId('intent-intercept-summary')).toContainText(
+      /Looking and listening|perceptible/i,
+    );
+    await expect(page.getByTestId('intent-intercept-summary')).not.toContainText(
+      /encounter|attack|Confirm to start/i,
+    );
+    await page.getByTestId('intent-intercept').screenshot({
+      path: `${artifactDir}/npc-playpath-scene-survey.png`,
     });
     await page.getByTestId('cancel-intent-intercept').click();
 

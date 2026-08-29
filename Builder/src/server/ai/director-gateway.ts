@@ -755,7 +755,9 @@ export async function interpretNaturalLanguageIntent(options: {
       targetCombatantId = target.combatantId;
       summary = `Ready to cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine.`;
     }
-  } else if (/(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)/.test(text)) {
+  } else if (
+    /\b(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)\b/.test(text)
+  ) {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';

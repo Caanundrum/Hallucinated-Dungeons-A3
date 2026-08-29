@@ -429,6 +429,46 @@ test('A1: addressing unknown Nib clarifies — NPC not established', async () =>
   assert.match(interpreted.summary, /not established|Game Director/i);
 });
 
+test('A1: asks Nib mid-sentence clarifies not established — not Say who you ask', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Loophole Lantern asks Nib, “Who are you, and what lies beyond the wooden door?”',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.match(interpreted.summary, /not an established NPC|not established/i);
+  assert.doesNotMatch(interpreted.summary, /Say who you ask/i);
+  assert.doesNotMatch(interpreted.summary, /^Ready to open/i);
+});
+
+test('A1: calling for who is present is Director narration, not empty clarify', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Loophole Lantern calls into the chamber and waits for whoever is present.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.match(interpreted.summary, /who is present|cannot invent NPCs/i);
+  assert.doesNotMatch(interpreted.summary, /What is your character attempting/i);
+});
+
+test('A1: scene survey is not a combat/attack draft', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Loophole Lantern pauses and surveys the current chamber, looking and listening carefully. Garrick, describe only what she can perceive and reveal any scene change only if the established fiction requires one.',
+    environmentClass: 'local',
+  });
+  assert.equal(interpreted.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(interpreted.summary, /encounter|attack|combat setup|Confirm to start/i);
+  assert.match(interpreted.summary, /Looking and listening|perceptible|Game Director/i);
+});
+
 test('A1: unlocked-door state reference is not a lockpick draft', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
