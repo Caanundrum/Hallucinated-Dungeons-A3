@@ -346,24 +346,36 @@ function mentionsSkillCheckIntent(text: string): boolean {
 }
 
 function mentionsDoorIntent(text: string): boolean {
-  if (textReferencesUnlockedDoorState(text) && !/(open|push|swing)\b/.test(text)) {
-    // State reference only — not a door action (A1).
+  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(text);
+  const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
+  if (
+    textReferencesUnlockedDoorState(text) &&
+    !openVerb &&
+    !passageVerb &&
+    !/\bbeyond\b/i.test(text)
+  ) {
+    // Bare unlocked-state reference — not a door action (A1).
     return false;
+  }
+  if (textReferencesUnlockedDoorState(text) && (openVerb || passageVerb || /\bbeyond\b/i.test(text))) {
+    return !textRequestsLockPicking(text);
   }
   return (
     mentionsDoorStateIntent(text) ||
-    (/(open|push).*(door|gate|entry)/.test(text) && !textRequestsLockPicking(text)) ||
-    (/(door|gate|entryway).*(open|ahead|beyond|enter)/.test(text) &&
-      !textReferencesUnlockedDoorState(text) &&
+    (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(text) &&
       !textRequestsLockPicking(text)) ||
+    (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(text) &&
+      !textRequestsLockPicking(text)) ||
+    // Catch-all for explicit door/gate nouns with no unlock language — not bare "doorway" color.
     (/\b(door|gate|entryway)\b/.test(text) &&
       !textRequestsLockPicking(text) &&
-      !textReferencesUnlockedDoorState(text))
+      !textReferencesUnlockedDoorState(text) &&
+      !/\bdoorway\b/.test(text))
   );
 }
 
 function mentionsMovementIntent(text: string): boolean {
-  return /(move|walk|go|step|approach)/.test(text);
+  return /\b(?:moves?|walks?|goes?|steps?|approaches?|enters?|heading)\b/i.test(text);
 }
 
 function isOneStepFrom(
@@ -730,7 +742,10 @@ export async function interpretNaturalLanguageIntent(options: {
         structured.playerAssertedWorldFacts.length > 0 ||
         structured.addressee !== null)) ||
     (authority.disposition === 'propose_command' &&
-      authority.actionSequence[0]?.kind === 'unlock_door');
+      authority.actionSequence[0]?.kind === 'unlock_door') ||
+    (authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'move' &&
+      !mentionsDoorIntent(text));
 
   /** Defer Director fiction until after the player declaration is chronicled. */
   let deferDirectorNarrate = false;
@@ -742,6 +757,28 @@ export async function interpretNaturalLanguageIntent(options: {
     ) {
       proposedCommandType = 'table.sync';
       summary = buildSkillCheckDraftSummary(seatedSheet, text);
+    } else if (
+      authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'move'
+    ) {
+      // Invented scenery may have been ignored — keep the real move (TQA-004).
+      if (options.moveTarget) {
+        proposedCommandType = 'table.move';
+        path = [options.moveTarget];
+        summary =
+          authority.summary.startsWith('Ready to')
+            ? authority.summary
+            : 'Ready to move toward the marked destination on the map. Confirm to commit the step.';
+        if (authority.ignoredWorldFacts.length > 0 && !/ignored|Game Director/i.test(summary)) {
+          summary = `${summary} Player-authored places were ignored — only the Game Director establishes those.`;
+        }
+      } else {
+        proposedCommandType = 'table.sync';
+        summary =
+          authority.ignoredWorldFacts.length > 0
+            ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
+            : 'Ready to move — mark an adjacent square on the map, then declare again to confirm the step.';
+      }
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
       deferDirectorNarrate = true;
@@ -751,8 +788,10 @@ export async function interpretNaturalLanguageIntent(options: {
       summary = authority.clarificationPrompt ?? authority.summary;
     }
   } else if (
-    mentionsDoorIntent(text) &&
-    (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text))
+    (authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'open_door') ||
+    (mentionsDoorIntent(text) &&
+      (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text)))
   ) {
     try {
       const map = await fetchCampaignMap({

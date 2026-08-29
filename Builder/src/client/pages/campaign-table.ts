@@ -1170,6 +1170,39 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return tabs;
   }
 
+  function partyChatMessageBody(raw: string = draft): string {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      return '';
+    }
+    if (chatMode !== 'speak_as_character' || speakAsNpcName.trim().length === 0) {
+      return trimmed;
+    }
+    const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return trimmed
+      .replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '')
+      .trim();
+  }
+
+  function partyChatSendBlocked(): boolean {
+    if (busy || candidate === null) {
+      return true;
+    }
+    if (chatMode === 'speak_as_character') {
+      if (speakAsNpcName.trim().length === 0) {
+        return true;
+      }
+      return partyChatMessageBody().length === 0;
+    }
+    return draft.trim().length === 0;
+  }
+
+  function syncPartyChatSendState(root: ParentNode = container): void {
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="party-chat-send"]')
+      ?.setAttribute('aria-disabled', String(partyChatSendBlocked()));
+  }
+
   function peoplePanelBody(): string {
     if (memory === null) {
       return '<p class="record-meta" data-testid="table-people-loading">Campaign memory is loading…</p>';
@@ -1723,7 +1756,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : 'Talk with your party…'
             }">${escapeHtml(draft)}</textarea>
           </label>
-          <button type="submit" data-testid="party-chat-send" aria-disabled="${busy || candidate === null || draft.trim().length === 0}">
+          <button type="submit" data-testid="party-chat-send" aria-disabled="${partyChatSendBlocked()}">
             ${busy ? 'Sending…' : 'Send'}
           </button>
           ${
@@ -2755,6 +2788,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return;
       }
       sheetModalOpen = false;
+      document.body.classList.remove('sheet-modal-open');
       if (sheetEscapeListener !== null) {
         document.removeEventListener('keydown', sheetEscapeListener, true);
         sheetEscapeListener = null;
@@ -2772,14 +2806,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           closeSheetModal();
         }
       });
-    if (sheetModalOpen && sheetEscapeListener === null) {
-      sheetEscapeListener = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          closeSheetModal();
-        }
-      };
-      document.addEventListener('keydown', sheetEscapeListener, true);
+    if (sheetModalOpen) {
+      document.body.classList.add('sheet-modal-open');
+      if (sheetEscapeListener === null) {
+        sheetEscapeListener = (event: KeyboardEvent) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeSheetModal();
+          }
+        };
+        document.addEventListener('keydown', sheetEscapeListener, true);
+      }
+    } else {
+      document.body.classList.remove('sheet-modal-open');
     }
     root.querySelectorAll<HTMLButtonElement>('[data-mobile-task]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -2802,9 +2841,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLSelectElement>('[data-testid="speak-as-npc-select"]')
       ?.addEventListener('change', (event) => {
         const select = event.currentTarget as HTMLSelectElement;
+        const previous = speakAsNpcName;
         speakAsNpcName = select.value;
-        if (speakAsNpcName.length > 0 && !draft.trim().startsWith(`${speakAsNpcName},`)) {
-          draft = `${speakAsNpcName}, ${draft}`.trim();
+        // Address lives in the picker — do not enable Send on "Nib," alone.
+        if (previous.length > 0) {
+          const escaped = previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
         }
         render();
       });
@@ -3059,7 +3101,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
           return;
         }
-        chatMode = input.value as PartyChatMode;
+        const nextMode = input.value as PartyChatMode;
+        if (nextMode === 'table_talk' && chatMode === 'speak_as_character') {
+          if (speakAsNpcName.length > 0) {
+            const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
+          }
+          speakAsNpcName = '';
+        }
+        chatMode = nextMode;
         render();
       });
     });
@@ -3192,7 +3242,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
         void (async () => {
-          if (candidate === null || busy || draft.trim().length === 0) {
+          if (partyChatSendBlocked()) {
+            syncPartyChatSendState(root);
             return;
           }
           if (chatMode === 'speak_as_character' && !seated) {
@@ -3201,15 +3252,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             render();
             return;
           }
+          const messageBody = partyChatMessageBody();
+          const outbound =
+            chatMode === 'speak_as_character' && speakAsNpcName.trim().length > 0
+              ? `${speakAsNpcName}, ${messageBody}`
+              : messageBody;
           busy = true;
           error = null;
           render();
           try {
             await postPartyChat({
-              candidateId: candidate.candidateId,
+              candidateId: candidate!.candidateId,
               campaignId,
               mode: chatMode,
-              body: draft.trim(),
+              body: outbound,
             });
             draft = '';
             const [chatFeed, tableFeed] = await Promise.all([
@@ -3335,11 +3391,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const input = root.querySelector<HTMLTextAreaElement>('[data-testid="party-chat-input"]');
     input?.addEventListener('input', () => {
       draft = input.value;
-      const send = root.querySelector<HTMLButtonElement>('[data-testid="party-chat-send"]');
-      send?.setAttribute(
-        'aria-disabled',
-        String(busy || candidate === null || draft.trim().length === 0),
-      );
+      syncPartyChatSendState(root);
     });
 
     const directorInput = root.querySelector<HTMLTextAreaElement>(

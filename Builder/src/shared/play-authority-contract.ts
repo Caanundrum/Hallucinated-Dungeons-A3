@@ -353,15 +353,28 @@ function summaryForActionStep(step: DeclarationActionStep): string {
  * Full NL parsing lives in the Director gateway; these encode product examples.
  */
 export function textReferencesUnlockedDoorState(text: string): boolean {
-  return /\bunlocked\s+door\b/i.test(text) || /\bdoor\s+(?:is|was|remains)\s+unlocked\b/i.test(text);
+  return (
+    /\bunlocked\s+(?:door|doorway|gate|entry(?:way)?)\b/i.test(text) ||
+    /\b(?:door|doorway|gate|entry(?:way)?)\s+(?:is|was|remains)\s+unlocked\b/i.test(text) ||
+    /\b(?:door|doorway|gate|entry(?:way)?)\b[^.?!,;]{0,24}\bunlocked\b/i.test(text)
+  );
 }
 
 export function textRequestsLockPicking(text: string): boolean {
+  // "Unlocked door/doorway" is leaf/lock state, never a pick attempt (hosted recheck).
+  if (textReferencesUnlockedDoorState(text) || /\bunlocked\b/i.test(text)) {
+    // Allow explicit pick language even when the door is described as unlocked.
+    return (
+      /\b(?:pick|picking|picked)\b/i.test(text) ||
+      /\bthieves['’]?\s*tools\b/i.test(text) ||
+      /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(text)
+    );
+  }
   return (
     /\b(?:pick|picking|picked)\b/i.test(text) ||
     /\bthieves['’]?\s*tools\b/i.test(text) ||
     /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(text) ||
-    (/\bunlock(?:ing|ed)?\b/i.test(text) && !textReferencesUnlockedDoorState(text))
+    /\bunlock(?:s|ing)?\b/i.test(text)
   );
 }
 
@@ -479,15 +492,17 @@ export function parsePlayerDeclaration(
 
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
-  const wantsOpenDoor =
-    !wantsUnlock &&
-    (/(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(trimmed) &&
-      /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed));
   const stepThroughPassage =
     /\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(trimmed) ||
-    /\bthrough\s+(?:the\s+)?(?:door|gate|entry(?:way)?)\b/i.test(trimmed) ||
+    /\bthrough\s+(?:the\s+)?(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) ||
     /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
     /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
+  const wantsOpenDoor =
+    !wantsUnlock &&
+    ((/(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(trimmed) &&
+      /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed)) ||
+      // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
+      (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
@@ -500,7 +515,7 @@ export function parsePlayerDeclaration(
   if (
     addressee === null &&
     isInterrogative &&
-    /\b(?:door|gate|entry(?:way)?)\b/i.test(trimmed) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
     !wantsUnlock &&
     !wantsOpenDoor
   ) {
@@ -515,10 +530,13 @@ export function parsePlayerDeclaration(
     });
   }
 
+  // Perception of what lies beyond an unlocked door — only when no open/transit action.
   if (
     actionSequence.length === 0 &&
     refsUnlocked &&
-    /\b(?:see|look|peer|glance|beyond|through)\b/i.test(trimmed)
+    /\b(?:see|look|peer|glance)\b/i.test(trimmed) &&
+    !stepThroughPassage &&
+    !/\benter(?:s|ing)?\b/i.test(trimmed)
   ) {
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'unlocked door' });
   }
@@ -541,11 +559,11 @@ export function parsePlayerDeclaration(
     }
   }
 
-  // "Open the unlocked door and step through" is one passage action, not open-then-move clarify.
+  // Open/step-through (or enter beyond an unlocked door) is one passage action.
   if (
     actionSequence.some((step) => step.kind === 'open_door') &&
     actionSequence.some((step) => step.kind === 'move') &&
-    stepThroughPassage
+    (stepThroughPassage || refsUnlocked || /\benter(?:s|ing)?\b/i.test(trimmed))
   ) {
     const collapsed = actionSequence.filter((step) => step.kind !== 'move');
     actionSequence.length = 0;

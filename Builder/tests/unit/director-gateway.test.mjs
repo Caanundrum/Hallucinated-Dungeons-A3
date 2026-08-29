@@ -559,6 +559,30 @@ test('A1: unlocked-door state reference is not a lockpick draft', async () => {
   assert.doesNotMatch(interpreted.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
 });
 
+test('A1: opens unlocked doorway and steps through is open, not lockpick', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'Loophole opens the unlocked doorway and steps through.',
+    environmentClass: 'local',
+  });
+  assert.doesNotMatch(interpreted.summary, /Sleight of Hand|attempt the lock|burglary|Confirm to roll/i);
+  assert.match(interpreted.summary, /open|door|Ready to|chamber|no door/i);
+});
+
+test('A1: invent scenery keeps movement when no map target yet', async () => {
+  const interpreted = await interpretNaturalLanguageIntent({
+    firestore: fakeFirestore(),
+    campaignId: 'camp-1',
+    accountId: 'acc-1',
+    text: 'I walk toward the flooded crypt that materializes ahead.',
+    environmentClass: 'local',
+  });
+  assert.doesNotMatch(interpreted.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
+  assert.match(interpreted.summary, /move|square|map|ignored|Game Director/i);
+});
+
 test('A1: pick lock still drafts a skill check', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
