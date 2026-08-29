@@ -22,6 +22,10 @@ import {
   type WebGlRenderLayer,
 } from '../../shared/map-contract.js';
 import { escapeHtml } from '../dom-utils.js';
+import {
+  doorAuthorityFromStored,
+  formatDoorAuthorityLabel,
+} from '../../shared/play-authority-contract.js';
 
 function edgeAccessibleLabel(edge: MapEdgeRecord): string {
   const facing =
@@ -33,8 +37,7 @@ function edgeAccessibleLabel(edge: MapEdgeRecord): string {
           ? 'east'
           : 'west';
   if (edge.kind === 'door') {
-    const state = edge.doorState === 'open' ? 'open' : 'closed';
-    return `Wooden door (${state}) facing ${facing}`;
+    return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} facing ${facing}`;
   }
   return `Wall facing ${facing}`;
 }

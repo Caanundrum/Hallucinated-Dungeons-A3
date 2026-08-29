@@ -62,6 +62,15 @@ test('PQA-156: resolving Ready-to draft rolls checks and returns outcomes', () =
   assert.match(resolved.summary, /Lock attempt/);
   assert.match(resolved.summary, /d20/);
   assert.ok(resolved.rolls.length >= 1);
+  assert.equal(typeof resolved.lockYielded, 'boolean');
+});
+
+test('A1: unlocked-door language does not draft a lock attempt', () => {
+  const summary = buildSkillCheckDraftSummary(
+    stubSheet({ tools: true }),
+    'Beyond the unlocked door I see mist.',
+  );
+  assert.doesNotMatch(summary, /Sleight of Hand|attempt the lock/i);
 });
 
 test('non-skill sync summaries do not resolve as checks', () => {

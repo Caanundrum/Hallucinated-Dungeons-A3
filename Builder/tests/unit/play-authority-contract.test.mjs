@@ -5,8 +5,10 @@ import {
   doorAuthorityFromStored,
   doorStateAfterUnlockSuccess,
   formatDoorAuthorityLabel,
+  parsePlayerDeclaration,
   PLAY_AUTHORITY_SPIKE,
   resolveIntentAuthority,
+  storedDoorStateFromAuthority,
   textIsInterrogative,
   textReferencesUnlockedDoorState,
   textRequestsLockPicking,
@@ -28,6 +30,8 @@ test('A2: successful unlock yields closed + unlocked, not open', () => {
   assert.equal(formatDoorAuthorityLabel(doorStateAfterUnlockSuccess()), 'Wooden door (closed, unlocked)');
   assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('locked')), 'Wooden door (closed, locked)');
   assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('closed')), 'Wooden door (closed)');
+  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('unlocked')), 'Wooden door (closed, unlocked)');
+  assert.equal(storedDoorStateFromAuthority(doorStateAfterUnlockSuccess()), 'unlocked');
 });
 
 test('unlocked door language is state reference, not lock-picking', () => {
@@ -122,4 +126,29 @@ test('multiple real actions ask for explicit sequence', () => {
   assert.equal(resolved.disposition, 'clarify');
   assert.equal(resolved.actionSequence.length, 2);
   assert.match(resolved.clarificationPrompt ?? '', /order|one at a time/i);
+});
+
+test('parsePlayerDeclaration: Nib question is dialogue, not door open', () => {
+  const parsed = parsePlayerDeclaration('Nib, which door leads to the old archive?', {
+    knownNpcs: [{ id: 'npc-nib', label: 'Nib' }],
+  });
+  assert.equal(parsed.addressee, 'Nib');
+  assert.equal(parsed.isInterrogative, true);
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'director_narrate_only');
+  assert.equal(resolved.actionSequence[0]?.kind, 'dialogue');
+});
+
+test('parsePlayerDeclaration: unlocked-door prose is not lock-picking', () => {
+  const parsed = parsePlayerDeclaration('Beyond the unlocked door I see mist.');
+  assert.equal(textRequestsLockPicking(parsed.rawText), false);
+  assert.ok(parsed.actionSequence.every((step) => step.kind !== 'unlock_door'));
+});
+
+test('parsePlayerDeclaration: pick lock is unlock_door', () => {
+  const parsed = parsePlayerDeclaration('I pick the lock on the wooden door.');
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'unlock_door'));
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'propose_command');
+  assert.equal(resolved.proposedCommandType, 'table.sync');
 });

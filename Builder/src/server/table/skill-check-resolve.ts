@@ -3,11 +3,14 @@
  */
 
 import type { DerivedCharacterSheet } from '../../shared/character-contract.js';
+import { textRequestsLockPicking } from '../../shared/play-authority-contract.js';
 import { rollD20 } from '../rules/engine/dice.js';
 
 export interface SkillAttemptResolution {
   readonly summary: string;
   readonly rolls: readonly number[];
+  /** True when a lock attempt was rolled and succeeded (A2 → map unlock). */
+  readonly lockYielded: boolean;
 }
 
 const DEFAULT_TRAP_DC = 13;
@@ -53,7 +56,8 @@ export function buildSkillCheckDraftSummary(
   text: string,
 ): string {
   const wantsTrap = /(trap|disarm)/.test(text);
-  const wantsLock = /(pick|unlock|lock|thieves)/.test(text);
+  const wantsLock =
+    textRequestsLockPicking(text) || (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
   if (sheet === null) {
     return wantsTrap
       ? 'Ready to search the doorway for traps, then attempt the lock if it looks safe. Confirm to roll the checks on the table.'
@@ -115,11 +119,13 @@ export function resolveSkillAttemptFromSummary(
       summary:
         'Seat a character before resolving skill attempts. The table did not roll.',
       rolls: [],
+      lockYielded: false,
     };
   }
 
   const parts: string[] = [];
   const rolls: number[] = [];
+  let lockYielded = false;
 
   if (wantsTrap) {
     const skill = skillBonus(sheet, 'investigation');
@@ -139,6 +145,7 @@ export function resolveSkillAttemptFromSummary(
     const roll = rollD20('normal', skill.bonus);
     rolls.push(roll.natural);
     const success = roll.total >= DEFAULT_LOCK_DC;
+    lockYielded = success;
     parts.push(
       `Lock attempt (Sleight of Hand ${formatBonus(skill.bonus)}${tools ? ', Thieves’ Tools' : ', no Thieves’ Tools'}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_LOCK_DC} — ${
         success ? 'the lock yields' : 'the lock holds'
@@ -146,5 +153,5 @@ export function resolveSkillAttemptFromSummary(
     );
   }
 
-  return { summary: parts.join(' '), rolls };
+  return { summary: parts.join(' '), rolls, lockYielded };
 }

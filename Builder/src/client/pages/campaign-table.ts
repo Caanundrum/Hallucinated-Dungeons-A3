@@ -36,6 +36,10 @@ import { RULES_CATALOG_CATEGORY_LABELS } from '../../shared/rules-catalog-contra
 import type { CampaignPresenceProjection } from '../../shared/presence-contract.js';
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection, MapEdgeRecord } from '../../shared/map-contract.js';
+import {
+  doorAuthorityFromStored,
+  formatDoorAuthorityLabel,
+} from '../../shared/play-authority-contract.js';
 import type {
   PresentationCueKind,
   PresentationCuePlanProjection,
@@ -151,15 +155,17 @@ function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
           ? 'east'
           : 'west';
   if (edge.kind === 'door') {
-    const state = edge.doorState === 'open' ? 'open' : 'closed';
-    return `Wooden door (${state}) facing ${facing}`;
+    return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} facing ${facing}`;
   }
   return `Wall facing ${facing}`;
 }
 
 function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
-  const state = edge.doorState === 'open' ? 'open' : 'closed';
+  const stateLabel = formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(
+    /^Wooden door \(/,
+    '',
+  ).replace(/\)$/, '');
   const facing =
     edge.orientation === 'north'
       ? 'north'
@@ -168,7 +174,7 @@ function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
         : edge.orientation === 'east'
           ? 'east'
           : 'west';
-  return `Selected wooden door in ${scene} — ${state}, facing ${facing}. Use Open adjacent door when you are next to a closed door, or declare an interaction in the play channel.`;
+  return `Selected wooden door in ${scene} — ${stateLabel}, facing ${facing}. Use Open adjacent door when you are next to a closed unlocked door, or declare an interaction in the play channel.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -185,6 +191,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let commsRailCollapsed = false;
   let doorRecoveryVisible = false;
   let lastSubmittedDeclaration = '';
+  /** When true, the play timeline sticks to the newest beat (A3). */
+  let dmThreadFollowLatest = true;
   let activeTab: DockTab = 'party_chat';
   let memory: CampaignMemoryProjection | null = null;
   let tableNotes = '';
@@ -655,6 +663,45 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
+  function isDmThreadNearBottom(host: HTMLElement): boolean {
+    return host.scrollHeight - host.scrollTop - host.clientHeight < 56;
+  }
+
+  function updateDmThreadJumpVisibility(): void {
+    const jump = container.querySelector<HTMLButtonElement>('[data-testid="dm-thread-jump-latest"]');
+    if (jump === null) {
+      return;
+    }
+    jump.hidden = dmThreadFollowLatest;
+  }
+
+  function scrollDmPlayThreadToLatest(behavior: ScrollBehavior = 'auto'): void {
+    const host = container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]');
+    if (host === null) {
+      return;
+    }
+    host.scrollTo({ top: host.scrollHeight, behavior });
+    dmThreadFollowLatest = true;
+    updateDmThreadJumpVisibility();
+  }
+
+  function bindDmPlayThreadScroll(): void {
+    const host = container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]');
+    if (host === null || host.dataset.scrollBound === '1') {
+      return;
+    }
+    host.dataset.scrollBound = '1';
+    host.addEventListener('scroll', () => {
+      const nearBottom = isDmThreadNearBottom(host);
+      if (nearBottom) {
+        dmThreadFollowLatest = true;
+      } else if (host.scrollHeight > host.clientHeight + 24) {
+        dmThreadFollowLatest = false;
+      }
+      updateDmThreadJumpVisibility();
+    });
+  }
+
   function patchDmPlayThread(): void {
     const host = container.querySelector('[data-testid="dm-play-thread"]');
     if (host === null) {
@@ -667,6 +714,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       list.outerHTML = rendered;
     } else if (empty !== null) {
       empty.outerHTML = rendered;
+    }
+    bindDmPlayThreadScroll();
+    if (dmThreadFollowLatest) {
+      requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
+    } else {
+      updateDmThreadJumpVisibility();
     }
   }
 
@@ -1882,7 +1935,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
         </section>
         <div class="dm-play-thread" data-testid="dm-play-thread">
-          <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
+          <div class="dm-play-thread-chrome">
+            <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
+            <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
+              Jump to latest
+            </button>
+          </div>
           <p class="record-meta" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
           </p>
@@ -2558,6 +2616,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function bindPanelEvents(root: HTMLElement): void {
+    bindDmPlayThreadScroll();
+    if (dmThreadFollowLatest) {
+      requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
+    } else {
+      updateDmThreadJumpVisibility();
+    }
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="dm-thread-jump-latest"]')
+      ?.addEventListener('click', () => {
+        scrollDmPlayThreadToLatest('smooth');
+        shell.announce('Jumped to the latest table beat.');
+      });
     root.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
       button.addEventListener('click', () => {
         void (async () => {

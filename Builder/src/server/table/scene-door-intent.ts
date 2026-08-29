@@ -3,6 +3,11 @@
  */
 
 import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
+import {
+  doorAuthorityFromStored,
+  formatDoorAuthorityLabel,
+  textRequestsLockPicking,
+} from '../../shared/play-authority-contract.js';
 
 import { nextStepTowardOpenDoor } from './move-planner.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
@@ -78,6 +83,10 @@ function nextStepTowardClosedDoor(
   return null;
 }
 
+function doorBesideSummary(edge: MapEdgeRecord): string {
+  return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} beside you`;
+}
+
 /**
  * Resolves door-related declarations against persisted scene geometry.
  * Returns null when the table is still a blank open floor with no edges.
@@ -96,22 +105,44 @@ export function resolveDoorIntentForMap(
   const openDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
   const adjacentClosed = closedDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
-  const wantsOpen = /(open|unlock|push\s+open|swing\s+open)/.test(text);
+  const wantsUnlock = textRequestsLockPicking(text);
+  const wantsOpen =
+    !wantsUnlock && /(open|push\s+open|swing\s+open)/.test(text);
   const wantsInspect =
     /(inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)/.test(text) &&
-    !wantsOpen;
+    !wantsOpen &&
+    !wantsUnlock;
+
+  // Unlock attempts are skill-check drafts — do not open the door here.
+  if (wantsUnlock) {
+    return null;
+  }
 
   // PQA-155: plain inspect/check reads current door state; open is a separate confirm.
   if (adjacentClosed !== undefined && wantsInspect) {
+    const authority = doorAuthorityFromStored(adjacentClosed.doorState);
+    const lockNote =
+      authority.lock === 'locked'
+        ? ' It is locked — declare a lock attempt to try the mechanism.'
+        : authority.lock === 'unlocked'
+          ? ' The lock is already open; you can declare opening the door when ready.'
+          : ' It looks solid and ordinary from a casual look — no trap signs without a careful search.';
     return {
       proposedCommandType: 'table.sync',
       edgeId: adjacentClosed.edgeId,
-      summary:
-        'The wooden door beside you is closed. It looks solid and ordinary from a casual look — no trap signs without a careful search. Confirm to open it, or declare a trap or lock check if you want a roll.',
+      summary: `${doorBesideSummary(adjacentClosed)}.${lockNote} Confirm to open it, or declare a trap or lock check if you want a roll.`,
     };
   }
 
   if (adjacentClosed !== undefined) {
+    if (adjacentClosed.doorState === 'locked') {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: adjacentClosed.edgeId,
+        summary:
+          'The wooden door beside you is locked. Declare a lock attempt before opening it, or inspect it carefully first.',
+      };
+    }
     return {
       proposedCommandType: 'table.open_door',
       edgeId: adjacentClosed.edgeId,
