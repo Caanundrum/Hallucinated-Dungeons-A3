@@ -39,8 +39,13 @@ export interface ShellHandle {
   setDocumentTitle(pageTitle: string): void;
   /** Moves focus to the current page's main heading, for screen-reader users after navigation. */
   focusPageHeading(): void;
-  /** Hides app chrome for the hosted welcome entry screen. */
-  setPresentationMode(mode: 'app' | 'welcome'): void;
+  /**
+   * Presentation chrome modes:
+   * - `app` — full shell header/footer (default pages)
+   * - `welcome` — no chrome (hosted landing)
+   * - `table` — no global chrome; campaign table owns a compact ambient HUD
+   */
+  setPresentationMode(mode: 'app' | 'welcome' | 'table'): void;
 }
 
 const LEGAL_LABELS: Record<string, string> = {
@@ -255,8 +260,9 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
   return {
     mainElement,
     announce,
-    setPresentationMode(mode: 'app' | 'welcome'): void {
+    setPresentationMode(mode: 'app' | 'welcome' | 'table'): void {
       root.classList.toggle('shell-welcome-mode', mode === 'welcome');
+      root.classList.toggle('shell-table-mode', mode === 'table');
     },
     setActiveRoute(path: string): void {
       lastAnnouncement = '';

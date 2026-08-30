@@ -26,6 +26,16 @@ export const PLAYER_DOCK_TAB_ORDER: readonly DockTab[] = [
   'chronicle',
 ];
 
+/**
+ * Interactive comms tabs for the cockpit bottom tier.
+ * Story so far (chronicle) is pinned above these tabs in the table UX.
+ */
+export const PLAYER_COMMS_TAB_ORDER: readonly DockTab[] = [
+  'party_chat',
+  'director_address',
+  'rules_desk',
+];
+
 export const PARTY_CHAT_MODES = ['table_talk', 'speak_as_character'] as const;
 export type PartyChatMode = (typeof PARTY_CHAT_MODES)[number];
 
