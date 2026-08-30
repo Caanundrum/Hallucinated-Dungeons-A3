@@ -123,11 +123,17 @@ async function start(): Promise<void> {
     const host: PageHost = { container: shell.mainElement, shell, candidate };
     const hostedPlayerEntry = isHostedPlayerSurface(candidate);
 
-    shell.setPresentationMode(path === '/' && hostedPlayerEntry && getAccount() === null ? 'welcome' : 'app');
-
     const characterId = characterIdFromPath(path);
     const campaignRoute = campaignRouteFromPath(path);
     const inviteCode = inviteCodeFromPath(path);
+
+    if (path === '/' && hostedPlayerEntry && getAccount() === null) {
+      shell.setPresentationMode('welcome');
+    } else if (campaignRoute?.subroute === 'table') {
+      shell.setPresentationMode('table');
+    } else {
+      shell.setPresentationMode('app');
+    }
 
     if (path === '/') {
       if (hostedPlayerEntry && getAccount() === null) {

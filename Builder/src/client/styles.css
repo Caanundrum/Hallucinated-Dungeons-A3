@@ -1,37 +1,63 @@
 /*
- * Design System Manifest v1 — Obsidian Chronicle implementation.
- *
- * Every token below is defined in
- * Checkpoints/phase-1/design/DESIGN_SYSTEM_MANIFEST.md. A component may not
- * introduce a color, spacing, or motion value outside that table; if one is
- * genuinely needed, the manifest is amended first.
+ * Design tokens — Phase 1 Visualization (Gemini cockpit look).
+ * Supersedes flat Obsidian Chronicle surfaces for vibrancy while keeping
+ * semantic roles (action / heal / danger / arcane / focus).
  */
 
 :root {
   color-scheme: dark;
 
-  /* 1. Color */
-  --abyss-bg: #07080d;
-  --obsidian-surface: #0d111b;
+  /* Surface & void */
+  --bg-void: #0b0f17;
+  --panel-surface: #111827;
+  --panel-border: #1e293b;
+  --panel-border-hover: #334155;
+
+  /* Accent & action */
+  --gold-primary: #f59e0b;
+  --gold-hover: #d97706;
+  --gold-glow: rgba(245, 158, 11, 0.35);
+
+  /* Semantic feedback */
+  --emerald-heal: #10b981;
+  --emerald-glow: rgba(16, 185, 129, 0.3);
+  --crimson-danger: #ef4444;
+  --crimson-glow: rgba(239, 68, 68, 0.35);
+  --arcane-cyan: #38bdf8;
+  --arcane-glow: rgba(56, 189, 248, 0.3);
+
+  /* Typography */
+  --font-serif: 'Cinzel', 'Lora', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-gold: #fcd34d;
+
+  /* Shadows & elevations */
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --shadow-glow-gold: 0 0 15px var(--gold-glow);
+  --shadow-glow-cyan: 0 0 15px var(--arcane-glow);
+
+  /* Legacy Obsidian Chronicle aliases → Gemini cockpit tokens */
+  --abyss-bg: var(--bg-void);
+  --obsidian-surface: var(--panel-surface);
   --raised-surface: #182131;
-  --structural-border: #2c3a4f;
-  --text-primary: #f4eedf;
-  --text-secondary: #bbc5d2;
-  --amber-action: #d89a3d;
-  --amber-highlight: #f0b65f;
-  --moonlit-blue: #69a7d6;
-  --verdant-success: #4fb286;
-  --warning-gold: #e2a23a;
-  --wound-red: #d65c5c;
+  --structural-border: var(--panel-border);
+  --text-secondary: var(--text-muted);
+  --amber-action: var(--gold-primary);
+  --amber-highlight: var(--gold-hover);
+  --moonlit-blue: var(--arcane-cyan);
+  --verdant-success: var(--emerald-heal);
+  --warning-gold: var(--text-gold);
+  --wound-red: var(--crimson-danger);
   --arcane-violet: #a783d8;
   --focus-cyan: #8fd3ff;
 
-  /* 2. Typography — v1 interim substitution, see manifest Section 2 */
-  --font-heading: "Segoe UI", system-ui, sans-serif;
-  --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  --font-heading: var(--font-serif);
+  --font-body: var(--font-sans);
+  --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
 
-  /* 3. Spacing */
+  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -41,13 +67,14 @@
   --space-7: 48px;
   --space-8: 64px;
 
-  /* 4. Elevation, borders, radius */
+  /* Elevation, borders, radius */
   --radius-control: 8px;
   --radius-panel: 10px;
   --border-weight: 1px;
   --elevation-raised: 0 1px 0 rgba(0, 0, 0, 0.4);
+  --hud-height: 36px;
 
-  /* 5. Motion */
+  /* Motion */
   --motion-immediate: 100ms;
   --motion-ordinary: 180ms;
   --motion-emphasized: 280ms;
@@ -65,8 +92,10 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--abyss-bg);
-  background-image: linear-gradient(180deg, #05060a 0%, var(--abyss-bg) 45%, var(--obsidian-surface) 100%);
+  background-color: var(--bg-void);
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(245, 158, 11, 0.08), transparent 55%),
+    linear-gradient(180deg, #070a12 0%, var(--bg-void) 42%, #0e1522 100%);
   color: var(--text-primary);
   font-family: var(--font-body);
   line-height: 1.55;
@@ -102,7 +131,9 @@ h3 {
 }
 
 .shell-welcome-mode .shell-header,
-.shell-welcome-mode .shell-footer {
+.shell-welcome-mode .shell-footer,
+.shell-table-mode .shell-header,
+.shell-table-mode .shell-footer {
   display: none;
 }
 
@@ -114,6 +145,31 @@ h3 {
 
 .shell-welcome-mode .shell-main > .welcome-screen {
   flex: 1;
+}
+
+/* Table cockpit: shell main fills the viewport; page owns the HUD. */
+.shell-table-mode {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.shell-table-mode .shell {
+  height: 100%;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.shell-table-mode .shell-main {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .shell-header {
@@ -259,36 +315,162 @@ a.account-chip-label:focus-visible {
 .table-dashboard.page-wide {
   max-width: none;
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  /* Prefer min-height so overflowing play controls stay in document flow (PQA-114). */
-  min-height: calc(100dvh - 7.5rem);
-  height: auto;
-  max-height: none;
-  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
   box-sizing: border-box;
+  background: transparent;
 }
 
-@supports (height: 100dvh) {
-  .table-dashboard.page-wide {
-    min-height: calc(100dvh - 7.5rem);
-  }
+.shell-table-mode .table-dashboard.page-wide {
+  height: 100%;
+  max-height: 100%;
 }
 
 .table-dashboard-header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3) var(--space-5);
+  flex-direction: column;
   flex-shrink: 0;
-  margin-bottom: var(--space-3);
+  margin: 0;
+  border-bottom: var(--border-weight) solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000);
+  box-shadow: var(--shadow-card);
 }
 
-.table-dashboard-header h1 {
-  font-size: 1.35rem;
+.table-ambient-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--hud-height);
+  height: var(--hud-height);
+  padding: 0 var(--space-3);
+  box-sizing: border-box;
+}
+
+.table-hud-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.table-hud-mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 16%, var(--panel-surface));
+  color: var(--text-gold);
+  font-family: var(--font-serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  box-shadow: var(--shadow-glow-gold);
+}
+
+.table-hud-mark:hover {
+  border-color: var(--gold-primary);
+  color: #fff7d6;
+}
+
+.table-hud-titles {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.table-dashboard-header h1,
+.table-ambient-hud h1 {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   margin: 0;
+  color: var(--text-gold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-hud-scene {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.table-hud-scene-pending {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.table-hud-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.table-hud-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--raised-surface) 80%, transparent);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition:
+    border-color var(--motion-ordinary) ease,
+    box-shadow var(--motion-ordinary) ease,
+    background var(--motion-ordinary) ease;
+}
+
+.table-hud-action:hover {
+  border-color: var(--panel-border-hover);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.table-hud-exit {
+  border-color: color-mix(in srgb, var(--gold-primary) 45%, var(--panel-border));
+  color: var(--text-gold);
+}
+
+.table-hud-exit:hover {
+  border-color: var(--gold-primary);
+  box-shadow: var(--shadow-glow-gold);
+}
+
+.table-dashboard-header .message.error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0;
+  border-left: none;
+  border-top: var(--border-weight) solid color-mix(in srgb, var(--crimson-danger) 45%, transparent);
 }
 
 .table-header-main {
@@ -304,11 +486,13 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-body {
   display: grid;
-  grid-template-columns: minmax(200px, 15rem) minmax(0, 1fr) minmax(220px, 18rem);
-  gap: var(--space-3);
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  gap: var(--space-2);
   flex: 1;
   min-height: 0;
   align-items: stretch;
+  padding: var(--space-2);
+  overflow: hidden;
 }
 
 .table-dashboard-body.table-focus-mode {
@@ -329,10 +513,15 @@ a.account-chip-label:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: min(70dvh, 42rem);
+  max-height: none;
+  height: 100%;
   overflow: hidden;
   padding: var(--space-3);
   position: relative;
+  border: var(--border-weight) solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 96%, #000);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-panel);
 }
 
 .table-info-rail.is-collapsed,
@@ -439,15 +628,22 @@ a.account-chip-label:focus-visible {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  height: 100%;
   gap: var(--space-2);
+  overflow: hidden;
 }
 
 .table-dashboard .table-stage-frame {
   flex: 1 1 auto;
-  min-height: min(52vh, 28rem);
-  aspect-ratio: 16 / 10;
+  min-height: 0;
+  aspect-ratio: auto;
   height: auto;
   margin: 0;
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--bg-void) 88%, #000);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
 
 .table-action-bar {
@@ -456,7 +652,10 @@ a.account-chip-label:focus-visible {
   padding: var(--space-2) var(--space-3);
   position: relative;
   z-index: 4;
-  background: var(--obsidian-surface);
+  background: color-mix(in srgb, var(--panel-surface) 94%, #000);
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
 }
 
 .table-action-bar-inner {
@@ -658,13 +857,43 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-footer {
   flex-shrink: 0;
-  margin-top: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-2);
   position: relative;
-  z-index: 1;
+  z-index: 5;
+}
+
+.table-dashboard-footer .table-meta-panel {
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel-surface) 94%, #000);
+}
+
+.table-dashboard-footer .table-meta-panel > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-2);
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.table-dashboard-footer .table-meta-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-dashboard-footer .table-hud-meta-body {
+  padding: 0 var(--space-2) var(--space-2);
+  border-top: var(--border-weight) solid var(--panel-border);
 }
 
 .table-dashboard-footer .table-meta-panel[open] {
-  max-height: 12rem;
+  max-height: min(28vh, 14rem);
   overflow: auto;
 }
 
@@ -731,8 +960,8 @@ a.account-chip-label:focus-visible {
   }
 
   .table-dashboard .table-stage-frame {
-    min-height: min(48vh, 26rem);
-    aspect-ratio: 4 / 3;
+    min-height: min(42vh, 22rem);
+    aspect-ratio: auto;
   }
 }
 
@@ -741,19 +970,44 @@ a.account-chip-label:focus-visible {
 }
 
 @media (max-width: 760px) {
+  .shell-table-mode {
+    height: auto;
+    max-height: none;
+    overflow: auto;
+  }
+
+  .shell-table-mode .shell,
+  .shell-table-mode .shell-main {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
   .table-dashboard.page-wide {
     height: auto;
     min-height: 100dvh;
     max-height: none;
     overflow: visible;
-    padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    padding: 0 0 calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .table-ambient-hud {
+    height: auto;
+    min-height: var(--hud-height);
+    padding: var(--space-2) var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .table-hud-titles {
+    flex-wrap: wrap;
   }
 
   .table-mobile-task-nav {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-1);
-    margin: 0 0 var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-2) 0;
   }
 
   .table-mobile-task-nav button {

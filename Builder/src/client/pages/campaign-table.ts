@@ -4427,18 +4427,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           })();
 
     heading.innerHTML = `
-      <div class="table-header-main">
-        <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
-        ${
-          mapBundle === null
-            ? ''
-            : `<p class="scene-banner" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
-        }
+      <div class="table-ambient-hud" data-testid="table-ambient-hud">
+        <div class="table-hud-brand">
+          <a class="table-hud-mark" href="/" data-link data-testid="table-hud-home" aria-label="Hallucinated Dungeons home">HD</a>
+          <div class="table-hud-titles">
+            <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+            ${
+              mapBundle === null
+                ? `<p class="table-hud-scene table-hud-scene-pending" data-testid="map-scene-banner">Establishing scene…</p>`
+                : `<p class="table-hud-scene" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
+            }
+          </div>
+        </div>
+        <div class="table-hud-actions" role="group" aria-label="Table session">
+          <a class="table-hud-action" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" title="Settings">Settings</a>
+          <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" title="Exit table">Exit table</a>
+        </div>
       </div>
-      <nav class="table-header-links" aria-label="Table navigation">
-        <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back">Campaign</a>
-        <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings">Settings</a>
-      </nav>
       <p class="visually-hidden" data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
       ${
         error === null
@@ -4470,46 +4475,48 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     footer.innerHTML = `
-      <details class="table-meta-panel" data-testid="presence-section"${presenceOpen ? ' open' : ''}>
-        <summary>Table details</summary>
-        <section aria-labelledby="presence-heading">
-          <h2 id="presence-heading">Who is connected</h2>
-          ${presenceBody()}
-        </section>
-        <p class="record-meta" data-testid="table-state-meta"
-          data-state-version="${tableState?.stateVersion ?? 0}"
-          data-event-sequence="${tableState?.lastEventSequence ?? 0}">
-          ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
-        </p>
-        <p class="record-meta" data-testid="shared-scene-status">
-          Everyone at this table sees the same current scene. When the Director changes the map, you will hear a brief update.
-        </p>
-        ${
-          mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
-            ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                 This blank table starts unexplored. Ask the Director to establish the first scene, or declare what you do so the scene can unfold.
-               </p>`
-            : mapBundle?.title === 'Quiet chamber'
+      <details class="table-meta-panel table-hud-meta" data-testid="presence-section"${presenceOpen ? ' open' : ''}>
+        <summary data-testid="table-details-summary">Table details</summary>
+        <div class="table-hud-meta-body">
+          <section aria-labelledby="presence-heading">
+            <h2 id="presence-heading">Who is connected</h2>
+            ${presenceBody()}
+          </section>
+          <p class="record-meta" data-testid="table-state-meta"
+            data-state-version="${tableState?.stateVersion ?? 0}"
+            data-event-sequence="${tableState?.lastEventSequence ?? 0}">
+            ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
+          </p>
+          <p class="record-meta" data-testid="shared-scene-status">
+            Everyone at this table sees the same current scene. When the Director changes the map, you will hear a brief update.
+          </p>
+          ${
+            mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
               ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                   Quiet chamber is ready — inspect or open the wooden doorway, or declare what you do next.
+                   This blank table starts unexplored. Ask the Director to establish the first scene, or declare what you do so the scene can unfold.
                  </p>`
-              : ''
-        }
-        <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
-        ${
-          mapBundle === null || mapBundle.notableFeatures.length === 0
-            ? ''
-            : `<ul class="record-list compact" data-testid="map-notable-features">
-                ${mapBundle.notableFeatures
-                  .map(
-                    (feature) => `
-                  <li data-testid="map-notable-feature">
-                    ${escapeHtml(feature.label)}
-                  </li>`,
-                  )
-                  .join('')}
-              </ul>`
-        }
+              : mapBundle?.title === 'Quiet chamber'
+                ? `<p class="record-meta" data-testid="blank-table-start-hint">
+                     Quiet chamber is ready — inspect or open the wooden doorway, or declare what you do next.
+                   </p>`
+                : ''
+          }
+          <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+          ${
+            mapBundle === null || mapBundle.notableFeatures.length === 0
+              ? ''
+              : `<ul class="record-list compact" data-testid="map-notable-features">
+                  ${mapBundle.notableFeatures
+                    .map(
+                      (feature) => `
+                    <li data-testid="map-notable-feature">
+                      ${escapeHtml(feature.label)}
+                    </li>`,
+                    )
+                    .join('')}
+                </ul>`
+          }
+        </div>
       </details>`;
 
     if (toolsWereActive && advancedOpen) {
