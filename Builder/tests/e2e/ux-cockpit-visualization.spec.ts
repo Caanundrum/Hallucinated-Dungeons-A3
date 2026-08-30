@@ -65,6 +65,10 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await page.getByTestId('close-notes-drawer').click();
     await expect(page.getByTestId('notes-drawer')).toHaveCount(0);
 
+    // Stay on Character rail for sheet modal.
+    await page.getByTestId('table-info-tab-character').click();
+    await expect(page.getByTestId('open-table-sheet-modal')).toBeVisible();
+
     // UX-3: sheet modal
     await page.getByTestId('open-table-sheet-modal').click();
     await expect(page.getByTestId('table-sheet-modal')).toBeVisible();

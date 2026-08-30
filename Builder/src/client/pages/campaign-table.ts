@@ -3098,7 +3098,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root.querySelectorAll<HTMLButtonElement>('[data-testid="open-notes-drawer"]').forEach((button) => {
       button.addEventListener('click', () => {
         notesDrawerOpen = true;
-        activeInfoTab = 'notes';
         render();
       });
     });
