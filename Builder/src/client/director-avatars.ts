@@ -1,45 +1,63 @@
 /**
- * Director avatar asset lookup — Phase 5.
+ * Director avatar asset lookup — Phase 5 + Phase 2 painted portraits.
  *
  * Blueprint ownership: Section 25 Phase 5 build scope item 3 ("final
  * personality-specific Director avatar set (6× Veyra + 6× Garrick = 12)").
  * Avatar art is identity × personality, matching `directorAvatarKey()` in
- * `campaign-contract.ts`. Pages must still render an accessible text fallback
- * (name + personality) if an asset fails to load — this module never invents
- * a substitute image.
+ * `campaign-contract.ts`. Painted identity portraits supersede the earlier
+ * silhouette SVGs for lobby and selection chrome. Pages must still render an
+ * accessible text fallback (name + personality) if an asset fails to load —
+ * this module never invents a substitute image.
  */
 
-import veyraSeasonedHost from './assets/directors/veyra__seasoned_host.svg';
-import veyraFriendlyAdventurer from './assets/directors/veyra__friendly_adventurer.svg';
-import veyraEncouragingGuide from './assets/directors/veyra__encouraging_guide.svg';
-import veyraSassyCompanion from './assets/directors/veyra__sassy_companion.svg';
-import veyraDryStoryteller from './assets/directors/veyra__dry_storyteller.svg';
-import veyraDramaticChronicler from './assets/directors/veyra__dramatic_chronicler.svg';
-import garrickSeasonedHost from './assets/directors/garrick__seasoned_host.svg';
-import garrickFriendlyAdventurer from './assets/directors/garrick__friendly_adventurer.svg';
-import garrickEncouragingGuide from './assets/directors/garrick__encouraging_guide.svg';
-import garrickSassyCompanion from './assets/directors/garrick__sassy_companion.svg';
-import garrickDryStoryteller from './assets/directors/garrick__dry_storyteller.svg';
-import garrickDramaticChronicler from './assets/directors/garrick__dramatic_chronicler.svg';
+import type { DirectorIdentity } from '../shared/campaign-contract.js';
+import { DIRECTOR_IDENTITY_LABELS, isDirectorIdentity } from '../shared/campaign-contract.js';
 
-const DIRECTOR_AVATAR_ASSETS: Readonly<Record<string, string>> = {
-  veyra__seasoned_host: veyraSeasonedHost,
-  veyra__friendly_adventurer: veyraFriendlyAdventurer,
-  veyra__encouraging_guide: veyraEncouragingGuide,
-  veyra__sassy_companion: veyraSassyCompanion,
-  veyra__dry_storyteller: veyraDryStoryteller,
-  veyra__dramatic_chronicler: veyraDramaticChronicler,
-  garrick__seasoned_host: garrickSeasonedHost,
-  garrick__friendly_adventurer: garrickFriendlyAdventurer,
-  garrick__encouraging_guide: garrickEncouragingGuide,
-  garrick__sassy_companion: garrickSassyCompanion,
-  garrick__dry_storyteller: garrickDryStoryteller,
-  garrick__dramatic_chronicler: garrickDramaticChronicler,
+import veyraPainted from './assets/directors/veyra-painted.webp';
+import garrickPainted from './assets/directors/garrick-painted.webp';
+
+/** Painted identity portraits used across lobby, create, and campaign detail. */
+const DIRECTOR_PAINTED_PORTRAITS: Readonly<Record<DirectorIdentity, string>> = {
+  veyra: veyraPainted,
+  garrick: garrickPainted,
 };
+
+/** Resolve painted portrait URL for an identity id. */
+export function directorPaintedPortraitPath(identity: DirectorIdentity): string {
+  return DIRECTOR_PAINTED_PORTRAITS[identity];
+}
+
+/** Map a player-facing identity label (or avatar key) to an identity id. */
+export function directorIdentityFromLabelOrKey(value: string): DirectorIdentity | null {
+  const trimmed = value.trim();
+  if (isDirectorIdentity(trimmed)) {
+    return trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('veyra')) {
+    return 'veyra';
+  }
+  if (lower.startsWith('garrick')) {
+    return 'garrick';
+  }
+  for (const [id, label] of Object.entries(DIRECTOR_IDENTITY_LABELS) as [
+    DirectorIdentity,
+    string,
+  ][]) {
+    if (label.toLowerCase() === lower) {
+      return id;
+    }
+  }
+  return null;
+}
 
 /** Asset URL for a `directorAvatarKey()` value, or null when no art is defined. */
 export function directorAvatarAssetPath(avatarKey: string): string | null {
-  return DIRECTOR_AVATAR_ASSETS[avatarKey] ?? null;
+  const identity = directorIdentityFromLabelOrKey(avatarKey);
+  if (identity === null) {
+    return null;
+  }
+  return DIRECTOR_PAINTED_PORTRAITS[identity];
 }
 
 function escapeAttribute(value: string): string {
@@ -65,7 +83,23 @@ export function directorAvatarMarkup(options: {
   if (assetPath === null) {
     return `<span class="${className} director-avatar-fallback" data-testid="${options.testId}-fallback">${escapeAttribute(options.label)}</span>`;
   }
-  return `<img class="${className}" data-testid="${options.testId}" src="${escapeAttribute(assetPath)}" alt="${escapeAttribute(options.label)}" />`;
+  return `<img class="${className}" data-testid="${options.testId}" src="${escapeAttribute(assetPath)}" alt="${escapeAttribute(options.label)}" width="128" height="128" loading="lazy" decoding="async" />`;
+}
+
+/** Compact portrait chip for lobby rows and identity radio cards. */
+export function directorPortraitChipMarkup(options: {
+  readonly identity: DirectorIdentity;
+  readonly label?: string;
+  readonly testId: string;
+  readonly className?: string;
+}): string {
+  const label = options.label ?? DIRECTOR_IDENTITY_LABELS[options.identity];
+  return directorAvatarMarkup({
+    avatarKey: options.identity,
+    label,
+    testId: options.testId,
+    className: options.className ?? 'director-avatar director-avatar-chip',
+  });
 }
 
 /**

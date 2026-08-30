@@ -262,14 +262,20 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <section class="panel" aria-labelledby="director-identity-heading">
           <h2 id="director-identity-heading">3. Game Director identity</h2>
           <p>Choose Veyra or Garrick first. Each has exactly one player-facing name.</p>
-          <ul class="option-list" data-testid="director-identity-list">
+          <ul class="option-list director-identity-cards" data-testid="director-identity-list">
             ${catalog.identities
               .map(
                 (identity) => `
               <li>
-                <label class="option${directorIdentity === identity.id ? ' selected' : ''}" data-testid="identity-${escapeHtml(identity.id)}">
+                <label class="option director-identity-option${directorIdentity === identity.id ? ' selected' : ''}" data-testid="identity-${escapeHtml(identity.id)}">
                   <input type="radio" name="director-identity" value="${escapeHtml(identity.id)}"
                     ${directorIdentity === identity.id ? 'checked' : ''} />
+                  ${directorAvatarMarkup({
+                    avatarKey: identity.id,
+                    label: identity.label,
+                    testId: `identity-avatar-${identity.id}`,
+                    className: 'director-avatar director-avatar-choice',
+                  })}
                   <span class="option-label">${escapeHtml(identity.label)}</span>
                   <span class="option-summary">${escapeHtml(identity.summary)}</span>
                 </label>
@@ -394,6 +400,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
         'preview-director-avatar',
         `${DIRECTOR_IDENTITY_LABELS[directorIdentity]} — ${DIRECTOR_PERSONALITY_LABELS[directorPersonality]}`,
       );
+    }
+    for (const identity of catalog.identities) {
+      bindDirectorAvatarFallback(container, `identity-avatar-${identity.id}`, identity.label);
     }
 
     container

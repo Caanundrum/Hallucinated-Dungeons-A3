@@ -15,6 +15,11 @@ import {
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
 import { ApiFailure, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import {
+  bindDirectorAvatarFallback,
+  directorIdentityFromLabelOrKey,
+  directorPortraitChipMarkup,
+} from '../director-avatars.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
@@ -199,21 +204,31 @@ export function mountCampaignsPage(host: PageHost): void {
                           : `/campaigns/${escapeHtml(table.campaignId)}/join`;
                         const sessionLabel = table.sessionStatusLabel ?? 'Not started';
                         return `
-                      <li data-testid="campaign-item">
-                        <a class="record-note" href="${href}" data-link
-                          data-testid="${seatedHere ? 'my-table-open' : 'my-table-join'}">
-                          ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}
-                        </a>
-                        <span class="record-meta">
-                          ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
-                          · ${table.isCampaignOwner ? 'Owner' : 'Member'}
-                          · ${escapeHtml(sessionLabel)}
-                          · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
-                          · ${escapeHtml(table.visibility)}
-                          ${table.passwordProtected ? ' · 🔒' : ''}
-                          ${seatedHere ? ' · your active seat' : ''}
-                          · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
-                        </span>
+                      <li data-testid="campaign-item" class="table-lobby-row">
+                        ${(() => {
+                          const identity = table.director.identity;
+                          return directorPortraitChipMarkup({
+                            identity,
+                            label: table.director.identityLabel,
+                            testId: `lobby-avatar-${table.campaignId}`,
+                          });
+                        })()}
+                        <div class="table-lobby-copy">
+                          <a class="record-note" href="${href}" data-link
+                            data-testid="${seatedHere ? 'my-table-open' : 'my-table-join'}">
+                            ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}
+                          </a>
+                          <span class="record-meta">
+                            ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
+                            · ${table.isCampaignOwner ? 'Owner' : 'Member'}
+                            · ${escapeHtml(sessionLabel)}
+                            · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
+                            · ${escapeHtml(table.visibility)}
+                            ${table.passwordProtected ? ' · 🔒' : ''}
+                            ${seatedHere ? ' · your active seat' : ''}
+                            · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
+                          </span>
+                        </div>
                       </li>`;
                       })
                       .join('')}
@@ -226,27 +241,53 @@ export function mountCampaignsPage(host: PageHost): void {
                   }</p>`
                 : `<ul class="record-list" data-testid="open-table-list">
                     ${filteredOpen
-                      .map(
-                        (table) => `
-                      <li data-testid="open-table-item">
-                        <a class="record-note" href="/campaigns/${escapeHtml(table.campaignId)}/join" data-link
-                          data-testid="open-table-link">
-                          ${escapeHtml(table.name)}${table.passwordProtected ? ' 🔒' : ''}
-                        </a>
-                        <span class="record-meta">
-                          Host ${escapeHtml(table.ownerDisplayLabel)}
-                          · ${escapeHtml(table.directorIdentityLabel)} · ${escapeHtml(table.directorPersonalityLabel)}
-                          · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
-                          · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
-                        </span>
-                      </li>`,
-                      )
+                      .map((table) => {
+                        const identity = directorIdentityFromLabelOrKey(table.directorIdentityLabel);
+                        return `
+                      <li data-testid="open-table-item" class="table-lobby-row">
+                        ${
+                          identity === null
+                            ? ''
+                            : directorPortraitChipMarkup({
+                                identity,
+                                label: table.directorIdentityLabel,
+                                testId: `open-lobby-avatar-${table.campaignId}`,
+                              })
+                        }
+                        <div class="table-lobby-copy">
+                          <a class="record-note" href="/campaigns/${escapeHtml(table.campaignId)}/join" data-link
+                            data-testid="open-table-link">
+                            ${escapeHtml(table.name)}${table.passwordProtected ? ' 🔒' : ''}
+                          </a>
+                          <span class="record-meta">
+                            Host ${escapeHtml(table.ownerDisplayLabel)}
+                            · ${escapeHtml(table.directorIdentityLabel)} · ${escapeHtml(table.directorPersonalityLabel)}
+                            · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
+                            · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
+                          </span>
+                        </div>
+                      </li>`;
+                      })
                       .join('')}
                   </ul>`
           }
         </section>
       </div>`;
 
+    for (const table of filteredMine) {
+      bindDirectorAvatarFallback(
+        container,
+        `lobby-avatar-${table.campaignId}`,
+        table.director.identityLabel,
+      );
+    }
+    for (const table of filteredOpen) {
+      bindDirectorAvatarFallback(
+        container,
+        `open-lobby-avatar-${table.campaignId}`,
+        table.directorIdentityLabel,
+      );
+    }
     container
       .querySelector<HTMLButtonElement>('[data-testid="start-campaign"]')
       ?.addEventListener('click', () => navigate('/campaigns/new'));
