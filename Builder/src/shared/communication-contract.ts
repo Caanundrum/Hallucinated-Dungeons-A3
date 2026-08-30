@@ -164,6 +164,45 @@ export function formatDirectorProse(body: string): string {
     .trim();
 }
 
+/** Normalize Story/DM bodies for live vs chronicle equivalence checks. */
+export function normalizeDmThreadBody(body: string): string {
+  return formatDirectorProse(body).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** True when two Story bodies are the same beat (exact or containment for density variants). */
+export function storyBodiesEquivalent(left: string, right: string): boolean {
+  const a = normalizeDmThreadBody(left);
+  const b = normalizeDmThreadBody(right);
+  if (a.length === 0 || b.length === 0) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  return shorter.length > 24 && longer.includes(shorter);
+}
+
+/**
+ * Drop optimistic DM rows already present in the chronicle-backed thread.
+ * Fixes live Story duplicates when lastChronicleSyncCount already advanced.
+ */
+export function filterOptimisticDmDupes(
+  fromChronicle: readonly DmThreadMessage[],
+  optimistic: readonly DmThreadMessage[],
+): DmThreadMessage[] {
+  const chronicleDmBodies = fromChronicle
+    .filter((message) => message.speaker === 'dm')
+    .map((message) => message.body);
+  return optimistic.filter((message) => {
+    if (message.speaker !== 'dm') {
+      return true;
+    }
+    return !chronicleDmBodies.some((body) => storyBodiesEquivalent(body, message.body));
+  });
+}
+
 /** Local rolling DM play-thread message kinds (Action Composer). */
 export const DM_THREAD_SPEAKERS = ['dm', 'player', 'system'] as const;
 export type DmThreadSpeaker = (typeof DM_THREAD_SPEAKERS)[number];

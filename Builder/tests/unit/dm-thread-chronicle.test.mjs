@@ -3,9 +3,11 @@ import { test } from 'node:test';
 
 import {
   dmThreadFromChronicleEntries,
+  filterOptimisticDmDupes,
   formatDirectorProse,
   formatPlayerFacingTimestamp,
   isEpochPlaceholderTimestamp,
+  storyBodiesEquivalent,
 } from '../../dist/shared/communication-contract.js';
 
 test('PQA-157/159: dmThreadFromChronicleEntries rebuilds play thread from Chronicle', () => {
@@ -98,4 +100,39 @@ test('TBL-QA-003: epoch placeholders never surface as 1969/1970 wall times', () 
 
 test('formatDirectorProse strips bold markers', () => {
   assert.equal(formatDirectorProse('**Guidance** only'), 'Guidance only');
+});
+
+test('filterOptimisticDmDupes drops live DM beats already in chronicle', () => {
+  const fromChronicle = [
+    {
+      messageId: 'c1',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: 'Stepped through the open doorway in Quiet chamber. Same scene — Quiet chamber remains current; no location change. A lightly knowing beat lands.',
+      createdAt: '2026-08-30T12:00:00.000Z',
+      kind: 'ruling_hint',
+    },
+  ];
+  const optimistic = [
+    {
+      messageId: 'o1',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: 'Stepped through the open doorway in Quiet chamber. Same scene — Quiet chamber remains current; no location change. A lightly knowing beat lands.',
+      createdAt: '2026-08-30T12:00:01.000Z',
+      kind: 'narration',
+    },
+    {
+      messageId: 'o2',
+      speaker: 'system',
+      speakerLabel: 'Table',
+      body: 'Moved across the table.',
+      createdAt: '2026-08-30T12:00:01.000Z',
+      kind: 'mechanics',
+    },
+  ];
+  const filtered = filterOptimisticDmDupes(fromChronicle, optimistic);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].messageId, 'o2');
+  assert.equal(storyBodiesEquivalent(fromChronicle[0].body, optimistic[0].body), true);
 });
