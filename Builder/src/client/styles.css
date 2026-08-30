@@ -1138,7 +1138,18 @@ a.account-chip-label:focus-visible {
   }
 
   .floating-combat-host {
+    left: 0.5rem;
+    right: 3.75rem;
     bottom: 0.75rem;
+    transform: none;
+    display: flex;
+    justify-content: center;
+  }
+
+  .floating-combat-bar {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .dice-fab-host {
