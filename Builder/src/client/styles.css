@@ -3632,7 +3632,20 @@ html.hd-low-effects .map-square-fog,
 
 .option-card input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.option-card .option-card-crest,
+.option-card .option-label,
+.option-card .option-summary {
+  position: relative;
+  z-index: 0;
   pointer-events: none;
 }
 
