@@ -353,8 +353,10 @@ function paintSemanticSvg(
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
     const fill = feature.referenceKind === 'hazard' ? '#c47a4a' : '#f2d38a';
-    return `<g data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(feature.referenceKind ?? 'prop')}">
+    const kindLabel = feature.referenceKind ?? 'prop';
+    return `<g class="map-poi-target" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="map-poi-marker" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
       <circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+      <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)}</title>
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
@@ -739,6 +741,46 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     });
   }
 
+  function bindPoiTooltips(): void {
+    let tip = host.querySelector<HTMLElement>('[data-testid="map-poi-tooltip"]');
+    if (tip === null) {
+      tip = document.createElement('div');
+      tip.className = 'map-poi-tooltip';
+      tip.dataset.testid = 'map-poi-tooltip';
+      tip.hidden = true;
+      host.appendChild(tip);
+    }
+    const show = (label: string, kind: string, clientX: number, clientY: number): void => {
+      if (tip === null) return;
+      const hostBox = host.getBoundingClientRect();
+      tip.hidden = false;
+      tip.textContent = `${label} · ${kind.replace(/_/g, ' ')}`;
+      tip.style.left = `${Math.max(8, clientX - hostBox.left + 12)}px`;
+      tip.style.top = `${Math.max(8, clientY - hostBox.top + 12)}px`;
+    };
+    const hide = (): void => {
+      if (tip !== null) tip.hidden = true;
+    };
+    host.querySelectorAll<SVGGElement>('g[data-notable-feature]').forEach((group) => {
+      const label = group.getAttribute('data-notable-feature') ?? 'Point of interest';
+      const kind = group.getAttribute('data-reference-kind') ?? 'prop';
+      group.onmouseenter = (event) => show(label, kind, event.clientX, event.clientY);
+      group.onmousemove = (event) => show(label, kind, event.clientX, event.clientY);
+      group.onmouseleave = () => hide();
+      group.onclick = (event) => {
+        event.stopPropagation();
+        show(label, kind, event.clientX, event.clientY);
+      };
+      group.onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          const box = group.getBoundingClientRect();
+          show(label, kind, box.left + box.width / 2, box.top);
+        }
+      };
+    });
+  }
+
   function paintPixi(map: MapBundleProjection): void {
     if (application === null || root === null || layers === null) {
       return;
@@ -902,6 +944,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     bindSquareClicks();
     bindEdgeClicks();
     bindToolbar();
+    bindPoiTooltips();
     bindPan();
     ensureViewportHeight();
     if (!hasFittedOnce) {

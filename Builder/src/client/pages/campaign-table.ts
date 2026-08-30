@@ -13,7 +13,7 @@ import {
   ACTION_COMPOSER_STRUCTURE,
   DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
-  PLAYER_DOCK_TAB_ORDER,
+  PLAYER_COMMS_TAB_ORDER,
   PARTY_CHAT_MODE_LABELS,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
@@ -108,6 +108,7 @@ import { navigate } from '../router.js';
 import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
+import { bindModalChrome } from '../modal-engine.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -204,6 +205,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let dmThreadExpanded = false;
   /** Table character sheet overlay (TQA-061–066). */
   let sheetModalOpen = false;
+  /** Scratchpad notes sliding drawer (Gemini UX-3). */
+  let notesDrawerOpen = false;
+  /** Rules spotlight modal (Gemini UX-3 / Cmd+K). */
+  let rulesModalOpen = false;
+  /** Ask-the-DM consulting shimmer while the request is in flight. */
+  let askDmConsulting = false;
+  let modalChromeCleanup: (() => void) | null = null;
   /** Mobile task surface: map / play / sheet / chat (TQA-098). */
   type MobileTaskMode = 'map' | 'play' | 'sheet' | 'chat';
   let mobileTaskMode: MobileTaskMode = 'play';
@@ -1090,14 +1098,41 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const sheet = progression.sheet;
     const label =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    const hpMax = Math.max(1, sheet.hitPoints.value);
+    const hpNow = Math.max(
+      0,
+      typeof sheet.hitPointsCurrent === 'number' ? sheet.hitPointsCurrent : sheet.hitPoints.value,
+    );
+    const hpPct = Math.round((hpNow / hpMax) * 100);
+    const hpTone = hpPct > 50 ? 'healthy' : hpPct > 25 ? 'wounded' : 'critical';
     return `
-      <div class="table-character-compact" data-testid="table-character-compact">
-        <p><strong>${escapeHtml(label)}</strong> · Level ${sheet.level}</p>
-        <p class="record-meta">HP ${sheet.hitPoints.value} · AC ${sheet.armorClass.value} · Speed ${sheet.speed.value} ft</p>
-        <button type="button" class="table-secondary-action" data-testid="open-table-sheet-modal">
-          Open sheet at table
-        </button>
-        <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
+      <div class="table-character-compact hero-mini-sheet" data-testid="table-character-compact">
+        <div class="hero-mini-identity">
+          <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>
+          <div>
+            <p class="hero-mini-name"><strong>${escapeHtml(label)}</strong></p>
+            <p class="record-meta">Level ${sheet.level}</p>
+          </div>
+        </div>
+        <div class="hp-bar" data-testid="hero-hp-bar" data-hp-tone="${hpTone}" aria-label="Hit points ${hpNow} of ${hpMax}">
+          <div class="hp-bar-track">
+            <div class="hp-bar-fill" style="width:${hpPct}%"></div>
+          </div>
+          <span class="hp-bar-label">${hpNow}/${hpMax} HP</span>
+        </div>
+        <div class="hero-mini-badges">
+          <span class="hero-badge" data-testid="hero-ac-badge">AC ${sheet.armorClass.value}</span>
+          <span class="hero-badge" data-testid="hero-speed-badge">SPD ${sheet.speed.value} ft</span>
+        </div>
+        <div class="hero-mini-actions">
+          <button type="button" class="table-primary-action" data-testid="open-table-sheet-modal">
+            View full sheet
+          </button>
+          <button type="button" class="table-secondary-action" data-testid="open-notes-drawer">
+            Notes
+          </button>
+          <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
+        </div>
       </div>`;
   }
 
@@ -1109,8 +1144,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const label =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
     return `
-      <div class="modal-backdrop sheet-modal-backdrop" data-testid="table-sheet-modal" role="presentation">
-        <div class="modal-dialog sheet-modal-dialog" role="dialog" aria-modal="true"
+      <div class="modal-backdrop sheet-modal-backdrop cockpit-modal-backdrop" data-testid="table-sheet-modal" role="presentation">
+        <div class="modal-dialog sheet-modal-dialog cockpit-modal-dialog" role="dialog" aria-modal="true"
           aria-labelledby="table-sheet-modal-title" tabindex="-1">
           <div class="sheet-modal-chrome">
             <h2 id="table-sheet-modal-title">${escapeHtml(label)}</h2>
@@ -1118,6 +1153,87 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </div>
           <p class="record-meta">Escape or backdrop closes this overlay and keeps you at the table.</p>
           <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, { compact: true })}</div>
+        </div>
+      </div>`;
+  }
+
+  function notesDrawerHtml(): string {
+    if (!notesDrawerOpen) {
+      return '';
+    }
+    return `
+      <div class="drawer-backdrop" data-testid="notes-drawer-backdrop" role="presentation">
+        <aside class="notes-drawer" data-testid="notes-drawer" role="dialog" aria-modal="true"
+          aria-labelledby="notes-drawer-title" tabindex="-1">
+          <div class="notes-drawer-chrome">
+            <h2 id="notes-drawer-title">Scratchpad notes</h2>
+            <button type="button" class="table-secondary-action" data-testid="close-notes-drawer">Close</button>
+          </div>
+          <p class="record-meta">Private scratch notes — saved on this device for this campaign.</p>
+          <label class="field">
+            <span class="visually-hidden">Notes</span>
+            <textarea data-testid="notes-drawer-input" rows="14" placeholder="Clues, names, open questions…">${escapeHtml(tableNotes)}</textarea>
+          </label>
+        </aside>
+      </div>`;
+  }
+
+  function rulesModalHtml(): string {
+    if (!rulesModalOpen) {
+      return '';
+    }
+    const categoryEntries =
+      rulesCatalog?.entries.filter((entry) => entry.category === selectedRulesCategory) ?? [];
+    const search = rulesSearchQuery.trim().toLowerCase();
+    const filteredEntries =
+      search.length === 0
+        ? categoryEntries
+        : categoryEntries.filter(
+            (entry) =>
+              entry.title.toLowerCase().includes(search) ||
+              entry.summary.toLowerCase().includes(search),
+          );
+    const selectedEntry =
+      filteredEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
+      filteredEntries[0] ??
+      null;
+    return `
+      <div class="modal-backdrop cockpit-modal-backdrop" data-testid="rules-search-modal" role="presentation">
+        <div class="modal-dialog cockpit-modal-dialog rules-spotlight-dialog" role="dialog" aria-modal="true"
+          aria-labelledby="rules-spotlight-title" tabindex="-1">
+          <div class="sheet-modal-chrome">
+            <h2 id="rules-spotlight-title">Rules search</h2>
+            <button type="button" class="table-secondary-action" data-testid="close-rules-modal">Close</button>
+          </div>
+          <p class="record-meta">Press Esc to dismiss. Shortcut: Ctrl/Cmd+K.</p>
+          <label class="field">
+            <span>Search</span>
+            <input type="search" data-testid="rules-spotlight-search" value="${escapeHtml(rulesSearchQuery)}"
+              placeholder="Conditions, spells, actions…" />
+          </label>
+          <div class="rules-spotlight-body">
+            <ul class="record-list compact" data-testid="rules-spotlight-entries">
+              ${filteredEntries
+                .slice(0, 12)
+                .map(
+                  (entry) => `
+                <li>
+                  <button type="button" class="rules-catalog-entry${
+                    selectedEntry?.entryId === entry.entryId ? ' selected' : ''
+                  }" data-testid="rules-spotlight-entry" data-entry-id="${escapeHtml(entry.entryId)}">${escapeHtml(entry.title)}</button>
+                </li>`,
+                )
+                .join('')}
+            </ul>
+            ${
+              selectedEntry === null
+                ? '<p class="empty-state">No matching rules entries.</p>'
+                : `<article class="rules-explanation" data-testid="rules-spotlight-explanation">
+                    <h3>${escapeHtml(selectedEntry.title)}</h3>
+                    <p>${escapeHtml(selectedEntry.summary)}</p>
+                  </article>`
+            }
+          </div>
         </div>
       </div>`;
   }
@@ -1417,6 +1533,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function commsDockBody(): string {
+    const commsTab = activeTab === 'chronicle' ? 'party_chat' : activeTab;
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-comms-rail"
         aria-expanded="${!commsRailCollapsed}" ${commsRailCollapsed ? 'hidden' : ''}>
@@ -1425,17 +1542,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ${
         commsRailCollapsed
           ? `<button type="button" class="table-rail-restore" data-testid="expand-comms-rail-inline">Show chat</button>`
-          : `<div class="dock-tabs" role="tablist" aria-label="Table conversations">
-        ${PLAYER_DOCK_TAB_ORDER.map(
-          (tab) => `
-          <button type="button" role="tab" class="dock-tab${activeTab === tab ? ' active' : ''}"
-            aria-selected="${activeTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
-            ${escapeHtml(DOCK_TAB_LABELS[tab])}
-          </button>`,
-        ).join('')}
-      </div>
-      <div class="dock-viewport" role="tabpanel">
-        ${dockBody()}
+          : `<div class="comms-cockpit" data-testid="comms-cockpit">
+        <section class="comms-story-tier" data-testid="comms-story-tier" aria-label="Story so far">
+          ${storyFeedBody()}
+        </section>
+        <section class="comms-interactive-tier" data-testid="comms-interactive-tier" aria-label="Table conversations">
+          <div class="dock-tabs" role="tablist" aria-label="Table conversations">
+            ${PLAYER_COMMS_TAB_ORDER.map(
+              (tab) => `
+              <button type="button" role="tab" class="dock-tab${commsTab === tab ? ' active' : ''}"
+                aria-selected="${commsTab === tab}" data-testid="dock-tab-${tab}" data-dock-tab="${tab}">
+                ${escapeHtml(DOCK_TAB_LABELS[tab])}
+              </button>`,
+            ).join('')}
+          </div>
+          <div class="dock-viewport" role="tabpanel">
+            ${dockBody()}
+          </div>
+        </section>
       </div>`
       }`;
   }
@@ -1568,24 +1692,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>`;
   }
 
-  function dockBody(): string {
-    if (activeTab === 'chronicle') {
-      const allEntries = chronicle?.entries ?? [];
-      const entries =
-        chronicleKindFilter === 'all'
-          ? allEntries
-          : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
-      return `
-        <div class="dock-pane" data-testid="chronicle-pane">
-          <h3 data-testid="session-record-heading">Session record</h3>
-          <p class="record-meta">Campaign history only. Players cannot post here.</p>
-          <p class="record-meta" data-testid="session-record-privacy-note">
-            Play declarations, rulings, narration, and map events appear here. Private Ask the Game
-            Director advice stays in Ask DM and is never merged into this public session record.
-          </p>
-          <label class="field">
-            <span>Filter by kind</span>
-            <select data-testid="chronicle-kind-filter">
+
+  function storyFeedBody(): string {
+    const allEntries = chronicle?.entries ?? [];
+    const entries =
+      chronicleKindFilter === 'all'
+        ? allEntries
+        : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
+    return `
+      <div class="dock-pane story-feed-pane" data-testid="chronicle-pane">
+        <div class="story-feed-chrome">
+          <button type="button" class="story-feed-heading-btn" data-testid="dock-tab-chronicle"
+            aria-pressed="true" title="Story so far">
+            <h3 data-testid="session-record-heading">Story so far</h3>
+          </button>
+          <label class="field story-feed-filter">
+            <span class="visually-hidden">Filter by kind</span>
+            <select data-testid="chronicle-kind-filter" aria-label="Filter Story so far by kind">
               <option value="all" ${chronicleKindFilter === 'all' ? 'selected' : ''}>All kinds</option>
               ${CHRONICLE_ENTRY_KINDS.map(
                 (kind) =>
@@ -1595,32 +1718,41 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ).join('')}
             </select>
           </label>
-          ${
-            entries.length === 0
-              ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
-              : `<ol class="record-list chronicle-list" data-testid="chronicle-list">
-                  ${entries
-                    .map((entry, index) => {
-                      const isLatestDirectorNarration =
-                        entry.kind === 'director_ruling' &&
-                        !entries
-                          .slice(index + 1)
-                          .some((later) => later.kind === 'director_ruling');
-                      const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
-                      return `
-                    <li data-testid="chronicle-entry">
-                      <span class="record-note"${
-                        isLatestDirectorNarration
-                          ? ' data-testid="director-narration"'
-                          : ''
-                      }>${escapeHtml(body)}</span>
-                      <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
-                    </li>`;
-                    })
-                    .join('')}
-                </ol>`
-          }
-        </div>`;
+        </div>
+        <p class="record-meta visually-hidden" data-testid="session-record-privacy-note">
+          Play declarations, rulings, narration, and map events appear here. Private Ask the Game
+          Director advice stays in Ask DM and is never merged into this public session record.
+        </p>
+        ${
+          entries.length === 0
+            ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
+            : `<ol class="record-list chronicle-list story-feed-list" data-testid="chronicle-list">
+                ${entries
+                  .map((entry, index) => {
+                    const isLatestDirectorNarration =
+                      entry.kind === 'director_ruling' &&
+                      !entries
+                        .slice(index + 1)
+                        .some((later) => later.kind === 'director_ruling');
+                    const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
+                    return `
+                  <li data-testid="chronicle-entry">
+                    <span class="record-note"${
+                      isLatestDirectorNarration ? ' data-testid="director-narration"' : ''
+                    }>${escapeHtml(body)}</span>
+                    <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
+                  </li>`;
+                  })
+                  .join('')}
+              </ol>`
+        }
+      </div>`;
+  }
+
+  function dockBody(): string {
+    if (activeTab === 'chronicle') {
+      // Story feed is pinned above; keep interactive tab on Chat.
+      activeTab = 'party_chat';
     }
 
     if (activeTab === 'rules_desk') {
@@ -1645,6 +1777,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return `
         <div class="dock-pane" data-testid="rules-desk-pane">
           <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
+          <button type="button" class="table-secondary-action" data-testid="open-rules-modal">Open rules spotlight</button>
           <p class="record-meta" data-testid="rules-catalog-meta">
             ${
               rulesCatalog === null
@@ -1712,6 +1845,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <div class="dock-pane" data-testid="director-address-pane">
           <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
           <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
+          ${
+            askDmConsulting
+              ? `<p class="ask-dm-shimmer" data-testid="ask-dm-consulting" aria-live="polite">Consulting ancient lore…</p>`
+              : ''
+          }
           ${renderThreadMessages(askDmThread, {
             listTestId: 'ask-dm-thread',
             latestReplyTestId: 'director-address-reply',
@@ -1719,10 +1857,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <form class="dock-composer" data-testid="director-address-composer">
             <label class="field">
               <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
-              <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?">${escapeHtml(directorDraft)}</textarea>
+              <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
             </label>
-            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || candidate === null || directorDraft.trim().length === 0}">
-              ${busy ? 'Sending…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
+            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
+              ${askDmConsulting ? 'Consulting…' : busy ? 'Sending…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
             </button>
           </form>
         </div>`;
@@ -2039,6 +2177,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           )}
         </p>
       </section>`;
+  }
+
+
+  function floatingCombatBarHtml(): string {
+    if (!isOwnCombatTurn() || sessionIsSuspended()) {
+      return '';
+    }
+    return `
+      <div class="floating-combat-bar active-turn-hud" data-testid="floating-combat-bar" role="toolbar" aria-label="Combat actions">
+        <button type="button" class="table-primary-action" data-testid="fab-roll-d20" aria-disabled="${busy}">Roll d20</button>
+        <button type="button" class="table-primary-action" data-testid="fab-attack"
+          data-rules-command="combat.attack" aria-disabled="${busy}">Attack</button>
+        <button type="button" class="table-secondary-action" data-testid="fab-end-turn" aria-disabled="${busy}">End turn</button>
+      </div>`;
   }
 
   function playerActionBar(): string {
@@ -2399,6 +2551,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         modalSlot.dataset.testid = 'table-sheet-modal-slot';
         shellEl.appendChild(modalSlot);
       }
+      if (shellEl !== null && shellEl.querySelector('[data-testid="table-overlay-slot"]') === null) {
+        const overlaySlot = document.createElement('div');
+        overlaySlot.dataset.testid = 'table-overlay-slot';
+        shellEl.appendChild(overlaySlot);
+      }
+      if (shellEl !== null && shellEl.querySelector('[data-testid="floating-combat-host"]') === null) {
+        const fabHost = document.createElement('div');
+        fabHost.className = 'floating-combat-host';
+        fabHost.dataset.testid = 'floating-combat-host';
+        shellEl.appendChild(fabHost);
+      }
       if (shellEl !== null && shellEl.querySelector('[data-testid="table-mobile-task-nav"]') === null) {
         const nav = document.createElement('nav');
         nav.className = 'table-mobile-task-nav';
@@ -2445,6 +2608,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </div>
         <footer class="table-dashboard-footer" data-testid="table-footer-slot"></footer>
         <div data-testid="table-sheet-modal-slot"></div>
+        <div data-testid="table-overlay-slot"></div>
+        <div class="floating-combat-host" data-testid="floating-combat-host"></div>
       </div>`;
   }
 
@@ -2832,6 +2997,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function bindPanelEvents(root: HTMLElement): void {
+    if (root.dataset.rulesHotkeyBound !== '1') {
+      root.dataset.rulesHotkeyBound = '1';
+      document.addEventListener('keydown', (event) => {
+        if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') {
+          return;
+        }
+        if (!container.contains(document.activeElement) && document.activeElement !== document.body) {
+          // still allow when focus is in table shell
+        }
+        const onTable = container.querySelector('[data-testid="table-page-shell"]') !== null;
+        if (!onTable) return;
+        event.preventDefault();
+        rulesModalOpen = true;
+        activeTab = 'rules_desk';
+        render();
+      });
+    }
     bindDmPlayThreadScroll();
     if (dmThreadFollowLatest) {
       requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
@@ -2892,9 +3074,111 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         };
         document.addEventListener('keydown', sheetEscapeListener, true);
       }
+      const backdrop = root.querySelector<HTMLElement>('[data-testid="table-sheet-modal"]');
+      const dialog = root.querySelector<HTMLElement>('.sheet-modal-dialog');
+      if (backdrop !== null && dialog !== null && modalChromeCleanup === null) {
+        modalChromeCleanup = bindModalChrome(backdrop, dialog, {
+          onClose: () => closeSheetModal(),
+          restoreFocusTo: root.querySelector<HTMLElement>('[data-testid="open-table-sheet-modal"]'),
+        });
+      }
     } else {
       document.body.classList.remove('sheet-modal-open');
+      if (modalChromeCleanup !== null && !notesDrawerOpen && !rulesModalOpen) {
+        modalChromeCleanup();
+        modalChromeCleanup = null;
+      }
     }
+
+    const closeNotesDrawer = () => {
+      if (!notesDrawerOpen) return;
+      notesDrawerOpen = false;
+      render();
+    };
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="open-notes-drawer"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        notesDrawerOpen = true;
+        activeInfoTab = 'notes';
+        render();
+      });
+    });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="close-notes-drawer"]')
+      ?.addEventListener('click', () => closeNotesDrawer());
+    root
+      .querySelector<HTMLElement>('[data-testid="notes-drawer-backdrop"]')
+      ?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) closeNotesDrawer();
+      });
+    root
+      .querySelector<HTMLTextAreaElement>('[data-testid="notes-drawer-input"]')
+      ?.addEventListener('input', (event) => {
+        const value = (event.target as HTMLTextAreaElement).value;
+        tableNotes = value;
+        saveTableNotesPreference(value);
+      });
+
+    const closeRulesModal = () => {
+      if (!rulesModalOpen) return;
+      rulesModalOpen = false;
+      render();
+    };
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="open-rules-modal"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        rulesModalOpen = true;
+        activeTab = 'rules_desk';
+        render();
+      });
+    });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="close-rules-modal"]')
+      ?.addEventListener('click', () => closeRulesModal());
+    root
+      .querySelector<HTMLElement>('[data-testid="rules-search-modal"]')
+      ?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) closeRulesModal();
+      });
+    root
+      .querySelector<HTMLInputElement>('[data-testid="rules-spotlight-search"]')
+      ?.addEventListener('input', (event) => {
+        rulesSearchQuery = (event.target as HTMLInputElement).value;
+        render();
+      });
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="rules-spotlight-entry"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        selectedRulesEntryId = button.dataset.entryId ?? selectedRulesEntryId;
+        render();
+      });
+    });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="dock-tab-chronicle"]')
+      ?.addEventListener('click', () => {
+        root.querySelector<HTMLElement>('[data-testid="chronicle-list"]')?.scrollTo({
+          top: 99999,
+          behavior: 'smooth',
+        });
+        shell.announce('Story so far focused.');
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="fab-end-turn"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('encounter.next_turn');
+      });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="fab-attack"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('combat.attack');
+      });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="fab-roll-d20"]')
+      ?.addEventListener('click', () => {
+        const roll = 1 + Math.floor(Math.random() * 20);
+        appendDmThread('system', 'Table', `Rolled d20 → ${roll}.`, 'mechanics');
+        patchDmPlayThread();
+        shell.announce(`Rolled ${roll} on a d20.`);
+      });
+
     root.querySelectorAll<HTMLButtonElement>('[data-mobile-task]').forEach((button) => {
       button.addEventListener('click', () => {
         const mode = button.dataset.mobileTask as MobileTaskMode | undefined;
@@ -3491,6 +3775,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           const question = directorDraft.trim();
           busy = true;
+          askDmConsulting = true;
           error = null;
           appendAskDmThread('player', 'You', question, 'declaration');
           directorDraft = '';
@@ -3519,6 +3804,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 ? failure.message
                 : 'Ask the Game Director could not be sent.';
           } finally {
+            askDmConsulting = false;
             busy = false;
             render();
           }
@@ -4455,6 +4741,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     actionSlot.innerHTML = playerActionBar();
     commsSlot.innerHTML = commsDockBody();
     sheetModalSlot.innerHTML = characterSheetModalHtml();
+    const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
+    if (overlaySlot !== null) {
+      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}`;
+    }
+    const combatHost = container.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
+    if (combatHost !== null) {
+      combatHost.innerHTML = floatingCombatBarHtml();
+    }
 
     const infoRail = container.querySelector<HTMLElement>('[data-testid="table-info-rail"]');
     const commsRail = container.querySelector<HTMLElement>('[data-testid="communication-dock"]');
