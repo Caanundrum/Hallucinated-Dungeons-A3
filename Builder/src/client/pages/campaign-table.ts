@@ -19,6 +19,7 @@ import {
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
+  collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
   formatDirectorProse,
@@ -388,7 +389,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       // exist in chronicle (live narration dupes after confirm).
       dmThreadOptimistic = filterOptimisticDmDupes(fromChronicle, dmThreadOptimistic);
     }
-    dmThread = [...fromChronicle, ...dmThreadOptimistic];
+    dmThread = collapseDuplicateDmMessages([...fromChronicle, ...dmThreadOptimistic]);
   }
 
   function seedDmThreadIfNeeded(): void {
@@ -786,8 +787,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       lastNarration = narration.body;
       const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
       const prose = formatDirectorProse(narration.body).trim();
-      // Narration is persisted server-side. Prefer chronicle as the only live source —
-      // optimistic append is what produced duplicate Story rows until reload.
+      // Narration is persisted server-side. Chronicle is the only live source after
+      // a successful fetch — never optimistic-append (that duplicated Story so far).
       let chronicleFetchOk = false;
       let appliedFromChronicle = false;
       try {
@@ -796,18 +797,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             (entry) =>
               entry.kind === 'director_ruling' && storyBodiesEquivalent(entry.body, prose),
           );
-        for (let attempt = 0; attempt < 4; attempt += 1) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
           chronicle = await fetchChronicle(campaignId);
           if (bodyMatches(chronicle.entries ?? [])) {
             break;
           }
-          if (attempt < 3) {
-            await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+          if (attempt < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
           }
         }
         chronicleFetchOk = true;
-        // Chronicle is authoritative after narrate — drop live rows so Story cannot
-        // keep both an optimistic DM beat and the persisted ruling.
         dmThreadOptimistic = [];
         lastChronicleSyncCount = chronicle.entries.length;
         syncDmThreadFromChronicle();
@@ -816,12 +815,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           dmThread.some(
             (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, prose),
           );
+        dmThread = collapseDuplicateDmMessages(dmThread);
       } catch {
         chronicleFetchOk = false;
         appliedFromChronicle = false;
       }
-      // Only optimistic-append when chronicle could not be read at all. If the ruling
-      // is merely delayed, wait for poll/sync rather than stacking a live duplicate.
+      // Only append when chronicle could not be read. Delayed writes are left to poll —
+      // a deferred optimistic append was reintroducing the live duplicate on hosted.
       if (!chronicleFetchOk && !appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
         appendDmThread(
           'dm',
@@ -829,32 +829,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           narration.body,
           'narration',
         );
-      } else if (chronicleFetchOk && !appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
-        // Deferred catch-up: one more pull after the emulator/hosted write is visible.
-        void (async () => {
-          await new Promise((resolve) => setTimeout(resolve, 400));
-          if (!isPageMountCurrent(container, mountToken) || candidate === null) {
-            return;
-          }
-          try {
-            chronicle = await fetchChronicle(campaignId);
-            syncDmThreadFromChronicle();
-            const present = dmThread.some(
-              (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, prose),
-            );
-            if (!present) {
-              appendDmThread(
-                'dm',
-                narration.directorIdentityLabel || directorIdentityLabel,
-                narration.body,
-                'narration',
-              );
-            }
-            patchDmPlayThread();
-          } catch {
-            // Keep the last patched thread; poll will reconcile.
-          }
-        })();
       }
       if (tags.length > 0) {
         const framingBody = `Epic framing (outcome unchanged): ${tags.map((tag) => tag.replace(/_/g, ' ')).join(', ')}.`;
@@ -2687,6 +2661,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       tableState = accepted.table;
       mapBundle = await fetchCampaignMap(campaignId);
+      stageHandle?.renderMap(mapBundle);
       undoMoveAnchor = start;
       moveTarget = null;
       movePreviewPath = null;
@@ -4238,6 +4213,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
+            // Paint the committed token/door state before slow Director narration.
+            stageHandle?.renderMap(mapBundle);
             const resolvedSummary = resolvedSummaryAfterTableConfirm({
               commandType: draft.proposedCommandType,
               draftSummary: draft.summary,
@@ -4253,6 +4230,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             shell.announce('Action confirmed on the table.');
             setIntentDraft(null);
             doorRecoveryVisible = false;
+            patchDmPlayThread();
             if (resumeCompound && declarationText.length > 0) {
               // Open/build first, then chain the through-step without double-narrating.
               await resumeCompoundDeclarationAfterBuild(declarationText, {
