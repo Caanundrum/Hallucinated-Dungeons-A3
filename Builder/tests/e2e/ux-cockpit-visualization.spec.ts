@@ -82,6 +82,30 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await page.getByTestId('close-rules-modal').click();
     await expect(page.getByTestId('rules-search-modal')).toHaveCount(0);
 
+    // Polish Batch 1: floating zoom pill on full-bleed map
+    await expect(page.getByTestId('map-stage-toolbar')).toBeVisible();
+    await expect(page.getByTestId('map-zoom-indicator')).toBeVisible();
+
+    // Polish Batch 2: persistent floating action HUD while seated
+    await expect(page.getByTestId('floating-combat-bar')).toBeVisible();
+    await expect(page.getByTestId('fab-roll-d20')).toBeVisible();
+    await expect(page.getByTestId('fab-attack')).toBeVisible();
+    await expect(page.getByTestId('fab-end-turn')).toBeVisible();
+
+    // Polish Batch 3: dice tray FAB
+    await expect(page.getByTestId('dice-fab')).toBeVisible();
+    await page.getByTestId('dice-fab').click();
+    await expect(page.getByTestId('dice-tray')).toBeVisible();
+    await page.screenshot({ path: '/opt/cursor/artifacts/ux-polish-dice-tray-open.png' });
+    await page.getByTestId('dice-roll-d20').click();
+    await expect(page.getByTestId('dice-tray-result')).toBeVisible({ timeout: 5_000 });
+    await page.screenshot({ path: '/opt/cursor/artifacts/ux-polish-dice-result.png' });
+    await page.getByTestId('close-dice-tray').click();
+    await expect(page.getByTestId('dice-tray')).toHaveCount(0);
+
+    // NL action composer still present (not replaced by FAB-only controls)
+    await expect(page.getByTestId('player-action-input')).toBeVisible();
+
     await page.screenshot({ path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png' });
     await page.getByTestId('comms-cockpit').screenshot({
       path: '/opt/cursor/artifacts/ux-story-comms-split.png',
@@ -89,5 +113,35 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await page.getByTestId('table-character-compact').screenshot({
       path: '/opt/cursor/artifacts/ux-hero-mini-sheet.png',
     });
+    await page.getByTestId('map-stage-toolbar').screenshot({
+      path: '/opt/cursor/artifacts/ux-polish-zoom-pill.png',
+    });
+    await page.getByTestId('floating-combat-bar').screenshot({
+      path: '/opt/cursor/artifacts/ux-polish-action-hud.png',
+    });
+  });
+});
+
+test.describe('Character creation carousel polish', () => {
+  test('three-stage carousel chrome is visible on /characters/new', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+
+    await expect(page.getByTestId('wizard-carousel')).toBeVisible();
+    await expect(page.getByTestId('carousel-stage-archetype')).toBeVisible();
+    await expect(page.getByTestId('carousel-stage-foundation')).toBeVisible();
+    await expect(page.getByTestId('carousel-stage-identity')).toBeVisible();
+    await expect(page.getByTestId('carousel-stage-kicker')).toContainText(/Archetype/i);
+    await expect(page.getByTestId('step-class')).toBeVisible();
+    await expect(page.getByTestId('wizard-continue')).toBeVisible();
+
+    await page.screenshot({ path: '/opt/cursor/artifacts/ux-polish-chargen-carousel.png' });
   });
 });

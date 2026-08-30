@@ -69,6 +69,35 @@ const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
   identity: 'Identity',
 };
 
+/** Visual 3-stage carousel (Gemini polish Batch 4) grouping SRD wizard steps. */
+const CAROUSEL_STAGES = [
+  {
+    id: 'archetype',
+    label: 'Archetype',
+    summary: 'Class & species',
+    steps: ['class', 'species'] as const satisfies readonly WizardStep[],
+  },
+  {
+    id: 'foundation',
+    label: 'Foundation',
+    summary: 'Background & attributes',
+    steps: ['background', 'abilities'] as const satisfies readonly WizardStep[],
+  },
+  {
+    id: 'identity',
+    label: 'Identity',
+    summary: 'Gear, features & name',
+    steps: ['equipment', 'features', 'identity'] as const satisfies readonly WizardStep[],
+  },
+] as const;
+
+function carouselStageForStep(step: WizardStep): (typeof CAROUSEL_STAGES)[number] {
+  return (
+    CAROUSEL_STAGES.find((stage) => (stage.steps as readonly WizardStep[]).includes(step)) ??
+    CAROUSEL_STAGES[0]!
+  );
+}
+
 /** One helpful guide line per step. Humor is fine; inventing fake options is not. */
 const STEP_HELPERS: Record<WizardStep, string> = {
   class:
@@ -311,8 +340,37 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   function stepTrain(): string {
     const draft = current?.draft;
+    const activeStage = carouselStageForStep(activeStep);
     const activeIndex = WIZARD_STEPS.indexOf(activeStep);
     return `
+      <nav class="wizard-carousel" aria-label="Character creation stages" data-testid="wizard-carousel">
+        <ol class="wizard-carousel-stages" data-testid="wizard-carousel-stages">
+          ${CAROUSEL_STAGES.map((stage, stageIndex) => {
+            const stageSteps = stage.steps as readonly WizardStep[];
+            const isActive = stage.id === activeStage.id;
+            const done = stageSteps.every((step) => draft?.completedSteps.includes(step) === true);
+            const firstStep = stageSteps[0]!;
+            const firstIndex = WIZARD_STEPS.indexOf(firstStep);
+            const priorComplete =
+              firstIndex === 0 ||
+              WIZARD_STEPS.slice(0, firstIndex).every(
+                (prior) => draft?.completedSteps.includes(prior) === true,
+              );
+            const allowed = stageIndex === 0 || done || priorComplete || activeIndex >= firstIndex;
+            return `
+              <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''} ${allowed ? '' : 'locked'}">
+                <button type="button" data-carousel-stage="${stage.id}" data-step="${firstStep}"
+                  data-testid="carousel-stage-${stage.id}"
+                  aria-current="${isActive ? 'step' : 'false'}"
+                  aria-disabled="${allowed ? 'false' : 'true'}">
+                  <span class="carousel-stage-number">${stageIndex + 1}</span>
+                  <span class="carousel-stage-label">${escapeHtml(stage.label)}</span>
+                  <span class="carousel-stage-summary">${escapeHtml(stage.summary)}</span>
+                </button>
+              </li>`;
+          }).join('')}
+        </ol>
+      </nav>
       <nav class="wizard-train" aria-label="Character creation steps" data-testid="wizard-steps">
         <ol class="wizard-steps">
           ${WIZARD_STEPS.map((step, index) => {
@@ -400,14 +458,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly selected: string | null;
   }): string {
     return `
-      <div class="option-list" data-testid="${escapeHtml(options.testId)}">
+      <div class="option-list option-card-grid" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
           .map(
             (entry) => `
-          <label class="option${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}">
+          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}">
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${options.selected === entry.id ? 'checked' : ''} ${busy ? 'disabled' : ''}
               data-testid="option-${escapeHtml(entry.id)}" />
+            <span class="option-card-crest" aria-hidden="true">${escapeHtml(entry.label.slice(0, 1))}</span>
             <span class="option-label">${escapeHtml(entry.label)}</span>
             ${entry.summary === undefined ? '' : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`}
           </label>`,
@@ -1985,12 +2044,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const focus = captureFocus();
 
     container.innerHTML = `
-      <div class="page page-wide">
+      <div class="page page-wide create-carousel-page">
         <h1 data-testid="create-heading">Create a character</h1>
         <p class="tagline">
-          Follow the steps in order — or hop the train above if you need to revisit a choice.
-          The server checks every decision against the SRD, so Continue waits until this step is legal.
-          On a wide screen, the sheet builds on the side so you can compare as you choose.
+          Three visual stages — Archetype, Foundation, and Identity. The SRD still validates every pick.
         </p>
         <p class="wizard-coach" data-testid="one-draft-disclosure">
           Alpha keeps one draft at a time. Starting a new character from the Vault discards this draft
@@ -2016,8 +2073,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           state === null
             ? ''
             : `
-        <div class="wizard-layout">
-          <section class="panel wizard-step-panel" aria-labelledby="step-heading">
+        <div class="wizard-layout wizard-carousel-layout">
+          <section class="panel wizard-step-panel wizard-carousel-panel" aria-labelledby="step-heading" data-testid="wizard-carousel-panel">
+            <p class="carousel-stage-kicker" data-testid="carousel-stage-kicker">${escapeHtml(carouselStageForStep(activeStep).label)} · ${escapeHtml(carouselStageForStep(activeStep).summary)}</p>
             <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
             ${renderStepBody()}
             ${wizardNav()}

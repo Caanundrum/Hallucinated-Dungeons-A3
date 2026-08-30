@@ -325,6 +325,7 @@ a.account-chip-label:focus-visible {
   overflow: hidden;
   box-sizing: border-box;
   background: transparent;
+  position: relative;
 }
 
 .shell-table-mode .table-dashboard.page-wide {
@@ -635,8 +636,9 @@ a.account-chip-label:focus-visible {
   min-height: 0;
   min-width: 0;
   height: 100%;
-  gap: var(--space-2);
+  gap: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .table-dashboard .table-stage-frame {
@@ -650,11 +652,14 @@ a.account-chip-label:focus-visible {
   background: color-mix(in srgb, var(--bg-void) 88%, #000);
   box-shadow: none;
   overflow: hidden;
+  position: relative;
 }
 
 .table-action-bar {
   flex-shrink: 0;
   margin: 0;
+  max-height: min(34vh, 18rem);
+  overflow: auto;
   padding: var(--space-2) var(--space-3);
   position: relative;
   z-index: 4;
@@ -2816,30 +2821,70 @@ html.hd-low-effects .map-square-fog,
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: var(--space-1);
+  padding: 0;
   pointer-events: auto;
   z-index: 2;
 }
 
-.table-stage-toolbar {
+.table-stage-toolbar,
+.table-stage-toolbar.map-zoom-pill {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 5;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-bottom: var(--space-1);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 3;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  background: color-mix(in srgb, var(--panel-surface) 72%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-card);
+  pointer-events: auto;
 }
 
 .table-stage-toolbar button {
-  font-size: 0.78rem;
-  padding: var(--space-1) var(--space-2);
-  min-height: 30px;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.table-stage-toolbar button:hover {
+  border-color: color-mix(in srgb, var(--gold-primary) 45%, transparent);
+  color: var(--text-gold);
+}
+
+.map-zoom-pill-meta {
+  margin: 0 0 0 4px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.map-stage-help-floating {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  z-index: 5;
+  margin: 0;
+  max-width: 12rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-surface) 70%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 0.72rem;
 }
 
 .table-stage-svg-viewport {
   flex: 1 1 auto;
-  min-height: 220px;
+  min-height: 0;
   height: 100%;
   overflow: auto;
   display: block;
@@ -3279,7 +3324,7 @@ html.hd-low-effects .map-square-fog,
 .floating-combat-host {
   position: absolute;
   left: 50%;
-  bottom: 5.5rem;
+  bottom: calc(min(34vh, 18rem) + 1rem);
   transform: translateX(-50%);
   z-index: 8;
   pointer-events: none;
@@ -3293,7 +3338,135 @@ html.hd-low-effects .map-square-fog,
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--gold-primary) 50%, var(--panel-border));
   background: color-mix(in srgb, var(--panel-surface) 88%, #000);
+  box-shadow: var(--shadow-card);
+}
+
+.dice-fab-host {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(min(34vh, 18rem) + 1rem);
+  z-index: 9;
+}
+
+.dice-fab {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 22%, var(--panel-surface));
+  color: var(--text-gold);
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-glow-gold);
+  cursor: pointer;
+}
+
+.dice-tray-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: end end;
+  padding: var(--space-5);
+  background: rgba(11, 15, 23, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.dice-tray {
+  width: min(22rem, 100%);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000);
   box-shadow: var(--shadow-card), var(--shadow-glow-gold);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dice-tray-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dice-tray-chrome h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--text-gold);
+}
+
+.dice-tray-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.dice-option {
+  min-height: 2.5rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--raised-surface) 80%, transparent);
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dice-option:hover {
+  border-color: var(--gold-primary);
+  color: var(--text-gold);
+}
+
+.dice-tray-stage {
+  min-height: 4.5rem;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.dice-tumble {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.55rem;
+  border: 2px solid var(--gold-primary);
+  background: color-mix(in srgb, var(--gold-primary) 25%, var(--panel-surface));
+  animation: diceTumble 1.5s ease-in-out;
+}
+
+@keyframes diceTumble {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  25% {
+    transform: rotate(120deg) translateY(-10px);
+  }
+  50% {
+    transform: rotate(240deg) translateY(4px);
+  }
+  75% {
+    transform: rotate(320deg) translateY(-6px);
+  }
+  100% {
+    transform: rotate(360deg) translateY(0);
+  }
+}
+
+.dice-result {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+}
+
+.dice-result.dice-crit {
+  color: var(--text-gold);
+  text-shadow: 0 0 12px var(--gold-glow);
+}
+
+.dice-result.dice-fumble {
+  color: var(--crimson-danger);
+  text-shadow: 0 0 12px var(--crimson-glow);
 }
 
 @keyframes turnPulse {
@@ -3363,5 +3536,145 @@ html.hd-low-effects .map-square-fog,
   .hp-bar-fill {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* --- Character creation carousel (Batch 4) --- */
+
+.create-carousel-page .wizard-carousel {
+  margin: 0 0 var(--space-4);
+}
+
+.wizard-carousel-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.wizard-carousel-stages button {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-3);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000);
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 5rem;
+}
+
+.wizard-carousel-stages li.active button {
+  border-color: var(--gold-primary);
+  box-shadow: var(--shadow-glow-gold);
+}
+
+.wizard-carousel-stages li.done button {
+  border-color: color-mix(in srgb, var(--emerald-heal) 50%, var(--panel-border));
+}
+
+.wizard-carousel-stages li.locked button {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.carousel-stage-number {
+  font-family: var(--font-serif);
+  color: var(--text-gold);
+  font-size: 0.85rem;
+}
+
+.carousel-stage-label {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.carousel-stage-summary {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.carousel-stage-kicker {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-gold);
+}
+
+.wizard-carousel-panel {
+  animation: cockpitModalIn var(--motion-ordinary) ease;
+}
+
+.option-card-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.option-card {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3) !important;
+  min-height: 7.5rem;
+  border-radius: var(--radius-panel) !important;
+  border: 1px solid var(--panel-border) !important;
+  background: color-mix(in srgb, var(--raised-surface) 80%, transparent);
+  position: relative;
+}
+
+.option-card input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.option-card .option-card-crest,
+.option-card .option-label,
+.option-card .option-summary {
+  position: relative;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.option-card.selected {
+  border-color: var(--gold-primary) !important;
+  box-shadow: var(--shadow-glow-gold);
+}
+
+.option-card-crest {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--text-gold);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 50%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 16%, var(--panel-surface));
+}
+
+@media (max-width: 760px) {
+  .wizard-carousel-stages {
+    grid-template-columns: 1fr;
+  }
+
+  .floating-combat-host,
+  .dice-fab-host {
+    bottom: calc(min(42vh, 16rem) + 0.75rem);
   }
 }
