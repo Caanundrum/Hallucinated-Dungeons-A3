@@ -116,6 +116,16 @@ test.describe('Open + step-through doorway cross', () => {
       .filter({ hasText: /Opened the door and stepped through the doorway/i });
     await expect(dmCrossing).toHaveCount(1);
 
+    // Story so far dock: chronicle list only — no sticky duplicate "Director narration" article.
+    await page.getByTestId('dock-tab-chronicle').click();
+    await expect(page.getByTestId('chronicle-pane')).toBeVisible();
+    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="chronicle-pane"] h3', { hasText: 'Director narration' })).toHaveCount(0);
+    const storyBodies = page.locator('[data-testid="chronicle-entry"]').filter({
+      hasText: /Opened the door and stepped through the doorway|stepped through the open doorway/i,
+    });
+    await expect(storyBodies).toHaveCount(1);
+
     await doorHit.click();
     await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
   });

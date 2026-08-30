@@ -252,7 +252,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let playerActionDraft = '';
   let nlIntentText = '';
   let presence: CampaignPresenceProjection | null = null;
-  let lastNarration: string | null = null;
   const playedCueDedupeKeys = new Set<string>();
   let cuePlanInFlight = false;
   let presentationAudioContext: AudioContext | null = null;
@@ -784,7 +783,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         mechanicsSummary,
         rolls,
       });
-      lastNarration = narration.body;
       const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
       const prose = formatDirectorProse(narration.body).trim();
       // Narration is persisted server-side. Chronicle is the only live source after
@@ -808,10 +806,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
         chronicleFetchOk = true;
         dmThreadOptimistic = [];
-        lastChronicleSyncCount = chronicle.entries.length;
+        lastChronicleSyncCount = chronicle?.entries.length ?? 0;
         syncDmThreadFromChronicle();
         appliedFromChronicle =
-          bodyMatches(chronicle.entries ?? []) ||
+          bodyMatches(chronicle?.entries ?? []) ||
           dmThread.some(
             (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, prose),
           );
@@ -1602,25 +1600,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
               : `<ol class="record-list chronicle-list" data-testid="chronicle-list">
                   ${entries
-                    .map(
-                      (entry) => `
+                    .map((entry, index) => {
+                      const isLatestDirectorNarration =
+                        entry.kind === 'director_ruling' &&
+                        !entries
+                          .slice(index + 1)
+                          .some((later) => later.kind === 'director_ruling');
+                      const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
+                      return `
                     <li data-testid="chronicle-entry">
-                      <span class="record-note">${escapeHtml(
-                        scrubChronicleCheckpointZero(entry.body),
-                      )}</span>
+                      <span class="record-note"${
+                        isLatestDirectorNarration
+                          ? ' data-testid="director-narration"'
+                          : ''
+                      }>${escapeHtml(body)}</span>
                       <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
-                    </li>`,
-                    )
+                    </li>`;
+                    })
                     .join('')}
                 </ol>`
-          }
-          ${
-            lastNarration === null
-              ? ''
-              : `<article class="rules-explanation" data-testid="director-narration">
-                  <h3>Director narration</h3>
-                  <p>${escapeHtml(lastNarration)}</p>
-                </article>`
           }
         </div>`;
     }
@@ -3598,9 +3596,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 mapBundle?.sceneBanner?.trim() ||
                 (tableState === null ? 'The table is quiet.' : 'The party is gathered at the table.'),
             });
-            lastNarration = narration.body;
             directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
-            appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
+            // Persist is server-side; resync Story so far from chronicle only (no sticky duplicate).
+            const prose = formatDirectorProse(narration.body).trim();
+            try {
+              for (let attempt = 0; attempt < 4; attempt += 1) {
+                chronicle = await fetchChronicle(campaignId);
+                const hasNarration = (chronicle.entries ?? []).some(
+                  (entry) =>
+                    entry.kind === 'director_ruling' &&
+                    storyBodiesEquivalent(entry.body, prose),
+                );
+                if (hasNarration) {
+                  break;
+                }
+                if (attempt < 3) {
+                  await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+                }
+              }
+              dmThreadOptimistic = [];
+              lastChronicleSyncCount = chronicle?.entries.length ?? 0;
+              syncDmThreadFromChronicle();
+            } catch {
+              appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
+            }
             activeTab = 'chronicle';
             if (textToSpeechEnabled && 'speechSynthesis' in window) {
               const utterance = new SpeechSynthesisUtterance(narration.body);
@@ -4219,7 +4238,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               commandType: draft.proposedCommandType,
               draftSummary: draft.summary,
               declaration: declarationText,
-              eventSummary: accepted.event.summary,
+              ...(accepted.event.summary !== undefined
+                ? { eventSummary: accepted.event.summary }
+                : {}),
               openCross: resumeAfterOpenCross,
               sceneTitle: mapBundle?.title,
             });
