@@ -148,6 +148,8 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
 
     const tableA = await createPublicTable(page, { name: 'First Table' });
     await joinTableWithFirstCharacter(page);
+    // Table session hides global nav — exit ambient HUD first.
+    await page.getByTestId('table-back').click();
     await page.getByTestId('nav-campaigns').click();
     await expect(page.getByTestId('return-to-table')).toContainText('First Table');
 
@@ -161,6 +163,7 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await page.getByTestId('confirm-switch-table-confirm').click();
     await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
 
+    await page.getByTestId('table-back').click();
     await page.getByTestId('nav-campaigns').click();
     await expect(page.getByTestId('return-to-table')).toContainText('Second Table');
     await page.goto(`/campaigns/${tableB}/join`);
@@ -239,6 +242,8 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await expect(page.getByTestId('dm-play-thread')).not.toContainText('1969');
     await expect(page.getByTestId('dm-play-thread')).not.toContainText('1970');
 
+    // Leave the zero-scroll table cockpit before using global Tables nav.
+    await page.getByTestId('table-back').click();
     await page.getByTestId('nav-campaigns').click();
     await expect(page.getByTestId('my-table-open')).toContainText(tableName);
     await page.getByTestId('my-table-open').click();
