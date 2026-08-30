@@ -881,6 +881,9 @@ export async function interpretNaturalLanguageIntent(options: {
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'open_door') ||
     (mentionsDoorIntent(text) &&
+      !/(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative)/i.test(
+        text,
+      ) &&
       (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text)))
   ) {
     try {
