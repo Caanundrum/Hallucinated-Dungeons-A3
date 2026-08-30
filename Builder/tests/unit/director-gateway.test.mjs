@@ -82,6 +82,23 @@ test('sanitizeDirectorProse strips fences and caps length', () => {
   assert.throws(() => sanitizeDirectorProse('   '));
 });
 
+test('scrubIncompleteDirectorProse drops dangling without. truncation', async () => {
+  const { looksLikeTruncatedDirectorProse, scrubIncompleteDirectorProse } = await import(
+    '../../dist/server/ai/gemini-director.js',
+  );
+  const truncated =
+    'You step smoothly through the open doorway, crossing the threshold without.';
+  assert.equal(looksLikeTruncatedDirectorProse(truncated), true);
+  const scrubbed = scrubIncompleteDirectorProse(truncated);
+  assert.doesNotMatch(scrubbed, /\bwithout\.?\s*$/i);
+  assert.match(
+    scrubIncompleteDirectorProse(
+      'You cross the open doorway. Crossing the threshold without.',
+    ),
+    /^You cross the open doorway\.$/,
+  );
+});
+
 test('Gemini Director output budget leaves room for thinking plus prose', () => {
   // Gemini 3.x counts thinking tokens against maxOutputTokens; 400 truncates mid-sentence.
   assert.ok(GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS >= 2048);

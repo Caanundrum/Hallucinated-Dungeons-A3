@@ -203,6 +203,30 @@ export function filterOptimisticDmDupes(
   });
 }
 
+/**
+ * Collapse duplicate DM speaker rows in a live play thread (optimistic+chronicle races).
+ * Keeps the first occurrence of each equivalent body.
+ */
+export function collapseDuplicateDmMessages(
+  messages: readonly DmThreadMessage[],
+): DmThreadMessage[] {
+  const seen: string[] = [];
+  const collapsed: DmThreadMessage[] = [];
+  for (const message of messages) {
+    if (message.speaker !== 'dm') {
+      collapsed.push(message);
+      continue;
+    }
+    const duplicate = seen.some((body) => storyBodiesEquivalent(body, message.body));
+    if (duplicate) {
+      continue;
+    }
+    seen.push(message.body);
+    collapsed.push(message);
+  }
+  return collapsed;
+}
+
 /** Local rolling DM play-thread message kinds (Action Composer). */
 export const DM_THREAD_SPEAKERS = ['dm', 'player', 'system'] as const;
 export type DmThreadSpeaker = (typeof DM_THREAD_SPEAKERS)[number];

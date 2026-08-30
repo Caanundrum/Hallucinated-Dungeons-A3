@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
   formatDirectorProse,
@@ -135,4 +136,36 @@ test('filterOptimisticDmDupes drops live DM beats already in chronicle', () => {
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].messageId, 'o2');
   assert.equal(storyBodiesEquivalent(fromChronicle[0].body, optimistic[0].body), true);
+});
+
+test('collapseDuplicateDmMessages keeps the first equivalent DM beat', () => {
+  const collapsed = collapseDuplicateDmMessages([
+    {
+      messageId: 'a',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: 'You step through the open doorway in Quiet chamber.',
+      createdAt: '2026-08-30T12:00:00.000Z',
+      kind: 'ruling_hint',
+    },
+    {
+      messageId: 'b',
+      speaker: 'system',
+      speakerLabel: 'Table',
+      body: 'Moved across the table.',
+      createdAt: '2026-08-30T12:00:01.000Z',
+      kind: 'mechanics',
+    },
+    {
+      messageId: 'c',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: 'You step through the open doorway in Quiet chamber. A lightly knowing beat lands.',
+      createdAt: '2026-08-30T12:00:02.000Z',
+      kind: 'narration',
+    },
+  ]);
+  assert.equal(collapsed.length, 2);
+  assert.equal(collapsed[0].messageId, 'a');
+  assert.equal(collapsed[1].messageId, 'b');
 });

@@ -24,6 +24,8 @@ import {
 import type { EnvironmentClass } from '../../shared/contract.js';
 import {
   createGeminiDirectorClient,
+  looksLikeTruncatedDirectorProse,
+  scrubIncompleteDirectorProse,
   type DirectorLlmClient,
 } from './gemini-director.js';
 import type {
@@ -1379,11 +1381,23 @@ export async function narrateVisibleBeat(options: {
     effectiveDensity,
   );
   const liveBody = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts).${emphasis}`,
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
     userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new.`,
   });
-  const body = scrubFalseSceneDeparture(liveBody ?? simulated.body, options.mechanicsSummary);
-  const humorApplied = liveBody === null ? simulated.humorApplied : effectiveDensity !== 'concise';
+  const liveCandidate =
+    liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;
+  const preferSimulated =
+    liveBody === null ||
+    liveCandidate === null ||
+    liveCandidate.length === 0 ||
+    looksLikeTruncatedDirectorProse(liveBody) ||
+    looksLikeTruncatedDirectorProse(liveCandidate);
+  const body = scrubFalseSceneDeparture(
+    preferSimulated ? simulated.body : liveCandidate,
+    options.mechanicsSummary,
+  );
+  const humorApplied = preferSimulated ? simulated.humorApplied : effectiveDensity !== 'concise';
+  const fallbackUsed = liveGeminiEnabled(options) && preferSimulated;
   const manifest = buildManifest({
     role: 'narrator',
     campaignId: options.campaignId,
@@ -1415,7 +1429,7 @@ export async function narrateVisibleBeat(options: {
     body,
     mechanicsFirstSummary: options.mechanicsSummary,
     humorApplied,
-    fallbackUsed: liveGeminiEnabled(options) && liveBody === null,
+    fallbackUsed,
     narrationDensity: effectiveDensity,
     framingTags,
     directorIdentity: director.identity,

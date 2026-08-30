@@ -32,7 +32,63 @@ export function sanitizeDirectorProse(raw: string): string {
   if (stripped.length === 0) {
     throw new Error('Gemini returned empty Director text.');
   }
-  return stripped.length > 1200 ? `${stripped.slice(0, 1199).trimEnd()}…` : stripped;
+  const complete = scrubIncompleteDirectorProse(stripped);
+  if (complete.length === 0) {
+    throw new Error('Gemini returned incomplete Director text.');
+  }
+  return complete.length > 1200 ? `${complete.slice(0, 1199).trimEnd()}…` : complete;
+}
+
+/**
+ * True when prose ends mid-clause (token truncation / cut-off generation).
+ * Example: "crossing the threshold without."
+ */
+export function looksLikeTruncatedDirectorProse(body: string): boolean {
+  const trimmed = body.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+  if (/…\s*$/.test(trimmed)) {
+    return true;
+  }
+  // Dangling function word as the last word (with or without a period).
+  if (
+    /\b(without|with|and|or|but|the|a|an|to|for|from|into|of|as|by|at|on|in|over|under|through)\.?$/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  // No sentence terminator and ends mid-thought.
+  if (!/[.!?]"?$/.test(trimmed) && trimmed.split(/\s+/).length < 40) {
+    return true;
+  }
+  return false;
+}
+
+/** Drop a final incomplete sentence; keep prior complete sentences when possible. */
+export function scrubIncompleteDirectorProse(body: string): string {
+  const trimmed = body.trim();
+  if (!looksLikeTruncatedDirectorProse(trimmed)) {
+    return trimmed;
+  }
+  const parts = trimmed.split(/(?<=[.!?])\s+/).filter((part) => part.trim().length > 0);
+  if (parts.length > 1) {
+    const kept = parts.slice(0, -1).join(' ').trim();
+    if (kept.length > 0 && !looksLikeTruncatedDirectorProse(kept)) {
+      return kept;
+    }
+  }
+  const strippedTail = trimmed
+    .replace(
+      /\s+\b(without|with|and|or|but|the|a|an|to|for|from|into|of|as|by|at|on|in|over|under|through)\.?$/i,
+      '',
+    )
+    .trim();
+  if (strippedTail.length > 0 && strippedTail !== trimmed) {
+    return /[.!?]"?$/.test(strippedTail) ? strippedTail : `${strippedTail}.`;
+  }
+  return trimmed;
 }
 
 export function createGeminiDirectorClient(options: {
@@ -64,8 +120,9 @@ export function createGeminiDirectorClient(options: {
       const finishReason = response.candidates?.[0]?.finishReason;
       if (finishReason === 'MAX_TOKENS') {
         process.stderr.write(
-          '[gemini-director] Response hit MAX_TOKENS; prose may be truncated.\n',
+          '[gemini-director] Response hit MAX_TOKENS; rejecting truncated prose.\n',
         );
+        throw new Error('Gemini narration truncated at max tokens.');
       }
       return sanitizeDirectorProse(response.text ?? '');
     },
