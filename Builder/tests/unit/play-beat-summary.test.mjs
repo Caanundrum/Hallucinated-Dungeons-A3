@@ -47,3 +47,16 @@ test('resolvedSummaryAfterTableConfirm never returns Confirm-to draft copy', () 
   });
   assert.equal(openOnly, 'Opened the door.');
 });
+
+test('resolvedSummaryAfterTableConfirm keeps reverse cross in the named scene', () => {
+  const reverse = resolvedSummaryAfterTableConfirm({
+    commandType: 'table.move',
+    draftSummary:
+      'Ready to step back through the open doorway in Quiet chamber. Confirm to commit the step.',
+    declaration: 'I step through the open wooden door.',
+    sceneTitle: 'Quiet chamber',
+  });
+  assert.match(reverse, /^Stepped back through the open doorway in Quiet chamber\./);
+  assert.match(reverse, /Same scene — Quiet chamber remains current; no location change/);
+  assert.doesNotMatch(reverse, /Confirm to|Ready to|leave|left .* behind/i);
+});

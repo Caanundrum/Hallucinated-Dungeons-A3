@@ -167,6 +167,19 @@ test.describe('Open + step-through doorway cross', () => {
       }, { timeout: 20_000 })
       .toBeLessThan(5);
 
+    await expect(page.getByTestId('dm-play-thread')).toContainText(
+      /Stepped back through the open doorway/i,
+      { timeout: 20_000 },
+    );
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+    const reverseThread = await page.getByTestId('dm-play-thread').innerText();
+    expect(reverseThread).not.toMatch(/leave[s]? Quiet chamber behind|left Quiet chamber behind/i);
+    expect(reverseThread).not.toMatch(/Ready to open the door beside|Confirm to open/i);
+    // Live Story must not show the same reverse-cross sentence twice in a row (optimistic+chronicle).
+    expect(reverseThread).not.toMatch(
+      /Stepped back through the open doorway[^\n]*\n(?:[^\n]*\n){0,2}Stepped back through the open doorway/i,
+    );
+
     await page.screenshot({ path: '/opt/cursor/artifacts/reverse-cross-token.png' }).catch(() => {});
   });
 

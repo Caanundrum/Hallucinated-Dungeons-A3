@@ -15,21 +15,32 @@ export function resolvedSummaryAfterTableConfirm(options: {
   readonly declaration?: string;
   readonly eventSummary?: string;
   readonly openCross?: boolean;
+  readonly sceneTitle?: string;
 }): string {
+  const scene =
+    options.sceneTitle !== undefined && options.sceneTitle.trim().length > 0
+      ? options.sceneTitle.trim()
+      : null;
+  const inScene = scene !== null ? ` in ${scene}` : '';
+  const sameSceneNote =
+    scene !== null ? ` Same scene — ${scene} remains current; no location change.` : '';
   if (options.openCross === true) {
-    return 'Opened the door and stepped through the doorway.';
+    return `Opened the door and stepped through the doorway${inScene}.${sameSceneNote}`;
   }
   if (options.commandType === 'table.open_door') {
-    return 'Opened the door.';
+    return `Opened the door${inScene}.`;
   }
   const draftAndDeclaration = `${options.draftSummary} ${options.declaration ?? ''}`;
   if (options.commandType === 'table.move') {
     if (
-      /\b(step(?:s|ped)?\s+through|open doorway|through the (?:open )?door|cross the doorway)\b/i.test(
+      /\b(step(?:s|ped)?\s+through|open doorway|through the (?:open )?door|cross the doorway|step back through)\b/i.test(
         draftAndDeclaration,
       )
     ) {
-      return 'Stepped through the open doorway.';
+      const reversing = /\bstep back through|back through\b/i.test(draftAndDeclaration);
+      return reversing
+        ? `Stepped back through the open doorway${inScene}.${sameSceneNote}`
+        : `Stepped through the open doorway${inScene}.${sameSceneNote}`;
     }
     const event = options.eventSummary?.trim() ?? '';
     if (event.length > 0 && !isIntentDraftConfirmCopy(event)) {

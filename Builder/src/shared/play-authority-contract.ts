@@ -492,22 +492,36 @@ export function parsePlayerDeclaration(
 
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
+  // Adjectival "open/opened wooden door" is door state, not an open-door verb.
+  const withoutOpenDoorNoun = trimmed.replace(
+    /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
+    'doorway',
+  );
   const stepThroughPassage =
     /\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(trimmed) ||
-    /\bthrough\s+(?:the\s+)?(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) ||
+    /\bthrough\s+(?:the\s+)?(?:open(?:ed)?\s+)?(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)\b/i.test(
+      trimmed,
+    ) ||
     /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
     /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
+  const openDoorVerb =
+    /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(withoutOpenDoorNoun) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun);
   const wantsOpenDoor =
     !wantsUnlock &&
-    ((/(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(trimmed) &&
-      /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed)) ||
+    (openDoorVerb ||
       // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
       (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
   }
-  if (wantsOpenDoor) {
+  // "Through the open door" with no open verb is transit/move, not open_door.
+  if (stepThroughPassage && !openDoorVerb && !refsUnlocked) {
+    if (!actionSequence.some((step) => step.kind === 'move')) {
+      actionSequence.push({ kind: 'move', targetRef: null, outcomeHint: null });
+    }
+  } else if (wantsOpenDoor) {
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
