@@ -119,12 +119,20 @@ test.describe('Open + step-through doorway cross', () => {
     // Story so far dock: chronicle list only — no sticky duplicate "Director narration" article.
     await page.getByTestId('dock-tab-chronicle').click();
     await expect(page.getByTestId('chronicle-pane')).toBeVisible();
-    await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid="chronicle-pane"] h3', { hasText: 'Director narration' })).toHaveCount(0);
-    const storyBodies = page.locator('[data-testid="chronicle-entry"]').filter({
-      hasText: /Opened the door and stepped through the doorway|stepped through the open doorway/i,
+    await expect(
+      page.locator('[data-testid="chronicle-pane"] h3', { hasText: 'Director narration' }),
+    ).toHaveCount(0);
+    // Latest ruling is tagged once; sticky lastNarration article must not add a second copy.
+    await expect(page.getByTestId('director-narration')).toHaveCount(1);
+    await expect(page.getByTestId('director-narration')).toContainText(
+      /Opened the door and stepped through the doorway/i,
+    );
+    // Crossing prose must appear once among Director narration kind rows (not chronicle + sticky).
+    const crossingNarrationRows = page.locator('[data-testid="chronicle-entry"]').filter({
+      has: page.locator('.record-meta', { hasText: /Director narration/i }),
+      hasText: /Opened the door and stepped through the doorway/i,
     });
-    await expect(storyBodies).toHaveCount(1);
+    await expect(crossingNarrationRows).toHaveCount(1);
 
     await doorHit.click();
     await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
