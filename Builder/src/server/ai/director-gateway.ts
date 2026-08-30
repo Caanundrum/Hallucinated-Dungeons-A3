@@ -1303,12 +1303,18 @@ export async function narrateVisibleBeat(options: {
   });
 
   // Persist Director narration into Story so far / play-thread rebuild (PQA-159).
-  await appendChronicleEntry({
-    firestore: options.firestore,
-    campaignId: options.campaignId,
-    kind: 'director_ruling',
-    body,
-  });
+  // Never chronicle Intent Intercept draft copy after the beat already resolved.
+  if (
+    !/^Ready to /i.test(options.mechanicsSummary.trim()) &&
+    !/\bConfirm to\b/i.test(options.mechanicsSummary)
+  ) {
+    await appendChronicleEntry({
+      firestore: options.firestore,
+      campaignId: options.campaignId,
+      kind: 'director_ruling',
+      body,
+    });
+  }
 
   return {
     narrationId: randomUUID(),

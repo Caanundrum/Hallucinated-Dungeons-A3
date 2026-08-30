@@ -1036,7 +1036,12 @@ export async function acceptTableCommand(options: {
         kind: 'play_resolved',
         body: skillResolution.summary,
       });
-    } else if (trimmedPlaySummary !== undefined) {
+    } else if (
+      trimmedPlaySummary !== undefined &&
+      // Never persist Intent Intercept "Ready to… Confirm to…" drafts after commit.
+      !/^Ready to /i.test(trimmedPlaySummary) &&
+      !/\bConfirm to\b/i.test(trimmedPlaySummary)
+    ) {
       await appendChronicleEntry({
         firestore,
         campaignId,

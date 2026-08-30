@@ -35,21 +35,30 @@ async function seatBlankCampaign(page: Page, name: string): Promise<string> {
 }
 
 test.describe('Open + step-through doorway cross', () => {
-  test('adjacent open+step-through opens door and moves token across', async ({ page }) => {
+  test('fresh closed door: single open+cross confirm moves token and narrates once', async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
-    await seatBlankCampaign(page, 'OpenCross');
+    await seatBlankCampaign(page, 'ClosedCross');
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+
+    // Quiet chamber boots with a closed door — prove closed → open + cross in one confirm.
+    const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]').first();
+    await expect(doorHit).toBeVisible();
+    await doorHit.click();
+    await expect(page.getByTestId('door-selection-detail')).toContainText(/closed/i);
+    await page.screenshot({ path: '/opt/cursor/artifacts/door-closed-before.png' }).catch(() => {});
 
     const token = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
     await expect(token).toBeVisible();
     const startColumn = Number(await token.getAttribute('data-anchor-column'));
 
-    // Approach until adjacent open draft, confirming each closer-only step.
+    let sawClosedOpenCrossDraft = false;
     for (let step = 0; step < 12; step += 1) {
       await page.getByTestId('player-action-input').fill(
         'I open the unlocked doorway and step through.',
@@ -64,12 +73,17 @@ test.describe('Open + step-through doorway cross', () => {
         continue;
       }
       expect(summary).toMatch(/Ready to open.*step through|cross the doorway/i);
+      expect(summary).toMatch(/Confirm to open it and cross/i);
+      sawClosedOpenCrossDraft = true;
+      await page
+        .screenshot({ path: '/opt/cursor/artifacts/open-cross-confirm-draft.png' })
+        .catch(() => {});
       await page.getByTestId('confirm-intent-intercept').click();
       await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 20_000 });
       break;
     }
+    expect(sawClosedOpenCrossDraft).toBe(true);
 
-    // Quiet chamber east door passage is column 5 — token must cross, not stop adjacent at 4.
     await expect
       .poll(async () => {
         const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
@@ -81,8 +95,61 @@ test.describe('Open + step-through doorway cross', () => {
       await page.locator('[data-token][data-anchor-column]').first().getAttribute('data-anchor-column'),
     );
     expect(endColumn).toBeGreaterThan(startColumn);
+    await page.screenshot({ path: '/opt/cursor/artifacts/token-far-after-cross.png' }).catch(() => {});
 
-    // Already beyond: clarification goes to Story so far (no phantom Confirm draft).
+    await expect(page.getByTestId('dm-play-thread')).toContainText(
+      /Opened the door and stepped through the doorway/i,
+      { timeout: 20_000 },
+    );
+    await page.getByTestId('dm-play-thread').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: '/opt/cursor/artifacts/story-after-cross-clean.png' }).catch(() => {});
+    const threadText = await page.getByTestId('dm-play-thread').innerText();
+    // Post-commit Story must not still ask the player to Confirm the crossing.
+    expect(threadText).not.toMatch(/Confirm to (?:open it and )?cross|Confirm to commit the step/i);
+    expect(threadText).not.toMatch(/already through the doorway/i);
+    const openedCrossMatches =
+      threadText.match(/Opened the door and stepped through the doorway/gi) ?? [];
+    expect(openedCrossMatches.length).toBe(1);
+
+    await doorHit.click();
+    await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
+  });
+
+  test('already beyond: step-through clarifies without Confirm-to draft', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'AlreadyBeyond');
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+
+    for (let step = 0; step < 12; step += 1) {
+      await page.getByTestId('player-action-input').fill(
+        'I open the unlocked doorway and step through.',
+      );
+      await page.getByTestId('player-action-input').dispatchEvent('input');
+      await page.getByTestId('submit-player-action').click();
+      await expect(page.getByTestId('intent-intercept')).toBeVisible({ timeout: 15_000 });
+      const summary = await page.getByTestId('intent-intercept-summary').innerText();
+      if (/closer only/i.test(summary)) {
+        await page.getByTestId('confirm-intent-intercept').click();
+        await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 15_000 });
+        continue;
+      }
+      await page.getByTestId('confirm-intent-intercept').click();
+      await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 20_000 });
+      break;
+    }
+
+    await expect
+      .poll(async () => {
+        const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
+        return Number(await el.getAttribute('data-anchor-column'));
+      }, { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(5);
+
     await page.getByTestId('player-action-input').fill('I step through the open doorway.');
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
@@ -90,11 +157,9 @@ test.describe('Open + step-through doorway cross', () => {
     await expect(page.getByTestId('dm-play-thread')).toContainText(/already through the doorway/i, {
       timeout: 15_000,
     });
-    await expect(page.getByTestId('dm-play-thread')).not.toContainText(/confirm when you are ready/i);
-
-    // Director passage narration should appear once, not twice.
-    const threadText = await page.getByTestId('dm-play-thread').innerText();
-    const openedCrossMatches = threadText.match(/Opened the door and stepped through/gi) ?? [];
-    expect(openedCrossMatches.length).toBeLessThanOrEqual(1);
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(/Confirm to commit the step/i);
+    const listText = await page.getByTestId('dm-play-thread-list').innerText();
+    const alreadyThrough = (listText.match(/already through the doorway/gi) ?? []).length;
+    expect(alreadyThrough).toBe(1);
   });
 });
