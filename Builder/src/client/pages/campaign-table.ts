@@ -57,6 +57,10 @@ import {
   deriveEpicFramingTags,
   isRulesIntentDraftCommand,
 } from '../../shared/intent-draft-contract.js';
+import {
+  isIntentDraftConfirmCopy,
+  resolvedSummaryAfterTableConfirm,
+} from '../../shared/play-beat-summary.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
@@ -766,10 +770,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       } catch {
         // Fall through to optimistic append when chronicle refresh fails.
       }
-      const alreadyOnThread = dmThread.some(
-        (message) => message.speaker === 'dm' && message.body === narration.body,
-      );
-      if (!alreadyOnThread) {
+      const normalizedNarration = narration.body.trim();
+      const alreadyOnThread = dmThread.some((message) => {
+        if (message.speaker !== 'dm') {
+          return false;
+        }
+        const existing = message.body.trim();
+        return (
+          existing === normalizedNarration ||
+          (normalizedNarration.length > 24 &&
+            (existing.includes(normalizedNarration) || normalizedNarration.includes(existing)))
+        );
+      });
+      // Never surface post-commit draft copy ("Ready to… Confirm to…") as Director narration.
+      if (!alreadyOnThread && !isIntentDraftConfirmCopy(normalizedNarration)) {
         appendDmThread(
           'dm',
           narration.directorIdentityLabel || directorIdentityLabel,
@@ -3718,12 +3732,34 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
-              appendDmThread('player', 'You', declaration, 'declaration');
+              // Server already chronicled declaration + ruling; resync instead of double-appending.
+              try {
+                chronicle = await fetchChronicle(campaignId);
+                dmThreadOptimistic = [];
+                lastChronicleSyncCount = chronicle.entries.length;
+                syncDmThreadFromChronicle();
+              } catch {
+                appendDmThread('player', 'You', declaration, 'declaration');
+                appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+              }
+              const alreadyHasRuling = dmThread.some(
+                (message) =>
+                  message.speaker === 'dm' && message.body.trim() === scrubbedSummary.trim(),
+              );
+              const alreadyHasDeclaration = dmThread.some(
+                (message) =>
+                  message.speaker === 'player' && message.body.trim() === declaration.trim(),
+              );
+              if (!alreadyHasDeclaration) {
+                appendDmThread('player', 'You', declaration, 'declaration');
+              }
+              if (!alreadyHasRuling) {
+                appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+              }
               setIntentDraft(null);
               doorRecoveryVisible =
                 (mapBundle?.edges.length ?? 0) === 0 &&
                 /no door|open floor|interact with here/i.test(scrubbedSummary);
-              appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
               setIntentDraft(draftFromInterpret({
@@ -4108,6 +4144,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             declarationText.length > 0 &&
             /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
           const resumeCompound = resumeAfterSceneBuild || resumeAfterOpenCross;
+          // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
+          const summaryForCommand =
+            draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
+              ? draft.summary.trim()
+              : undefined;
           render();
           try {
             const accepted = await submitTableCommand({
@@ -4121,18 +4162,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               ...(draft.path !== undefined ? { path: draft.path } : {}),
               ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
-              ...(draft.summary.trim().length > 0 ? { summary: draft.summary.trim() } : {}),
+              ...(summaryForCommand !== undefined ? { summary: summaryForCommand } : {}),
               ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
-            const summary =
-              accepted.event.summary?.trim() ||
-              'Action committed on the table.';
+            const resolvedSummary = resolvedSummaryAfterTableConfirm({
+              commandType: draft.proposedCommandType,
+              draftSummary: draft.summary,
+              declaration: declarationText,
+              eventSummary: accepted.event.summary,
+              openCross: resumeAfterOpenCross,
+            });
             if (declarationText.length > 0) {
               appendDmThread('player', 'You', declarationText, 'declaration');
             }
-            appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
+            appendDmThread('system', 'Table', playerFacingMechanicsCopy(resolvedSummary), 'mechanics');
             shell.announce('Action confirmed on the table.');
             setIntentDraft(null);
             doorRecoveryVisible = false;
@@ -4141,23 +4186,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               await resumeCompoundDeclarationAfterBuild(declarationText, {
                 narrateSteps: false,
               });
-              const passageSummary =
-                resumeAfterOpenCross
-                  ? 'Opened the door and stepped through the doorway.'
-                  : summary;
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(summary)
+                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
               ) {
-                await narrateIntoDmThread(passageSummary, accepted.event.rolls ?? []);
+                await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
               } else {
                 patchDmPlayThread();
               }
             } else if (
               shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-              /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(summary)
+              /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
             ) {
-              await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
+              await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();
             }
