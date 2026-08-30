@@ -115,7 +115,62 @@ test.describe('Open + step-through doorway cross', () => {
     await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
   });
 
-  test('already beyond: step-through clarifies without Confirm-to draft', async ({ page }) => {
+  test('far-side reverse through is a confirmable cross back', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatBlankCampaign(page, 'ReverseCross');
+    await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
+
+    for (let step = 0; step < 12; step += 1) {
+      await page.getByTestId('player-action-input').fill(
+        'I open the unlocked doorway and step through.',
+      );
+      await page.getByTestId('player-action-input').dispatchEvent('input');
+      await page.getByTestId('submit-player-action').click();
+      await expect(page.getByTestId('intent-intercept')).toBeVisible({ timeout: 15_000 });
+      const summary = await page.getByTestId('intent-intercept-summary').innerText();
+      if (/closer only/i.test(summary)) {
+        await page.getByTestId('confirm-intent-intercept').click();
+        await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 15_000 });
+        continue;
+      }
+      await page.getByTestId('confirm-intent-intercept').click();
+      await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 20_000 });
+      break;
+    }
+
+    await expect
+      .poll(async () => {
+        const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
+        return Number(await el.getAttribute('data-anchor-column'));
+      }, { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(5);
+
+    // Far-side reverse: through open door / west through doorway — not re-open, not mark-square.
+    await page.getByTestId('player-action-input').fill('I step through the open wooden door.');
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await expect(page.getByTestId('intent-intercept')).toBeVisible({ timeout: 15_000 });
+    const reverseSummary = await page.getByTestId('intent-intercept-summary').innerText();
+    expect(reverseSummary).toMatch(/step back through the open doorway|Confirm to commit the step/i);
+    expect(reverseSummary).not.toMatch(/mark an adjacent|declare again|Ready to open the door beside/i);
+    await page.getByTestId('confirm-intent-intercept').click();
+
+    await expect
+      .poll(async () => {
+        const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
+        return Number(await el.getAttribute('data-anchor-column'));
+      }, { timeout: 20_000 })
+      .toBeLessThan(5);
+
+    await page.screenshot({ path: '/opt/cursor/artifacts/reverse-cross-token.png' }).catch(() => {});
+  });
+
+  test('enter room beyond while already past doorway clarifies once', async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
@@ -150,7 +205,7 @@ test.describe('Open + step-through doorway cross', () => {
       }, { timeout: 20_000 })
       .toBeGreaterThanOrEqual(5);
 
-    await page.getByTestId('player-action-input').fill('I step through the open doorway.');
+    await page.getByTestId('player-action-input').fill('I enter the room beyond.');
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 10_000 });

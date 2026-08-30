@@ -346,7 +346,9 @@ function mentionsSkillCheckIntent(text: string): boolean {
 }
 
 function mentionsDoorIntent(text: string): boolean {
-  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(text);
+  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(
+    text.replace(/\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate)s?\b/gi, 'doorway'),
+  );
   const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
   if (
     textReferencesUnlockedDoorState(text) &&
@@ -365,6 +367,14 @@ function mentionsDoorIntent(text: string): boolean {
     (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(text) &&
       !textRequestsLockPicking(text)) ||
     (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(text) &&
+      !textRequestsLockPicking(text)) ||
+    // Through / step / enter a doorway (including reverse crossing from the far side).
+    (/\bdoorway\b/.test(text) &&
+      passageVerb &&
+      !textRequestsLockPicking(text)) ||
+    // "Enter the room beyond" is doorway transit, not free-form mark-square movement.
+    (/\bbeyond\b/.test(text) &&
+      /\b(?:enter|room|chamber|door|doorway)\b/.test(text) &&
       !textRequestsLockPicking(text)) ||
     // Catch-all for explicit door/gate nouns with no unlock language — not bare "doorway" color.
     (/\b(door|gate|entryway)\b/.test(text) &&
@@ -773,11 +783,42 @@ export async function interpretNaturalLanguageIntent(options: {
           summary = `${summary} Player-authored places were ignored — only the Game Director establishes those.`;
         }
       } else {
-        proposedCommandType = 'table.sync';
-        summary =
-          authority.ignoredWorldFacts.length > 0
-            ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
-            : 'Ready to move — mark an adjacent square on the map, then declare again to confirm the step.';
+        // Prefer doorway geometry (including reverse cross / already-through) over mark-square.
+        let doorResolved = false;
+        try {
+          const map = await fetchCampaignMap({
+            firestore: options.firestore,
+            accountId: options.accountId,
+            campaignId: options.campaignId,
+          });
+          const ownToken =
+            map.viewerSeatId === null
+              ? map.tokens[0]
+              : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+          if (ownToken !== undefined && map.edges.length > 0) {
+            const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
+            if (persisted !== null) {
+              proposedCommandType = persisted.proposedCommandType;
+              summary = persisted.summary;
+              if (persisted.path !== undefined) {
+                path = [...persisted.path];
+              }
+              if (persisted.edgeId !== undefined) {
+                edgeId = persisted.edgeId;
+              }
+              doorResolved = true;
+            }
+          }
+        } catch {
+          doorResolved = false;
+        }
+        if (!doorResolved) {
+          proposedCommandType = 'table.sync';
+          summary =
+            authority.ignoredWorldFacts.length > 0
+              ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
+              : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
+        }
       }
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
