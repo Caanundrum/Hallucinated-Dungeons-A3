@@ -96,8 +96,10 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await expect(page.getByTestId('dice-fab')).toBeVisible();
     await page.getByTestId('dice-fab').click();
     await expect(page.getByTestId('dice-tray')).toBeVisible();
+    await page.screenshot({ path: '/opt/cursor/artifacts/ux-polish-dice-tray-open.png' });
     await page.getByTestId('dice-roll-d20').click();
     await expect(page.getByTestId('dice-tray-result')).toBeVisible({ timeout: 5_000 });
+    await page.screenshot({ path: '/opt/cursor/artifacts/ux-polish-dice-result.png' });
     await page.getByTestId('close-dice-tray').click();
     await expect(page.getByTestId('dice-tray')).toHaveCount(0);
 
