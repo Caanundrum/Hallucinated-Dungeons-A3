@@ -580,7 +580,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   async function resumeCompoundDeclarationAfterBuild(
     declaration: string,
-    options: { readonly narrateSteps?: boolean } = {},
+    options: { readonly narrateSteps?: boolean; readonly stopAfterFirstMove?: boolean } = {},
   ): Promise<void> {
     if (
       candidate === null ||
@@ -589,6 +589,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     const narrateSteps = options.narrateSteps !== false;
+    const stopAfterFirstMove = options.stopAfterFirstMove === true;
     const maxSteps = 12;
     for (let step = 0; step < maxSteps; step += 1) {
       if (candidate === null || tableState === null) {
@@ -643,6 +644,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
         if (narrateSteps && shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
           await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
+        }
+        // Open+cross only needs one through-step; another interpret would chronicle
+        // a spurious "already through" clarification into Story so far.
+        if (stopAfterFirstMove && interpreted.proposedCommandType === 'table.move') {
+          break;
         }
       } catch {
         break;
@@ -3732,34 +3738,40 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
             if (clarificationOnly) {
-              // Server already chronicled declaration + ruling; resync instead of double-appending.
-              try {
-                chronicle = await fetchChronicle(campaignId);
-                dmThreadOptimistic = [];
-                lastChronicleSyncCount = chronicle.entries.length;
-                syncDmThreadFromChronicle();
-              } catch {
-                appendDmThread('player', 'You', declaration, 'declaration');
-                appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
-              }
-              const alreadyHasRuling = dmThread.some(
-                (message) =>
-                  message.speaker === 'dm' && message.body.trim() === scrubbedSummary.trim(),
-              );
-              const alreadyHasDeclaration = dmThread.some(
-                (message) =>
-                  message.speaker === 'player' && message.body.trim() === declaration.trim(),
-              );
-              if (!alreadyHasDeclaration) {
-                appendDmThread('player', 'You', declaration, 'declaration');
-              }
-              if (!alreadyHasRuling) {
-                appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
-              }
+              // Server chronicles declaration + ruling immediately; resync once and do not
+              // optimistic-append (that duplicated Story so far).
               setIntentDraft(null);
               doorRecoveryVisible =
                 (mapBundle?.edges.length ?? 0) === 0 &&
                 /no door|open floor|interact with here/i.test(scrubbedSummary);
+              try {
+                chronicle = await fetchChronicle(campaignId);
+                // Emulator / eventual read: one short retry if the ruling is not visible yet.
+                const hasRuling = (chronicle.entries ?? []).some(
+                  (entry) =>
+                    entry.kind === 'director_ruling' &&
+                    entry.body.trim() === scrubbedSummary.trim(),
+                );
+                if (!hasRuling) {
+                  await new Promise((resolve) => setTimeout(resolve, 150));
+                  chronicle = await fetchChronicle(campaignId);
+                }
+                dmThreadOptimistic = [];
+                lastChronicleSyncCount = chronicle.entries.length;
+                syncDmThreadFromChronicle();
+                const stillMissingRuling = !dmThread.some(
+                  (message) =>
+                    message.speaker === 'dm' &&
+                    message.body.trim().includes(scrubbedSummary.trim().slice(0, 48)),
+                );
+                if (stillMissingRuling) {
+                  appendDmThread('player', 'You', declaration, 'declaration');
+                  appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+                }
+              } catch {
+                appendDmThread('player', 'You', declaration, 'declaration');
+                appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
+              }
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
             } else {
               setIntentDraft(draftFromInterpret({
@@ -4185,6 +4197,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               // Open/build first, then chain the through-step without double-narrating.
               await resumeCompoundDeclarationAfterBuild(declarationText, {
                 narrateSteps: false,
+                stopAfterFirstMove: resumeAfterOpenCross,
               });
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
