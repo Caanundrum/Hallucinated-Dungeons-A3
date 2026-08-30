@@ -894,6 +894,61 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     oscillator.stop(now + seconds);
   }
 
+  /**
+   * Optional dice-clatter SFX for the tray. Procedural Web Audio only — no speech,
+   * gated by the same reduced-motion / low-effects / TTS rules as presentation cues.
+   */
+  function playDiceClatter(): void {
+    if (!presentationCuesAllowed()) {
+      return;
+    }
+    const context = getPresentationAudioContext();
+    if (context === null) {
+      return;
+    }
+    void context.resume().catch(() => undefined);
+    const now = context.currentTime;
+    const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 0.18), context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 1.6);
+    }
+    const noise = context.createBufferSource();
+    noise.buffer = buffer;
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1400;
+    filter.Q.value = 0.7;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(context.destination);
+    noise.start(now);
+    noise.stop(now + 0.2);
+    // A few short wooden-tap tones layered over the noise burst.
+    for (const [offset, frequency] of [
+      [0.02, 520],
+      [0.06, 390],
+      [0.11, 610],
+    ] as const) {
+      const tap = context.createOscillator();
+      const tapGain = context.createGain();
+      tap.type = 'triangle';
+      tap.frequency.value = frequency;
+      const start = now + offset;
+      tapGain.gain.setValueAtTime(0.0001, start);
+      tapGain.gain.exponentialRampToValueAtTime(0.12, start + 0.01);
+      tapGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.05);
+      tap.connect(tapGain);
+      tapGain.connect(context.destination);
+      tap.start(start);
+      tap.stop(start + 0.06);
+    }
+  }
+
   /** Gate per Section 25 Phase 5: never play SFX under reduced motion, low effects, or over live TTS. */
   function presentationCuesAllowed(): boolean {
     if (reducedMotion || lowEffects) {
@@ -2246,6 +2301,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     diceTrayOpen = true;
     diceTrayRolling = true;
     diceTrayResult = null;
+    playDiceClatter();
     render();
     const tumbleMs = reducedMotion || lowEffects ? 0 : 1500;
     if (tumbleMs > 0) {
@@ -3287,6 +3343,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
         }
       });
+    root
+      .querySelector<HTMLElement>('[data-testid="dice-tray"]')
+      ?.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          diceTrayOpen = false;
+          diceTrayRolling = false;
+          render();
+          root.querySelector<HTMLButtonElement>('[data-testid="dice-fab"]')?.focus();
+        }
+      });
+    if (diceTrayOpen) {
+      root.querySelector<HTMLElement>('[data-testid="dice-tray"]')?.focus();
+    }
     root.querySelectorAll<HTMLButtonElement>('[data-dice-sides]').forEach((button) => {
       button.addEventListener('click', () => {
         if (button.getAttribute('aria-disabled') === 'true' || diceTrayRolling) {
