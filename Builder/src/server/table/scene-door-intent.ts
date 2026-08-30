@@ -9,7 +9,7 @@ import {
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
 
-import { isOnOpenDoorPassage, nextStepTowardOpenDoor } from './move-planner.js';
+import { isOnOpenDoorPassage, nextStepThroughOpenDoor } from './move-planner.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 
 export interface SceneDoorIntentResolution {
@@ -21,6 +21,25 @@ export interface SceneDoorIntentResolution {
 
 function mentionsMovementIntent(text: string): boolean {
   return /(move|walk|go|step|approach|enter)/.test(text);
+}
+
+/** Adjectival "open door/doorway" is state, not an open-door verb. */
+function stripOpenDoorNounPhrases(text: string): string {
+  return text.replace(/\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate)s?\b/gi, 'doorway');
+}
+
+function wantsOpenDoorAction(text: string): boolean {
+  const withoutOpenNoun = stripOpenDoorNounPhrases(text);
+  return /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
+    withoutOpenNoun,
+  );
+}
+
+function wantsDoorPassage(text: string): boolean {
+  return (
+    /\b(?:steps?\s+through|enter(?:s|ing)?|through|beyond|continue)\b/i.test(text) ||
+    /\b(?:go|walk|move|step)s?\s+(?:west|east|north|south|back)\b/i.test(text)
+  );
 }
 
 function isAdjacentToDoor(
@@ -118,11 +137,8 @@ export function resolveDoorIntentForMap(
   const adjacentClosed = closedDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const wantsUnlock = textRequestsLockPicking(text);
-  const wantsOpen =
-    !wantsUnlock &&
-    /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open|enter(?:s|ing)?|steps?\s+through)\b/i.test(
-      text,
-    );
+  const wantsOpen = !wantsUnlock && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
+  const wantsCross = wantsDoorPassage(text);
   const wantsInspect =
     /(inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)/.test(text) &&
     !wantsOpen &&
@@ -161,44 +177,46 @@ export function resolveDoorIntentForMap(
     const authority = doorAuthorityFromStored(adjacentClosed.doorState);
     const unlockedNote =
       authority.lock === 'unlocked' ? ' It is unlocked — no tools or roll required.' : '';
-    const wantsCross =
-      wantsOpen &&
-      /\b(?:steps?\s+through|enter(?:s|ing)?|through|beyond|continue)\b/i.test(text);
     return {
       proposedCommandType: 'table.open_door',
       edgeId: adjacentClosed.edgeId,
       summary: wantsCross
         ? `Ready to open the door beside you and step through.${unlockedNote} Confirm to open it and cross the doorway.`
-        : wantsOpen
+        : wantsOpenDoorAction(text)
           ? `Ready to open the door beside you.${unlockedNote} Confirm to open it on the map.`
           : `Ready to open the door beside you.${unlockedNote} Confirm to commit it on the map.`,
     };
   }
 
-  // Already standing on the far side of an open doorway — do not offer another cross.
-  if (isOnOpenDoorPassage(tokenAnchor, map) && /(enter|room beyond|beyond|through)/.test(text)) {
-    return {
-      proposedCommandType: 'table.sync',
-      summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,
-    };
+  // Standing beyond an open doorway: "enter the room beyond" is already done;
+  // "through / west / back" is a confirmable reverse cross.
+  if (isOnOpenDoorPassage(tokenAnchor, map)) {
+    const wantsReverseCross =
+      /\bthrough\b/i.test(text) ||
+      /\b(?:go|walk|move|step)s?\s+(?:west|east|north|south|back)\b/i.test(text) ||
+      /\b(?:back|return)\b/i.test(text);
+    if (!wantsReverseCross && /(enter|room beyond|beyond)/.test(text)) {
+      return {
+        proposedCommandType: 'table.sync',
+        summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,
+      };
+    }
   }
 
-  // Adjacent to an open door: step-through / enter is a confirmable move onto the passage square.
-  if (adjacentOpen !== undefined && wantsOpen) {
-    const throughStep = nextStepTowardOpenDoor(tokenAnchor, map);
+  // Standing on either side of an open doorway: through/enter/west is a confirmable cross.
+  if (wantsCross || (adjacentOpen !== undefined && wantsOpen)) {
+    const throughStep = nextStepThroughOpenDoor(tokenAnchor, map);
     if (throughStep !== null) {
+      const reversing = isOnOpenDoorPassage(tokenAnchor, map);
       return {
         proposedCommandType: 'table.move',
         path: [throughStep],
-        edgeId: adjacentOpen.edgeId,
-        summary: `Ready to step through the open doorway in ${sceneTitle}. Confirm to commit the step.`,
+        ...(adjacentOpen !== undefined ? { edgeId: adjacentOpen.edgeId } : {}),
+        summary: reversing
+          ? `Ready to step back through the open doorway in ${sceneTitle}. Confirm to commit the step.`
+          : `Ready to step through the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
-    return {
-      proposedCommandType: 'table.sync',
-      edgeId: adjacentOpen.edgeId,
-      summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,
-    };
   }
 
   if (adjacentOpen !== undefined && wantsInspect) {
@@ -211,8 +229,8 @@ export function resolveDoorIntentForMap(
   }
 
   if (mentionsMovementIntent(text) || wantsOpen) {
-    const approachOpen = nextStepTowardOpenDoor(tokenAnchor, map);
-    if (approachOpen !== null) {
+    const approachOpen = nextStepThroughOpenDoor(tokenAnchor, map);
+    if (approachOpen !== null && !isOnOpenDoorPassage(tokenAnchor, map)) {
       return {
         proposedCommandType: 'table.move',
         path: [approachOpen],
@@ -269,19 +287,13 @@ export function resolveDoorIntentForMap(
           : `An open wooden door is on this scene (${sceneTitle}). Move adjacent to test it, or declare your next action through the doorway.`,
       };
     }
-    if (/(enter|room beyond|beyond|through|steps?\s+through)/.test(text)) {
-      const throughStep = nextStepTowardOpenDoor(tokenAnchor, map);
+    if (wantsCross) {
+      const throughStep = nextStepThroughOpenDoor(tokenAnchor, map);
       if (throughStep !== null) {
         return {
           proposedCommandType: 'table.move',
           path: [throughStep],
           summary: `Ready to step through the open doorway in ${sceneTitle}. Confirm to commit the step.`,
-        };
-      }
-      if (isOnOpenDoorPassage(tokenAnchor, map)) {
-        return {
-          proposedCommandType: 'table.sync',
-          summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,
         };
       }
     }

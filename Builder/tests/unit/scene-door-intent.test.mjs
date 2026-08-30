@@ -178,6 +178,31 @@ test('open-door enter-beyond while adjacent to open door is a move, not already-
   assert.deepEqual(resolved.path, [{ column: 10, row: 6 }]);
 });
 
+test('far-side through open door drafts reverse cross onto approach square', () => {
+  const map = chamberMap({ tokenColumn: 10, tokenRow: 6 });
+  const throughOpen = resolveDoorIntentForMap(
+    map,
+    { column: 10, row: 6 },
+    'I step through the open wooden door.',
+  );
+  assert.ok(throughOpen);
+  assert.equal(throughOpen.proposedCommandType, 'table.move');
+  assert.deepEqual(throughOpen.path, [{ column: 9, row: 6 }]);
+  assert.match(throughOpen.summary, /step back through the open doorway/i);
+  assert.doesNotMatch(throughOpen.summary, /already through|open the door beside|mark an adjacent/i);
+
+  const westThrough = resolveDoorIntentForMap(
+    map,
+    { column: 10, row: 6 },
+    'Loophole steps west through the doorway.',
+  );
+  assert.ok(westThrough);
+  assert.equal(westThrough.proposedCommandType, 'table.move');
+  assert.deepEqual(westThrough.path, [{ column: 9, row: 6 }]);
+  assert.match(westThrough.summary, /Confirm to commit the step/i);
+  assert.doesNotMatch(westThrough.summary, /mark an adjacent|declare again/i);
+});
+
 test('resolveBlankTableDoorBuild only applies to edgeless blank tables', () => {
   const blank = chamberMap({ tokenColumn: 7, tokenRow: 6 });
   blank.edges = [];

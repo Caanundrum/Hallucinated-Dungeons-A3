@@ -346,7 +346,9 @@ function mentionsSkillCheckIntent(text: string): boolean {
 }
 
 function mentionsDoorIntent(text: string): boolean {
-  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(text);
+  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(
+    text.replace(/\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate)s?\b/gi, 'doorway'),
+  );
   const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
   if (
     textReferencesUnlockedDoorState(text) &&
@@ -365,6 +367,10 @@ function mentionsDoorIntent(text: string): boolean {
     (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(text) &&
       !textRequestsLockPicking(text)) ||
     (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(text) &&
+      !textRequestsLockPicking(text)) ||
+    // Through / step / enter a doorway (including reverse crossing from the far side).
+    (/\bdoorway\b/.test(text) &&
+      passageVerb &&
       !textRequestsLockPicking(text)) ||
     // Catch-all for explicit door/gate nouns with no unlock language — not bare "doorway" color.
     (/\b(door|gate|entryway)\b/.test(text) &&
@@ -777,7 +783,7 @@ export async function interpretNaturalLanguageIntent(options: {
         summary =
           authority.ignoredWorldFacts.length > 0
             ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
-            : 'Ready to move — mark an adjacent square on the map, then declare again to confirm the step.';
+            : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
       }
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
