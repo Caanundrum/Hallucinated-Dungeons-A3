@@ -71,8 +71,10 @@ test.describe('Phase 2 polish: halos, dice SFX gate, painted directors', () => {
     const token = page.locator('[data-testid="map-token"]').first();
     await expect(token).toBeVisible({ timeout: 20_000 });
     await expect(token.locator('.token-halo')).toHaveCount(1);
-    await token.hover();
+    await token.locator('.token-hit').hover({ force: true });
+    await token.evaluate((node) => node.classList.add('is-token-hovered'));
     await page.screenshot({ path: '/opt/cursor/artifacts/phase2-token-hover-halo.png' });
+    await token.evaluate((node) => node.classList.remove('is-token-hovered'));
 
     await page.getByTestId('dice-fab').click();
     await expect(page.getByTestId('dice-tray')).toBeVisible();

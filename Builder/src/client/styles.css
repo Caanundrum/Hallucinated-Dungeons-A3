@@ -3110,11 +3110,13 @@ html.hd-low-effects .map-square-fog,
   outline: none;
 }
 
-.table-stage-semantic g[data-token] * {
-  pointer-events: none;
+.table-stage-semantic g[data-token] circle,
+.table-stage-semantic g[data-token] text {
+  pointer-events: auto;
 }
 
 .table-stage-semantic g[data-token] .token-halo {
+  pointer-events: none;
   stroke: color-mix(in srgb, var(--gold-primary, #f59e0b) 85%, #fff);
   stroke-width: 2.5;
   stroke-opacity: 0;

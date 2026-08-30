@@ -340,6 +340,7 @@ function paintSemanticSvg(
       const radius = Math.min(box.w, box.h) / 2;
       return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token on the map" data-token="${escapeHtml(token.tokenId)}" data-testid="map-token" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="map-token${animate ? ' token-moving' : ''}" style="transform:${transform}">
         <circle class="token-halo" cx="${cx}" cy="${cy}" r="${radius + 5}" fill="none" aria-hidden="true" />
+        <circle class="token-hit" cx="${cx}" cy="${cy}" r="${radius + 2}" fill="transparent" stroke="none" aria-hidden="true" />
         <circle cx="${cx}" cy="${cy}" r="${radius}" fill="#c9a227" stroke="#f8e7b0" stroke-width="2.5" />
         <circle cx="${cx}" cy="${cy}" r="${radius - 3}" fill="#5a3d12" stroke="none" />
         <text x="${cx}" y="${cy + labelSize * 0.35}" text-anchor="middle" fill="#f8e7b0" font-size="${Math.max(10, labelSize * 0.85)}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700">${escapeHtml(initial)}</text>
