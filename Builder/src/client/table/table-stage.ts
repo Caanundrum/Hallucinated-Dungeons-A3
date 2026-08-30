@@ -386,22 +386,16 @@ function paintSemanticSvg(
   }
   const sceneTitle = map.title.trim().length > 0 ? map.title : 'Shared scene';
   wrap.innerHTML = `
-    <div class="table-stage-toolbar" data-testid="map-stage-toolbar">
+    <div class="table-stage-toolbar map-zoom-pill" data-testid="map-stage-toolbar">
       <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <button type="button" data-map-zoom="preset" data-zoom-preset="0.75" aria-label="Zoom 75%">75%</button>
       <button type="button" data-map-zoom="preset" data-zoom-preset="1" aria-label="Zoom 100%">100%</button>
-      <button type="button" data-map-zoom="preset" data-zoom-preset="1.5" aria-label="Zoom 150%">150%</button>
-      <span class="record-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom ${Math.round(zoomScale * 100)}%</span>
+      <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
     </div>
-    <details class="map-stage-help" data-testid="map-zoom-help">
-      <summary>Map controls</summary>
-      <p class="record-meta">Fit scales the scene to fill this frame. Drag to pan when zoomed. Center focuses the party token. Labels route around tokens to avoid collisions.</p>
-    </details>
-    <p class="map-scene-title" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
-    <p class="map-terrain-summary" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
+    <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
+    <p class="map-terrain-summary visually-hidden" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
       ${escapeHtml(mapTerrainSummary(map))}
     </p>
     <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" data-pan-enabled="true">
@@ -432,7 +426,11 @@ function paintSemanticSvg(
         </svg>
       </div>
     </div>
-    <details class="map-fog-legend" data-testid="map-fog-legend" aria-label="Map legend" open>
+    <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
+      <summary>Map help</summary>
+      <p class="record-meta">Fit scales the scene. Drag to pan when zoomed. Center focuses the party token.</p>
+    </details>
+    <details class="map-fog-legend visually-hidden" data-testid="map-fog-legend" aria-label="Map legend">
       <summary>Map legend</summary>
       <div class="map-legend-groups">
         <div class="map-legend-group" data-testid="map-legend-terrain">
@@ -458,7 +456,7 @@ function paintSemanticSvg(
         </div>
       </div>
     </details>
-    <details class="map-stage-help" data-testid="map-hazard-layer-note">
+    <details class="map-stage-help visually-hidden" data-testid="map-hazard-layer-note">
       <summary>Alpha map scope</summary>
       <p class="record-meta">
         Walls and doors are structural. Lighting, hazards, cover, and props may appear as named reference markers only — they do not change movement, combat, or detection.
