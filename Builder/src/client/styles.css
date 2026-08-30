@@ -641,6 +641,21 @@ a.account-chip-label:focus-visible {
   position: relative;
 }
 
+.table-map-chrome {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.table-map-chrome .table-stage-frame,
+.table-dashboard .table-map-chrome .table-stage-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .table-dashboard .table-stage-frame {
   flex: 1 1 auto;
   min-height: 0;
@@ -1019,7 +1034,12 @@ a.account-chip-label:focus-visible {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-1);
     margin: 0;
-    padding: var(--space-2) var(--space-2) 0;
+    padding: var(--space-2) var(--space-2) var(--space-2);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--panel-surface) 96%, #000);
+    border-bottom: var(--border-weight) solid var(--panel-border);
   }
 
   .table-mobile-task-nav button {
@@ -1071,6 +1091,7 @@ a.account-chip-label:focus-visible {
   }
 
   .table-dashboard[data-mobile-task='chat'] .table-info-rail,
+  .table-dashboard[data-mobile-task='chat'] .table-map-chrome,
   .table-dashboard[data-mobile-task='chat'] .table-stage-frame,
   .table-dashboard[data-mobile-task='chat'] .table-action-bar,
   .table-dashboard[data-mobile-task='chat'] .dm-play-thread {
@@ -1084,10 +1105,20 @@ a.account-chip-label:focus-visible {
     gap: var(--space-2);
   }
 
+  .table-map-chrome {
+    flex: 0 0 auto;
+    min-height: min(42vh, 360px);
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-map-chrome {
+    min-height: min(70vh, 28rem);
+  }
+
   .table-action-bar {
     order: 2;
     position: relative;
     bottom: auto;
+    z-index: 4;
   }
 
   .table-comms-rail {
@@ -1096,6 +1127,23 @@ a.account-chip-label:focus-visible {
 
   .table-info-rail {
     order: 4;
+  }
+
+  /* Keep FABs on the map chrome only; hide on sheet/chat so they never cover composers. */
+  .table-dashboard[data-mobile-task='sheet'] .floating-combat-host,
+  .table-dashboard[data-mobile-task='sheet'] .dice-fab-host,
+  .table-dashboard[data-mobile-task='chat'] .floating-combat-host,
+  .table-dashboard[data-mobile-task='chat'] .dice-fab-host {
+    display: none;
+  }
+
+  .floating-combat-host {
+    bottom: 0.75rem;
+  }
+
+  .dice-fab-host {
+    right: 1rem;
+    bottom: 1rem;
   }
 
   .table-action-bar-inner,
@@ -3441,7 +3489,7 @@ html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
 .floating-combat-host {
   position: absolute;
   left: 50%;
-  bottom: calc(min(34vh, 18rem) + 1rem);
+  bottom: var(--space-3);
   transform: translateX(-50%);
   z-index: 8;
   pointer-events: none;
@@ -3460,12 +3508,14 @@ html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
 
 .dice-fab-host {
   position: absolute;
-  right: var(--space-4);
-  bottom: calc(min(34vh, 18rem) + 1rem);
+  right: var(--space-3);
+  bottom: var(--space-3);
   z-index: 9;
+  pointer-events: none;
 }
 
 .dice-fab {
+  pointer-events: auto;
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
@@ -3788,10 +3838,5 @@ html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
 @media (max-width: 760px) {
   .wizard-carousel-stages {
     grid-template-columns: 1fr;
-  }
-
-  .floating-combat-host,
-  .dice-fab-host {
-    bottom: calc(min(42vh, 16rem) + 0.75rem);
   }
 }
