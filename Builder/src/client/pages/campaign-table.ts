@@ -20,10 +20,12 @@ import {
   CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
   dmThreadFromChronicleEntries,
+  filterOptimisticDmDupes,
   formatDirectorProse,
   formatPlayerFacingTimestamp,
   PLAY_CHANNEL_LABEL,
   scrubChronicleCheckpointZero,
+  storyBodiesEquivalent,
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
@@ -381,6 +383,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (entryCount > lastChronicleSyncCount) {
       dmThreadOptimistic = [];
       lastChronicleSyncCount = entryCount;
+    } else {
+      // Even when entryCount is unchanged, drop optimistic DM rows that already
+      // exist in chronicle (live narration dupes after confirm).
+      dmThreadOptimistic = filterOptimisticDmDupes(fromChronicle, dmThreadOptimistic);
     }
     dmThread = [...fromChronicle, ...dmThreadOptimistic];
   }
@@ -395,6 +401,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     body: string,
     kind: DmThreadMessage['kind'],
   ): void {
+    // Never stack a live DM beat that chronicle (or an earlier optimistic row) already has.
+    if (speaker === 'dm') {
+      const already =
+        dmThread.some(
+          (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, body),
+        ) ||
+        dmThreadOptimistic.some(
+          (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, body),
+        );
+      if (already) {
+        return;
+      }
+    }
     const message = newThreadMessage(speaker, speakerLabel, body, kind);
     dmThreadOptimistic = [...dmThreadOptimistic, message];
     dmThread = [...dmThread, message];
@@ -767,59 +786,75 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       lastNarration = narration.body;
       const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
       const prose = formatDirectorProse(narration.body).trim();
-      // Narration is persisted to Chronicle server-side. Rebuild Story from chronicle and
-      // only optimistic-append when the fresh ruling is still missing (avoids live duplicates).
+      // Narration is persisted server-side. Prefer chronicle as the only live source —
+      // optimistic append is what produced duplicate Story rows until reload.
+      let chronicleFetchOk = false;
       let appliedFromChronicle = false;
       try {
         const bodyMatches = (entries: readonly { kind: string; body: string }[]): boolean =>
-          entries.some((entry) => {
-            if (entry.kind !== 'director_ruling') {
-              return false;
-            }
-            const existing = formatDirectorProse(entry.body).trim();
-            return (
-              existing === prose ||
-              (prose.length > 24 &&
-                (existing.includes(prose) || prose.includes(existing)))
-            );
-          });
-        chronicle = await fetchChronicle(campaignId);
-        if (!bodyMatches(chronicle.entries ?? [])) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
+          entries.some(
+            (entry) =>
+              entry.kind === 'director_ruling' && storyBodiesEquivalent(entry.body, prose),
+          );
+        for (let attempt = 0; attempt < 4; attempt += 1) {
           chronicle = await fetchChronicle(campaignId);
+          if (bodyMatches(chronicle.entries ?? [])) {
+            break;
+          }
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+          }
         }
+        chronicleFetchOk = true;
+        // Chronicle is authoritative after narrate — drop live rows so Story cannot
+        // keep both an optimistic DM beat and the persisted ruling.
         dmThreadOptimistic = [];
         lastChronicleSyncCount = chronicle.entries.length;
-        const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
-        dmThread = dmThreadFromChronicleEntries({
-          entries: chronicle.entries ?? [],
-          directorLabel: directorIdentityLabel,
-          sceneBanner: scene,
-          now: new Date(),
-        });
-        appliedFromChronicle = bodyMatches(chronicle.entries ?? []) ||
-          dmThread.some((message) => {
-            if (message.speaker !== 'dm') {
-              return false;
-            }
-            const existing = formatDirectorProse(message.body).trim();
-            return (
-              existing === prose ||
-              (prose.length > 24 &&
-                (existing.includes(prose) || prose.includes(existing)))
-            );
-          });
+        syncDmThreadFromChronicle();
+        appliedFromChronicle =
+          bodyMatches(chronicle.entries ?? []) ||
+          dmThread.some(
+            (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, prose),
+          );
       } catch {
+        chronicleFetchOk = false;
         appliedFromChronicle = false;
       }
-      // Never surface post-commit draft copy ("Ready to… Confirm to…") as Director narration.
-      if (!appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
+      // Only optimistic-append when chronicle could not be read at all. If the ruling
+      // is merely delayed, wait for poll/sync rather than stacking a live duplicate.
+      if (!chronicleFetchOk && !appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
         appendDmThread(
           'dm',
           narration.directorIdentityLabel || directorIdentityLabel,
           narration.body,
           'narration',
         );
+      } else if (chronicleFetchOk && !appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
+        // Deferred catch-up: one more pull after the emulator/hosted write is visible.
+        void (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          if (!isPageMountCurrent(container, mountToken) || candidate === null) {
+            return;
+          }
+          try {
+            chronicle = await fetchChronicle(campaignId);
+            syncDmThreadFromChronicle();
+            const present = dmThread.some(
+              (message) => message.speaker === 'dm' && storyBodiesEquivalent(message.body, prose),
+            );
+            if (!present) {
+              appendDmThread(
+                'dm',
+                narration.directorIdentityLabel || directorIdentityLabel,
+                narration.body,
+                'narration',
+              );
+            }
+            patchDmPlayThread();
+          } catch {
+            // Keep the last patched thread; poll will reconcile.
+          }
+        })();
       }
       if (tags.length > 0) {
         const framingBody = `Epic framing (outcome unchanged): ${tags.map((tag) => tag.replace(/_/g, ' ')).join(', ')}.`;

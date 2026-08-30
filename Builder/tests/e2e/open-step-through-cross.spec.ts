@@ -110,6 +110,11 @@ test.describe('Open + step-through doorway cross', () => {
     const openedCrossMatches =
       threadText.match(/Opened the door and stepped through the doorway/gi) ?? [];
     expect(openedCrossMatches.length).toBe(1);
+    // Live Story: one Garrick/DM beat for the crossing (not optimistic+chronicle).
+    const dmCrossing = page
+      .locator('[data-testid="dm-play-thread-list"] li.dm-thread-dm')
+      .filter({ hasText: /Opened the door and stepped through the doorway/i });
+    await expect(dmCrossing).toHaveCount(1);
 
     await doorHit.click();
     await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
@@ -179,6 +184,10 @@ test.describe('Open + step-through doorway cross', () => {
     expect(reverseThread).not.toMatch(
       /Stepped back through the open doorway[^\n]*\n(?:[^\n]*\n){0,2}Stepped back through the open doorway/i,
     );
+    const dmReverse = page
+      .locator('[data-testid="dm-play-thread-list"] li.dm-thread-dm')
+      .filter({ hasText: /Stepped back through the open doorway/i });
+    await expect(dmReverse).toHaveCount(1);
 
     await page.screenshot({ path: '/opt/cursor/artifacts/reverse-cross-token.png' }).catch(() => {});
   });
