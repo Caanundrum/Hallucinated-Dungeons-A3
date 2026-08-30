@@ -766,30 +766,54 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
       lastNarration = narration.body;
       const tags = narration.framingTags ?? deriveEpicFramingTags(mechanicsSummary, rolls);
-      // Narration is persisted to Chronicle server-side. Re-sync so Story so far does not
-      // keep both the optimistic append and the chronicle copy of the same beat.
+      const prose = formatDirectorProse(narration.body).trim();
+      // Narration is persisted to Chronicle server-side. Rebuild Story from chronicle and
+      // only optimistic-append when the fresh ruling is still missing (avoids live duplicates).
+      let appliedFromChronicle = false;
       try {
+        const bodyMatches = (entries: readonly { kind: string; body: string }[]): boolean =>
+          entries.some((entry) => {
+            if (entry.kind !== 'director_ruling') {
+              return false;
+            }
+            const existing = formatDirectorProse(entry.body).trim();
+            return (
+              existing === prose ||
+              (prose.length > 24 &&
+                (existing.includes(prose) || prose.includes(existing)))
+            );
+          });
         chronicle = await fetchChronicle(campaignId);
+        if (!bodyMatches(chronicle.entries ?? [])) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          chronicle = await fetchChronicle(campaignId);
+        }
         dmThreadOptimistic = [];
         lastChronicleSyncCount = chronicle.entries.length;
-        syncDmThreadFromChronicle();
+        const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
+        dmThread = dmThreadFromChronicleEntries({
+          entries: chronicle.entries ?? [],
+          directorLabel: directorIdentityLabel,
+          sceneBanner: scene,
+          now: new Date(),
+        });
+        appliedFromChronicle = bodyMatches(chronicle.entries ?? []) ||
+          dmThread.some((message) => {
+            if (message.speaker !== 'dm') {
+              return false;
+            }
+            const existing = formatDirectorProse(message.body).trim();
+            return (
+              existing === prose ||
+              (prose.length > 24 &&
+                (existing.includes(prose) || prose.includes(existing)))
+            );
+          });
       } catch {
-        // Fall through to optimistic append when chronicle refresh fails.
+        appliedFromChronicle = false;
       }
-      const normalizedNarration = narration.body.trim();
-      const alreadyOnThread = dmThread.some((message) => {
-        if (message.speaker !== 'dm') {
-          return false;
-        }
-        const existing = message.body.trim();
-        return (
-          existing === normalizedNarration ||
-          (normalizedNarration.length > 24 &&
-            (existing.includes(normalizedNarration) || normalizedNarration.includes(existing)))
-        );
-      });
       // Never surface post-commit draft copy ("Ready to… Confirm to…") as Director narration.
-      if (!alreadyOnThread && !isIntentDraftConfirmCopy(normalizedNarration)) {
+      if (!appliedFromChronicle && !isIntentDraftConfirmCopy(prose)) {
         appendDmThread(
           'dm',
           narration.directorIdentityLabel || directorIdentityLabel,
@@ -4185,6 +4209,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               declaration: declarationText,
               eventSummary: accepted.event.summary,
               openCross: resumeAfterOpenCross,
+              sceneTitle: mapBundle?.title,
             });
             if (declarationText.length > 0) {
               appendDmThread('player', 'You', declarationText, 'declaration');

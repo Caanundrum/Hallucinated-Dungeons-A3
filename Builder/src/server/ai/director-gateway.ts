@@ -300,6 +300,8 @@ const NARRATOR_CONSTITUTION = [
   'Use the AUTHORITATIVE VISIBLE GAME STATE for spatial awareness, who is present, and atmosphere.',
   'Never invent damage, conditions, hidden facts, or change success into failure (or the reverse).',
   'Never change Hit Points, kill a creature the mechanics left standing, or spare one the mechanics dropped.',
+  'Never claim the party left the current scene, entered a new location, or abandoned the named chamber unless the mechanics summary explicitly says a scene change occurred.',
+  'Stepping through a doorway on the same map keeps the current scene — describe the step, not a departure.',
   'If framing tags are present (crit, finishing_blow, near_miss, heroic_failure, bold_stunt, overkill), lean into cinematic emphasis for that beat without altering the outcome.',
   'Write in second person. Keep paragraphs short. Do not open with a title or heading.',
   'If the player tried something not present in the scene state, clarify the gap in-world without granting it.',
@@ -345,10 +347,14 @@ function mentionsSkillCheckIntent(text: string): boolean {
   );
 }
 
+function stripAdjectivalOpenDoor(text: string): string {
+  return text.replace(/\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi, 'doorway');
+}
+
 function mentionsDoorIntent(text: string): boolean {
-  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(
-    text.replace(/\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate)s?\b/gi, 'doorway'),
-  );
+  // Adjectival "open wooden door" is door state, not an open-door verb.
+  const withoutOpenNoun = stripAdjectivalOpenDoor(text);
+  const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(withoutOpenNoun);
   const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
   if (
     textReferencesUnlockedDoorState(text) &&
@@ -364,23 +370,24 @@ function mentionsDoorIntent(text: string): boolean {
   }
   return (
     mentionsDoorStateIntent(text) ||
-    (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(text) &&
+    (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(withoutOpenNoun) &&
       !textRequestsLockPicking(text)) ||
-    (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(text) &&
+    (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(withoutOpenNoun) &&
       !textRequestsLockPicking(text)) ||
-    // Through / step / enter a doorway (including reverse crossing from the far side).
-    (/\bdoorway\b/.test(text) &&
+    // Through / step / enter a door or doorway (including reverse crossing from the far side).
+    (/\b(?:door|doorway|gate|entryway)\b/.test(withoutOpenNoun) &&
       passageVerb &&
       !textRequestsLockPicking(text)) ||
     // "Enter the room beyond" is doorway transit, not free-form mark-square movement.
     (/\bbeyond\b/.test(text) &&
       /\b(?:enter|room|chamber|door|doorway)\b/.test(text) &&
       !textRequestsLockPicking(text)) ||
-    // Catch-all for explicit door/gate nouns with no unlock language — not bare "doorway" color.
+    // Catch-all for explicit door/gate nouns with no unlock / passage language.
     (/\b(door|gate|entryway)\b/.test(text) &&
       !textRequestsLockPicking(text) &&
       !textReferencesUnlockedDoorState(text) &&
-      !/\bdoorway\b/.test(text))
+      !/\bdoorway\b/.test(text) &&
+      !passageVerb)
   );
 }
 
@@ -525,6 +532,48 @@ function cinematicLine(personality: DirectorPersonality): string {
     default:
       return ' The Director lets the moment breathe before the table presses on.';
   }
+}
+
+/**
+ * When mechanics describe a same-scene doorway step, strip LLM inventions that
+ * claim the party left the named chamber or entered a new location.
+ */
+function scrubFalseSceneDeparture(body: string, mechanicsSummary: string): string {
+  const mechanics = mechanicsSummary.trim();
+  const sameSceneStep =
+    /\bStepped(?: back)? through the open doorway\b/i.test(mechanics) ||
+    /\bOpened the door and stepped through the doorway\b/i.test(mechanics);
+  const sceneChangeClaimed =
+    /\bscene change\b|\bleft .+ for\b|\bentered a new (?:scene|location|chamber)\b/i.test(mechanics);
+  if (!sameSceneStep || sceneChangeClaimed) {
+    return body;
+  }
+  const sceneMatch = /\bin ([^.]+)\.\s*(?:Same scene|Current scene)/i.exec(mechanics);
+  const sceneName = sceneMatch?.[1]?.trim() ?? null;
+  let scrubbed = body
+    .replace(
+      /\b(?:you |she |he |they )?(?:leave|leaves|left|leaving)\s+(?:the\s+)?[^.!?\n]{0,40}\s+behind\b[^.!?\n]*/gi,
+      '',
+    )
+    .replace(
+      /\b(?:you |she |he |they )?(?:abandon|abandons|abandoned)\s+(?:the\s+)?[^.!?\n]{0,40}\b[^.!?\n]*/gi,
+      '',
+    )
+    .replace(
+      /\b(?:arrive|arrives|arrived|enter|enters|entered)\s+(?:a |an |the )?(?:new |different )?(?:location|chamber|room|scene)\b[^.!?\n]*/gi,
+      '',
+    );
+  if (sceneName !== null) {
+    const escaped = sceneName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    scrubbed = scrubbed.replace(
+      new RegExp(
+        `\\b(?:leave|leaves|left|leaving)\\s+${escaped}\\b[^.!?\\n]*`,
+        'gi',
+      ),
+      '',
+    );
+  }
+  return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
 }
 
 /** Builds narration body text for the given density, without inventing state. */
@@ -832,6 +881,9 @@ export async function interpretNaturalLanguageIntent(options: {
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'open_door') ||
     (mentionsDoorIntent(text) &&
+      !/(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative)/i.test(
+        text,
+      ) &&
       (!mentionsSkillCheckIntent(text) || mentionsDoorStateIntent(text)))
   ) {
     try {
@@ -1328,9 +1380,9 @@ export async function narrateVisibleBeat(options: {
   );
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts).${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new.`,
   });
-  const body = liveBody ?? simulated.body;
+  const body = scrubFalseSceneDeparture(liveBody ?? simulated.body, options.mechanicsSummary);
   const humorApplied = liveBody === null ? simulated.humorApplied : effectiveDensity !== 'concise';
   const manifest = buildManifest({
     role: 'narrator',

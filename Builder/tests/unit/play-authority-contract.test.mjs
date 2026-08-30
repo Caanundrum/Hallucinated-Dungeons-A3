@@ -233,6 +233,16 @@ test('parsePlayerDeclaration: conjugations open/step and compound step-through',
   assert.equal(resolveIntentAuthority(enters).proposedCommandType, 'table.open_door');
 });
 
+test('parsePlayerDeclaration: through the open wooden door is passage, not open_door', () => {
+  const throughOpen = parsePlayerDeclaration('I step through the open wooden door.');
+  assert.ok(throughOpen.actionSequence.some((step) => step.kind === 'move'));
+  assert.ok(throughOpen.actionSequence.every((step) => step.kind !== 'open_door'));
+  assert.equal(resolveIntentAuthority(throughOpen).proposedCommandType, 'table.move');
+
+  const bareThrough = parsePlayerDeclaration('through the open wooden door');
+  assert.ok(bareThrough.actionSequence.some((step) => step.kind === 'move'));
+  assert.ok(bareThrough.actionSequence.every((step) => step.kind !== 'open_door'));
+});
 test('parsePlayerDeclaration: invent scenery with move preserves the move', () => {
   const parsed = parsePlayerDeclaration(
     'I walk toward the flooded crypt that materializes ahead.',
