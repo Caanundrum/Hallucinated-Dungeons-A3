@@ -102,25 +102,92 @@ test('FQA evidence screenshots', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Reset zoom to 100%/i })).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-map-reset-zoom.png' });
 
-  // FQA-023: outer action section must not scroll; thread list is the only vertical owner.
-  const scrollOwners = await page.evaluate(() => {
+  // FQA-023: thread list must be height-bounded and scrollable; action dock must not scroll.
+  // Seed a tall timeline so we prove the list shrinks (does not expand to thousands of px).
+  const scrollProof = await page.evaluate(() => {
     const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
-    const list = document.querySelector('[data-testid="dm-play-thread-list"]') as HTMLElement | null;
-    const styleOf = (el: HTMLElement | null) =>
-      el === null ? null : getComputedStyle(el).overflowY;
+    const thread = document.querySelector('[data-testid="dm-play-thread"]') as HTMLElement | null;
+    let list = document.querySelector('[data-testid="dm-play-thread-list"]') as HTMLElement | null;
+    if (list === null && thread !== null) {
+      const empty = thread.querySelector('[data-testid="dm-play-thread-list-empty"]');
+      list = document.createElement('ol');
+      list.className = 'record-list dm-thread-list';
+      list.setAttribute('data-testid', 'dm-play-thread-list');
+      if (empty !== null) {
+        empty.replaceWith(list);
+      } else {
+        thread.appendChild(list);
+      }
+    }
+    if (list === null || action === null || thread === null) {
+      return { ok: false as const, reason: 'missing-nodes' };
+    }
+    list.innerHTML = '';
+    for (let i = 0; i < 48; i += 1) {
+      const li = document.createElement('li');
+      li.className = 'dm-thread-message dm-thread-dm';
+      li.setAttribute('data-testid', i === 47 ? 'fqa-023-latest-seed' : 'dm-thread-message');
+      li.innerHTML = `<span class="record-note"><strong>Veyra</strong></span><p>Seeded timeline beat ${i + 1}. ${'Detail '.repeat(12)}</p><span class="record-meta" data-testid="dm-thread-timestamp">Just now</span>`;
+      list.appendChild(li);
+    }
+    const actionStyle = getComputedStyle(action);
+    const listStyle = getComputedStyle(list);
+    const threadStyle = getComputedStyle(thread);
+    const latest = document.querySelector('[data-testid="fqa-023-latest-seed"]') as HTMLElement | null;
+    const before = latest?.getBoundingClientRect() ?? null;
+    list.scrollTop = list.scrollHeight;
+    const after = latest?.getBoundingClientRect() ?? null;
+    const listBox = list.getBoundingClientRect();
+    const latestVisible =
+      after !== null &&
+      after.top < listBox.bottom - 4 &&
+      after.bottom > listBox.top + 4;
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 12;
     return {
-      actionOverflowY: styleOf(action),
-      listOverflowY: styleOf(list),
+      ok: true as const,
+      action: {
+        client: action.clientHeight,
+        scroll: action.scrollHeight,
+        overflowY: actionStyle.overflowY,
+        height: actionStyle.height,
+      },
+      thread: {
+        client: thread.clientHeight,
+        scroll: thread.scrollHeight,
+        overflowY: threadStyle.overflowY,
+      },
+      list: {
+        client: list.clientHeight,
+        scroll: list.scrollHeight,
+        overflowY: listStyle.overflowY,
+        scrollTop: list.scrollTop,
+      },
+      beforeTop: before?.top ?? null,
+      afterTop: after?.top ?? null,
+      latestVisible,
+      nearBottom,
       actionScrollable:
-        action !== null &&
         action.scrollHeight > action.clientHeight + 1 &&
-        /(auto|scroll)/.test(getComputedStyle(action).overflowY),
-      listCanScroll: list !== null && /(auto|scroll)/.test(getComputedStyle(list).overflowY),
+        /(auto|scroll)/.test(actionStyle.overflowY),
+      listScrollable:
+        list.scrollHeight > list.clientHeight + 40 &&
+        /(auto|scroll)/.test(listStyle.overflowY),
     };
   });
-  expect(scrollOwners.actionOverflowY).toMatch(/hidden|clip|visible/);
-  expect(scrollOwners.actionScrollable).toBe(false);
-  expect(scrollOwners.listCanScroll).toBe(true);
+  expect(scrollProof.ok).toBe(true);
+  if (scrollProof.ok) {
+    expect(scrollProof.action.overflowY).toMatch(/hidden|clip/);
+    expect(scrollProof.actionScrollable).toBe(false);
+    expect(scrollProof.list.overflowY).toMatch(/auto|scroll/);
+    // Bounded viewport: list must stay inside the dock, not expand to thousands of px.
+    expect(scrollProof.list.client).toBeLessThan(380);
+    expect(scrollProof.list.client).toBeGreaterThan(40);
+    expect(scrollProof.list.scroll).toBeGreaterThan(scrollProof.list.client + 400);
+    expect(scrollProof.thread.client).toBeLessThanOrEqual(scrollProof.action.client + 2);
+    expect(scrollProof.listScrollable).toBe(true);
+    expect(scrollProof.nearBottom || scrollProof.latestVisible).toBe(true);
+    expect(scrollProof.list.scrollTop).toBeGreaterThan(100);
+  }
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-023-scroll-owners.png' });
 });
 
