@@ -2843,6 +2843,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           timingAuthorityId?: unknown;
           path?: unknown;
           edgeId?: unknown;
+          objectId?: unknown;
+          destinationHint?: unknown;
+          returnToPrevious?: unknown;
+          premise?: unknown;
           targetCombatantId?: unknown;
           attackId?: unknown;
           spellId?: unknown;
@@ -2891,6 +2895,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             ? { path: payload.path as { column: number; row: number }[] }
             : {}),
           ...(typeof payload.edgeId === 'string' ? { edgeId: payload.edgeId } : {}),
+          ...(typeof payload.objectId === 'string' ? { objectId: payload.objectId } : {}),
+          ...(typeof payload.destinationHint === 'string'
+            ? { destinationHint: payload.destinationHint }
+            : {}),
+          ...(payload.returnToPrevious === true ? { returnToPrevious: true } : {}),
+          ...(typeof payload.premise === 'string' ? { premise: payload.premise } : {}),
           ...(typeof payload.targetCombatantId === 'string'
             ? { targetCombatantId: payload.targetCombatantId }
             : {}),

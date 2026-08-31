@@ -742,6 +742,10 @@ export async function interpretNaturalLanguageIntent(options: {
     'I heard your declaration. Confirm only commits what the table can resolve right now.';
   let path: IntentInterpretResponse['path'];
   let edgeId: string | undefined;
+  let objectId: string | undefined;
+  let destinationHint: string | undefined;
+  let returnToPrevious: boolean | undefined;
+  let premise: string | undefined;
   let targetCombatantId: string | undefined;
   let spellId: string | undefined;
   let itemId: string | undefined;
@@ -811,7 +815,62 @@ export async function interpretNaturalLanguageIntent(options: {
   /** Defer Director fiction until after the player declaration is chronicled. */
   let deferDirectorNarrate = false;
 
-  if (authorityShortCircuit) {
+  // Batch 2 — reusable Director scene loop (begin / object / travel / return).
+  let sceneLoopResolved = false;
+  if (
+    /\b(begin (the )?adventure|start (the )?adventure|establish (the )?(first |opening )?scene)\b/i.test(
+      text,
+    )
+  ) {
+    proposedCommandType = 'table.begin_adventure';
+    summary =
+      'Ready to begin the adventure. Confirm so the Game Director establishes the opening scene from your premise.';
+    sceneLoopResolved = true;
+  } else if (
+    /\b(return|go back|head back|retreat)\b/i.test(text) &&
+    /\b(scene|chamber|room|inn|path|way|earlier|previous)\b/i.test(text)
+  ) {
+    proposedCommandType = 'table.travel_scene';
+    returnToPrevious = true;
+    destinationHint = 'return to the earlier scene';
+    summary =
+      'Ready to return to the earlier scene. Confirm to restore it with prior consequences.';
+    sceneLoopResolved = true;
+  } else if (
+    /\b(leave|travel|head (out|outside|onward)|go (outside|outdoors|onward|through)|step (out|outside)|enter the (forest|marsh|village|street|path)|follow the (path|road|trail))\b/i.test(
+      text,
+    )
+  ) {
+    proposedCommandType = 'table.travel_scene';
+    destinationHint = rawText.slice(0, 200);
+    summary =
+      'Ready to leave for another scene. Confirm so the Game Director establishes the next place.';
+    sceneLoopResolved = true;
+  } else if (
+    /\b(extinguish|douse|snuff|relight|ignite|kindle|break|smash|kick|shatter|move the|clear the|open the|close the|disarm)\b/i.test(
+      text,
+    )
+  ) {
+    try {
+      const { loadMapRuntime } = await import('../table/map-runtime.js');
+      const { matchInteractableByDeclaration } = await import('../table/scene-commands.js');
+      const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const matched = matchInteractableByDeclaration(runtime, text);
+      if (matched !== null) {
+        proposedCommandType = 'table.interact_object';
+        objectId = matched;
+        summary =
+          'Ready to change that object on the scene. Confirm to update its state on the table.';
+        sceneLoopResolved = true;
+      }
+    } catch {
+      sceneLoopResolved = false;
+    }
+  }
+
+  if (sceneLoopResolved) {
+    // Skip combat/door branches — scene loop owns this declaration.
+  } else if (authorityShortCircuit) {
     if (
       authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door'
@@ -1220,6 +1279,10 @@ export async function interpretNaturalLanguageIntent(options: {
     proposedCommandType,
     ...(path !== undefined ? { path } : {}),
     ...(edgeId !== undefined ? { edgeId } : {}),
+    ...(objectId !== undefined ? { objectId } : {}),
+    ...(destinationHint !== undefined ? { destinationHint } : {}),
+    ...(returnToPrevious === true ? { returnToPrevious: true } : {}),
+    ...(premise !== undefined ? { premise } : {}),
     ...(targetCombatantId !== undefined ? { targetCombatantId } : {}),
     ...(spellId !== undefined ? { spellId } : {}),
     ...(itemId !== undefined ? { itemId } : {}),

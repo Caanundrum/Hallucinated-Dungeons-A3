@@ -22,7 +22,15 @@ import type { EncounterProjection } from '../../shared/rules-combat-contract.js'
 import { COLLECTIONS } from '../persistence/firestore.js';
 
 /** Table commands allowed without Timing Authority outside active combat. */
-export const EXPLORATION_TABLE_COMMANDS = ['table.move', 'table.open_door', 'table.build_scene', 'table.sync'] as const;
+export const EXPLORATION_TABLE_COMMANDS = [
+  'table.move',
+  'table.open_door',
+  'table.build_scene',
+  'table.begin_adventure',
+  'table.interact_object',
+  'table.travel_scene',
+  'table.sync',
+] as const;
 
 export class TimingAuthorityError extends Error {
   readonly code: string;

@@ -89,6 +89,10 @@ export interface ActionDraftSuggestion {
   readonly summary: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly objectId?: string;
+  readonly destinationHint?: string;
+  readonly returnToPrevious?: boolean;
+  readonly premise?: string;
   readonly targetCombatantId?: string;
   readonly spellId?: string;
   readonly itemId?: string;

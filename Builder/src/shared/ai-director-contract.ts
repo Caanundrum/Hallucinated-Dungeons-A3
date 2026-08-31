@@ -94,6 +94,10 @@ export interface IntentInterpretResponse {
   readonly proposedCommandType: IntentDraftCommandType;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly objectId?: string;
+  readonly destinationHint?: string;
+  readonly returnToPrevious?: boolean;
+  readonly premise?: string;
   readonly targetCombatantId?: string;
   readonly spellId?: string;
   readonly itemId?: string;
@@ -113,7 +117,10 @@ export interface IntentInterpretResponse {
 /** Strip internal command/tool identifiers from player-facing Intent copy (PQA-141). */
 export function scrubPlayerFacingIntentCopy(text: string): string {
   return text
-    .replace(/\btable\.(?:open_door|move|sync|build_scene)\b/gi, 'that action')
+    .replace(
+      /\btable\.(?:open_door|move|sync|build_scene|begin_adventure|interact_object|travel_scene)\b/gi,
+      'that action',
+    )
     .replace(/\bcombat\.(?:attack|cast_spell|reaction|short_rest|long_rest)\b/gi, 'that action')
     .replace(/\bencounter\.(?:begin|end|next_turn)\b/gi, 'that action')
     .replace(/\binitiative\.roll\b/gi, 'that action')

@@ -17,6 +17,13 @@ export function resolvedSummaryAfterTableConfirm(options: {
   readonly openCross?: boolean;
   readonly sceneTitle?: string;
 }): string {
+  if (
+    typeof options.eventSummary === 'string' &&
+    options.eventSummary.trim().length > 0 &&
+    !isIntentDraftConfirmCopy(options.eventSummary)
+  ) {
+    return options.eventSummary.trim();
+  }
   const scene =
     options.sceneTitle !== undefined && options.sceneTitle.trim().length > 0
       ? options.sceneTitle.trim()
@@ -24,6 +31,21 @@ export function resolvedSummaryAfterTableConfirm(options: {
   const inScene = scene !== null ? ` in ${scene}` : '';
   const sameSceneNote =
     scene !== null ? ` Same scene — ${scene} remains current; no location change.` : '';
+  if (options.commandType === 'table.begin_adventure') {
+    return scene !== null
+      ? `The Game Director established ${scene}.`
+      : 'The Game Director established the opening scene.';
+  }
+  if (options.commandType === 'table.travel_scene') {
+    return scene !== null
+      ? `The party traveled. Current scene: ${scene}.`
+      : 'The party traveled to a new scene.';
+  }
+  if (options.commandType === 'table.interact_object') {
+    return options.draftSummary.trim().length > 0
+      ? options.draftSummary.trim()
+      : `An object changed${inScene}.`;
+  }
   if (options.openCross === true) {
     return `Opened the door and stepped through the doorway${inScene}.${sameSceneNote}`;
   }
