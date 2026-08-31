@@ -32,7 +32,8 @@
 ## Remaining visual limitations
 
 - Atmosphere is restrained SVG texture/light — not painted battlemap art.
-- Difficult terrain on Quiet chamber may be sparse (perimeter blocked + markers carry damp/rubble story).
+- Fog still covers most of the 12×8 grid, so the explored chamber is a lit island inside hashed darkness (by design).
+- Difficult terrain cells on Quiet chamber are sparse; damp/rubble story is carried mainly by POI washes and chips.
 - Pixi WebGL layer remains a low-opacity fallback mirror; SVG is the primary presentation.
 
 ## Safe fixture requirement
