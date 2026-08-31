@@ -3851,3 +3851,381 @@ html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
     grid-template-columns: 1fr;
   }
 }
+
+
+[data-testid="table-overlay-slot"] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 68;
+}
+
+[data-testid="table-overlay-slot"] > * {
+  pointer-events: auto;
+}
+
+[data-testid="table-overlay-slot"] .turn-splash {
+  pointer-events: none;
+}
+
+/* ===== Phase 3 Sprint A — Immersion & Combat Drama ===== */
+
+@keyframes torchFlicker {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  35% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+  70% {
+    opacity: 0.45;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes cavernDustDrift {
+  0% {
+    transform: translate3d(0, 8%, 0);
+  }
+  100% {
+    transform: translate3d(-4%, -18%, 0);
+  }
+}
+
+@keyframes combatFloaterRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.86);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -4px) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52px) scale(1);
+  }
+}
+
+@keyframes combatVignettePulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes turnSplashIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.94);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+}
+
+@keyframes nat20EdgeFlash {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes nat20ParticleBurst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+}
+
+@keyframes nat1ScreenShake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-3px, 1px);
+  }
+  40% {
+    transform: translate(3px, -2px);
+  }
+  60% {
+    transform: translate(-2px, -1px);
+  }
+  80% {
+    transform: translate(2px, 1px);
+  }
+}
+
+.map-torch-glow {
+  pointer-events: none;
+  animation: torchFlicker 3.2s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+.map-fog-mist {
+  background:
+    radial-gradient(circle at 30% 40%, rgba(148, 163, 184, 0.18), transparent 62%),
+    radial-gradient(circle at 70% 60%, rgba(100, 116, 139, 0.14), transparent 55%),
+    rgba(15, 23, 42, 0.55);
+  animation: cavernDustDrift 18s linear infinite alternate;
+}
+
+.table-stage-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.cavern-dust {
+  position: absolute;
+  inset: -12%;
+  opacity: 0.035;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(251, 191, 36, 0.9) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 48% 62%, rgba(226, 232, 240, 0.85) 0 1px, transparent 2px),
+    radial-gradient(circle at 78% 28%, rgba(251, 191, 36, 0.75) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle at 32% 82%, rgba(226, 232, 240, 0.7) 0 1px, transparent 2px),
+    radial-gradient(circle at 88% 74%, rgba(251, 191, 36, 0.65) 0 1.1px, transparent 2px);
+  background-size: 180px 180px;
+  animation: cavernDustDrift 22s linear infinite;
+}
+
+.cavern-dust-b {
+  opacity: 0.028;
+  background-size: 240px 240px;
+  animation-duration: 28s;
+  animation-direction: reverse;
+}
+
+.cavern-dust-c {
+  opacity: 0.022;
+  background-size: 320px 320px;
+  animation-duration: 34s;
+  animation-delay: -8s;
+}
+
+.combat-floater-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 96;
+}
+
+.combat-floater {
+  position: fixed;
+  font-family: "Cinzel", "Palatino Linotype", serif;
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 12px currentColor,
+    0 2px 8px rgba(0, 0, 0, 0.85);
+  animation: combatFloaterRise 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+  z-index: 97;
+}
+
+.combat-floater-damage {
+  color: #fb7185;
+}
+
+.combat-floater-heal {
+  color: #34d399;
+}
+
+[data-testid="table-page-shell"].table-combat-active {
+  position: relative;
+}
+
+[data-testid="table-page-shell"].table-combat-active::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 55;
+  box-shadow:
+    inset 0 0 80px rgba(127, 29, 29, 0.45),
+    inset 0 0 160px rgba(69, 10, 10, 0.35);
+  animation: combatVignettePulse 2.8s ease-in-out infinite;
+}
+
+[data-testid="table-page-shell"].table-combat-active.table-own-turn::after {
+  box-shadow:
+    inset 0 0 90px rgba(185, 28, 28, 0.55),
+    inset 0 0 180px rgba(127, 29, 29, 0.4);
+}
+
+.turn-splash {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  z-index: 70;
+  pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  min-width: min(88vw, 22rem);
+  padding: 0.85rem 1.4rem;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, transparent, rgba(127, 29, 29, 0.55) 18%, rgba(69, 10, 10, 0.82) 50%, rgba(127, 29, 29, 0.55) 82%, transparent),
+    rgba(15, 8, 8, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    0 0 48px rgba(185, 28, 28, 0.35);
+  animation: turnSplashIn 2.4s ease forwards;
+}
+
+.turn-splash-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #fbbf24;
+}
+
+.turn-splash-name {
+  font-family: "Cinzel", "Palatino Linotype", serif;
+  font-size: clamp(1.15rem, 3vw, 1.55rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fef3c7;
+  text-shadow: 0 0 18px rgba(251, 191, 36, 0.45);
+}
+
+.turn-splash-blade {
+  width: min(70%, 12rem);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #fbbf24, transparent);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.55);
+}
+
+.illuminated-dropcap::first-letter {
+  float: left;
+  margin: 0.05rem 0.45rem 0 0;
+  font-family: "Cinzel", "Palatino Linotype", serif;
+  font-size: 2.55em;
+  line-height: 0.82;
+  font-weight: 700;
+  color: #fbbf24;
+  text-shadow:
+    0 0 18px rgba(251, 191, 36, 0.35),
+    0 2px 0 rgba(120, 53, 15, 0.55);
+}
+
+.dice-drama-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 98;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(251, 191, 36, 0.28), transparent 42%),
+    linear-gradient(90deg, rgba(251, 191, 36, 0.22), transparent 18%, transparent 82%, rgba(251, 191, 36, 0.22));
+  animation: nat20EdgeFlash 0.85s ease-out forwards;
+}
+
+.dice-drama-burst {
+  position: fixed;
+  width: min(42vmin, 280px);
+  height: min(42vmin, 280px);
+  left: 50%;
+  top: 42%;
+  pointer-events: none;
+  z-index: 99;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(253, 224, 71, 0.85) 0 2px, transparent 3px) 20% 30% / 12px 12px,
+    radial-gradient(circle, rgba(251, 191, 36, 0.9) 0 2px, transparent 3px) 70% 25% / 14px 14px,
+    radial-gradient(circle, rgba(254, 243, 199, 0.95) 0 1.5px, transparent 2.5px) 45% 70% / 10px 10px,
+    radial-gradient(circle, rgba(245, 158, 11, 0.8) 0 2px, transparent 3px) 80% 65% / 16px 16px,
+    radial-gradient(circle at center, rgba(251, 191, 36, 0.45), transparent 55%);
+  animation: nat20ParticleBurst 0.9s ease-out forwards;
+}
+
+[data-testid="table-page-shell"].dice-nat1-shake {
+  animation: nat1ScreenShake 0.2s linear;
+}
+
+[data-testid="table-page-shell"].dice-nat1-shake::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 97;
+  border: 2px solid rgba(248, 113, 113, 0.55);
+  box-shadow: inset 0 0 40px rgba(127, 29, 29, 0.35);
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-torch-glow,
+  .map-fog-mist,
+  .cavern-dust,
+  [data-testid="table-page-shell"].table-combat-active::after {
+    animation: none !important;
+  }
+
+  .combat-floater,
+  .turn-splash,
+  .dice-drama-flash,
+  .dice-drama-burst,
+  [data-testid="table-page-shell"].dice-nat1-shake {
+    animation: none !important;
+  }
+
+  .combat-floater {
+    opacity: 0;
+  }
+
+  .turn-splash {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+html.hd-low-effects .map-torch-glow,
+html.hd-low-effects .cavern-dust,
+html.hd-low-effects .map-fog-mist {
+  animation: none !important;
+}
+
+html.hd-low-effects .cavern-dust {
+  display: none;
+}
+
+html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after {
+  animation: none !important;
+  opacity: 0.85;
+}
+
+.combat-floater-temp {
+  color: #67e8f9;
+}
