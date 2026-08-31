@@ -48,6 +48,13 @@ import {
   upsertTokenPosition,
   type StoredMapRuntime,
 } from './map-runtime.js';
+import {
+  beginAdventureRuntime,
+  interactObjectRuntime,
+  loadCampaignPremise,
+  travelSceneRuntime,
+} from './scene-commands.js';
+import { activeSceneInstance } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
 import {
   doorStateAfterUnlockSuccess,
@@ -302,7 +309,7 @@ export function classifyExplorationConflict(options: {
     actorSeatId,
     encounterActive,
   } = options;
-  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.build_scene')) {
+  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.build_scene' || commandType === 'table.begin_adventure' || commandType === 'table.interact_object' || commandType === 'table.travel_scene')) {
     return {
       reason: 'scene_lock',
       message:
@@ -462,6 +469,10 @@ export async function acceptTableCommand(options: {
   readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly objectId?: string;
+  readonly destinationHint?: string;
+  readonly returnToPrevious?: boolean;
+  readonly premise?: string;
   /** Player-facing beat summary for Chronicle (table commands only). */
   readonly summary?: string;
   /** Confirmed player declaration — chronicled only after Confirm (TQA-005). */
@@ -478,6 +489,10 @@ export async function acceptTableCommand(options: {
     timingAuthorityId,
     path,
     edgeId,
+    objectId,
+    destinationHint,
+    returnToPrevious,
+    premise: premiseOverride,
     targetCombatantId,
     attackId,
     spellId,
@@ -539,7 +554,10 @@ export async function acceptTableCommand(options: {
     commandType !== 'table.sync' &&
     commandType !== 'table.move' &&
     commandType !== 'table.open_door' &&
-    commandType !== 'table.build_scene'
+    commandType !== 'table.build_scene' &&
+    commandType !== 'table.begin_adventure' &&
+    commandType !== 'table.interact_object' &&
+    commandType !== 'table.travel_scene'
   ) {
     throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That table command type is not supported.');
   }
@@ -640,6 +658,120 @@ export async function acceptTableCommand(options: {
     lockYielded: boolean;
   } | null = null;
   let unlockEdgeId: string | undefined;
+  let nextSceneRuntime: StoredMapRuntime | undefined;
+  let sceneChronicleBody: string | undefined;
+
+  if (commandType === 'table.begin_adventure') {
+    const premise =
+      typeof premiseOverride === 'string' && premiseOverride.trim().length > 0
+        ? premiseOverride.trim()
+        : await loadCampaignPremise(firestore, campaignId);
+    try {
+      const result = beginAdventureRuntime({
+        runtime: mapContext.runtime,
+        premise,
+        campaignId,
+        accountId,
+        seatTokens: mapContext.runtime.tokenPositions.length
+          ? mapContext.runtime.tokenPositions
+          : [{ seatId: seat.seatId, column: 2, row: 2 }],
+      });
+      nextSceneRuntime = result.runtime;
+      buildSceneTitle = result.composed.title;
+      sceneChronicleBody = result.chronicle;
+      eventType = 'table.scene_built';
+    } catch (error) {
+      if (error instanceof Error && error.message === 'ADVENTURE_ALREADY_STARTED') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'This adventure already has an established scene.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (commandType === 'table.interact_object') {
+    const targetObjectId =
+      typeof objectId === 'string' && objectId.length > 0
+        ? objectId
+        : null;
+    if (targetObjectId === null) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Name the object you want to change on this scene.',
+      );
+    }
+    try {
+      const result = interactObjectRuntime({
+        runtime: mapContext.runtime,
+        objectId: targetObjectId,
+        declaration: trimmedDeclaration ?? trimmedPlaySummary ?? '',
+      });
+      nextSceneRuntime = result.runtime;
+      sceneChronicleBody = result.chronicle;
+      eventType = 'table.object_changed';
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'NO_ACTIVE_SCENE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Begin the adventure before changing scene objects.',
+        );
+      }
+      if (code === 'OBJECT_NOT_INTERACTABLE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That object is not interactable on this scene.',
+        );
+      }
+      if (code === 'OBJECT_STATE_UNCHANGED') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That object is already in that state.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (commandType === 'table.travel_scene') {
+    const hint =
+      typeof destinationHint === 'string' && destinationHint.trim().length > 0
+        ? destinationHint.trim()
+        : trimmedDeclaration ?? 'travel onward';
+    try {
+      const result = travelSceneRuntime({
+        runtime: mapContext.runtime,
+        campaignId,
+        accountId,
+        destinationHint: hint,
+        returnToPrevious: returnToPrevious === true,
+        seatTokens: mapContext.runtime.tokenPositions.length
+          ? mapContext.runtime.tokenPositions
+          : [{ seatId: seat.seatId, column: 2, row: 2 }],
+      });
+      nextSceneRuntime = result.runtime;
+      buildSceneTitle = result.composed?.title ?? activeSceneInstance(result.runtime)?.title ?? null;
+      sceneChronicleBody = result.chronicle;
+      eventType = 'table.scene_traveled';
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'NO_ACTIVE_SCENE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Begin the adventure before traveling to another scene.',
+        );
+      }
+      if (code === 'NO_PRIOR_SCENE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'There is no earlier scene to return to yet.',
+        );
+      }
+      throw error;
+    }
+  }
 
   if (commandType === 'table.move') {
     if (!Array.isArray(path) || path.length === 0) {
@@ -880,23 +1012,62 @@ export async function acceptTableCommand(options: {
     let runtimeEdges = [...(current.runtimeEdges ?? [])];
     let sceneTitle = current.sceneTitle ?? null;
     let exploredByAccount = { ...(current.exploredByAccount ?? {}) };
+    let activeSceneId = current.activeSceneId ?? null;
+    let sceneInstances = { ...(current.sceneInstances ?? {}) };
+    let sceneStack = [...(current.sceneStack ?? [])];
+    let adventureStarted = current.adventureStarted === true;
+    let premiseKey = current.premiseKey ?? null;
+
+    if (nextSceneRuntime !== undefined) {
+      tokenPositions = nextSceneRuntime.tokenPositions;
+      doorStates = { ...nextSceneRuntime.doorStates };
+      runtimeEdges = [...(nextSceneRuntime.runtimeEdges ?? [])];
+      sceneTitle = nextSceneRuntime.sceneTitle ?? sceneTitle;
+      exploredByAccount = { ...nextSceneRuntime.exploredByAccount };
+      activeSceneId = nextSceneRuntime.activeSceneId ?? null;
+      sceneInstances = { ...(nextSceneRuntime.sceneInstances ?? {}) };
+      sceneStack = [...(nextSceneRuntime.sceneStack ?? [])];
+      adventureStarted = nextSceneRuntime.adventureStarted === true;
+      premiseKey = nextSceneRuntime.premiseKey ?? premiseKey;
+    }
 
     if (commandType === 'table.move' && movePath !== undefined && movePath.length > 0) {
       const destination = movePath[movePath.length - 1]!;
       tokenPositions = upsertTokenPosition(tokenPositions, seat.seatId, destination);
+      const active = activeSceneId ? sceneInstances[activeSceneId] : null;
       const vision = visibleSquaresFrom(destination, DEFAULT_VISION_RADIUS_SQUARES, {
-        columns: 12,
-        rows: 8,
+        columns: active?.columns ?? 12,
+        rows: active?.rows ?? 8,
       });
       exploredByAccount[accountId] = mergeExplored(exploredByAccount[accountId], [
         ...movePath,
         destination,
         ...vision,
       ]);
+      if (activeSceneId && sceneInstances[activeSceneId]) {
+        sceneInstances = {
+          ...sceneInstances,
+          [activeSceneId]: {
+            ...sceneInstances[activeSceneId]!,
+            tokenPositions,
+            exploredByAccount,
+            doorStates: { ...sceneInstances[activeSceneId]!.doorStates, ...doorStates },
+          },
+        };
+      }
     }
 
     if (commandType === 'table.open_door' && openEdgeId !== undefined) {
       doorStates[openEdgeId] = 'open';
+      if (activeSceneId && sceneInstances[activeSceneId]) {
+        sceneInstances = {
+          ...sceneInstances,
+          [activeSceneId]: {
+            ...sceneInstances[activeSceneId]!,
+            doorStates: { ...sceneInstances[activeSceneId]!.doorStates, [openEdgeId]: 'open' },
+          },
+        };
+      }
     }
 
     if (commandType === 'table.build_scene' && buildSceneEdges !== undefined) {
@@ -952,7 +1123,9 @@ export async function acceptTableCommand(options: {
         ? { summary: skillResolution.summary, rolls: [...skillResolution.rolls] }
         : trimmedPlaySummary !== undefined
           ? { summary: trimmedPlaySummary }
-          : {}),
+          : sceneChronicleBody !== undefined
+            ? { summary: sceneChronicleBody }
+            : {}),
     };
 
     const nextProjection: StoredProjection = {
@@ -966,6 +1139,11 @@ export async function acceptTableCommand(options: {
       runtimeEdges,
       sceneTitle,
       exploredByAccount,
+      activeSceneId,
+      sceneInstances,
+      sceneStack,
+      adventureStarted,
+      premiseKey,
       npcSpotlight: current.npcSpotlight ?? null,
     };
 
@@ -1010,9 +1188,28 @@ export async function acceptTableCommand(options: {
         campaignId,
         kind: 'scene_built',
         body:
-          title !== undefined && title.length > 0
+          sceneChronicleBody ??
+          (title !== undefined && title.length > 0
             ? `${seat.characterName || 'A player'} built ${title} on the table.`
-            : `${seat.characterName || 'A player'} built an improvised chamber on the table.`,
+            : `${seat.characterName || 'A player'} built an improvised chamber on the table.`),
+      });
+    } else if (eventType === 'table.scene_traveled') {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'scene_built',
+        body:
+          sceneChronicleBody ??
+          `${seat.characterName || 'The party'} traveled to a new scene.`,
+      });
+    } else if (eventType === 'table.object_changed') {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_resolved',
+        body:
+          sceneChronicleBody ??
+          `${seat.characterName || 'A player'} changed an object on the scene.`,
       });
     } else if (eventType === 'table.door_opened' && openEdgeId !== undefined) {
       await appendChronicleEntry({

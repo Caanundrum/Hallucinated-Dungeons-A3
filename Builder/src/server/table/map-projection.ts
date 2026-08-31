@@ -23,7 +23,7 @@ import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
-import { loadMapRuntime, type StoredMapRuntime } from './map-runtime.js';
+import { loadMapRuntime, activeSceneInstance, type StoredMapRuntime } from './map-runtime.js';
 import { bootstrapBlankFirstScene, mergeRuntimeEdges } from './scene-builder.js';
 import { visibleSquaresFrom } from './path-validator.js';
 
@@ -181,9 +181,12 @@ function buildTokens(
   options: {
     readonly adventureTemplateId?: string | null;
     readonly currentChapterId?: string | null;
+    readonly spawnOverride?: { column: number; row: number } | null;
   },
 ): MapTokenProjection[] {
-  const anchors = spawnAnchors(options);
+  const anchors = options.spawnOverride
+    ? [options.spawnOverride, options.spawnOverride, options.spawnOverride, options.spawnOverride]
+    : spawnAnchors(options);
   const bySeat = new Map(runtime.tokenPositions.map((entry) => [entry.seatId, entry]));
   return seats.map((seat, index) => {
     const stored = bySeat.get(seat.seatId);
@@ -301,6 +304,54 @@ export function buildAuthoritativeMapBundle(options: {
   readonly currentChapterId?: string | null;
 }): MapBundleProjection {
   const { campaignId, seats, runtime } = options;
+  const directorScene = activeSceneInstance(runtime);
+  if (directorScene !== null) {
+    const doorMerged = applyDoorOverrides(
+      mergeRuntimeEdges(directorScene.edges, []),
+      {
+        ...runtime,
+        doorStates: { ...directorScene.doorStates, ...runtime.doorStates },
+      },
+    );
+    const features = directorScene.features.map((feature) => ({
+      column: feature.column,
+      row: feature.row,
+      label: feature.label,
+      referenceKind: feature.referenceKind,
+      objectId: feature.objectId,
+      objectKind: feature.objectKind,
+      objectState: feature.state,
+      interactable: feature.interactable,
+    }));
+    return {
+      campaignId,
+      mapBundleId: `director:${directorScene.sceneId}:${campaignId}`,
+      mapVersion: 1 + movementRevision(runtime) + directorScene.revision * 13,
+      title: directorScene.title,
+      coordinateSpace: {
+        coordinateSpaceId: `space:${campaignId}:${directorScene.sceneId}`,
+        schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,
+        columns: directorScene.columns,
+        rows: directorScene.rows,
+        feetPerSquare: FEET_PER_SQUARE,
+        pixelsPerSquare: PIXELS_PER_SQUARE,
+      },
+      cells: directorScene.cells.map((cell) => ({ ...cell })),
+      edges: doorMerged,
+      tokens: buildTokens(seats, runtime, {
+        adventureTemplateId: null,
+        currentChapterId: null,
+        spawnOverride: directorScene.spawn,
+      }),
+      artProvenance: 'procedural_local_placeholder',
+      sceneBanner: directorScene.sceneBanner,
+      notableFeatures: features,
+      viewerSeatId: null,
+      exploredSquareIds: [],
+      visibleSquareIds: [],
+    };
+  }
+
   const presentation = loadAdventureMapPresentation(
     options.adventureTemplateId ?? null,
     options.currentChapterId ?? null,
@@ -308,16 +359,25 @@ export function buildAuthoritativeMapBundle(options: {
   const scene = presentation?.scene ?? null;
   const isBlankTable = (options.adventureTemplateId ?? null) === null && scene === null;
   const hasRuntimeGeometry = (runtime.runtimeEdges ?? []).length > 0;
+  // Prefer Director-started adventures; Quiet chamber bootstrap only when nothing else exists.
   const blankBootstrap =
-    isBlankTable && !hasRuntimeGeometry ? bootstrapBlankFirstScene() : null;
+    isBlankTable && !hasRuntimeGeometry && runtime.adventureStarted !== true
+      ? null
+      : isBlankTable && !hasRuntimeGeometry
+        ? bootstrapBlankFirstScene()
+        : null;
+  const awaitingAdventure =
+    isBlankTable && !hasRuntimeGeometry && directorScene === null && runtime.adventureStarted !== true;
   const cells =
     scene !== null
       ? [...scene.cells]
-      : isBlankTable
-        ? blankBootstrap !== null
-          ? buildBlankChamberCells()
-          : buildBlankOpenCells()
-        : buildStarterCells();
+      : awaitingAdventure
+        ? buildBlankOpenCells()
+        : isBlankTable
+          ? blankBootstrap !== null
+            ? buildBlankChamberCells()
+            : buildBlankOpenCells()
+          : buildStarterCells();
   const baseEdges =
     scene !== null
       ? scene.edges
@@ -326,8 +386,9 @@ export function buildAuthoritativeMapBundle(options: {
         : buildStarterInteriorWalls();
   const mergedEdges = mergeRuntimeEdges(baseEdges, runtime.runtimeEdges ?? []);
   const improvisedTitle = runtime.sceneTitle?.trim();
-  const sceneBanner =
-    improvisedTitle !== undefined && improvisedTitle.length > 0
+  const sceneBanner = awaitingAdventure
+    ? 'The Game Director is ready to establish the first scene for this adventure.'
+    : improvisedTitle !== undefined && improvisedTitle.length > 0
       ? `${improvisedTitle} — walls and doorways are committed on this table.`
       : hasRuntimeGeometry
         ? 'Improvised scene geometry is committed on this table.'
@@ -341,7 +402,8 @@ export function buildAuthoritativeMapBundle(options: {
     title:
       runtime.sceneTitle ??
       presentation?.title ??
-      (blankBootstrap?.sceneTitle ?? (isBlankTable ? 'Blank table' : 'Local starter chamber')),
+      (blankBootstrap?.sceneTitle ??
+        (awaitingAdventure ? 'Awaiting first scene' : isBlankTable ? 'Blank table' : 'Local starter chamber')),
     coordinateSpace: {
       coordinateSpaceId: `space:${campaignId}`,
       schemaVersion: MAP_COORDINATE_SCHEMA_VERSION,

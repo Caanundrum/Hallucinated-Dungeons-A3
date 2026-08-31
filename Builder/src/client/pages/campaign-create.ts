@@ -254,8 +254,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
               value="${escapeHtml(name)}" autocomplete="off" />
           </label>
           <label class="field">
-            <span>Short summary (optional)</span>
-            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3">${escapeHtml(summary)}</textarea>
+            <span>Adventure premise (optional)</span>
+            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3" placeholder="Example: a misty marsh inn, a stone crypt, a forest workshop…">${escapeHtml(summary)}</textarea>
+            <span class="record-meta">The Game Director uses this to establish your opening scene. Leave blank for a Director-chosen start.</span>
           </label>
         </section>
 

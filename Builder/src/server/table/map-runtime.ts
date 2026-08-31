@@ -2,18 +2,72 @@
  * Mutable tactical runtime for a campaign map (token anchors, doors, explored).
  *
  * Stored beside the table projection so movement commits stay server-authored.
+ * Batch 2: Director scene instances stack here for establish / travel / return.
  */
 
 import type { Firestore } from 'firebase-admin/firestore';
 
-import type { DoorState, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
+import type {
+  DoorState,
+  MapCellRecord,
+  MapEdgeRecord,
+  MapReferenceMarkerKind,
+  MapSquareCoordinate,
+} from '../../shared/map-contract.js';
 import { squareId } from '../../shared/map-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import type {
+  SceneEnvironment,
+  SceneLighting,
+  SceneObjectKind,
+  SceneObjectState,
+  ScenePurpose,
+} from './scene-composition.js';
 
 export interface StoredTokenPosition {
   readonly seatId: string;
   readonly column: number;
   readonly row: number;
+}
+
+export interface StoredSceneFeature {
+  readonly objectId: string;
+  readonly column: number;
+  readonly row: number;
+  readonly label: string;
+  readonly referenceKind: MapReferenceMarkerKind;
+  readonly objectKind: SceneObjectKind;
+  readonly state: SceneObjectState;
+  readonly interactable: boolean;
+}
+
+export interface StoredSceneExit {
+  readonly exitId: string;
+  readonly label: string;
+  readonly destinationHint: string;
+  readonly returnToSceneId?: string | null;
+}
+
+export interface StoredSceneInstance {
+  readonly sceneId: string;
+  readonly templateId: string;
+  readonly title: string;
+  readonly sceneBanner: string;
+  readonly purpose: ScenePurpose;
+  readonly environment: SceneEnvironment;
+  readonly lighting: SceneLighting;
+  readonly mood: string;
+  readonly columns: number;
+  readonly rows: number;
+  readonly cells: readonly MapCellRecord[];
+  readonly edges: readonly MapEdgeRecord[];
+  readonly features: readonly StoredSceneFeature[];
+  readonly doorStates: Record<string, DoorState>;
+  readonly spawn: MapSquareCoordinate;
+  readonly exits: readonly StoredSceneExit[];
+  readonly tokenPositions: StoredTokenPosition[];
+  readonly exploredByAccount: Record<string, string[]>;
+  readonly revision: number;
 }
 
 export interface StoredMapRuntime {
@@ -27,6 +81,13 @@ export interface StoredMapRuntime {
   readonly sceneTitle?: string | null;
   /** accountId → explored square ids */
   readonly exploredByAccount: Record<string, string[]>;
+  /** Director-authored multi-scene loop (Batch 2). */
+  readonly activeSceneId?: string | null;
+  readonly sceneInstances?: Record<string, StoredSceneInstance>;
+  /** Prior scene ids; last entry is the most recent left-behind scene. */
+  readonly sceneStack?: readonly string[];
+  readonly adventureStarted?: boolean;
+  readonly premiseKey?: string | null;
 }
 
 export function emptyMapRuntime(campaignId: string): StoredMapRuntime {
@@ -37,6 +98,11 @@ export function emptyMapRuntime(campaignId: string): StoredMapRuntime {
     runtimeEdges: [],
     sceneTitle: null,
     exploredByAccount: {},
+    activeSceneId: null,
+    sceneInstances: {},
+    sceneStack: [],
+    adventureStarted: false,
+    premiseKey: null,
   };
 }
 
@@ -56,6 +122,12 @@ export async function loadMapRuntime(
     runtimeEdges: Array.isArray(data.runtimeEdges) ? data.runtimeEdges : [],
     sceneTitle: typeof data.sceneTitle === 'string' ? data.sceneTitle : null,
     exploredByAccount: data.exploredByAccount ?? {},
+    activeSceneId: typeof data.activeSceneId === 'string' ? data.activeSceneId : null,
+    sceneInstances:
+      data.sceneInstances && typeof data.sceneInstances === 'object' ? data.sceneInstances : {},
+    sceneStack: Array.isArray(data.sceneStack) ? data.sceneStack : [],
+    adventureStarted: data.adventureStarted === true,
+    premiseKey: typeof data.premiseKey === 'string' ? data.premiseKey : null,
   };
 }
 
@@ -78,4 +150,14 @@ export function upsertTokenPosition(
   const next = positions.filter((entry) => entry.seatId !== seatId);
   next.push({ seatId, column: anchor.column, row: anchor.row });
   return next;
+}
+
+export function activeSceneInstance(
+  runtime: StoredMapRuntime,
+): StoredSceneInstance | null {
+  const id = runtime.activeSceneId;
+  if (id === null || id === undefined || id.length === 0) {
+    return null;
+  }
+  return runtime.sceneInstances?.[id] ?? null;
 }

@@ -598,6 +598,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       summary: interpreted.summary,
       ...(interpreted.path !== undefined ? { path: [...interpreted.path] } : {}),
       ...(interpreted.edgeId !== undefined ? { edgeId: interpreted.edgeId } : {}),
+      ...(interpreted.objectId !== undefined ? { objectId: interpreted.objectId } : {}),
+      ...(interpreted.destinationHint !== undefined
+        ? { destinationHint: interpreted.destinationHint }
+        : {}),
+      ...(interpreted.returnToPrevious === true ? { returnToPrevious: true } : {}),
+      ...(interpreted.premise !== undefined ? { premise: interpreted.premise } : {}),
       ...(interpreted.targetCombatantId !== undefined
         ? { targetCombatantId: interpreted.targetCombatantId }
         : {}),
@@ -2493,6 +2499,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     render();
   }
 
+  function awaitingDirectorScene(): boolean {
+    if (mapBundle === null) {
+      return false;
+    }
+    if (mapBundle.title === 'Awaiting first scene') {
+      return true;
+    }
+    return (
+      mapBundle.mapBundleId.startsWith('blank:') &&
+      mapBundle.edges.length === 0 &&
+      mapBundle.title !== 'Quiet chamber'
+    );
+  }
+
   function playerActionBar(): string {
     seedDmThreadIfNeeded();
     const banner = turnBanner();
@@ -2505,11 +2525,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       !sessionIsSuspended() &&
       encounter !== null &&
       encounter.status !== 'ended';
+    const showBeginAdventure = seated && !sessionIsSuspended() && awaitingDirectorScene();
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
-          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(
+            showBeginAdventure
+              ? 'The Game Director is ready to establish your opening scene from the campaign premise.'
+              : banner.detail,
+          )}</p>
+          ${
+            showBeginAdventure
+              ? `<p class="table-turn-actions">
+                   <button type="button" class="table-primary-action" data-testid="begin-adventure" ${busy ? 'aria-disabled="true"' : ''}>
+                     Begin the adventure
+                   </button>
+                 </p>`
+              : ''
+          }
           ${
             sessionIsSuspended()
               ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
@@ -4632,6 +4666,54 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
+      .querySelector<HTMLButtonElement>('[data-testid="begin-adventure"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || !seated || tableState === null) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.begin_adventure',
+              expectedStateVersion: tableState.stateVersion,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+              declaration: 'Begin the adventure.',
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            stageHandle?.renderMap(mapBundle);
+            const title = mapBundle.title;
+            appendDmThread(
+              'system',
+              'Table',
+              accepted.event.summary ?? `Scene built: ${title}.`,
+              'mechanics',
+            );
+            shell.announce(`Adventure begun — ${title}.`);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The Director could not establish the opening scene.';
+            if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+              presentTableConflict(failure);
+            }
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
       .querySelector<HTMLButtonElement>('[data-testid="commit-table-sync"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -5007,12 +5089,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : { timingAuthorityId: timingAuthority.timingAuthorityId }),
               ...(draft.path !== undefined ? { path: draft.path } : {}),
               ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
+              ...(draft.objectId !== undefined ? { objectId: draft.objectId } : {}),
+              ...(draft.destinationHint !== undefined
+                ? { destinationHint: draft.destinationHint }
+                : {}),
+              ...(draft.returnToPrevious === true ? { returnToPrevious: true } : {}),
+              ...(draft.premise !== undefined ? { premise: draft.premise } : {}),
               ...(summaryForCommand !== undefined ? { summary: summaryForCommand } : {}),
               ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
             });
             tableState = accepted.table;
             mapBundle = await fetchCampaignMap(campaignId);
-            // Paint the committed token/door state before slow Director narration.
+            // Paint the committed token/door/scene state before slow Director narration.
             stageHandle?.renderMap(mapBundle);
             const resolvedSummary = resolvedSummaryAfterTableConfirm({
               commandType: draft.proposedCommandType,
@@ -5301,15 +5389,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             Everyone at this table sees the same current scene. When the Director changes the map, you will hear a brief update.
           </p>
           ${
-            mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
+            mapBundle?.title === 'Awaiting first scene' ||
+            (mapBundle?.mapBundleId?.startsWith('blank:') &&
+              (mapBundle.edges.length ?? 0) === 0 &&
+              mapBundle.title !== 'Quiet chamber')
               ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                   This blank table starts unexplored. Ask the Director to establish the first scene, or declare what you do so the scene can unfold.
+                   Ready to begin — use <strong>Begin the adventure</strong> in the play column so the Game Director establishes the first scene from your premise.
                  </p>`
               : mapBundle?.title === 'Quiet chamber'
                 ? `<p class="record-meta" data-testid="blank-table-start-hint">
                      Quiet chamber is ready — inspect or open the wooden doorway, or declare what you do next.
                    </p>`
-                : ''
+                : mapBundle !== null && mapBundle.mapBundleId.startsWith('director:')
+                  ? `<p class="record-meta" data-testid="director-scene-hint">
+                       Declare object changes (lamp, crate, shutter), leave through an exit, travel onward, or return the way you came. Confirm before the table commits.
+                     </p>`
+                  : mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
+                    ? `<p class="record-meta" data-testid="blank-table-start-hint">
+                         This blank table starts unexplored. Begin the adventure so the Director can establish the first scene.
+                       </p>`
+                    : ''
           }
           <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
           ${

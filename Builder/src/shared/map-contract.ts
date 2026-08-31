@@ -161,6 +161,14 @@ export interface MapNotableFeatureRecord {
    * only — they never change movement, combat, cover math, or detection.
    */
   readonly referenceKind?: MapReferenceMarkerKind;
+  /** Stable object id when this feature is a reusable scene object (Batch 2). */
+  readonly objectId?: string;
+  /** Reusable object family — light, cover, container, hazard, prop, creature, npc. */
+  readonly objectKind?: string;
+  /** Current object state — lit/unlit, intact/broken, open/closed, etc. */
+  readonly objectState?: string;
+  /** When true, ordinary play may change this object's state. */
+  readonly interactable?: boolean;
 }
 
 /** Non-authoritative map reference markers for lighting / atmosphere cues. */

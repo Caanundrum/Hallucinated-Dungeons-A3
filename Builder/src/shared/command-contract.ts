@@ -22,6 +22,9 @@ export const TABLE_COMMAND_TYPES = [
   'table.move',
   'table.open_door',
   'table.build_scene',
+  'table.begin_adventure',
+  'table.interact_object',
+  'table.travel_scene',
   'encounter.begin',
   'initiative.roll',
   'encounter.next_turn',
@@ -45,6 +48,8 @@ export const TABLE_EVENT_TYPES = [
   'table.token_moved',
   'table.door_opened',
   'table.scene_built',
+  'table.object_changed',
+  'table.scene_traveled',
   'encounter.started',
   'initiative.rolled',
   'encounter.turn_advanced',
@@ -78,6 +83,14 @@ export interface TableCommandRequest {
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   /** Door edge id (table.open_door). */
   readonly edgeId?: string;
+  /** Interactable scene object id (table.interact_object). */
+  readonly objectId?: string;
+  /** Travel destination hint or exit id (table.travel_scene). */
+  readonly destinationHint?: string;
+  /** When true, restore the prior scene from the stack (table.travel_scene). */
+  readonly returnToPrevious?: boolean;
+  /** Optional adventure premise override (table.begin_adventure). */
+  readonly premise?: string;
   /** Player-facing beat summary stored on the event and Chronicle. */
   readonly summary?: string;
   /** Phase 3 mechanical payload. Outcomes remain server-authored. */

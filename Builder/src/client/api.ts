@@ -694,6 +694,10 @@ export async function submitTableCommand(options: {
   readonly timingAuthorityId?: string;
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   readonly edgeId?: string;
+  readonly objectId?: string;
+  readonly destinationHint?: string;
+  readonly returnToPrevious?: boolean;
+  readonly premise?: string;
   readonly targetCombatantId?: string;
   readonly attackId?: string;
   readonly spellId?: string;
@@ -720,6 +724,12 @@ export async function submitTableCommand(options: {
         : {}),
       ...(options.path !== undefined ? { path: options.path } : {}),
       ...(options.edgeId !== undefined ? { edgeId: options.edgeId } : {}),
+      ...(options.objectId !== undefined ? { objectId: options.objectId } : {}),
+      ...(options.destinationHint !== undefined
+        ? { destinationHint: options.destinationHint }
+        : {}),
+      ...(options.returnToPrevious === true ? { returnToPrevious: true } : {}),
+      ...(options.premise !== undefined ? { premise: options.premise } : {}),
       ...(options.targetCombatantId !== undefined
         ? { targetCombatantId: options.targetCombatantId }
         : {}),
