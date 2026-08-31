@@ -758,8 +758,8 @@ a.account-chip-label:focus-visible {
    * newest entries were unreachable. A definite height + flex-basis:0 makes
    * .dm-thread-list the only scroll owner inside the dock.
    */
-  height: min(42vh, 22rem);
-  max-height: min(42vh, 22rem);
+  height: min(46vh, 24rem);
+  max-height: min(46vh, 24rem);
   overflow: hidden;
   padding: var(--space-2) var(--space-3);
   position: relative;
@@ -813,11 +813,16 @@ a.account-chip-label:focus-visible {
 .dm-play-thread {
   /* Take remaining dock space; never grow past the dock (FQA-023). */
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 14rem;
   max-height: 100%;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  /*
+   * Grid reserves a real row for the message list. Flex alone let chrome+hint
+   * consume the whole min-height and left the list at 0px (unreachable entries).
+   */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(7rem, 1fr) auto;
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
@@ -827,11 +832,13 @@ a.account-chip-label:focus-visible {
 
 .dm-play-thread.is-expanded {
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 18rem;
   max-height: 100%;
+  grid-template-rows: auto auto minmax(10rem, 1fr) auto;
 }
 
 .dm-play-thread-chrome {
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -864,25 +871,39 @@ a.account-chip-label:focus-visible {
   padding: 0.2rem 0.55rem;
 }
 
-.dm-thread-list {
+.dm-play-thread > [data-testid='dm-beat-queue-hint'] {
+  grid-row: 2;
+  margin: 0;
+}
+
+ol.record-list.dm-thread-list,
+.dm-thread-list,
+.dm-play-thread > [data-testid='dm-play-thread-list-empty'] {
+  grid-row: 3;
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
+  /* Beat .record-list { display: grid } so the scroller owns this row. */
+  display: flex !important;
   flex-direction: column;
   gap: var(--space-2);
-  /* flex-basis 0 + min-height 0: shrink below content so overflow-y creates a scroller (FQA-023). */
-  flex: 1 1 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.dm-play-thread > [data-testid='dm-beat-queue-hint'],
-.dm-play-thread > .intent-intercept,
-.dm-play-thread > .door-recovery-panel {
-  flex: 0 0 auto;
+.dm-play-thread > .intent-intercept {
+  grid-row: 4;
+}
+
+ol.record-list.dm-thread-list > li {
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .dm-thread-message {
@@ -954,7 +975,11 @@ a.account-chip-label:focus-visible {
   margin-bottom: 0;
   padding: var(--space-2);
   border-radius: var(--radius-control);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 7.5rem;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .table-dashboard .table-turn-title {
@@ -1156,8 +1181,8 @@ a.account-chip-label:focus-visible {
 
   .table-action-bar {
     flex: 0 0 auto;
-    height: min(42dvh, 22rem);
-    max-height: min(42dvh, 22rem);
+    height: min(46dvh, 24rem);
+    max-height: min(46dvh, 24rem);
     overflow: hidden;
   }
 
