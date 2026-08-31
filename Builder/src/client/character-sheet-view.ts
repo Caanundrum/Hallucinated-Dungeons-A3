@@ -108,12 +108,37 @@ function explained(
     </div>`;
 }
 
+/** Table-modal section groups for rapid reference (Batch 1 Workstream B). */
+export type SheetModalSection =
+  | 'overview'
+  | 'abilities'
+  | 'combat'
+  | 'features'
+  | 'equipment';
+
+export const SHEET_MODAL_SECTIONS: readonly {
+  readonly id: SheetModalSection;
+  readonly label: string;
+}[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'abilities', label: 'Abilities' },
+  { id: 'combat', label: 'Combat' },
+  { id: 'features', label: 'Features' },
+  { id: 'equipment', label: 'Equipment' },
+];
+
 export function renderCharacterSheet(
   sheet: DerivedCharacterSheet,
-  options: { readonly compact?: boolean; readonly interactive?: boolean } = {},
+  options: {
+    readonly compact?: boolean;
+    readonly interactive?: boolean;
+    /** When set, only that table-modal section is rendered. */
+    readonly tableModalSection?: SheetModalSection;
+  } = {},
 ): string {
   const compact = options.compact === true;
   const interactive = options.interactive !== false;
+  const section = options.tableModalSection;
   const abilityBlock = ABILITIES.map((ability) => {
     const score = sheet.abilityScores[ability];
     return `
@@ -299,13 +324,8 @@ export function renderCharacterSheet(
       </div>`
     : '';
 
-  return `
-    <p class="sheet-legend" data-testid="sheet-breakdown-legend">
-      Hover or focus any highlighted number for <b>How we got this</b> — the breakdown of that total.
-    </p>
-    <div class="sheet-layout${compact ? ' sheet-layout-compact' : ''}" data-testid="character-sheet-layout">
-      <div class="sheet-column">
-        <section class="panel sheet-panel" aria-labelledby="core-stats-heading">
+  const overviewPanel = `
+        <section class="panel sheet-panel" aria-labelledby="core-stats-heading" data-sheet-section="overview">
           <h2 id="core-stats-heading">Core statistics</h2>
           <div class="stat-grid">
             ${explained('Hit Points', sheet.hitPoints, 'sheet-hit-points', (value) => `${sheet.hitPointsCurrent} / ${value}`)}
@@ -320,35 +340,34 @@ export function renderCharacterSheet(
           </p>
           ${hpControls}
           <p class="record-meta">Hit Dice ${escapeHtml(sheet.hitDice)} · Level ${sheet.level} · ${sheet.experiencePoints} XP</p>
-        </section>
+        </section>`;
 
-        <section class="panel sheet-panel" aria-labelledby="abilities-heading">
+  const abilitiesPanel = `
+        <section class="panel sheet-panel" aria-labelledby="abilities-heading" data-sheet-section="abilities">
           <h2 id="abilities-heading">Ability Scores</h2>
           <div class="ability-grid">${abilityBlock}</div>
         </section>
 
-        <section class="panel sheet-panel" aria-labelledby="saves-heading">
+        <section class="panel sheet-panel" aria-labelledby="saves-heading" data-sheet-section="abilities">
           <h2 id="saves-heading">Saving Throws</h2>
           <ul class="stat-list">${savingThrowRows}</ul>
         </section>
 
-        <section class="panel sheet-panel" aria-labelledby="skills-heading">
+        <section class="panel sheet-panel" aria-labelledby="skills-heading" data-sheet-section="abilities">
           <h2 id="skills-heading">Skills</h2>
           <ul class="stat-list">${skillRows}</ul>
-        </section>
-      </div>
+        </section>`;
 
-      <div class="sheet-column">
-        <section class="panel sheet-panel" aria-labelledby="attacks-heading">
+  const combatPanel = `
+        <section class="panel sheet-panel" aria-labelledby="attacks-heading" data-sheet-section="combat">
           <h2 id="attacks-heading">Attacks</h2>
           ${attackRows}
         </section>
-
         ${spellBlock}
+        ${resourceRows}`;
 
-        ${resourceRows}
-
-        <section class="panel sheet-panel" aria-labelledby="features-heading">
+  const featuresPanel = `
+        <section class="panel sheet-panel" aria-labelledby="features-heading" data-sheet-section="features">
           <h2 id="features-heading">Features and Traits</h2>
           ${subclassLine}
           ${masteryBlock}
@@ -363,9 +382,10 @@ export function renderCharacterSheet(
               )
               .join('')}
           </ul>
-        </section>
+        </section>`;
 
-        <section class="panel sheet-panel" aria-labelledby="equipment-heading">
+  const equipmentPanel = `
+        <section class="panel sheet-panel" aria-labelledby="equipment-heading" data-sheet-section="equipment">
           <h2 id="equipment-heading">Equipment and Proficiencies</h2>
           ${
             sheet.equipment.length === 0
@@ -414,7 +434,38 @@ export function renderCharacterSheet(
           <p class="record-meta">${sheet.proficiencies
             .map((proficiency) => `${escapeHtml(proficiency.label)} (${escapeHtml(proficiency.sourceLabel)})`)
             .join(' · ')}</p>
-        </section>
+        </section>`;
+
+  if (section !== undefined) {
+    const body =
+      section === 'overview'
+        ? overviewPanel
+        : section === 'abilities'
+          ? abilitiesPanel
+          : section === 'combat'
+            ? combatPanel
+            : section === 'features'
+              ? featuresPanel
+              : equipmentPanel;
+    return `
+    <div class="sheet-layout sheet-layout-compact sheet-layout-modal-section" data-testid="character-sheet-layout" data-modal-section="${section}">
+      <div class="sheet-column">${body}</div>
+    </div>`;
+  }
+
+  return `
+    <p class="sheet-legend" data-testid="sheet-breakdown-legend">
+      Hover or focus any highlighted number for <b>How we got this</b> — the breakdown of that total.
+    </p>
+    <div class="sheet-layout${compact ? ' sheet-layout-compact' : ''}" data-testid="character-sheet-layout">
+      <div class="sheet-column">
+        ${overviewPanel}
+        ${abilitiesPanel}
+      </div>
+      <div class="sheet-column">
+        ${combatPanel}
+        ${featuresPanel}
+        ${equipmentPanel}
       </div>
     </div>`;
 }

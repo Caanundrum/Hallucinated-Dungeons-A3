@@ -92,7 +92,7 @@ import {
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference, parseRestorableIntentDraft, shouldPersistIntentDraftState } from '../browser-preferences.js';
-import { renderCharacterSheet } from '../character-sheet-view.js';
+import { renderCharacterSheet, SHEET_MODAL_SECTIONS, type SheetModalSection } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
   bindLegalPlayGatePage,
@@ -205,16 +205,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let dmThreadExpanded = false;
   /** Table character sheet overlay (TQA-061–066). */
   let sheetModalOpen = false;
+  let sheetModalTab: SheetModalSection = 'overview';
+  let diceTrayOpen = false;
+  let diceTrayRolling = false;
+  let diceTrayRollingSides: number | null = null;
+  let diceTrayResult: string | null = null;
+  let diceTrayFaceValue: number | null = null;
   /** Scratchpad notes sliding drawer (Gemini UX-3). */
   let notesDrawerOpen = false;
   /** Rules spotlight modal (Gemini UX-3 / Cmd+K). */
   let rulesModalOpen = false;
   /** Ask-the-DM consulting shimmer while the request is in flight. */
   let askDmConsulting = false;
-  /** Dice tray drawer open (Gemini polish Batch 3). */
-  let diceTrayOpen = false;
-  let diceTrayRolling = false;
-  let diceTrayResult: string | null = null;
   /** Phase 3 Sprint A — last known HP for floating combat text. */
   let lastKnownHp: number | null = null;
   let turnBannerSplashUntil = 0;
@@ -1206,16 +1208,38 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const sheet = progression.sheet;
     const label =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    const tabs = SHEET_MODAL_SECTIONS.map(
+      (tab) => `
+        <button type="button" role="tab" class="sheet-modal-tab${sheetModalTab === tab.id ? ' active' : ''}"
+          id="sheet-modal-tab-${tab.id}" data-sheet-modal-tab="${tab.id}"
+          data-testid="sheet-modal-tab-${tab.id}"
+          aria-selected="${sheetModalTab === tab.id}"
+          aria-controls="sheet-modal-panel-${tab.id}">
+          ${escapeHtml(tab.label)}
+        </button>`,
+    ).join('');
     return `
       <div class="modal-backdrop sheet-modal-backdrop cockpit-modal-backdrop" data-testid="table-sheet-modal" role="presentation">
         <div class="modal-dialog sheet-modal-dialog cockpit-modal-dialog" role="dialog" aria-modal="true"
-          aria-labelledby="table-sheet-modal-title" tabindex="-1">
+          aria-labelledby="table-sheet-modal-title" tabindex="-1" data-testid="table-sheet-modal-dialog">
           <div class="sheet-modal-chrome">
             <h2 id="table-sheet-modal-title">${escapeHtml(label)}</h2>
             <button type="button" class="table-secondary-action" data-testid="close-table-sheet-modal">Close</button>
           </div>
-          <p class="record-meta">Escape or backdrop closes this overlay and keeps you at the table.</p>
-          <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, { compact: true })}</div>
+          <p class="record-meta sheet-modal-hint">Rapid table reference — Escape or backdrop closes. Full ledger stays on the character page.</p>
+          <div class="sheet-modal-tabs" role="tablist" aria-label="Sheet sections" data-testid="sheet-modal-tabs">
+            ${tabs}
+          </div>
+          <div class="sheet-modal-body" data-testid="sheet-modal-body" id="sheet-modal-panel-${sheetModalTab}" role="tabpanel"
+            aria-labelledby="sheet-modal-tab-${sheetModalTab}">
+            <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, {
+              compact: true,
+              tableModalSection: sheetModalTab,
+            })}</div>
+          </div>
+          <p class="sheet-modal-footer">
+            <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="sheet-modal-full-page-link">Open full sheet page</a>
+          </p>
         </div>
       </div>`;
   }
@@ -2271,6 +2295,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </button>`;
   }
 
+  function diceFaceMarkup(sides: number, value: number | null, rolling: boolean): string {
+    const shown = value === null ? '?' : String(value);
+    const family =
+      sides === 4
+        ? 'd4'
+        : sides === 6
+          ? 'd6'
+          : sides === 8
+            ? 'd8'
+            : sides === 10
+              ? 'd10'
+              : sides === 12
+                ? 'd12'
+                : sides === 100
+                  ? 'd100'
+                  : 'd20';
+    return `
+      <div class="dice-tumble dice-face dice-face-${family}${rolling ? ' is-rolling' : ' is-settled'}"
+        data-testid="dice-tumble" data-sides="${sides}" aria-hidden="true">
+        <span class="dice-face-shape"></span>
+        <span class="dice-face-value">${escapeHtml(shown)}</span>
+        <span class="dice-face-label">d${sides}</span>
+      </div>`;
+  }
+
   function diceTrayOverlayHtml(): string {
     if (!diceTrayOpen) {
       return '';
@@ -2283,7 +2332,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <h2 id="dice-tray-title">Dice tray</h2>
             <button type="button" class="table-secondary-action" data-testid="close-dice-tray">Close</button>
           </div>
-          <div class="dice-tray-options" role="group" aria-label="Polyhedral dice">
+          <div class="dice-tray-options" role="group" aria-label="Dice">
             ${dice
               .map(
                 (sides) => `
@@ -2294,12 +2343,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </div>
           <div class="dice-tray-stage" data-testid="dice-tray-stage" aria-live="polite">
             ${
-              diceTrayRolling
-                ? `<div class="dice-tumble" data-testid="dice-tumble" aria-hidden="true"></div>
-                   <p>Rolling…</p>`
-                : diceTrayResult === null
-                  ? `<p class="record-meta">Pick a die to roll. Natural 20s and 1s get special styling on a d20.</p>`
-                  : `<p class="dice-result ${diceTrayResult.includes('Natural 20') ? 'dice-crit' : diceTrayResult.includes('Natural 1') ? 'dice-fumble' : ''}" data-testid="dice-tray-result">${escapeHtml(diceTrayResult)}</p>`
+              diceTrayRolling && diceTrayRollingSides !== null
+                ? `${diceFaceMarkup(diceTrayRollingSides, null, true)}
+                   <p>Rolling d${diceTrayRollingSides}…</p>`
+                : diceTrayResult === null || diceTrayRollingSides === null
+                  ? `<p class="record-meta">Pick a die to roll. Each die shows its own face shape while tumbling.</p>`
+                  : `${diceFaceMarkup(diceTrayRollingSides, diceTrayFaceValue, false)}
+                     <p class="dice-result ${diceTrayResult.includes('Natural 20') ? 'dice-crit' : diceTrayResult.includes('Natural 1') ? 'dice-fumble' : ''}" data-testid="dice-tray-result">${escapeHtml(diceTrayResult)}</p>`
             }
           </div>
         </div>
@@ -2411,10 +2461,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     diceTrayOpen = true;
     diceTrayRolling = true;
+    diceTrayRollingSides = sides;
     diceTrayResult = null;
+    diceTrayFaceValue = null;
     playDiceClatter();
     render();
-    const tumbleMs = reducedMotion || lowEffects ? 0 : 1500;
+    const tumbleMs = reducedMotion || lowEffects ? 120 : 1200;
     if (tumbleMs > 0) {
       await new Promise((resolve) => window.setTimeout(resolve, tumbleMs));
     }
@@ -2431,6 +2483,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       triggerDiceDrama('fumble');
     }
     diceTrayRolling = false;
+    diceTrayFaceValue = roll;
     diceTrayResult = label;
     appendDmThread('system', 'Table', label, 'mechanics');
     patchDmPlayThread();
@@ -3316,14 +3369,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="open-table-sheet-modal"]')
       ?.addEventListener('click', () => {
         sheetModalOpen = true;
+        sheetModalTab = 'overview';
         render();
         root.querySelector<HTMLElement>('[data-testid="close-table-sheet-modal"]')?.focus();
       });
+    root.querySelectorAll<HTMLButtonElement>('[data-sheet-modal-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const next = button.dataset.sheetModalTab as SheetModalSection | undefined;
+        if (next === undefined || next === sheetModalTab) {
+          return;
+        }
+        sheetModalTab = next;
+        render();
+        root.querySelector<HTMLElement>(`[data-testid="sheet-modal-tab-${next}"]`)?.focus();
+      });
+    });
     const closeSheetModal = () => {
       if (!sheetModalOpen) {
         return;
       }
       sheetModalOpen = false;
+      sheetModalTab = 'overview';
       document.body.classList.remove('sheet-modal-open');
       if (sheetEscapeListener !== null) {
         document.removeEventListener('keydown', sheetEscapeListener, true);
@@ -3526,6 +3592,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           activeTab = 'party_chat';
         }
         render();
+        requestAnimationFrame(() => {
+          const focusTarget =
+            mode === 'map'
+              ? root.querySelector<HTMLElement>('[data-testid="table-stage-slot"]')
+              : mode === 'play'
+                ? root.querySelector<HTMLElement>('[data-testid="player-action-input"]')
+                : mode === 'sheet'
+                  ? root.querySelector<HTMLElement>('[data-testid="open-table-sheet-modal"]') ??
+                    root.querySelector<HTMLElement>('[data-testid="table-character-compact"]')
+                  : root.querySelector<HTMLElement>('[data-testid="party-chat-input"]') ??
+                    root.querySelector<HTMLElement>('[data-testid="communication-dock"]');
+          focusTarget?.focus();
+        });
       });
     });
     root
