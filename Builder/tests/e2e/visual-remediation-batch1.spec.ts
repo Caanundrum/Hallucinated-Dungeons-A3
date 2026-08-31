@@ -140,6 +140,27 @@ test.describe('Visual remediation Batch 1', () => {
     expect(overflow.bodySW).toBeLessThanOrEqual(overflow.bodyCW + 1);
     await page.screenshot({ path: '/opt/cursor/artifacts/batch1-b-sheet-modal-overview.png' });
 
+    await page.getByTestId('sheet-modal-tab-abilities').click();
+    await expect(page.getByTestId('sheet-modal-tab-abilities')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const abilitiesOverflow = await page.evaluate(() => {
+      const body = document.querySelector('[data-testid="sheet-modal-body"]') as HTMLElement;
+      const layout = document.querySelector(
+        '[data-testid="character-sheet-layout"]',
+      ) as HTMLElement;
+      return {
+        bodySW: body.scrollWidth,
+        bodyCW: body.clientWidth,
+        layoutSW: layout.scrollWidth,
+        layoutCW: layout.clientWidth,
+      };
+    });
+    expect(abilitiesOverflow.bodySW).toBeLessThanOrEqual(abilitiesOverflow.bodyCW + 1);
+    expect(abilitiesOverflow.layoutSW).toBeLessThanOrEqual(abilitiesOverflow.layoutCW + 1);
+    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-fix-abilities-no-overflow.png' });
+
     await page.getByTestId('sheet-modal-tab-equipment').click();
     await expect(page.getByTestId('sheet-modal-tab-equipment')).toHaveAttribute(
       'aria-selected',
@@ -187,8 +208,61 @@ test.describe('Visual remediation Batch 1', () => {
       await expect(tumble).toHaveAttribute('data-sides', String(sides));
       await expect(tumble).toHaveClass(new RegExp(`dice-face-d${sides === 100 ? '100' : sides}`));
       await expect(page.getByTestId('dice-tray-result')).toBeVisible({ timeout: 5_000 });
+      const separation = await page.evaluate(() => {
+        const label = document.querySelector('.dice-face-label') as HTMLElement | null;
+        const result = document.querySelector('[data-testid="dice-tray-result"]') as HTMLElement;
+        if (label === null) return { ok: false, gap: -1 };
+        const labelBox = label.getBoundingClientRect();
+        const resultBox = result.getBoundingClientRect();
+        return { ok: true, gap: resultBox.top - labelBox.bottom };
+      });
+      expect(separation.ok).toBeTruthy();
+      expect(separation.gap).toBeGreaterThanOrEqual(8);
     }
-    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-c-dice-faces.png' });
+    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-fix-dice-label-separated.png' });
+  });
+
+  test('A-fix: phone task modes survive repeated Map→Play→Sheet→Chat→Map cycles', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatAndOpenTable(page, 'Batch1Phone');
+
+    const cycle = ['map', 'play', 'sheet', 'chat', 'map'] as const;
+    for (let round = 0; round < 3; round += 1) {
+      for (const mode of cycle) {
+        await page.getByTestId(`mobile-task-${mode}`).click();
+        await expect(page.getByTestId('table-page-shell')).toHaveAttribute(
+          'data-mobile-task',
+          mode,
+          { timeout: 5_000 },
+        );
+        await expect(page.getByTestId(`mobile-task-${mode}`)).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+      }
+    }
+
+    // After many switches, listener count on the shell must stay at one delegated handler.
+    const listenerPressure = await page.evaluate(() => {
+      const shell = document.querySelector('[data-testid="table-page-shell"]') as HTMLElement;
+      return shell.dataset.mobileTaskBound === '1';
+    });
+    expect(listenerPressure).toBeTruthy();
+
+    await page.getByTestId('mobile-task-chat').click();
+    await expect(page.getByTestId('table-page-shell')).toHaveAttribute('data-mobile-task', 'chat');
+    const chatSpacer = await page.evaluate(() => {
+      const play = document.querySelector('.table-play-column') as HTMLElement | null;
+      return play ? getComputedStyle(play).display : 'none';
+    });
+    expect(chatSpacer).toBe('none');
+    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-fix-phone-mode-cycles.png' });
   });
 
   test('D: chargen shows one primary stage rail plus local step context', async ({ page }) => {
