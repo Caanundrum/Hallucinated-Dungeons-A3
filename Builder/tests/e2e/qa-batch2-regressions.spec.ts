@@ -124,6 +124,7 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('table-suspended-notice')).toBeVisible();
     await expect(page.getByTestId('table-turn-title')).toContainText(/suspended/i);
     await page.getByTestId('dock-tab-chronicle').click();
+    await page.getByTestId('chronicle-kind-filter').selectOption('all');
     await expect(page.getByTestId('chronicle-entry').filter({ hasText: /session was suspended/i })).toBeVisible();
     await expect(page.getByTestId('chronicle-pane')).not.toContainText('checkpoint 0');
     await expect(page.getByTestId('chronicle-pane')).not.toContainText(/Table checkpoint/i);
@@ -131,15 +132,14 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
   });
 
-  test('PQA-187: blank table opens Quiet chamber first scene', async ({ page }) => {
+  test('FQA-010 / PQA-187: blank table awaits Director first scene', async ({ page }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
     await seatFreshCampaign(page, 'QuietChamber');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/doorway|walls/i);
-    await expect(page.getByTestId('blank-table-start-hint')).toContainText(/Quiet chamber|doorway/i);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/first scene|Game Director/i);
+    await expect(page.getByTestId('begin-adventure')).toBeVisible();
     await expect(page.locator('body')).not.toContainText('Local starter chamber');
     await expect(page.locator('body')).not.toContainText(/empty table/i);
     const terrain = page.getByTestId('map-terrain-summary');
@@ -148,19 +148,14 @@ test.describe('PQA batch 2 regressions', () => {
     }
   });
 
-  test('PQA-177: Quiet chamber shows reference markers and Alpha scope note', async ({ page }) => {
+  test('PQA-177: reference markers appear after Director establishes a scene', async ({ page }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
     await seatFreshCampaign(page, 'MapMarkers');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-hazard-layer-note')).toContainText(/reference markers/i);
-    await expect(page.getByTestId('map-hazard-layer-note')).toContainText(/Traps and locks/i);
-    await expect(page.locator('[data-notable-feature*="lighting reference"]')).toBeVisible();
-    await expect(page.locator('[data-notable-feature*="cover reference"]')).toBeVisible();
-    await expect(page.locator('[data-notable-feature*="hazard reference"]')).toBeVisible();
-    await page.getByTestId('presence-section').locator('summary').click();
-    await expect(page.getByTestId('map-notable-features')).toBeVisible();
-    await expect(page.getByTestId('map-notable-feature').filter({ hasText: /lighting reference/i })).toBeVisible();
+    await expect(page.getByTestId('begin-adventure')).toBeVisible();
+    // Markers are scene-owned; blank await state has none until Begin the adventure confirms.
+    await expect(page.locator('[data-notable-feature*="lighting reference"]')).toHaveCount(0);
   });
 });

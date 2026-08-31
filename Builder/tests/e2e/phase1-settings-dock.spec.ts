@@ -88,6 +88,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('dock-tab-chronicle')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
     await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
+    await page.getByTestId('chronicle-kind-filter').selectOption('all');
     await page.getByTestId('dock-tab-chronicle').click();
     await expect(page.getByTestId('chronicle-list')).toBeVisible();
     await expect(page.getByTestId('chronicle-entry').first()).toContainText('created this campaign');

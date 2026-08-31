@@ -250,7 +250,8 @@ export interface DmThreadMessage {
   readonly kind: 'prompt' | 'declaration' | 'ruling_hint' | 'narration' | 'mechanics' | 'system';
 }
 
-const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
+/** Chronicle kinds that belong in the default Story / play timeline filter. */
+export const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
   'play_declaration',
   'director_ruling',
   'play_resolved',
@@ -258,6 +259,10 @@ const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
   'door_opened',
   'token_moved',
 ]);
+
+/** Sentinel filter value: Story so far defaults to play/story kinds, not all activity. */
+export const CHRONICLE_FILTER_STORY = 'story';
+export const CHRONICLE_FILTER_ALL = 'all';
 
 /** True when a timestamp is a Unix-epoch placeholder (TBL-QA-003 / PQA-158). */
 export function isEpochPlaceholderTimestamp(iso: string): boolean {

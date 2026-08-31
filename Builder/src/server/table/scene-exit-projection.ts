@@ -133,18 +133,29 @@ export function materializeContractExits<
       };
       guard += 1;
     }
+    // Prefer an existing door on this bearing so we do not invent a second unnamed opening.
+    const existingOriented = edges.find(
+      (edge) => edge.kind === 'door' && edge.orientation === place.orientation,
+    );
+    const doorState =
+      existingOriented !== undefined
+        ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')
+        : 'closed';
+    const labeledExit = /\b—\s*(open|closed|locked|unlocked)\b/i.test(exit.label)
+      ? exit.label
+      : `${exit.label.replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, '').trim()} — ${doorState}`;
     if (!knownExitIds.has(exit.exitId)) {
       const alreadyLabeled = features.some(
         (feature) =>
           isExitFeature(feature) &&
-          feature.label.toLowerCase() === exit.label.toLowerCase(),
+          feature.label.toLowerCase().startsWith(exit.label.toLowerCase().slice(0, 12)),
       );
       if (!alreadyLabeled) {
         features.push({
           objectId: exit.exitId,
           column: place.column,
           row: place.row,
-          label: exit.label,
+          label: labeledExit,
           referenceKind: 'exit',
           objectKind: 'exit',
           state: 'present',
@@ -153,7 +164,11 @@ export function materializeContractExits<
         knownExitIds.add(exit.exitId);
       }
     }
-    if (!nearbyDoor(edges, place.column, place.row)) {
+    // Only add a door when none exists on this bearing and none is already nearby.
+    if (
+      existingOriented === undefined &&
+      !nearbyDoor(edges, place.column, place.row)
+    ) {
       const id = edgeId(place.column, place.row, place.orientation);
       if (!edges.some((edge) => edge.edgeId === id)) {
         edges.push({
@@ -162,10 +177,10 @@ export function materializeContractExits<
           row: place.row,
           orientation: place.orientation,
           kind: 'door',
-          doorState: 'open',
+          doorState: 'closed',
         });
       }
-      doorStates[id] = doorStates[id] ?? 'open';
+      doorStates[id] = doorStates[id] ?? 'closed';
     }
   });
 

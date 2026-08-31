@@ -54,11 +54,26 @@ function hasThievesTools(sheet: DerivedCharacterSheet): boolean {
 export function buildSkillCheckDraftSummary(
   sheet: DerivedCharacterSheet | null,
   text: string,
+  options: {
+    readonly candidateLabels?: readonly string[];
+  } = {},
 ): string {
   const wantsTrap = /(trap|disarm)/.test(text);
   const wantsLock =
     textRequestsLockPicking(text) ||
     (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
+  const ambiguousTarget =
+    /\b(most suspicious|anything unusual|something suspicious|visible feature|the area|this area|the room|the chamber)\b/i.test(
+      text,
+    ) && !/\b(door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(text);
+  const candidates = options.candidateLabels ?? [];
+  if (ambiguousTarget || (candidates.length > 1 && !/\b(door|doorway|gate|lock)\b/i.test(text))) {
+    const list =
+      candidates.length > 0
+        ? candidates.slice(0, 6).join('; ')
+        : 'name the doorway, prop, or square you mean';
+    return `Which feature are you examining? Choose one before the table prepares a roll: ${list}.`;
+  }
   if (sheet === null) {
     return wantsTrap
       ? 'Ready to search the doorway for traps, then attempt the lock if it looks safe. Confirm to roll the checks on the table.'
@@ -72,12 +87,16 @@ export function buildSkillCheckDraftSummary(
     ? 'Thieves’ Tools are on your sheet.'
     : 'Your sheet does not list Thieves’ Tools — the lock attempt uses Sleight of Hand without tool proficiency.';
 
+  const namedTarget = /\b(doorway|door|gate|lock)\b/i.test(text)
+    ? 'doorway'
+    : 'named target';
+
   if (wantsTrap && wantsLock) {
     return [
-      `Ready to search for traps (Investigation ${investigation.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(investigation.bonus)}; DC ${DEFAULT_TRAP_DC})`,
+      `Ready to search the ${namedTarget} for traps (Investigation ${investigation.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(investigation.bonus)}; DC ${DEFAULT_TRAP_DC})`,
       `then attempt the lock (Sleight of Hand ${sleight.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(sleight.bonus)}; DC ${DEFAULT_LOCK_DC}).`,
       toolNote,
-      'Confirm to roll both checks on the table.',
+      'Confirm to roll both checks on the table. Narration will stay on that target only.',
     ].join(' ');
   }
   if (wantsLock) {
@@ -88,8 +107,8 @@ export function buildSkillCheckDraftSummary(
     ].join(' ');
   }
   return [
-    `Ready to inspect the doorway (Investigation ${investigation.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(investigation.bonus)}; DC ${DEFAULT_TRAP_DC}).`,
-    'Confirm to roll the check on the table.',
+    `Ready to inspect the ${namedTarget} (Investigation ${investigation.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(investigation.bonus)}; DC ${DEFAULT_TRAP_DC}).`,
+    'Confirm to roll the check on the table. Narration will stay on that target only.',
   ].join(' ');
 }
 
@@ -135,7 +154,7 @@ export function resolveSkillAttemptFromSummary(
     const success = roll.total >= DEFAULT_TRAP_DC;
     parts.push(
       `Trap search (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_TRAP_DC} — ${
-        success ? 'no trap found' : 'you cannot tell if the doorway is trapped'
+        success ? 'no trap found on the confirmed target' : 'you cannot tell if the confirmed target is trapped'
       }.`,
     );
   }

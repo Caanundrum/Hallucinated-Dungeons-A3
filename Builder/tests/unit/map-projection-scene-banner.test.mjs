@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { buildAuthoritativeMapBundle } from '../../dist/server/table/map-projection.js';
 import { BLANK_FIRST_SCENE_TITLE } from '../../dist/server/table/scene-builder.js';
 
-test('PQA-187: blank tables bootstrap Quiet chamber with walls and a door', () => {
+test('FQA-010 / PQA-187: blank tables await Director first scene (no Quiet chamber auto-bootstrap)', () => {
   const map = buildAuthoritativeMapBundle({
     campaignId: 'camp-blank',
     seats: [],
@@ -17,35 +17,25 @@ test('PQA-187: blank tables bootstrap Quiet chamber with walls and a door', () =
     adventureTemplateId: null,
     currentChapterId: null,
   });
-  assert.equal(map.title, BLANK_FIRST_SCENE_TITLE);
-  assert.match(map.sceneBanner, /Quiet chamber/i);
-  assert.match(map.sceneBanner, /wooden doorway|walls/i);
-  assert.ok(map.edges.some((edge) => edge.kind === 'door'));
-  assert.ok(map.edges.some((edge) => edge.kind === 'wall'));
-  assert.ok(map.cells.some((cell) => cell.terrain === 'blocked'));
+  assert.equal(map.title, 'Awaiting first scene');
+  assert.match(map.sceneBanner, /Game Director|first scene/i);
+  assert.equal(map.edges.length, 0);
+  assert.equal(map.notableFeatures.length, 0);
   assert.doesNotMatch(map.sceneBanner, /empty table/i);
   assert.notEqual(map.title, 'Blank table');
+  assert.notEqual(map.title, BLANK_FIRST_SCENE_TITLE);
 });
 
-test('PQA-177: Quiet chamber seeds non-authoritative reference markers', () => {
-  const map = buildAuthoritativeMapBundle({
-    campaignId: 'camp-blank-markers',
-    seats: [],
-    runtime: {
-      tokenPositions: [],
-      doorStates: {},
-      runtimeEdges: [],
-      exploredByAccount: {},
-    },
-    adventureTemplateId: null,
-    currentChapterId: null,
-  });
-  assert.ok(map.notableFeatures.length >= 3);
-  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'lighting'));
-  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'cover'));
-  assert.ok(map.notableFeatures.some((feature) => feature.referenceKind === 'hazard'));
+test('PQA-177: Quiet chamber reference markers remain available for legacy bootstrap helper', async () => {
+  const { BLANK_FIRST_SCENE_REFERENCE_MARKERS } = await import(
+    '../../dist/server/table/scene-builder.js'
+  );
+  assert.ok(BLANK_FIRST_SCENE_REFERENCE_MARKERS.length >= 3);
+  assert.ok(BLANK_FIRST_SCENE_REFERENCE_MARKERS.some((feature) => feature.referenceKind === 'lighting'));
+  assert.ok(BLANK_FIRST_SCENE_REFERENCE_MARKERS.some((feature) => feature.referenceKind === 'cover'));
+  assert.ok(BLANK_FIRST_SCENE_REFERENCE_MARKERS.some((feature) => feature.referenceKind === 'hazard'));
   assert.ok(
-    map.notableFeatures.every((feature) => /reference/i.test(feature.label)),
+    BLANK_FIRST_SCENE_REFERENCE_MARKERS.every((feature) => /reference/i.test(feature.label)),
   );
 });
 

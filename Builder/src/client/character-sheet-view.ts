@@ -113,8 +113,7 @@ export type SheetModalSection =
   | 'overview'
   | 'abilities'
   | 'combat'
-  | 'features'
-  | 'equipment';
+  | 'features';
 
 export const SHEET_MODAL_SECTIONS: readonly {
   readonly id: SheetModalSection;
@@ -124,7 +123,6 @@ export const SHEET_MODAL_SECTIONS: readonly {
   { id: 'abilities', label: 'Abilities' },
   { id: 'combat', label: 'Combat' },
   { id: 'features', label: 'Features' },
-  { id: 'equipment', label: 'Equipment' },
 ];
 
 export function renderCharacterSheet(
@@ -444,9 +442,7 @@ export function renderCharacterSheet(
           ? abilitiesPanel
           : section === 'combat'
             ? combatPanel
-            : section === 'features'
-              ? featuresPanel
-              : equipmentPanel;
+            : featuresPanel;
     return `
     <div class="sheet-layout sheet-layout-compact sheet-layout-modal-section" data-testid="character-sheet-layout" data-modal-section="${section}">
       <div class="sheet-column">${body}</div>

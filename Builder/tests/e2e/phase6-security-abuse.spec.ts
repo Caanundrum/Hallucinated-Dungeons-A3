@@ -128,7 +128,8 @@ test.describe('Phase 6 security and privacy hardening', () => {
 
   test('ordinary user cannot open Admin kill switch', async ({ page }) => {
     await signIn(page);
-    await page.getByTestId('nav-admin').click();
+    await expect(page.getByTestId('nav-admin')).toHaveCount(0);
+    await page.goto('/admin');
     await expect(page.getByTestId('admin-heading')).toHaveText('Admin');
     await expect(page.getByTestId('admin-is-admin')).toHaveText('No');
     await expect(page.getByTestId('admin-toggle-kill-switch')).toHaveCount(0);

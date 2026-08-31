@@ -77,6 +77,12 @@ export function beginAdventureRuntime(options: {
   if (options.runtime.adventureStarted && activeSceneInstance(options.runtime) !== null) {
     throw new Error('ADVENTURE_ALREADY_STARTED');
   }
+  const priorTitle = options.runtime.sceneTitle?.trim() || null;
+  const hadPriorScene =
+    priorTitle !== null &&
+    priorTitle.length > 0 &&
+    !/^awaiting first scene$/i.test(priorTitle) &&
+    !/^blank table$/i.test(priorTitle);
   const sceneId = newSceneId('interior');
   const composed = composeDirectorScene({
     kind: 'interior',
@@ -94,10 +100,14 @@ export function beginAdventureRuntime(options: {
     accountIds: [options.accountId],
     seatTokens: options.seatTokens,
   });
+  const establish = directorNarrationBeat('establish', { scene: composed });
+  const chronicle = hadPriorScene
+    ? `The table records a scene reset — prior play in ${priorTitle} is left behind as archived history. ${establish}`
+    : establish;
   return {
     runtime,
     composed,
-    chronicle: directorNarrationBeat('establish', { scene: composed }),
+    chronicle,
   };
 }
 

@@ -63,7 +63,7 @@ test.describe('Phase 4 presence, Admin, AI, speech', () => {
     page,
   }) => {
     await signIn(page);
-    await page.getByTestId('nav-admin').click();
+    await page.goto('/admin');
     await expect(page.getByTestId('admin-heading')).toHaveText('Admin');
     await expect(page.getByTestId('admin-is-admin')).toHaveText('No');
 

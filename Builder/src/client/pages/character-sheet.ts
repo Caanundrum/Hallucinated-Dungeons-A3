@@ -52,6 +52,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let loadoutBusy = false;
   let loadoutError: string | null = null;
   let trackerBusy = false;
+  let correctionUnlocked = false;
   const mountToken = beginPageMount(container);
 
   function renderLoadoutEditor(): string {
@@ -248,8 +249,38 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             </div>`
           }
         </section>
+        <section class="panel" aria-labelledby="correction-mode-heading" data-testid="character-correction-mode">
+          <h2 id="correction-mode-heading">Correction mode</h2>
+          <p class="record-meta">
+            Hit point, spell slot, resource, and equipment controls are off-table ledger corrections.
+            They update your saved character and write an audit reason — they are not play declarations at the campaign table.
+          </p>
+          ${
+            correctionUnlocked
+              ? `<p class="message notice" data-testid="correction-mode-unlocked">Correction controls are unlocked on this page.</p>
+                 ${
+                   character.revisions !== undefined && character.revisions.length > 0
+                     ? `<ul class="record-list" data-testid="correction-audit-list">
+                          ${character.revisions
+                            .slice(-5)
+                            .reverse()
+                            .map(
+                              (revision) =>
+                                `<li data-testid="correction-audit-item">${escapeHtml(revision.reason)} · ${escapeHtml(new Date(revision.at).toLocaleString())}</li>`,
+                            )
+                            .join('')}
+                        </ul>`
+                     : '<p class="record-meta" data-testid="correction-audit-empty">No ledger corrections recorded yet.</p>'
+                 }`
+              : `<div class="actions">
+                   <button type="button" class="secondary" data-testid="unlock-correction-mode">
+                     Unlock correction controls
+                   </button>
+                 </div>`
+          }
+        </section>
         ${renderLoadoutEditor()}
-        ${renderCharacterSheet(character.sheet)}
+        ${renderCharacterSheet(character.sheet, { interactive: correctionUnlocked })}
         <p class="record-meta">Built from the SRD 5.2.1 character creation rules.</p>
         <p class="record-meta" data-testid="character-archive-scope">
           Archive and restore are post-Alpha. Delete removes this character permanently.
@@ -260,9 +291,18 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
         </div>
       </div>`;
 
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="unlock-correction-mode"]')
+      ?.addEventListener('click', () => {
+        correctionUnlocked = true;
+        renderSignedIn();
+      });
+
     bindIdentityControls();
     bindLoadoutControls();
-    bindSheetTrackers();
+    if (correctionUnlocked) {
+      bindSheetTrackers();
+    }
   }
 
   async function persistTrackers(

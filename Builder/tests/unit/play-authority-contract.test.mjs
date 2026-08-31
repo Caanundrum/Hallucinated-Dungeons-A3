@@ -36,6 +36,22 @@ test('A2: successful unlock yields closed + unlocked, not open', () => {
   assert.equal(storedDoorStateFromAuthority(doorStateAfterUnlockSuccess()), 'unlocked');
 });
 
+test('FQA-017: player-facing door labels use one name with appended state', async () => {
+  const { formatDoorPlayerFacingLabel } = await import('../../dist/shared/play-authority-contract.js');
+  assert.equal(
+    formatDoorPlayerFacingLabel(doorAuthorityFromStored('closed'), 'east'),
+    'Wooden door east — closed',
+  );
+  assert.equal(
+    formatDoorPlayerFacingLabel(doorAuthorityFromStored('locked'), 'north'),
+    'Wooden door north — closed, locked',
+  );
+  assert.equal(
+    formatDoorPlayerFacingLabel(doorAuthorityFromStored('open'), 'west'),
+    'Wooden door west — open',
+  );
+});
+
 test('unlocked door language is state reference, not lock-picking', () => {
   assert.equal(textReferencesUnlockedDoorState('Beyond the unlocked door I see mist.'), true);
   assert.equal(textReferencesUnlockedDoorState('opens the unlocked doorway and steps through'), true);

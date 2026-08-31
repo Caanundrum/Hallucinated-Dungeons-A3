@@ -121,8 +121,9 @@ test.describe('Visual remediation Batch 1', () => {
     await page.getByTestId('open-table-sheet-modal').click();
     await expect(page.getByTestId('table-sheet-modal')).toBeVisible();
     await expect(page.getByTestId('sheet-modal-tabs')).toBeVisible();
-    await expect(page.getByTestId('sheet-hp-damage')).toBeVisible();
-    await expect(page.getByTestId('sheet-hp-heal')).toBeVisible();
+    await expect(page.getByTestId('sheet-hp-damage')).toHaveCount(0);
+    await expect(page.getByTestId('sheet-modal-full-page-link')).toBeVisible();
+    await expect(page.locator('.sheet-modal-hint')).toContainText(/read-only|overview|full sheet/i);
 
     const overflow = await page.evaluate(() => {
       const dialog = document.querySelector(
@@ -161,12 +162,14 @@ test.describe('Visual remediation Batch 1', () => {
     expect(abilitiesOverflow.layoutSW).toBeLessThanOrEqual(abilitiesOverflow.layoutCW + 1);
     await page.screenshot({ path: '/opt/cursor/artifacts/batch1-fix-abilities-no-overflow.png' });
 
-    await page.getByTestId('sheet-modal-tab-equipment').click();
-    await expect(page.getByTestId('sheet-modal-tab-equipment')).toHaveAttribute(
+    await page.getByTestId('sheet-modal-tab-features').click();
+    await expect(page.getByTestId('sheet-modal-tab-features')).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-b-sheet-modal-equipment.png' });
+    await expect(page.getByTestId('sheet-modal-tab-equipment')).toHaveCount(0);
+    await expect(page.getByTestId('sheet-modal-full-page-link')).toBeVisible();
+    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-b-sheet-modal-features.png' });
 
     await page.setViewportSize({ width: 375, height: 812 });
     const phoneDialog = await page.evaluate(() => {

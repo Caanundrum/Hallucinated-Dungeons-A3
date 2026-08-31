@@ -144,6 +144,10 @@ function projectCharacter(
     choices,
     sheet: withTrackers,
     editOptions: buildDraftOptions(choices),
+    revisions: stored.revisions.map((revision) => ({
+      at: revision.at,
+      reason: revision.reason,
+    })),
   };
 }
 
@@ -409,8 +413,8 @@ export async function readVault(options: {
       .get(),
   ]);
 
-  /** Soft enrichment for PQA-210 — only the single active seat (most recently renewed). */
-  const seatsByCharacterId = new Map<string, string[]>();
+  /** Soft enrichment for PQA-210 / FQA-035 — only the single active seat (most recently renewed). */
+  const seatsByCharacterId = new Map<string, { names: string[]; campaignId: string }>();
   try {
     const seatSnapshots = await firestore
       .collection(COLLECTIONS.campaignSeats)
@@ -452,7 +456,10 @@ export async function readVault(options: {
         ? ((campaignSnap.data() as { name?: string }).name ?? null)
         : null;
       if (campaignName !== null && campaignName.length > 0) {
-        seatsByCharacterId.set(active.characterId, [campaignName]);
+        seatsByCharacterId.set(active.characterId, {
+          names: [campaignName],
+          campaignId: active.campaignId,
+        });
       }
     }
   } catch {
@@ -473,15 +480,47 @@ export async function readVault(options: {
           const progression = progressionSnap.exists
             ? (progressionSnap.data() as StoredProgression)
             : null;
+          const seatInfo = seatsByCharacterId.get(stored.characterId);
+          const baseSheet = deriveSheet(choices);
+          const level = progression?.level ?? baseSheet?.level ?? 1;
+          const experiencePoints = progression?.experiencePoints ?? baseSheet?.experiencePoints ?? 0;
+          const classId = progression?.classId ?? choices.classId;
+          const leveled =
+            baseSheet !== null && classId !== null
+              ? recomputeSheetForLevel(baseSheet, classId, level, experiencePoints)
+              : baseSheet;
+          const sheet = leveled !== null ? applyProgressionTrackers(leveled, progression) : null;
+          const slotLine =
+            sheet?.spellcasting !== undefined &&
+            sheet.spellcasting !== null &&
+            sheet.spellcasting.level1SlotCount > 0
+              ? ` · L1 slots ${sheet.spellcasting.level1SlotsRemaining}/${sheet.spellcasting.level1SlotCount}`
+              : '';
+          const resourceLine =
+            sheet?.classResources !== undefined &&
+            sheet.classResources.length > 0
+              ? ` · ${sheet.classResources
+                  .slice(0, 2)
+                  .map((resource) => `${resource.label} ${resource.remaining}/${resource.maximum}`)
+                  .join(', ')}`
+              : '';
           return {
             characterId: stored.characterId,
             name: choices.identity.name,
             classLabel: labels.classLabel,
             speciesLabel: labels.speciesLabel,
             backgroundLabel: labels.backgroundLabel,
-            level: progression?.level ?? 1,
+            level,
             createdAt: toIso(stored.createdAt),
-            seatedCampaignNames: seatsByCharacterId.get(stored.characterId) ?? [],
+            seatedCampaignNames: seatInfo?.names ?? [],
+            seatedCampaignId: seatInfo?.campaignId ?? null,
+            ...(sheet !== null
+              ? {
+                  hitPointsCurrent: sheet.hitPointsCurrent,
+                  hitPointsMax: sheet.hitPoints.value,
+                  resourceSummary: `HP ${sheet.hitPointsCurrent}/${sheet.hitPoints.value}${slotLine}${resourceLine}`,
+                }
+              : {}),
           };
         } catch (failure) {
           const detail = failure instanceof Error ? failure.message : String(failure);
@@ -686,5 +725,35 @@ export async function updateCharacterTrackers(options: {
       : {}),
   };
   await progressionRef.set(next);
-  return projectCharacter(stored, next);
+  const reasonParts: string[] = [];
+  if (options.hitPointsCurrent !== undefined) {
+    reasonParts.push(`HP set to ${options.hitPointsCurrent}`);
+  }
+  if (options.temporaryHitPoints !== undefined) {
+    reasonParts.push(`temp HP set to ${options.temporaryHitPoints}`);
+  }
+  if (options.level1SlotsRemaining !== undefined) {
+    reasonParts.push(`level-1 slots set to ${options.level1SlotsRemaining}`);
+  }
+  if (options.resourceRemaining !== undefined) {
+    reasonParts.push('class resources corrected');
+  }
+  if (options.equipmentOverrides !== undefined) {
+    reasonParts.push('equipment ledger corrected');
+  }
+  const audited: StoredCharacter = {
+    ...stored,
+    revisions: [
+      ...stored.revisions,
+      {
+        at: now,
+        reason:
+          reasonParts.length > 0
+            ? `Correction: ${reasonParts.join('; ')}`
+            : 'Correction: character ledger updated',
+      },
+    ],
+  };
+  await firestore.collection(COLLECTIONS.characters).doc(characterId).set(audited);
+  return projectCharacter(audited, next);
 }

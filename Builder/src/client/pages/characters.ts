@@ -97,12 +97,30 @@ export function mountCharactersPage(host: PageHost): void {
                         · ${escapeHtml(character.backgroundLabel)}
                         · created ${escapeHtml(formatTimestamp(character.createdAt))}
                         ${
+                          character.resourceSummary !== undefined &&
+                          character.resourceSummary !== null &&
+                          character.resourceSummary.length > 0
+                            ? ` · <span data-testid="vault-status-${escapeHtml(character.characterId)}">${escapeHtml(character.resourceSummary)}</span>`
+                            : ''
+                        }
+                        ${
                           character.seatedCampaignNames !== undefined &&
                           character.seatedCampaignNames.length > 0
                             ? ` · seated in ${escapeHtml(character.seatedCampaignNames.join(', '))}`
                             : ' · not seated in a campaign'
                         }
                       </span>
+                      ${
+                        character.seatedCampaignId !== undefined &&
+                        character.seatedCampaignId !== null &&
+                        character.seatedCampaignId.length > 0
+                          ? `<div class="actions">
+                               <a href="/campaigns/${escapeHtml(character.seatedCampaignId)}/table" data-link data-testid="vault-return-table-${escapeHtml(character.characterId)}">
+                                 Return to table
+                               </a>
+                             </div>`
+                          : ''
+                      }
                     </li>`,
                     )
                     .join('')}

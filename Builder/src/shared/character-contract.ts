@@ -295,6 +295,8 @@ export interface CharacterProjection {
   readonly sheet: DerivedCharacterSheet;
   /** Options for post-create loadout edits (spells, kits, masteries). */
   readonly editOptions: DraftOptions;
+  /** Recent ledger correction / identity audit reasons (newest last). */
+  readonly revisions?: readonly { readonly at: string; readonly reason: string }[];
 }
 
 export interface CharacterVaultProjection {
@@ -313,6 +315,13 @@ export interface CharacterSummary {
   readonly createdAt: string;
   /** Campaign names where this character currently holds a seat, if any. */
   readonly seatedCampaignNames?: readonly string[];
+  /** Most recently renewed seat campaign id, when seated — for Return to table. */
+  readonly seatedCampaignId?: string | null;
+  /** Current / max hit points for seated vault status (FQA-035). */
+  readonly hitPointsCurrent?: number;
+  readonly hitPointsMax?: number;
+  /** Compact resource / slot hint when relevant. */
+  readonly resourceSummary?: string | null;
 }
 
 export interface DraftSummary {

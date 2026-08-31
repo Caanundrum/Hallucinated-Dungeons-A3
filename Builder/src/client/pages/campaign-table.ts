@@ -19,6 +19,9 @@ import {
   RULES_DESK_NOTICE,
   CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
+  CHRONICLE_FILTER_ALL,
+  CHRONICLE_FILTER_STORY,
+  PLAY_CHRONICLE_KINDS,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
@@ -27,6 +30,7 @@ import {
   PLAY_CHANNEL_LABEL,
   scrubChronicleCheckpointZero,
   storyBodiesEquivalent,
+  type ChronicleEntryKind,
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
@@ -41,7 +45,8 @@ import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.j
 import type { MapBundleProjection, MapEdgeRecord } from '../../shared/map-contract.js';
 import {
   doorAuthorityFromStored,
-  formatDoorAuthorityLabel,
+  formatDoorAuthorityStateSuffix,
+  formatDoorPlayerFacingLabel,
 } from '../../shared/play-authority-contract.js';
 import type {
   PresentationCueKind,
@@ -91,7 +96,7 @@ import {
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
-import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference, parseRestorableIntentDraft, shouldPersistIntentDraftState } from '../browser-preferences.js';
+import { readTableNotesPreference, writeIntentDraftPreference, writeTableNotesPreference, readIntentDraftPreference, parseRestorableIntentDraft, shouldPersistIntentDraftState, readAskDmThreadPreference, writeAskDmThreadPreference } from '../browser-preferences.js';
 import { renderCharacterSheet, SHEET_MODAL_SECTIONS, type SheetModalSection } from '../character-sheet-view.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
@@ -163,17 +168,13 @@ function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
           ? 'east'
           : 'west';
   if (edge.kind === 'door') {
-    return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} facing ${facing}`;
+    return formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
   }
   return `Wall facing ${facing}`;
 }
 
 function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
-  const stateLabel = formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(
-    /^Wooden door \(/,
-    '',
-  ).replace(/\)$/, '');
   const facing =
     edge.orientation === 'north'
       ? 'north'
@@ -182,7 +183,9 @@ function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
         : edge.orientation === 'east'
           ? 'east'
           : 'west';
-  return `Selected wooden door in ${scene} — ${stateLabel}, facing ${facing}. Use Open adjacent door when you are next to a closed unlocked door, or declare an interaction in the play channel.`;
+  const label = formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
+  const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
+  return `Selected ${label} in ${scene} (${stateLabel}). Use Open adjacent door when you are next to a closed unlocked door, or declare an interaction in the play channel.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -244,7 +247,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
-  let chronicleKindFilter: string = 'all';
+  let chronicleKindFilter: string = CHRONICLE_FILTER_STORY;
   let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
@@ -444,6 +447,55 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     kind: DmThreadMessage['kind'],
   ): void {
     askDmThread = [...askDmThread, newThreadMessage(speaker, speakerLabel, body, kind)];
+    persistAskDmThread();
+  }
+
+  function persistAskDmThread(): void {
+    const account = getAccount();
+    if (account === null) {
+      return;
+    }
+    if (askDmThread.length === 0) {
+      writeAskDmThreadPreference(account.accountId, campaignId, null);
+      return;
+    }
+    writeAskDmThreadPreference(account.accountId, campaignId, JSON.stringify(askDmThread));
+  }
+
+  function loadAskDmThreadPreference(): void {
+    const account = getAccount();
+    if (account === null) {
+      askDmThread = [];
+      return;
+    }
+    const raw = readAskDmThreadPreference(account.accountId, campaignId);
+    if (raw === null || raw.length === 0) {
+      askDmThread = [];
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        askDmThread = [];
+        return;
+      }
+      askDmThread = parsed.filter((entry): entry is DmThreadMessage => {
+        if (entry === null || typeof entry !== 'object') {
+          return false;
+        }
+        const row = entry as Partial<DmThreadMessage>;
+        return (
+          typeof row.messageId === 'string' &&
+          typeof row.speaker === 'string' &&
+          typeof row.speakerLabel === 'string' &&
+          typeof row.body === 'string' &&
+          typeof row.createdAt === 'string' &&
+          typeof row.kind === 'string'
+        );
+      });
+    } catch {
+      askDmThread = [];
+    }
   }
 
   function renderThreadMessages(
@@ -1202,9 +1254,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" class="table-primary-action" data-testid="open-table-sheet-modal">
             View full sheet
           </button>
-          <button type="button" class="table-secondary-action" data-testid="open-notes-drawer">
-            Notes
-          </button>
           <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
         </div>
       </div>`;
@@ -1235,7 +1284,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <h2 id="table-sheet-modal-title">${escapeHtml(label)}</h2>
             <button type="button" class="table-secondary-action" data-testid="close-table-sheet-modal">Close</button>
           </div>
-          <p class="record-meta sheet-modal-hint">Rapid table reference — Escape or backdrop closes. Full ledger stays on the character page.</p>
+          <p class="record-meta sheet-modal-hint">Read-only table overview — Escape or backdrop closes. Equipment edits stay on the full sheet page under Correction mode.</p>
           <div class="sheet-modal-tabs" role="tablist" aria-label="Sheet sections" data-testid="sheet-modal-tabs">
             ${tabs}
           </div>
@@ -1243,6 +1292,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             aria-labelledby="sheet-modal-tab-${sheetModalTab}">
             <div data-testid="table-character-sheet">${renderCharacterSheet(sheet, {
               compact: true,
+              interactive: false,
               tableModalSection: sheetModalTab,
             })}</div>
           </div>
@@ -1293,12 +1343,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       filteredEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
       filteredEntries[0] ??
       null;
+    if (selectedEntry !== null && selectedRulesEntryId !== selectedEntry.entryId) {
+      selectedRulesEntryId = selectedEntry.entryId;
+    }
     return `
       <div class="modal-backdrop cockpit-modal-backdrop" data-testid="rules-search-modal" role="presentation">
         <div class="modal-dialog cockpit-modal-dialog rules-spotlight-dialog" role="dialog" aria-modal="true"
           aria-labelledby="rules-spotlight-title" tabindex="-1">
           <div class="sheet-modal-chrome">
-            <h2 id="rules-spotlight-title">Rules search</h2>
+            <h2 id="rules-spotlight-title">Rules catalog</h2>
             <button type="button" class="table-secondary-action" data-testid="close-rules-modal">Close</button>
           </div>
           <p class="record-meta">Press Esc to dismiss. Shortcut: Ctrl/Cmd+K.</p>
@@ -1307,26 +1360,50 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <input type="search" data-testid="rules-spotlight-search" value="${escapeHtml(rulesSearchQuery)}"
               placeholder="Conditions, spells, actions…" />
           </label>
-          <div class="rules-spotlight-body">
-            <ul class="record-list compact" data-testid="rules-spotlight-entries">
-              ${filteredEntries
-                .slice(0, 12)
+          <label class="field">
+            <span>Category</span>
+            <select data-testid="rules-catalog-category">
+              ${(rulesCatalog?.categories ?? [])
                 .map(
-                  (entry) => `
-                <li>
-                  <button type="button" class="rules-catalog-entry${
-                    selectedEntry?.entryId === entry.entryId ? ' selected' : ''
-                  }" data-testid="rules-spotlight-entry" data-entry-id="${escapeHtml(entry.entryId)}">${escapeHtml(entry.title)}</button>
-                </li>`,
+                  (category) =>
+                    `<option value="${escapeHtml(category.id)}" ${
+                      selectedRulesCategory === category.id ? 'selected' : ''
+                    }>${escapeHtml(category.label)}</option>`,
                 )
                 .join('')}
-            </ul>
+            </select>
+          </label>
+          <div class="rules-spotlight-body">
+            <div class="rules-catalog-entries" data-testid="rules-catalog-entries">
+              ${
+                filteredEntries.length === 0
+                  ? '<p class="record-meta">No entries match this search in this category.</p>'
+                  : `<ul class="record-list compact" data-testid="rules-spotlight-entries">
+                      ${filteredEntries
+                        .map(
+                          (entry) => `
+                        <li>
+                          <button type="button" class="rules-catalog-entry${
+                            selectedEntry?.entryId === entry.entryId ? ' selected' : ''
+                          }" data-testid="rules-catalog-entry" data-entry-id="${escapeHtml(entry.entryId)}"
+                            data-rules-spotlight-entry="true">${escapeHtml(entry.title)}</button>
+                        </li>`,
+                        )
+                        .join('')}
+                    </ul>`
+              }
+            </div>
             ${
               selectedEntry === null
                 ? '<p class="empty-state">No matching rules entries.</p>'
-                : `<article class="rules-explanation" data-testid="rules-spotlight-explanation">
-                    <h3>${escapeHtml(selectedEntry.title)}</h3>
-                    <p>${escapeHtml(selectedEntry.summary)}</p>
+                : `<article class="rules-explanation" data-testid="rules-explanation">
+                    <p data-testid="rules-spotlight-explanation">${escapeHtml(selectedEntry.summary)}</p>
+                    <ol class="rules-explanation-steps">${selectedEntry.details
+                      .map((detail) => `<li>${escapeHtml(detail)}</li>`)
+                      .join('\n')}</ol>
+                    <p class="record-meta">${escapeHtml(selectedEntry.source)} · ${escapeHtml(
+                      RULES_CATALOG_CATEGORY_LABELS[selectedEntry.category],
+                    )}</p>
                   </article>`
             }
           </div>
@@ -1792,9 +1869,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function storyFeedBody(): string {
     const allEntries = chronicle?.entries ?? [];
     const entries =
-      chronicleKindFilter === 'all'
+      chronicleKindFilter === CHRONICLE_FILTER_ALL
         ? allEntries
-        : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
+        : chronicleKindFilter === CHRONICLE_FILTER_STORY
+          ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
+          : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
     return `
       <div class="dock-pane story-feed-pane" data-testid="chronicle-pane">
         <div class="story-feed-chrome">
@@ -1805,7 +1884,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <label class="field story-feed-filter">
             <span class="visually-hidden">Filter by kind</span>
             <select data-testid="chronicle-kind-filter" aria-label="Filter Story so far by kind">
-              <option value="all" ${chronicleKindFilter === 'all' ? 'selected' : ''}>All kinds</option>
+              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Story &amp; play</option>
+              <option value="${CHRONICLE_FILTER_ALL}" ${chronicleKindFilter === CHRONICLE_FILTER_ALL ? 'selected' : ''}>All activity</option>
               ${CHRONICLE_ENTRY_KINDS.map(
                 (kind) =>
                   `<option value="${escapeHtml(kind)}" ${
@@ -1857,28 +1937,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     if (activeTab === 'rules_desk') {
-      const categoryEntries =
-        rulesCatalog?.entries.filter((entry) => entry.category === selectedRulesCategory) ?? [];
-      const search = rulesSearchQuery.trim().toLowerCase();
-      const filteredEntries =
-        search.length === 0
-          ? categoryEntries
-          : categoryEntries.filter(
-              (entry) =>
-                entry.title.toLowerCase().includes(search) ||
-                entry.summary.toLowerCase().includes(search),
-            );
-      const selectedEntry =
-        filteredEntries.find((entry) => entry.entryId === selectedRulesEntryId) ??
-        filteredEntries[0] ??
-        null;
-      if (selectedEntry !== null && selectedRulesEntryId !== selectedEntry.entryId) {
-        selectedRulesEntryId = selectedEntry.entryId;
-      }
       return `
         <div class="dock-pane" data-testid="rules-desk-pane">
           <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
-          <button type="button" class="table-secondary-action" data-testid="open-rules-modal">Open rules spotlight</button>
           <p class="record-meta" data-testid="rules-catalog-meta">
             ${
               rulesCatalog === null
@@ -1887,57 +1948,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             }
           </p>
           <label class="field">
-            <span>Search rules</span>
+            <span>Quick search</span>
             <input type="search" data-testid="rules-catalog-search" placeholder="Filter by title or summary"
               value="${escapeHtml(rulesSearchQuery)}" />
           </label>
-          <label class="field">
-            <span>Category</span>
-            <select data-testid="rules-catalog-category">
-              ${(rulesCatalog?.categories ?? [])
-                .map(
-                  (category) =>
-                    `<option value="${escapeHtml(category.id)}" ${
-                      selectedRulesCategory === category.id ? 'selected' : ''
-                    }>${escapeHtml(category.label)}</option>`,
-                )
-                .join('')}
-            </select>
-          </label>
-          <div class="rules-catalog-entries" data-testid="rules-catalog-entries">
-            ${
-              filteredEntries.length === 0
-                ? '<p class="record-meta">No entries match this search in this category.</p>'
-                : `<ul class="record-list compact">
-                    ${filteredEntries
-                      .map(
-                        (entry) => `
-                      <li>
-                        <button type="button" class="rules-catalog-entry${
-                          selectedEntry?.entryId === entry.entryId ? ' selected' : ''
-                        }" data-testid="rules-catalog-entry" data-entry-id="${escapeHtml(entry.entryId)}">
-                          ${escapeHtml(entry.title)}
-                        </button>
-                      </li>`,
-                      )
-                      .join('')}
-                  </ul>`
-            }
-          </div>
-          ${
-            selectedEntry === null
-              ? '<p class="record-meta">Choose an entry to read the reference.</p>'
-              : `<article class="rules-explanation" data-testid="rules-explanation">
-                  <h3>${escapeHtml(selectedEntry.title)}</h3>
-                  <p>${escapeHtml(selectedEntry.summary)}</p>
-                  <ol class="rules-explanation-steps">${selectedEntry.details
-                    .map((detail) => `<li>${escapeHtml(detail)}</li>`)
-                    .join('\n')}</ol>
-                  <p class="record-meta">${escapeHtml(selectedEntry.source)} · ${escapeHtml(
-                    RULES_CATALOG_CATEGORY_LABELS[selectedEntry.category],
-                  )}</p>
-                </article>`
-          }
+          <p class="record-meta">Open the catalog for categories and full entry text. Enter in search jumps there.</p>
+          <button type="button" class="table-primary-action" data-testid="open-rules-modal">Open full rules catalog</button>
         </div>`;
     }
 
@@ -2289,7 +2305,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const pulseClass = ownTurn ? ' active-turn-hud' : '';
     return `
       <div class="floating-combat-bar${pulseClass}" data-testid="floating-combat-bar" role="toolbar" aria-label="Table actions">
-        <button type="button" class="table-primary-action" data-testid="fab-roll-d20" aria-disabled="${busy}">Roll d20</button>
         <button type="button" class="table-primary-action" data-testid="fab-attack"
           data-rules-command="combat.attack" aria-disabled="${busy || explorationMode()}">Attack</button>
         <button type="button" class="table-secondary-action" data-testid="fab-end-turn"
@@ -2340,7 +2355,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dice-tray-backdrop" data-testid="dice-tray-backdrop" role="presentation">
         <div class="dice-tray" data-testid="dice-tray" role="dialog" aria-modal="true" aria-labelledby="dice-tray-title" tabindex="-1">
           <div class="dice-tray-chrome">
-            <h2 id="dice-tray-title">Dice tray</h2>
+            <h2 id="dice-tray-title">Practice dice tray</h2>
             <button type="button" class="table-secondary-action" data-testid="close-dice-tray">Close</button>
           </div>
           <div class="dice-tray-options" role="group" aria-label="Dice">
@@ -2355,10 +2370,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <div class="dice-tray-stage" data-testid="dice-tray-stage" aria-live="polite">
             ${
               diceTrayRolling && diceTrayRollingSides !== null
-                ? `${diceFaceMarkup(diceTrayRollingSides, null, true)}
+                  ? `<p class="record-meta">Practice rolls only — they never resolve declared actions. Director-requested rolls come from Confirm on a play draft.</p>
+                     ${diceFaceMarkup(diceTrayRollingSides, null, true)}
                    <p>Rolling d${diceTrayRollingSides}…</p>`
                 : diceTrayResult === null || diceTrayRollingSides === null
-                  ? `<p class="record-meta">Pick a die to roll. Each die shows its own face shape while tumbling.</p>`
+                  ? `<p class="record-meta">Practice rolls only — they never resolve declared actions. Director-requested rolls come from Confirm on a play draft.</p>`
                   : `${diceFaceMarkup(diceTrayRollingSides, diceTrayFaceValue, false)}
                      <p class="dice-result ${diceTrayResult.includes('Natural 20') ? 'dice-crit' : diceTrayResult.includes('Natural 1') ? 'dice-fumble' : ''}" data-testid="dice-tray-result">${escapeHtml(diceTrayResult)}</p>`
             }
@@ -2535,7 +2551,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(
             showBeginAdventure
-              ? 'The Game Director is ready to establish your opening scene from the campaign premise.'
+              ? chronicle !== null &&
+                chronicle.entries.some((entry) =>
+                  PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind),
+                )
+                ? 'Prior play remains in Story so far as archived history. Confirm Begin the adventure only when you want the Director to establish a new opening scene — the map will not restore the old chamber automatically.'
+                : 'The Game Director is ready to establish your opening scene from the campaign premise.'
               : banner.detail,
           )}</p>
           ${
@@ -3527,12 +3548,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         rulesSearchQuery = (event.target as HTMLInputElement).value;
         render();
       });
-    root.querySelectorAll<HTMLButtonElement>('[data-testid="rules-spotlight-entry"]').forEach((button) => {
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="rules-catalog-entry"]').forEach((button) => {
       button.addEventListener('click', () => {
         selectedRulesEntryId = button.dataset.entryId ?? selectedRulesEntryId;
         render();
       });
     });
+    root
+      .querySelector<HTMLSelectElement>('[data-testid="rules-catalog-category"]')
+      ?.addEventListener('change', (event) => {
+        if (event.target instanceof HTMLSelectElement) {
+          selectedRulesCategory = event.target.value as RulesCatalogCategory;
+          const first =
+            rulesCatalog?.entries.find((entry) => entry.category === selectedRulesCategory) ?? null;
+          selectedRulesEntryId = first?.entryId ?? null;
+          render();
+        }
+      });
     root
       .querySelector<HTMLButtonElement>('[data-testid="dock-tab-chronicle"]')
       ?.addEventListener('click', () => {
@@ -3542,6 +3574,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         });
         shell.announce('Story so far focused.');
       });
+    requestAnimationFrame(() => {
+      const chronicleList = root.querySelector<HTMLElement>('[data-testid="chronicle-list"]');
+      if (chronicleList !== null) {
+        chronicleList.scrollTop = chronicleList.scrollHeight;
+      }
+    });
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="fab-end-turn"]')
@@ -3552,14 +3590,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="fab-attack"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('combat.attack');
-      });
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="fab-roll-d20"]')
-      ?.addEventListener('click', () => {
-        diceTrayOpen = true;
-        diceTrayResult = null;
-        render();
-        void rollDieInTray(20);
       });
     root
       .querySelector<HTMLButtonElement>('[data-testid="dice-fab"]')
@@ -4021,25 +4051,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
         }
       });
-
     root
-      .querySelector<HTMLSelectElement>('[data-testid="rules-catalog-category"]')
-      ?.addEventListener('change', (event) => {
-        if (event.target instanceof HTMLSelectElement) {
-          selectedRulesCategory = event.target.value as RulesCatalogCategory;
-          const first =
-            rulesCatalog?.entries.find((entry) => entry.category === selectedRulesCategory) ?? null;
-          selectedRulesEntryId = first?.entryId ?? null;
+      .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')
+      ?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          rulesModalOpen = true;
           render();
         }
       });
-
-    root.querySelectorAll<HTMLButtonElement>('[data-testid="rules-catalog-entry"]').forEach((button) => {
-      button.addEventListener('click', () => {
-        selectedRulesEntryId = button.dataset.entryId ?? null;
-        render();
-      });
-    });
 
     root
       .querySelector<HTMLSelectElement>('[data-testid="rules-target"]')
@@ -5286,8 +5306,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </div>
         </div>
         <div class="table-hud-actions" role="group" aria-label="Table session">
-          <a class="table-hud-action" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" title="Settings">Settings</a>
+          <a class="table-hud-action table-hud-action-settings" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" title="Settings">Settings</a>
           <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" title="Exit table">Exit table</a>
+          <details class="table-hud-overflow" data-testid="table-overflow-menu">
+            <summary aria-label="Table menu">Menu</summary>
+            <div class="table-hud-overflow-panel" role="menu">
+              <a href="/campaigns" data-link data-testid="table-overflow-tables" role="menuitem">Return to Tables</a>
+              <a href="/characters" data-link data-testid="table-overflow-vault" role="menuitem">Character Vault</a>
+              <a href="/account" data-link data-testid="table-overflow-account" role="menuitem">Account</a>
+              <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-overflow-settings" role="menuitem">Settings</a>
+              <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-overflow-exit" role="menuitem">Exit</a>
+            </div>
+          </details>
         </div>
       </div>
       <p class="visually-hidden" data-testid="action-composer-notice">${escapeHtml(ACTION_COMPOSER_STRUCTURE.notice)}</p>
@@ -5696,6 +5726,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     error = null;
     tableNotes = loadTableNotesPreference();
+    loadAskDmThreadPreference();
     if (!tableBootstrapped) {
       container.innerHTML = `
         <div class="page">

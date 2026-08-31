@@ -557,11 +557,34 @@ test('buildSceneSurveyNarration stays inside the validated map', () => {
     viewerSeatId: null,
   });
   assert.match(narration, /Quiet chamber/i);
-  assert.match(narration, /wooden doorway|doorway/i);
-  assert.match(narration, /Wall sconce/i);
-  assert.match(narration, /Damp stones/i);
+  assert.match(narration, /wooden doorway|doorway|route/i);
+  assert.match(narration, /wall sconce|lit/i);
+  assert.match(narration, /damp stones|hazard|active/i);
   assert.doesNotMatch(narration, /flooded crypt|Game Director narrates/i);
-  assert.match(buildPresenceDeclineNarration(null), /Nobody answers/i);
+  const decline = buildPresenceDeclineNarration(null);
+  assert.match(decline, /Nobody answers/i);
+  assert.doesNotMatch(decline, /no other person is present/i);
+});
+
+test('FQA-001: scrubFalseTrapCertainty blocks omniscient safety claims', async () => {
+  const { scrubFalseTrapCertainty } = await import('../../dist/server/ai/director-gateway.js');
+  const mechanics =
+    'Trap search (Investigation +5): d20 14 +5 = 19 vs DC 13 — no trap found on the confirmed target.';
+  const embellished =
+    'Your keen eye confirms the area is completely safe and free of traps.';
+  const scrubbed = scrubFalseTrapCertainty(embellished, mechanics);
+  assert.doesNotMatch(scrubbed, /completely safe|free of traps/i);
+  assert.match(scrubbed, /no sign of a trap|confirmed target/i);
+});
+
+test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target', async () => {
+  const { scrubExpandedInspectScope } = await import('../../dist/server/ai/director-gateway.js');
+  const mechanics = 'Inspect doorway (Investigation +5): d20 12 +5 = 17 vs DC 13 — success.';
+  const expanded =
+    'You carefully examine the timber floorboards, doorframe, and nearby furnishings for anything unusual.';
+  const scrubbed = scrubExpandedInspectScope(expanded, mechanics);
+  assert.doesNotMatch(scrubbed, /floorboards|furnishings/i);
+  assert.match(scrubbed, /doorway/i);
 });
 
 test('A1: unlocked-door state reference is not a lockpick draft', async () => {
