@@ -131,7 +131,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
           ${
             draft.sessionZero.completed
               ? `<p class="message notice" data-testid="group-decision-consent-notice">
-                   Session Zero already recorded this policy. Changing it requires table consent — you will confirm before Save settings writes the new policy. No automatic change history is stored in Alpha; note the prior choice with your players.
+                   Session Zero already recorded this policy. Changing it asks you to confirm after you have talked it through with your table. Settings changes also appear in table activity (Story so far → All activity).
                  </p>`
               : ''
           }
@@ -483,7 +483,7 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
         const confirmed = await confirmInApp({
           title: 'Change group-decision policy?',
           body:
-            'Session Zero was already recorded. Confirm with your table members before saving a new group-decision policy.',
+            'Confirm you have talked this through with your table. Saving writes the new policy and records a settings change in table activity.',
           confirmLabel: 'Save policy change',
           testId: 'group-decision-change-confirm',
         });

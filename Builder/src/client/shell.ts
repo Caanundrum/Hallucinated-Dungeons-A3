@@ -236,9 +236,8 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
       return;
     }
     const account = getAccount();
-    const showAdmin = isHostedPlayerSurface(candidate)
-      ? account?.isBootstrapAdmin === true
-      : true;
+    // Hosted and Local Arena alike: Admin only for explicit bootstrap admins.
+    const showAdmin = account?.isBootstrapAdmin === true;
     adminItem.hidden = !showAdmin;
   }
 

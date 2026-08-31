@@ -978,13 +978,13 @@ export async function applyDmSceneDirective(
     directive.rejectedMechanics.length > 0
       ? ` Rejected unsupported mechanics: ${directive.rejectedMechanics.join(', ')}.`
       : '';
-  const chronicleBody = `Scene established: ${title} (revision ${directive.revision}). Mode: ${directive.displayMode}. Bounds ${directive.bounds.columns}×${directive.bounds.rows}.${rejected}`;
+  const chronicleBody = `The scene settles on ${title}.${rejected}`;
 
   if (options.writeChronicle !== false) {
     await appendChronicleEntry({
       firestore,
       campaignId,
-      kind: 'director_ruling',
+      kind: 'scene_built',
       body: chronicleBody,
     });
   }

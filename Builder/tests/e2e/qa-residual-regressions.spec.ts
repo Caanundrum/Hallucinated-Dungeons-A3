@@ -68,12 +68,16 @@ test.describe('PQA residual regressions', () => {
     await page.getByTestId('dock-tab-rules_desk').click();
     await expect(page.getByTestId('rules-catalog-meta')).toHaveText('SRD 5.2.1 reference');
     await expect(page.getByTestId('rules-catalog-meta')).not.toContainText('srd-5.2.1');
+    await page.getByTestId('open-rules-modal').click();
+    await expect(page.getByTestId('rules-search-modal')).toBeVisible();
     await page.getByTestId('rules-catalog-category').selectOption('core_mechanics');
     await page.getByTestId('rules-catalog-entry').filter({ hasText: 'XP-only Progression' }).click();
     await expect(page.getByTestId('rules-explanation')).toContainText(/Game Director awards XP/i);
     await expect(page.getByTestId('rules-explanation')).not.toContainText('server-validated');
     const explanationText = await page.getByTestId('rules-explanation').innerText();
     expect(explanationText).not.toMatch(/XP\.Each|slots\.Single/);
+    await page.getByTestId('close-rules-modal').click();
+    await page.getByTestId('chronicle-kind-filter').selectOption('all');
     await page.getByTestId('dock-tab-chronicle').click();
     await expect(page.getByTestId('chronicle-entry').first()).toContainText('Campaign created');
     await expect(page.getByTestId('chronicle-entry').first()).not.toContainText('campaign_created');

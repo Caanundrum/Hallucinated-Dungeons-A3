@@ -73,9 +73,9 @@ export function mountHomePage(host: PageHost): void {
       <section class="intro-overlay" data-testid="intro-overlay" aria-label="Opening sequence">
         ${DOORWAY_MOTIF}
         <p class="intro-subtitle">
-          An original multiplayer tabletop roleplaying project, played through the browser under
-          the licensed SRD 5.2.1 rules foundation. This build is a closed, unpaid Alpha under
-          active construction.
+          An original tabletop roleplaying project for the browser under the licensed SRD 5.2.1
+          rules foundation. This invite-only Alpha is single-seat first — multiplayer seating is
+          expanding — and remains under active construction.
         </p>
         <div class="actions" style="justify-content: center;">
           <button type="button" data-testid="skip-intro">Skip introduction</button>
@@ -97,7 +97,7 @@ export function mountHomePage(host: PageHost): void {
         <div class="actions">
           <a href="/account" data-link data-testid="home-account-link">Open Account</a>
           <a href="/characters" data-link data-testid="home-characters-link">Open the Character Vault</a>
-          <a href="/campaigns" data-link data-testid="home-campaigns-link">Open Campaigns</a>
+          <a href="/campaigns" data-link data-testid="home-campaigns-link">Open Tables</a>
         </div>
         ${
           candidate?.publicSurface === 'gold_master'

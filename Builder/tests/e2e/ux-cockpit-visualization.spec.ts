@@ -58,14 +58,10 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await expect(page.getByTestId('hero-hp-bar')).toBeVisible();
     await expect(page.getByTestId('hero-ac-badge')).toContainText(/AC/i);
 
-    // UX-3: notes drawer
-    await page.getByTestId('open-notes-drawer').click();
-    await expect(page.getByTestId('notes-drawer')).toBeVisible();
-    await page.getByTestId('notes-drawer-input').fill('Clue: wooden doorway faces east.');
-    await page.getByTestId('close-notes-drawer').click();
-    await expect(page.getByTestId('notes-drawer')).toHaveCount(0);
-
-    // Stay on Character rail for sheet modal.
+    // UX-3: notes via Notes rail tab (drawer button removed from mini-sheet)
+    await page.getByTestId('table-info-tab-notes').click();
+    await expect(page.getByTestId('table-notes-input')).toBeVisible();
+    await page.getByTestId('table-notes-input').fill('Clue: wooden doorway faces east.');
     await page.getByTestId('table-info-tab-character').click();
     await expect(page.getByTestId('open-table-sheet-modal')).toBeVisible();
 
@@ -88,11 +84,10 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
 
     // Polish Batch 2: persistent floating action HUD while seated
     await expect(page.getByTestId('floating-combat-bar')).toBeVisible();
-    await expect(page.getByTestId('fab-roll-d20')).toBeVisible();
     await expect(page.getByTestId('fab-attack')).toBeVisible();
     await expect(page.getByTestId('fab-end-turn')).toBeVisible();
 
-    // Polish Batch 3: dice tray FAB
+    // Polish Batch 3: dice tray FAB (single dice entry — no duplicate Roll d20 on combat bar)
     await expect(page.getByTestId('dice-fab')).toBeVisible();
     await page.getByTestId('dice-fab').click();
     await expect(page.getByTestId('dice-tray')).toBeVisible();

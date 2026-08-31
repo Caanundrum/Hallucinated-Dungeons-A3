@@ -83,8 +83,34 @@ export function doorStateAfterUnlockSuccess(options?: {
   return { leaf: 'closed', lock: 'unlocked' };
 }
 
+/** Compact door state suffix — closed / open / locked — for map chips and a11y. */
+export function formatDoorAuthorityStateSuffix(state: DoorAuthorityState): string {
+  if (state.leaf === 'open') {
+    return 'open';
+  }
+  if (state.lock === 'locked') {
+    return 'closed, locked';
+  }
+  if (state.lock === 'unlocked') {
+    return 'closed, unlocked';
+  }
+  return 'closed';
+}
+
+/**
+ * Player-facing door name used on map chips, a11y, and detail copy.
+ * One canonical pattern: `Wooden door east — closed` (state appended, not renamed).
+ */
+export function formatDoorPlayerFacingLabel(
+  state: DoorAuthorityState,
+  facing: string,
+): string {
+  return `Wooden door ${facing} — ${formatDoorAuthorityStateSuffix(state)}`;
+}
+
 /** Player-facing spatial label — must expose lock when known. */
 export function formatDoorAuthorityLabel(state: DoorAuthorityState): string {
+  const suffix = formatDoorAuthorityStateSuffix(state);
   if (state.leaf === 'open') {
     return 'Wooden door (open)';
   }
@@ -94,7 +120,7 @@ export function formatDoorAuthorityLabel(state: DoorAuthorityState): string {
   if (state.lock === 'unlocked') {
     return 'Wooden door (closed, unlocked)';
   }
-  return 'Wooden door (closed)';
+  return `Wooden door (${suffix})`;
 }
 
 /** Structured parse of a player declaration — not a fixed keyword precedence list. */

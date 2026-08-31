@@ -61,6 +61,8 @@ import {
   loadCampaignMemory,
 } from '../campaigns/campaign-memory.js';
 import {
+  doorAuthorityFromStored,
+  formatDoorPlayerFacingLabel,
   parsePlayerDeclaration,
   resolveIntentAuthority,
   textReferencesUnlockedDoorState,
@@ -81,30 +83,70 @@ export function buildSceneSurveyNarration(map: MapBundleProjection): string {
     .trim()
     .replace(/\s*[—-]\s*walls and a wooden doorway are established for this table\.?/gi, '')
     .replace(/\s+are established for this table\.?/gi, '')
+    .replace(/\.\.+/g, '.')
     .trim();
-  const features = map.notableFeatures
-    .slice(0, 4)
+  const exitFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
+  );
+  const exitNames = exitFeatures
     .map((feature) => shortFeatureLabel(feature.label))
     .filter((label) => label.length > 0);
-  const doorCount = map.edges.filter((edge) => edge.kind === 'door').length;
-  const doorLine =
-    doorCount === 0
-      ? 'No doorway is marked on the walls you can see.'
-      : doorCount === 1
-        ? 'A single wooden doorway breaks the wall ahead.'
-        : `${doorCount} doorways break the walls you can see.`;
+  const doorEdges = map.edges.filter((edge) => edge.kind === 'door');
+  // Prefer named contract exits over raw door-edge counts so prose matches the map.
+  let doorLine: string;
+  if (exitNames.length >= 2) {
+    doorLine = `Visible routes: ${exitNames.join('; ')}.`;
+  } else if (exitNames.length === 1) {
+    doorLine =
+      doorEdges.length > 1
+        ? `One named route is clear — ${exitNames[0]} — while another opening is marked but not yet identified.`
+        : `A single route breaks the wall ahead: ${exitNames[0]}.`;
+  } else if (doorEdges.length === 0) {
+    doorLine = 'No doorway is marked on the walls you can see.';
+  } else if (doorEdges.length === 1) {
+    doorLine = 'A single wooden doorway breaks the wall ahead.';
+  } else {
+    doorLine = `${doorEdges.length} openings break the walls you can see, though none are named yet.`;
+  }
+  const propFeatures = map.notableFeatures
+    .filter((feature) => feature.referenceKind !== 'exit' && feature.objectKind !== 'exit')
+    .slice(0, 4);
   const featureLine =
-    features.length === 0
+    propFeatures.length === 0
       ? 'Little else stands out in the lantern light.'
-      : `You note ${features.join(', ')}.`;
-  const lead = banner.length > 0 ? banner : `You take in ${title}.`;
-  return `${lead}. ${doorLine} ${featureLine}`;
+      : `Nearby you notice ${propFeatures
+          .map((feature) => naturalFeaturePhrase(feature.label))
+          .join('; ')}.`;
+  const lead = banner.length > 0 ? banner.replace(/\.\s*$/, '') : `You take in ${title}`;
+  return `${lead}. ${doorLine} ${featureLine}`.replace(/\.\.+/g, '.').replace(/\s{2,}/g, ' ').trim();
+}
+
+/** Convert "Hearth lamp (lit)" into prose without raw database punctuation. */
+function naturalFeaturePhrase(label: string): string {
+  const cleaned = shortFeatureLabel(label).replace(/\s+/g, ' ').trim();
+  const stateMatch = /^(.*?)\s*\((lit|unlit|intact|broken|open|closed|active|disarmed|present)\)\s*$/i.exec(
+    cleaned,
+  );
+  if (stateMatch !== null) {
+    const name = stateMatch[1]!.trim();
+    const state = stateMatch[2]!.toLowerCase();
+    if (state === 'lit') return `a lit ${name.toLowerCase()}`;
+    if (state === 'unlit') return `an unlit ${name.toLowerCase()}`;
+    if (state === 'intact') return `an intact ${name.toLowerCase()}`;
+    if (state === 'broken') return `a broken ${name.toLowerCase()}`;
+    if (state === 'open') return `an open ${name.toLowerCase()}`;
+    if (state === 'closed') return `a closed ${name.toLowerCase()}`;
+    if (state === 'active') return `an active ${name.toLowerCase()}`;
+    return `${name.toLowerCase()} (${state})`;
+  }
+  return cleaned.toLowerCase();
 }
 
 /** Presence fiction from campaign memory — Director may decline or refer to established NPCs. */
 export function buildPresenceDeclineNarration(map: MapBundleProjection | null): string {
   const where = map?.title.trim() || 'the chamber';
-  return `Nobody answers from ${where}. You hear only your own movement and the quiet of the room — no other person is present here yet.`;
+  // Silence is not a census: unanswered call-out must not claim the room is empty.
+  return `Nobody answers from ${where}. You hear only your own movement and the quiet of the room.`;
 }
 
 export function buildPresenceWithNpcsNarration(
@@ -304,6 +346,8 @@ const NARRATOR_CONSTITUTION = [
   'Never change Hit Points, kill a creature the mechanics left standing, or spare one the mechanics dropped.',
   'Never claim the party left the current scene, entered a new location, or abandoned the named chamber unless the mechanics summary explicitly says a scene change occurred.',
   'Stepping through a doorway on the same map keeps the current scene — describe the step, not a departure.',
+  'When mechanics say "no trap found" or that the character cannot tell, narrate only what they detect — never absolute safety, omniscient clearance, or that the area is completely free of traps.',
+  'Keep narration scoped to the confirmed target in the mechanics summary; do not expand one check into a room-wide sweep.',
   'If framing tags are present (crit, finishing_blow, near_miss, heroic_failure, bold_stunt, overkill), lean into cinematic emphasis for that beat without altering the outcome.',
   'Write in second person. Keep paragraphs short. Do not open with a title or heading.',
   'If the player tried something not present in the scene state, clarify the gap in-world without granting it.',
@@ -346,6 +390,20 @@ function mentionsSkillCheckIntent(text: string): boolean {
     (/(trap|disarm|investigat|perception|search|examine|inspect)/.test(text) &&
       /(door|lock|way|trap|entry|gate)/.test(text)) ||
     textRequestsLockPicking(text)
+  );
+}
+
+/** Vague investigate/search that must clarify a target before drafting a roll. */
+function mentionsAmbiguousInspectIntent(text: string): boolean {
+  if (mentionsDoorHazardIntent(text) || mentionsDoorStateIntent(text)) {
+    return false;
+  }
+  return (
+    /\b(investigat|search|examine|inspect)\b/.test(text) &&
+    /\b(most suspicious|anything unusual|visible feature|suspicious feature|the area|this area|the room|the chamber)\b/.test(
+      text,
+    ) &&
+    !/\b(door|doorway|gate|lock|lamp|bench|crate|counter)\b/.test(text)
   );
 }
 
@@ -576,6 +634,66 @@ function scrubFalseSceneDeparture(body: string, mechanicsSummary: string): strin
     );
   }
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
+}
+
+/**
+ * Trap-search mechanics that report "no trap found" must not become omniscient safety.
+ */
+export function scrubFalseTrapCertainty(body: string, mechanicsSummary: string): string {
+  const mechanics = mechanicsSummary.trim();
+  const noTrapFound = /\bno trap found\b/i.test(mechanics);
+  const uncertain = /\bcannot tell\b|\bcould not tell\b|\bno sign of\b/i.test(mechanics);
+  if (!noTrapFound && !uncertain) {
+    return body;
+  }
+  let scrubbed = body
+    .replace(
+      /\b(?:completely |entirely |totally )?(?:safe|clear|free of traps|without traps|trap[- ]free)\b[^.!?\n]*/gi,
+      'shows no sign of a trap',
+    )
+    .replace(
+      /\b(?:there (?:are|is) )?(?:no traps?(?: here| nearby| in (?:the|this) (?:area|room|chamber))?)\b/gi,
+      'you find no sign of a trap',
+    )
+    .replace(
+      /\b(?:confirms?|proves?|guarantees?) (?:the )?(?:area|room|chamber|doorway) (?:is|are) (?:completely )?(?:safe|clear)\b[^.!?\n]*/gi,
+      'finds no sign of a trap on the confirmed target',
+    );
+  return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
+}
+
+/**
+ * One confirmed inspect target must not expand into a room-wide sweep in prose.
+ */
+export function scrubExpandedInspectScope(body: string, mechanicsSummary: string): string {
+  const mechanics = mechanicsSummary.trim();
+  const targetMatch =
+    /(?:inspect(?:ing)?|examining|examined|search(?:ing)?)\s+(?:the\s+)?([^.——\n(]+?)(?:\s*(?:—|-|DC|\(|\.|,)|$)/i.exec(
+      mechanics,
+    ) ??
+    /Ready to inspect\s+(?:the\s+)?([^.——\n(]+)/i.exec(mechanics);
+  const rawTarget = targetMatch?.[1]?.trim();
+  if (rawTarget === undefined || rawTarget.length === 0) {
+    return body;
+  }
+  const target = rawTarget.replace(/\s+/g, ' ').replace(/\s+$/g, '');
+  if (!/\bdoor(?:way)?\b|\bfeature\b|\bbench\b|\bcounter\b|\blamp\b|\bhearth\b/i.test(target)) {
+    return body;
+  }
+  let scrubbed = body
+    .replace(
+      /\b(?:timber\s+)?floorboards?(?:,?\s*(?:the\s+)?doorframes?)?(?:,?\s*and\s+(?:the\s+)?(?:nearby\s+)?furnishings?)?\b/gi,
+      target.replace(/^the\s+/i, ''),
+    )
+    .replace(
+      /\b(?:doorframe|furnishings?|nearby furnishings?)\b/gi,
+      target.replace(/^the\s+/i, ''),
+    )
+    .replace(
+      /\b(?:the\s+)?(?:entire\s+)?(?:area|room|chamber|surroundings)\b(?=[^.!?\n]{0,40}\b(?:inspect|examin|search|sweep|probe))/gi,
+      `the ${target.replace(/^the\s+/i, '')}`,
+    );
+  return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || body;
 }
 
 /** Builds narration body text for the given density, without inventing state. */
@@ -837,12 +955,13 @@ export async function interpretNaturalLanguageIntent(options: {
       'Ready to return to the earlier scene. Confirm to restore it with prior consequences.';
     sceneLoopResolved = true;
   } else if (
-    /\b(leave|travel|head (out|outside|onward|for|to)|go (outside|outdoors|onward|through|to|toward)|step (out|outside)|climb|enter the|follow the|make for|seek)\b/i.test(
+    !mentionsDoorIntent(text) &&
+    (/\b(leave|travel|head (out|outside|onward|for|to)|go (outside|outdoors|onward|through|to|toward)|step (out|outside)|climb|enter the|follow the|make for|seek)\b/i.test(
       text,
     ) ||
-    /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
-      text,
-    )
+      /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
+        text,
+      ))
   ) {
     proposedCommandType = 'table.travel_scene';
     destinationHint = rawText.slice(0, 200);
@@ -991,9 +1110,33 @@ export async function interpretNaturalLanguageIntent(options: {
       summary =
         'This scene has no door to open yet. Ask the Director what you can interact with here, or declare how you explore the chamber.';
     }
-  } else if (mentionsSkillCheckIntent(text)) {
+  } else if (mentionsAmbiguousInspectIntent(text) || mentionsSkillCheckIntent(text)) {
     proposedCommandType = 'table.sync';
-    summary = buildSkillCheckDraftSummary(seatedSheet, text);
+    let candidateLabels: string[] = [];
+    try {
+      const map = await fetchCampaignMap({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      });
+      candidateLabels = map.notableFeatures
+        .map((feature) => feature.label)
+        .filter((label) => label.trim().length > 0)
+        .slice(0, 8);
+      for (const edge of map.edges) {
+        if (edge.kind === 'door') {
+          candidateLabels.push(
+            formatDoorPlayerFacingLabel(
+              doorAuthorityFromStored(edge.doorState),
+              edge.orientation,
+            ),
+          );
+        }
+      }
+    } catch {
+      candidateLabels = [];
+    }
+    summary = buildSkillCheckDraftSummary(seatedSheet, text, { candidateLabels });
   } else if (mentionsMovementIntent(text) && options.moveTarget) {
     let legalStep = false;
     try {
@@ -1458,8 +1601,14 @@ export async function narrateVisibleBeat(options: {
     liveCandidate.length === 0 ||
     looksLikeTruncatedDirectorProse(liveBody) ||
     looksLikeTruncatedDirectorProse(liveCandidate);
-  const body = scrubFalseSceneDeparture(
-    preferSimulated ? simulated.body : liveCandidate,
+  const body = scrubExpandedInspectScope(
+    scrubFalseTrapCertainty(
+      scrubFalseSceneDeparture(
+        preferSimulated ? simulated.body : liveCandidate,
+        options.mechanicsSummary,
+      ),
+      options.mechanicsSummary,
+    ),
     options.mechanicsSummary,
   );
   const humorApplied = preferSimulated ? simulated.humorApplied : effectiveDensity !== 'concise';

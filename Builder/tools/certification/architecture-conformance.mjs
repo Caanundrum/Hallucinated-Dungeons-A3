@@ -63,7 +63,11 @@ function isAllowedBrowserPreferenceUse(line, previousLine = '') {
   return BROWSER_PREFERENCE_MARKERS.some((marker) => context.includes(marker));
 }
 
-const CLIENT_BROWSER_PREFERENCE_FILES = new Set(['src/client/browser-preferences.ts']);
+const CLIENT_BROWSER_PREFERENCE_FILES = new Set([
+  'src/client/browser-preferences.ts',
+  // Transient join handoff only — seat authority remains server-side.
+  'src/client/pending-join.ts',
+]);
 
 /** @type {ConformanceRule[]} */
 export const RULES = [

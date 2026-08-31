@@ -62,6 +62,38 @@ export function writeIntentDraftPreference(campaignId: string, draftJson: string
   }
 }
 
+const ASK_DM_THREAD_KEY_PREFIX = 'hd-a3-ask-dm-thread-';
+
+function askDmThreadStorageKey(accountId: string, campaignId: string): string {
+  return `${ASK_DM_THREAD_KEY_PREFIX}${accountId}-${campaignId}`;
+}
+
+/** Private Ask-the-Director thread for this account + campaign (non-authoritative). */
+export function readAskDmThreadPreference(accountId: string, campaignId: string): string | null {
+  try {
+    return localStorage.getItem(askDmThreadStorageKey(accountId, campaignId));
+  } catch {
+    return null;
+  }
+}
+
+export function writeAskDmThreadPreference(
+  accountId: string,
+  campaignId: string,
+  threadJson: string | null,
+): void {
+  try {
+    const key = askDmThreadStorageKey(accountId, campaignId);
+    if (threadJson === null || threadJson.length === 0) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, threadJson);
+  } catch {
+    // Non-authoritative consulting thread — ignore storage failures.
+  }
+}
+
 export {
   parseRestorableIntentDraft,
   shouldPersistIntentDraftState,

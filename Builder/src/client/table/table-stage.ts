@@ -29,7 +29,7 @@ import {
 import { escapeHtml } from '../dom-utils.js';
 import {
   doorAuthorityFromStored,
-  formatDoorAuthorityLabel,
+  formatDoorPlayerFacingLabel,
 } from '../../shared/play-authority-contract.js';
 import {
   objectVisualFamily,
@@ -50,7 +50,7 @@ function edgeAccessibleLabel(edge: MapEdgeRecord): string {
           ? 'east'
           : 'west';
   if (edge.kind === 'door') {
-    return `${formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState))} facing ${facing}`;
+    return formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
   }
   return `Wall facing ${facing}`;
 }
@@ -177,38 +177,28 @@ function tokenLabelFontSize(
 }
 
 function mapTerrainSummary(map: MapBundleProjection): string {
-  const { columns, rows } = map.coordinateSpace;
-  let floor = 0;
-  let difficult = 0;
-  let blocked = 0;
-  let unexplored = 0;
-  for (const cell of map.cells) {
-    if (!cell.known) {
-      unexplored += 1;
-    } else if (cell.terrain === 'blocked') {
-      blocked += 1;
-    } else if (cell.terrain === 'difficult') {
-      difficult += 1;
-    } else {
-      floor += 1;
-    }
-  }
   const scene = map.title.trim().length > 0 ? map.title : 'Scene';
-  const doors = map.edges.filter((edge) => edge.kind === 'door').length;
-  const exitMarkers = map.notableFeatures.filter(
-    (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
-  ).length;
-  const exitCount = Math.max(doors, exitMarkers);
+  const exitLabels = map.notableFeatures
+    .filter((feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit')
+    .map((feature) => feature.label)
+    .filter((label) => label.trim().length > 0);
+  const doors = map.edges.filter((edge) => edge.kind === 'door');
+  const routes =
+    exitLabels.length > 0
+      ? exitLabels.join('; ')
+      : doors.length === 0
+        ? 'no marked exits'
+        : `${doors.length} unmarked opening${doors.length === 1 ? '' : 's'}`;
+  const props = map.notableFeatures
+    .filter((feature) => feature.referenceKind !== 'exit' && feature.objectKind !== 'exit')
+    .slice(0, 4)
+    .map((feature) => feature.label);
   const party =
     map.tokens.length > 0
-      ? map.tokens
-          .map(
-            (token) =>
-              `${token.label} at ${token.footprint.anchor.column},${token.footprint.anchor.row}`,
-          )
-          .join('; ')
+      ? map.tokens.map((token) => token.label).join(', ')
       : 'no party token';
-  return `${scene} · ${columns}×${rows} · ${party} · ${exitCount} exit${exitCount === 1 ? '' : 's'} · ${floor} floor, ${difficult} difficult, ${blocked} blocked, ${unexplored} fog`;
+  const propLine = props.length > 0 ? ` · Nearby: ${props.join('; ')}` : '';
+  return `${scene} · Routes: ${routes} · Party: ${party}${propLine}`;
 }
 
 function paintSemanticSvg(
@@ -370,16 +360,61 @@ function paintSemanticSvg(
     ...map.notableFeatures.map((feature, index) => {
       const cx = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const cy = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      let fullLabel = feature.label;
+      if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
+        const nearbyDoor = map.edges.find(
+          (edge) =>
+            edge.kind === 'door' &&
+            Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
+        );
+        if (nearbyDoor !== undefined) {
+          const state = nearbyDoor.doorState ?? 'closed';
+          const base = feature.label
+            .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          fullLabel = `${base} — ${state}`;
+        }
+      }
       return {
         id: `marker:${feature.column}:${feature.row}:${index}`,
         kind: 'marker' as const,
         x: cx,
         y: cy,
         obstacle: { x: cx - 7, y: cy - 7, w: 14, h: 14 },
-        fullLabel: feature.label,
+        fullLabel,
         referenceKind: feature.referenceKind ?? 'prop',
       };
     }),
+    ...map.edges
+      .filter((edge) => {
+        if (edge.kind !== 'door') {
+          return false;
+        }
+        // Avoid duplicate chips when an exit feature already covers this door.
+        return !map.notableFeatures.some(
+          (feature) =>
+            (feature.referenceKind === 'exit' || feature.objectKind === 'exit') &&
+            Math.abs(feature.column - edge.column) + Math.abs(feature.row - edge.row) <= 1,
+        );
+      })
+      .map((edge) => {
+        const box = edgeHitBox(edge, pixelsPerSquare);
+        const cx = box.x + box.w / 2;
+        const cy = box.y + box.h / 2;
+        return {
+          id: `door:${edge.edgeId}`,
+          kind: 'marker' as const,
+          x: cx,
+          y: cy,
+          obstacle: { x: box.x, y: box.y, w: box.w, h: box.h },
+          fullLabel: formatDoorPlayerFacingLabel(
+            doorAuthorityFromStored(edge.doorState),
+            edge.orientation,
+          ),
+          referenceKind: 'exit' as const,
+        };
+      }),
   ];
   const labelPlacements = layoutMapLabels(labelAnchors, {
     mapWidth: width,
@@ -557,7 +592,7 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <button type="button" data-map-zoom="preset" data-zoom-preset="1" aria-label="Zoom 100%">100%</button>
+      <button type="button" data-map-zoom="preset" data-zoom-preset="1" aria-label="Reset zoom to 100%">Reset to 100%</button>
       <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
@@ -650,7 +685,7 @@ function paintSemanticSvg(
               (cell) =>
                 `<g class="map-fog-cell" aria-hidden="true">
                   <rect class="map-fog-depth" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="#04060a" opacity="0.62" />
-                  <rect class="map-square-fog-hatch map-fog-mist" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" opacity="0.7" />
+                  <rect class="map-square-fog-hatch map-fog-mist" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" opacity="0.42" />
                 </g>`,
             )
             .join('')}</g>

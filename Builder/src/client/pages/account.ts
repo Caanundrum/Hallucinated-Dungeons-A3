@@ -14,7 +14,7 @@ import {
   isNarrationDensity,
   type NarrationDensity,
 } from '../../shared/settings-contract.js';
-import { getAccount, signInAccount, signInGoogleEmulator, signOutAccount, subscribeAccount, updateAccountDisplayLabel } from '../account-session.js';
+import { getAccount, signInAccount, signInGoogleEmulator, subscribeAccount, updateAccountDisplayLabel } from '../account-session.js';
 import {
   ApiFailure,
   acceptLegalDocument,
@@ -34,7 +34,6 @@ import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import {
   applyPresentationPreferences,
-  clearPresentationPreferences,
 } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
@@ -274,12 +273,8 @@ export function mountAccountPage(host: PageHost): void {
               characters, campaigns, and table state already saved on the server stay on your account.
             </p>
             <div class="actions">
-              <button type="button" class="secondary" data-testid="account-leave"
-                aria-disabled="${busy}">
-                ${busy ? 'Signing out…' : 'Sign out'}
-              </button>
               <a href="/characters" data-link data-testid="account-characters-link">Open Character Vault</a>
-              <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Campaigns</a>
+              <a href="/campaigns" data-link data-testid="account-campaigns-link">Open Tables</a>
               ${
                 isBootstrapAdmin
                   ? '<a href="/admin" data-link data-testid="account-admin-link">Admin panel</a>'
@@ -398,12 +393,16 @@ export function mountAccountPage(host: PageHost): void {
                     <a href="${escapeHtml(document.route)}" target="_blank" rel="noopener noreferrer">${escapeHtml(document.title)}</a>
                     — ${escapeHtml(document.version)}
                     ${document.accepted ? 'accepted' : 'not yet accepted'}
-                    <button type="button" class="secondary" data-legal-route="${escapeHtml(document.route)}"
+                    ${
+                      document.accepted
+                        ? `<span class="status-badge status-badge-accepted" data-testid="accept-legal-${escapeHtml(document.route.replace(/\//g, '-'))}" aria-label="Accepted ${escapeHtml(document.title)}">Accepted</span>`
+                        : `<button type="button" class="secondary" data-legal-route="${escapeHtml(document.route)}"
                       data-testid="accept-legal-${escapeHtml(document.route.replace(/\//g, '-'))}"
-                      aria-label="${document.accepted ? `Accepted ${escapeHtml(document.title)}` : `Record acceptance of ${escapeHtml(document.title)}`}"
-                      aria-disabled="${busy || document.accepted}">
-                      ${document.accepted ? 'Accepted' : 'Record acceptance'}
-                    </button>
+                      aria-label="Record acceptance of ${escapeHtml(document.title)}"
+                      aria-disabled="${busy}">
+                      Record acceptance
+                    </button>`
+                    }
                   </li>`,
                       )
                       .join('')
@@ -681,35 +680,6 @@ export function mountAccountPage(host: PageHost): void {
               failure instanceof ApiFailure
                 ? failure.message
                 : 'Presentation settings could not be saved.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="account-leave"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            await signOutAccount(candidate);
-            clearPresentationPreferences();
-            deletionStatus = null;
-            legalAcceptance = null;
-            if (candidate.environmentClass === 'milestone') {
-              navigate('/', { replace: true });
-            }
-            shell.announce('Signed out.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure ? failure.message : 'Could not sign out.';
           } finally {
             busy = false;
             render();

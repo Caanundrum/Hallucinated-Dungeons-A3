@@ -432,6 +432,19 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               : `<p class="message success" data-testid="session-action-message">${escapeHtml(sessionMessage)}</p>`
           }
           ${
+            memory === null
+              ? ''
+              : `<section class="panel panel-nested" aria-labelledby="campaign-session-tools-heading" data-testid="campaign-session-tools">
+                   <h3 id="campaign-session-tools-heading">Your session tools</h3>
+                   <p class="record-meta">Personal session tools for anyone at this table.</p>
+                   <div class="actions">
+                     <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
+                       View personal recap
+                     </button>
+                   </div>
+                 </section>`
+          }
+          ${
             memory === null || !campaign.isCampaignOwner
               ? ''
               : `<section class="panel panel-nested" aria-labelledby="campaign-owner-heading" data-testid="campaign-owner-panel">
@@ -449,28 +462,39 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                        aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
                        ${sessionBusy ? 'Working…' : 'Resume session'}
                      </button>
-                     <button type="button" class="secondary" data-testid="view-recap" aria-disabled="${sessionBusy}">
-                       View personal recap
-                     </button>
-                     <button type="button" class="secondary" data-testid="close-chapter"
+                     ${
+                       memorySnapshot?.adventureTemplateId === null ||
+                       memorySnapshot?.adventureTemplateId === undefined
+                         ? ''
+                         : `<button type="button" class="secondary" data-testid="close-chapter"
                        aria-disabled="${sessionBusy || !canCloseChapter ? 'true' : 'false'}">
                        Close chapter &amp; travel
-                     </button>
+                     </button>`
+                     }
                    </div>
-                   <p class="record-meta" data-testid="chapter-travel-hint">
+                   ${
+                     memorySnapshot?.adventureTemplateId === null ||
+                     memorySnapshot?.adventureTemplateId === undefined
+                       ? ''
+                       : `<p class="record-meta" data-testid="chapter-travel-hint">
                      ${
                        encounterActive
                          ? 'End the active encounter on the table before closing this chapter or suspending the session.'
-                         : memorySnapshot?.adventureTemplateId === null ||
-                             memorySnapshot?.adventureTemplateId === undefined
-                           ? ownSeat === null
-                             ? 'Seat a character before closing a chapter. Blank-table campaigns have no chapter path until a starter adventure is seeded.'
-                             : 'This blank table has no chapter path. Closing a chapter only applies when a starter adventure is seeded.'
-                           : ownSeat === null
-                             ? 'Seat a character before closing a chapter. Closing advances the seeded adventure to the next scene and needs confirmation.'
-                             : 'Closing the current chapter asks for confirmation, then advances the seeded adventure to the next tactical scene. End any active encounter first.'
+                         : ownSeat === null
+                           ? 'Seat a character before closing a chapter. Closing advances the seeded adventure to the next scene and needs confirmation.'
+                           : 'Closing the current chapter asks for confirmation, then advances the seeded adventure to the next tactical scene. End any active encounter first.'
                      }
-                   </p>
+                   </p>`
+                   }
+                   ${
+                     encounterActive &&
+                     (memorySnapshot?.adventureTemplateId === null ||
+                       memorySnapshot?.adventureTemplateId === undefined)
+                       ? `<p class="record-meta" data-testid="chapter-travel-hint">
+                     End the active encounter on the table before suspending the session.
+                   </p>`
+                       : ''
+                   }
                  </section>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}

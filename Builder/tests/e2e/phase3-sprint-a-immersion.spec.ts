@@ -60,9 +60,9 @@ test.describe('Phase 3 Sprint A: immersion & combat drama', () => {
 
     await page.getByTestId('open-table-sheet-modal').click();
     await expect(page.getByTestId('table-sheet-modal')).toBeVisible();
-    await page.getByTestId('sheet-hp-damage').click();
-    await expect(page.getByTestId('combat-floater')).toBeVisible({ timeout: 3_000 });
-    await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-damage-floater.png' });
+    await expect(page.getByTestId('sheet-hp-damage')).toHaveCount(0);
+    const sheetHref = await page.getByTestId('sheet-modal-full-page-link').getAttribute('href');
+    expect(sheetHref).toMatch(/\/characters\//);
     await page.getByTestId('close-table-sheet-modal').click();
 
     // Force Nat 20 / Nat 1 drama via Math.random stubs.

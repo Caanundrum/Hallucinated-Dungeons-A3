@@ -140,7 +140,8 @@ export function resolveDoorIntentForMap(
   const wantsOpen = !wantsUnlock && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
   const wantsCross = wantsDoorPassage(text);
   const wantsInspect =
-    /(inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)/.test(text) &&
+    /\b(?:inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)\b/.test(text) &&
+    !/\b(?:investigat|search\s+for|trap|disarm)\b/.test(text) &&
     !wantsOpen &&
     !wantsUnlock;
 
