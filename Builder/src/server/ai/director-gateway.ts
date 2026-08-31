@@ -401,7 +401,7 @@ const NARRATOR_CONSTITUTION = [
   'Never claim the party left the current scene, entered a new location, or abandoned the named chamber unless the mechanics summary explicitly says a scene change occurred.',
   'Stepping through a doorway on the same map keeps the current scene — describe the step, not a departure.',
   'When mechanics say "no trap found" or that the character cannot tell, narrate only what they detect — never absolute safety, omniscient clearance, or that the area is completely free of traps.',
-  'Keep narration scoped to the confirmed target in the mechanics summary; do not expand one check into a room-wide sweep.',
+  'Keep narration scoped to the named target in the mechanics summary (for example the wooden doorway east); never replace that name with vague phrases like the area, the room, or the target.',
   'If framing tags are present (crit, finishing_blow, near_miss, heroic_failure, bold_stunt, overkill), lean into cinematic emphasis for that beat without altering the outcome.',
   'Write in second person. Keep paragraphs short. Do not open with a title or heading.',
   'If the player tried something not present in the scene state, clarify the gap in-world without granting it.',
@@ -690,6 +690,39 @@ function scrubFalseSceneDeparture(body: string, mechanicsSummary: string): strin
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
 }
 
+/** Extract the named inspect/trap target from mechanics prose (FQA-003). */
+function namedTargetFromMechanics(mechanicsSummary: string): string | null {
+  const mechanics = mechanicsSummary.trim();
+  const targetMatch =
+    /Trap search on (?:the\s+)?([^.——\n(]+?)(?:\s*\(|\s*—|\s*-|\.|$)/i.exec(mechanics) ??
+    /(?:no trap found on|cannot tell if)\s+(?:the\s+)?([^.!?\n]+?)(?:\s+is trapped)?[.!]?$/i.exec(
+      mechanics,
+    ) ??
+    /(?:inspect(?:ing)?|examining|examined|search(?:ing)?)\s+(?:the\s+)?([^.——\n(]+?)(?:\s*(?:—|-|DC|\(|\.|,)|$)/i.exec(
+      mechanics,
+    ) ??
+    /Ready to (?:inspect|search)\s+(?:the\s+)?([^.——\n(]+?)(?:\s+for traps)?/i.exec(mechanics) ??
+    /\b((?:wooden\s+)?door(?:way)?(?:\s+(?:east|west|north|south))?)\b/i.exec(mechanics);
+  const rawTarget = targetMatch?.[1]?.trim();
+  if (rawTarget === undefined || rawTarget.length === 0) {
+    return null;
+  }
+  const target = rawTarget
+    .replace(/\s+/g, ' ')
+    .replace(/\s+$/g, '')
+    .replace(/^the\s+/i, '');
+  if (
+    !/\bdoor(?:way)?\b|\bfeature\b|\bbench\b|\bcounter\b|\blamp\b|\bhearth\b/i.test(target) &&
+    !/\bwooden\b/i.test(target)
+  ) {
+    return null;
+  }
+  if (/^confirmed target$/i.test(target)) {
+    return null;
+  }
+  return target;
+}
+
 /**
  * Trap-search mechanics that report "no trap found" must not become omniscient safety.
  */
@@ -700,6 +733,7 @@ export function scrubFalseTrapCertainty(body: string, mechanicsSummary: string):
   if (!noTrapFound && !uncertain) {
     return body;
   }
+  const named = namedTargetFromMechanics(mechanics) ?? 'confirmed target';
   let scrubbed = body
     .replace(
       /\b(?:completely |entirely |totally )?(?:safe|clear|free of traps|without traps|trap[- ]free)\b[^.!?\n]*/gi,
@@ -711,7 +745,7 @@ export function scrubFalseTrapCertainty(body: string, mechanicsSummary: string):
     )
     .replace(
       /\b(?:confirms?|proves?|guarantees?) (?:the )?(?:area|room|chamber|doorway) (?:is|are) (?:completely )?(?:safe|clear)\b[^.!?\n]*/gi,
-      'finds no sign of a trap on the confirmed target',
+      `finds no sign of a trap on the ${named}`,
     );
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
 }
@@ -720,33 +754,25 @@ export function scrubFalseTrapCertainty(body: string, mechanicsSummary: string):
  * One confirmed inspect target must not expand into a room-wide sweep in prose.
  */
 export function scrubExpandedInspectScope(body: string, mechanicsSummary: string): string {
-  const mechanics = mechanicsSummary.trim();
-  const targetMatch =
-    /(?:inspect(?:ing)?|examining|examined|search(?:ing)?)\s+(?:the\s+)?([^.——\n(]+?)(?:\s*(?:—|-|DC|\(|\.|,)|$)/i.exec(
-      mechanics,
-    ) ??
-    /Ready to inspect\s+(?:the\s+)?([^.——\n(]+)/i.exec(mechanics);
-  const rawTarget = targetMatch?.[1]?.trim();
-  if (rawTarget === undefined || rawTarget.length === 0) {
+  const named = namedTargetFromMechanics(mechanicsSummary);
+  if (named === null) {
     return body;
   }
-  const target = rawTarget.replace(/\s+/g, ' ').replace(/\s+$/g, '');
-  if (!/\bdoor(?:way)?\b|\bfeature\b|\bbench\b|\bcounter\b|\blamp\b|\bhearth\b/i.test(target)) {
-    return body;
-  }
-  const named = target.replace(/^the\s+/i, '');
   let scrubbed = body
     .replace(
       /\b(?:timber\s+)?floorboards?(?:,?\s*(?:the\s+)?doorframes?)?(?:,?\s*and\s+(?:the\s+)?(?:nearby\s+)?furnishings?)?\b/gi,
       named,
     )
     .replace(/\b(?:doorframe|furnishings?|nearby furnishings?)\b/gi, named)
-    .replace(
-      /\b(?:the\s+)?(?:entire\s+)?(?:area|room|chamber|surroundings|target)\b(?=[^.!?\n]{0,48}\b(?:inspect|examin|search|sweep|probe|spot|find|notice))/gi,
-      `the ${named}`,
-    )
+    .replace(/\bthe confirmed target\b/gi, `the ${named}`)
     .replace(/\bthe target\b/gi, `the ${named}`)
-    .replace(/\bthe area\b/gi, `the ${named}`);
+    .replace(/\bthis area\b/gi, `the ${named}`)
+    .replace(/\bthat area\b/gi, `the ${named}`)
+    .replace(/\bthe area\b/gi, `the ${named}`)
+    .replace(
+      /\b(?:the\s+)?(?:entire\s+)?(?:room|chamber|surroundings)\b(?=[^.!?\n]{0,64}\b(?:inspect|examin|search|sweep|probe|spot|find|notice|mechanism))/gi,
+      `the ${named}`,
+    );
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || body;
 }
 

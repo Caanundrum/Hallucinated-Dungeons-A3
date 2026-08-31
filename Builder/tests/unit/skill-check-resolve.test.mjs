@@ -65,6 +65,19 @@ test('PQA-156: resolving Ready-to draft rolls checks and returns outcomes', () =
   assert.equal(typeof resolved.lockYielded, 'boolean');
 });
 
+test('FQA-003: resolved trap search names the wooden doorway from the draft', () => {
+  const draft = buildSkillCheckDraftSummary(
+    stubSheet({ tools: true }),
+    'I inspect the wooden doorway east for traps without touching it.',
+  );
+  assert.match(draft, /wooden doorway east/i);
+  const resolved = resolveSkillAttemptFromSummary(stubSheet({ tools: true }), draft);
+  assert.ok(resolved);
+  assert.match(resolved.summary, /Trap search on the wooden doorway east/i);
+  assert.match(resolved.summary, /wooden doorway east/i);
+  assert.doesNotMatch(resolved.summary, /confirmed target/i);
+});
+
 test('A1: unlocked-door language does not draft a lock attempt', () => {
   const summary = buildSkillCheckDraftSummary(
     stubSheet({ tools: true }),

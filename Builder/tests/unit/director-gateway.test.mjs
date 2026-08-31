@@ -569,12 +569,12 @@ test('buildSceneSurveyNarration stays inside the validated map', () => {
 test('FQA-001: scrubFalseTrapCertainty blocks omniscient safety claims', async () => {
   const { scrubFalseTrapCertainty } = await import('../../dist/server/ai/director-gateway.js');
   const mechanics =
-    'Trap search (Investigation +5): d20 14 +5 = 19 vs DC 13 — no trap found on the confirmed target.';
+    'Trap search on the wooden doorway east (Investigation +5): d20 14 +5 = 19 vs DC 13 — no trap found on the wooden doorway east.';
   const embellished =
     'Your keen eye confirms the area is completely safe and free of traps.';
   const scrubbed = scrubFalseTrapCertainty(embellished, mechanics);
   assert.doesNotMatch(scrubbed, /completely safe|free of traps/i);
-  assert.match(scrubbed, /no sign of a trap|confirmed target/i);
+  assert.match(scrubbed, /no sign of a trap|wooden doorway east/i);
 });
 
 test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target', async () => {
@@ -585,6 +585,18 @@ test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target
   const scrubbed = scrubExpandedInspectScope(expanded, mechanics);
   assert.doesNotMatch(scrubbed, /floorboards|furnishings/i);
   assert.match(scrubbed, /doorway/i);
+});
+
+test('FQA-003: scrubExpandedInspectScope renames the area from trap-search mechanics', async () => {
+  const { scrubExpandedInspectScope } = await import('../../dist/server/ai/director-gateway.js');
+  const mechanics =
+    'Trap search on the wooden doorway east (Investigation +5): d20 14 +5 = 19 vs DC 13 — no trap found on the wooden doorway east.';
+  const scrubbed = scrubExpandedInspectScope(
+    'You probe the area carefully and spot no mechanisms.',
+    mechanics,
+  );
+  assert.doesNotMatch(scrubbed, /\bthe area\b/i);
+  assert.match(scrubbed, /wooden doorway east/i);
 });
 
 test('FQA-R05: scrubEngineCoordinates removes grid ids from Ask DM prose', async () => {

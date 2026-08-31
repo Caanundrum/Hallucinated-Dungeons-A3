@@ -270,7 +270,7 @@ export function mountAccountPage(host: PageHost): void {
             <p class="record-meta" data-testid="account-session-renewal-note">
               Your browser session expires at the time above. Sign in again to renew it. If the session
               ends while you are playing, unsent draft text in the Communication Dock may be lost, but
-              characters, campaigns, and table state already saved on the server stay on your account.
+              characters and tables already saved on the server stay on your account.
             </p>
             <div class="actions">
               <a href="/characters" data-link data-testid="account-characters-link">Open Character Vault</a>
@@ -378,7 +378,7 @@ export function mountAccountPage(host: PageHost): void {
           <section class="panel" aria-labelledby="legal-acceptance-heading">
             <h2 id="legal-acceptance-heading">Legal acceptance</h2>
             <p class="record-meta">
-              Accept every current legal document before creating characters, campaigns, or playing at
+              Accept every current legal document before creating characters, tables, or playing at
               the table. When you record acceptance, the server stores the current route, version, and
               content digest.
             </p>

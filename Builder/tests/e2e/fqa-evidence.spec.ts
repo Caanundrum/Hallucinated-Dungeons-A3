@@ -40,10 +40,14 @@ test('FQA evidence screenshots', async ({ page }) => {
   await page.goto('/');
   await dismissIntroIfPresent(page);
   await expect(page.getByTestId('home-campaigns-link')).toContainText(/Open Tables/i);
+  await expect(page.locator('#status-heading').locator('..')).toContainText(/create a table|join tables/i);
+  await expect(page.locator('#status-heading').locator('..')).not.toContainText(/create a campaign|join campaigns/i);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-home-tables-copy.png', fullPage: true });
 
   await page.goto('/account');
   await expect(page.getByTestId('account-sign-out')).toHaveCount(0);
+  await expect(page.getByTestId('account-session-renewal-note')).toContainText(/characters and tables/i);
+  await expect(page.getByTestId('account-session-renewal-note')).not.toContainText(/campaigns/i);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-account-shell.png', fullPage: true });
   // FQA-040: Admin nav only when bootstrap admin; ordinary players keep it hidden.
   const bootstrap = page.getByTestId('account-is-bootstrap-admin');
@@ -97,6 +101,27 @@ test('FQA evidence screenshots', async ({ page }) => {
   await page.waitForTimeout(300);
   await expect(page.getByRole('button', { name: /Reset zoom to 100%/i })).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-map-reset-zoom.png' });
+
+  // FQA-023: outer action section must not scroll; thread list is the only vertical owner.
+  const scrollOwners = await page.evaluate(() => {
+    const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
+    const list = document.querySelector('[data-testid="dm-play-thread-list"]') as HTMLElement | null;
+    const styleOf = (el: HTMLElement | null) =>
+      el === null ? null : getComputedStyle(el).overflowY;
+    return {
+      actionOverflowY: styleOf(action),
+      listOverflowY: styleOf(list),
+      actionScrollable:
+        action !== null &&
+        action.scrollHeight > action.clientHeight + 1 &&
+        /(auto|scroll)/.test(getComputedStyle(action).overflowY),
+      listCanScroll: list !== null && /(auto|scroll)/.test(getComputedStyle(list).overflowY),
+    };
+  });
+  expect(scrollOwners.actionOverflowY).toMatch(/hidden|clip|visible/);
+  expect(scrollOwners.actionScrollable).toBe(false);
+  expect(scrollOwners.listCanScroll).toBe(true);
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-023-scroll-owners.png' });
 });
 
 test('FQA-R01/R04 correction reason and session action exclusivity', async ({ page }) => {
@@ -126,4 +151,43 @@ test('FQA-R01/R04 correction reason and session action exclusivity', async ({ pa
   await expect(page.getByTestId('suspend-session')).toBeVisible();
   await expect(page.getByTestId('resume-session')).toHaveCount(0);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-session-suspend-only.png', fullPage: true });
+});
+
+test('FQA-R06 confirm clears draft UI before slow narration', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await dismissIntroIfPresent(page);
+  await enterAccountFromShell(page);
+  await seatAndOpenTable(page, 'FQAR06');
+  await expect(page.getByTestId('begin-adventure')).toBeVisible();
+  await page.getByTestId('begin-adventure').click();
+  await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
+  await expect(page.getByTestId('cancel-intent-intercept')).toBeVisible();
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-batch3-r06-before-confirm.png' });
+  const started = Date.now();
+  await page.getByTestId('confirm-intent-intercept').click();
+  await expect
+    .poll(
+      async () => {
+        const cancel = await page.getByTestId('cancel-intent-intercept').count();
+        const resolving = await page.getByTestId('intent-intercept-resolving').count();
+        const confirm = page.getByTestId('confirm-intent-intercept');
+        const confirmCount = await confirm.count();
+        if (cancel > 0) return 'cancel-still-visible';
+        if (resolving > 0) return 'resolving';
+        if (confirmCount === 0) return 'cleared';
+        const label = await confirm.innerText();
+        const disabled = await confirm.getAttribute('aria-disabled');
+        if (disabled === 'true' && /Resolving/i.test(label)) return 'resolving';
+        return 'pending';
+      },
+      { timeout: 3_000 },
+    )
+    .toMatch(/^(resolving|cleared)$/);
+  const clearMs = Date.now() - started;
+  expect(clearMs).toBeLessThan(2_500);
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-batch3-r06-confirm-clear.png' });
+  await page.waitForTimeout(2_000);
+  await expect(page.getByTestId('cancel-intent-intercept')).toHaveCount(0);
 });
