@@ -42,7 +42,7 @@ export interface SceneVisualPresentation {
   readonly lightWash: SceneLightWash;
   readonly threat: SceneThreatFrame;
   readonly elevationCue: 'flat' | 'raised' | 'span';
-  readonly terrainBias: 'dry' | 'damp' | 'stone' | 'timber' | 'open';
+  readonly terrainBias: 'dry' | 'damp' | 'stone' | 'timber' | 'canopy' | 'open';
   readonly hasLitLight: boolean;
   readonly semanticSummary: string;
 }
@@ -133,8 +133,9 @@ export function terrainBiasFromAtmosphere(
     case 'ruined_open':
       return 'stone';
     case 'enclosed_warm':
-    case 'wooded_path':
       return 'timber';
+    case 'wooded_path':
+      return 'canopy';
     case 'open_clearing':
     case 'settled_street':
       return 'open';
@@ -193,6 +194,8 @@ export function terrainFillCss(
         return '#0c1820';
       case 'timber':
         return '#1a120c';
+      case 'canopy':
+        return '#0e1810';
       case 'stone':
         return '#141218';
       case 'open':
@@ -207,6 +210,8 @@ export function terrainFillCss(
         return '#243a3c';
       case 'timber':
         return '#3a3024';
+      case 'canopy':
+        return '#243828';
       case 'stone':
         return '#2e3438';
       case 'open':
@@ -220,6 +225,8 @@ export function terrainFillCss(
       return '#2a3836';
     case 'timber':
       return '#3a2e22';
+    case 'canopy':
+      return '#2a3824';
     case 'stone':
       return '#2c2a28';
     case 'open':
@@ -244,6 +251,8 @@ export function voidFillCss(bias: SceneVisualPresentation['terrainBias']): strin
       return '#061018';
     case 'open':
       return '#0c1410';
+    case 'canopy':
+      return '#08120c';
     case 'stone':
       return '#0a0a0e';
     case 'timber':

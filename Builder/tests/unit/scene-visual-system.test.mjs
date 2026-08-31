@@ -77,12 +77,47 @@ describe('Director scene visual system', () => {
     }).family, 'family_npc');
   });
 
-  it('makes wet and enclosed terrain fills differ', () => {
+  it('makes wet, wooded canopy, and enclosed timber terrain fills differ', () => {
     const warmFloor = terrainFillCss('floor', true, 'timber');
+    const canopyFloor = terrainFillCss('floor', true, 'canopy');
     const wetFloor = terrainFillCss('floor', true, 'damp');
     const wetDifficult = terrainFillCss('difficult', true, 'damp');
     assert.notEqual(warmFloor, wetFloor);
+    assert.notEqual(warmFloor, canopyFloor);
     assert.notEqual(wetFloor, wetDifficult);
+  });
+
+  it('maps forest_path to canopy bias, not timber interiors', () => {
+    const wooded = resolveSceneVisuals({
+      campaignId: 'c',
+      mapBundleId: 'director:wood:c',
+      mapVersion: 1,
+      title: 'Thicket',
+      coordinateSpace: {
+        coordinateSpaceId: 's',
+        schemaVersion: 'phase2-map-v1',
+        columns: 10,
+        rows: 8,
+        feetPerSquare: 5,
+        pixelsPerSquare: 48,
+      },
+      cells: [],
+      edges: [],
+      tokens: [],
+      artProvenance: 'procedural_local_placeholder',
+      sceneBanner: 'banner',
+      notableFeatures: [],
+      sceneEnvironment: 'forest_path',
+      sceneLighting: 'overcast',
+      scenePurpose: 'encounter',
+      sceneMood: 'threat',
+      viewerSeatId: null,
+      exploredSquareIds: [],
+      visibleSquareIds: [],
+    });
+    assert.equal(wooded.atmosphere, 'wooded_path');
+    assert.equal(wooded.terrainBias, 'canopy');
+    assert.equal(wooded.threat, 'threat_encounter');
   });
 
   it('builds presentation from map contract fields only', () => {

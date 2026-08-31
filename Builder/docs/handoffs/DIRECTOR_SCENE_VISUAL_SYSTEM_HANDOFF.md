@@ -21,16 +21,16 @@ Optional: resize to phone width and confirm labels/atmosphere remain readable. T
 
 ## What changes between scenes
 
-- Atmosphere wash family (warm enclosed / wet fog / elevated / threat frame).
-- Terrain fill bias (timber vs damp vs stone) and texture overlays.
+- Atmosphere wash family (warm enclosed / wet fog / **wooded canopy** / elevated / threat frame).
+- Terrain fill bias (**timber** interiors vs **canopy** wooded paths vs damp vs stone) and texture overlays.
 - Light wash (torchlit vs darkened when lights are extinguished).
 - Threat inset frame on encounter purpose.
 - Elevation frame on elevated environments.
-- Brief discover transition on Director scene change (respects reduced motion).
+- Brief discover transition on Director scene change (Map help → Preview discovery cue; respects reduced motion).
 
 ## Reusable families demonstrated
 
-- Terrain: floor / difficult / blocked with damp|timber|stone|open bias.
+- Terrain: floor / difficult / blocked with damp|timber|**canopy**|stone|open bias.
 - Objects: light (lit/unlit), cover (intact/broken), hazard, exit passage/vertical, creature/npc, party token.
 - Atmosphere / light wash / threat frame from contract fields only — not fixture titles.
 
