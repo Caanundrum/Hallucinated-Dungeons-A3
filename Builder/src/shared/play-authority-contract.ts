@@ -99,28 +99,40 @@ export function formatDoorAuthorityStateSuffix(state: DoorAuthorityState): strin
 
 /**
  * Player-facing door name used on map chips, a11y, and detail copy.
- * One canonical pattern: `Wooden door east — closed` (state appended, not renamed).
+ * One canonical pattern: `Wooden doorway east — closed` (state appended, not renamed).
  */
 export function formatDoorPlayerFacingLabel(
   state: DoorAuthorityState,
   facing: string,
 ): string {
-  return `Wooden door ${facing} — ${formatDoorAuthorityStateSuffix(state)}`;
+  return `Wooden doorway ${facing} — ${formatDoorAuthorityStateSuffix(state)}`;
+}
+
+/** Normalize exit/door labels so doorway vs door + state suffixes collapse to one key. */
+export function canonicalDoorFeatureKey(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/—/g, '-')
+    .replace(/\s*\((?:open|closed|locked|unlocked)[^)]*\)\s*/gi, ' ')
+    .replace(/\s*-\s*(?:open|closed|locked|unlocked).*$/i, ' ')
+    .replace(/\bdoorways?\b/g, 'door')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 /** Player-facing spatial label — must expose lock when known. */
 export function formatDoorAuthorityLabel(state: DoorAuthorityState): string {
   const suffix = formatDoorAuthorityStateSuffix(state);
   if (state.leaf === 'open') {
-    return 'Wooden door (open)';
+    return 'Wooden doorway (open)';
   }
   if (state.lock === 'locked') {
-    return 'Wooden door (closed, locked)';
+    return 'Wooden doorway (closed, locked)';
   }
   if (state.lock === 'unlocked') {
-    return 'Wooden door (closed, unlocked)';
+    return 'Wooden doorway (closed, unlocked)';
   }
-  return `Wooden door (${suffix})`;
+  return `Wooden doorway (${suffix})`;
 }
 
 /** Structured parse of a player declaration — not a fixed keyword precedence list. */

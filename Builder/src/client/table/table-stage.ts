@@ -30,6 +30,7 @@ import { escapeHtml } from '../dom-utils.js';
 import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
+  canonicalDoorFeatureKey,
 } from '../../shared/play-authority-contract.js';
 import {
   objectVisualFamily,
@@ -368,12 +369,10 @@ function paintSemanticSvg(
             Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
         );
         if (nearbyDoor !== undefined) {
-          const state = nearbyDoor.doorState ?? 'closed';
-          const base = feature.label
-            .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-          fullLabel = `${base} — ${state}`;
+          fullLabel = formatDoorPlayerFacingLabel(
+            doorAuthorityFromStored(nearbyDoor.doorState),
+            nearbyDoor.orientation,
+          );
         }
       }
       return {
@@ -416,7 +415,20 @@ function paintSemanticSvg(
         };
       }),
   ];
-  const labelPlacements = layoutMapLabels(labelAnchors, {
+  // FQA-017: one canonical door name — drop edge chips that duplicate exit markers.
+  const seenDoorKeys = new Set<string>();
+  const dedupedAnchors = labelAnchors.filter((anchor) => {
+    if (anchor.referenceKind !== 'exit' && !/^door:/.test(anchor.id)) {
+      return true;
+    }
+    const key = canonicalDoorFeatureKey(anchor.fullLabel);
+    if (seenDoorKeys.has(key)) {
+      return false;
+    }
+    seenDoorKeys.add(key);
+    return true;
+  });
+  const labelPlacements = layoutMapLabels(dedupedAnchors, {
     mapWidth: width,
     mapHeight: height,
     pixelsPerSquare,
@@ -828,16 +840,15 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       applyZoom(1);
       return;
     }
-    // Contain the full Director scene — no forced horizontal crop/scrollbar at default Fit.
+    // Contain the full Director scene — never force horizontal overflow after Fit.
+    // Reserve space for outward label plates that extend past the grid bounds.
+    const labelPad = Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
     const pad = 8;
-    const vw = Math.max(48, viewport.clientWidth - pad);
-    const vh = Math.max(48, viewport.clientHeight - pad);
+    const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
+    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.5);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const { pixelsPerSquare } = currentMap.coordinateSpace;
-    // Keep cells readable on tiny viewports without exceeding the frame.
-    const minReadable = 22 / Math.max(pixelsPerSquare, 1);
-    const fit = Math.min(Math.max(contain * 0.98, Math.min(minReadable, contain)), contain);
-    applyZoom(Math.max(0.35, fit));
+    const fit = Math.min(contain * 0.96, contain);
+    applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({
       left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
       top: Math.max(0, (size.height * zoomScale - viewport.clientHeight) / 2),

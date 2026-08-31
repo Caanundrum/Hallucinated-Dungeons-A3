@@ -249,7 +249,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
           <div class="actions">
             <button type="button" data-testid="retry-campaign-detail">Try again</button>
-            <a href="/campaigns" data-link data-testid="back-to-campaigns">Back to campaigns</a>
+            <a href="/campaigns" data-link data-testid="back-to-campaigns">Back to Tables</a>
           </div>
         </div>`;
       container
@@ -282,6 +282,11 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       sessionZeroComplete &&
       memorySnapshot !== null &&
       memorySnapshot.session.state !== 'suspended' &&
+      !encounterActive;
+    const canResumeSession =
+      sessionZeroComplete &&
+      memorySnapshot !== null &&
+      memorySnapshot.session.state === 'suspended' &&
       !encounterActive;
     const canSeatCharacter = sessionZeroComplete;
     const canInvitePlayers = sessionZeroComplete && campaign.isCampaignOwner;
@@ -454,14 +459,36 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                      Confirm major changes with your players first.
                    </p>
                    <div class="actions">
-                     <button type="button" data-testid="suspend-session"
-                       aria-disabled="${sessionBusy || !canSuspendSession ? 'true' : 'false'}">
+                     ${
+                       canSuspendSession
+                         ? `<button type="button" data-testid="suspend-session"
+                       aria-disabled="${sessionBusy ? 'true' : 'false'}">
                        ${sessionBusy ? 'Working…' : 'Suspend session'}
-                     </button>
-                     <button type="button" class="secondary" data-testid="resume-session"
-                       aria-disabled="${sessionBusy || memory.session.state !== 'suspended' ? 'true' : 'false'}">
+                     </button>`
+                         : ''
+                     }
+                     ${
+                       canResumeSession
+                         ? `<button type="button" class="secondary" data-testid="resume-session"
+                       aria-disabled="${sessionBusy ? 'true' : 'false'}">
                        ${sessionBusy ? 'Working…' : 'Resume session'}
-                     </button>
+                     </button>`
+                         : ''
+                     }
+                   </div>
+                   ${
+                     encounterActive
+                       ? `<p class="record-meta" data-testid="session-encounter-gate">
+                            End the active encounter before ${
+                              memorySnapshot?.session.state === 'suspended' ? 'resuming' : 'suspending'
+                            } the session.
+                          </p>`
+                       : memorySnapshot?.session.state === 'active'
+                         ? `<p class="record-meta" data-testid="session-active-notice">
+                              Session is active. Resume stays unavailable until you suspend.
+                            </p>`
+                         : ''
+                   }
                      ${
                        memorySnapshot?.adventureTemplateId === null ||
                        memorySnapshot?.adventureTemplateId === undefined
@@ -606,7 +633,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           }
         </section>
 
-        <p><a href="/campaigns" data-link data-testid="back-to-campaigns">Back to campaigns</a></p>
+        <p><a href="/campaigns" data-link data-testid="back-to-campaigns">Back to Tables</a></p>
       </div>`;
 
     container

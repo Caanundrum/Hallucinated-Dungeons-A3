@@ -681,6 +681,8 @@ export async function updateCharacterTrackers(options: {
     readonly quantity: number;
     readonly equipped?: boolean;
   }[];
+  /** Required player-facing unlock reason for correction-mode audits (FQA-R01). */
+  readonly auditReason?: string;
 }): Promise<CharacterProjection> {
   const { firestore, accountId, characterId } = options;
   const stored = await loadOwnedCharacter(firestore, accountId, characterId);
@@ -726,6 +728,9 @@ export async function updateCharacterTrackers(options: {
   };
   await progressionRef.set(next);
   const reasonParts: string[] = [];
+  if (options.auditReason !== undefined && options.auditReason.trim().length > 0) {
+    reasonParts.push(options.auditReason.trim());
+  }
   if (options.hitPointsCurrent !== undefined) {
     reasonParts.push(`HP set to ${options.hitPointsCurrent}`);
   }

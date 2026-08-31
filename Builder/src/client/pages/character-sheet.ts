@@ -53,6 +53,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let loadoutError: string | null = null;
   let trackerBusy = false;
   let correctionUnlocked = false;
+  let correctionReasonDraft = '';
   const mountToken = beginPageMount(container);
 
   function renderLoadoutEditor(): string {
@@ -253,11 +254,18 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           <h2 id="correction-mode-heading">Correction mode</h2>
           <p class="record-meta">
             Hit point, spell slot, resource, and equipment controls are off-table ledger corrections.
-            They update your saved character and write an audit reason — they are not play declarations at the campaign table.
+            Unlocking requires an audit reason. Relock when you are done — these are not play declarations at the campaign table.
           </p>
           ${
             correctionUnlocked
-              ? `<p class="message notice" data-testid="correction-mode-unlocked">Correction controls are unlocked on this page.</p>
+              ? `<p class="message notice" data-testid="correction-mode-unlocked">
+                   Correction controls are unlocked. Audit reason: ${escapeHtml(correctionReasonDraft)}.
+                 </p>
+                 <div class="actions">
+                   <button type="button" class="secondary" data-testid="relock-correction-mode">
+                     Relock correction controls
+                   </button>
+                 </div>
                  ${
                    character.revisions !== undefined && character.revisions.length > 0
                      ? `<ul class="record-list" data-testid="correction-audit-list">
@@ -272,8 +280,13 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
                         </ul>`
                      : '<p class="record-meta" data-testid="correction-audit-empty">No ledger corrections recorded yet.</p>'
                  }`
-              : `<div class="actions">
-                   <button type="button" class="secondary" data-testid="unlock-correction-mode">
+              : `<label class="record-meta" for="correction-reason-input">Audit reason (required)</label>
+                 <input id="correction-reason-input" type="text" data-testid="correction-reason-input"
+                   maxlength="160" placeholder="Example: Fixed HP after mis-logged damage"
+                   value="${escapeHtml(correctionReasonDraft)}" />
+                 <div class="actions">
+                   <button type="button" class="secondary" data-testid="unlock-correction-mode"
+                     aria-disabled="${correctionReasonDraft.trim().length < 3 ? 'true' : 'false'}">
                      Unlock correction controls
                    </button>
                  </div>`
@@ -292,9 +305,36 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </div>`;
 
     container
+      .querySelector<HTMLInputElement>('[data-testid="correction-reason-input"]')
+      ?.addEventListener('input', (event) => {
+        correctionReasonDraft = (event.target as HTMLInputElement).value;
+        const unlock = container.querySelector<HTMLButtonElement>(
+          '[data-testid="unlock-correction-mode"]',
+        );
+        if (unlock !== null) {
+          unlock.setAttribute(
+            'aria-disabled',
+            correctionReasonDraft.trim().length < 3 ? 'true' : 'false',
+          );
+        }
+      });
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="unlock-correction-mode"]')
       ?.addEventListener('click', () => {
+        if (correctionReasonDraft.trim().length < 3) {
+          shell.announce('Enter a short audit reason before unlocking correction controls.');
+          return;
+        }
         correctionUnlocked = true;
+        renderSignedIn();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="relock-correction-mode"]')
+      ?.addEventListener('click', () => {
+        correctionUnlocked = false;
+        correctionReasonDraft = '';
         renderSignedIn();
       });
 
@@ -319,6 +359,9 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       character = await updateCharacterTrackers({
         candidateId: candidate.candidateId,
         characterId: character.characterId,
+        ...(correctionReasonDraft.trim().length > 0
+          ? { auditReason: correctionReasonDraft.trim() }
+          : {}),
         ...patch,
       });
       shell.announce(announce);

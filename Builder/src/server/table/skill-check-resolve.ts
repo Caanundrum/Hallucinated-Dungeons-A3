@@ -87,9 +87,16 @@ export function buildSkillCheckDraftSummary(
     ? 'Thieves’ Tools are on your sheet.'
     : 'Your sheet does not list Thieves’ Tools — the lock attempt uses Sleight of Hand without tool proficiency.';
 
-  const namedTarget = /\b(doorway|door|gate|lock)\b/i.test(text)
-    ? 'doorway'
-    : 'named target';
+  const namedTarget = (() => {
+    const eastWest = text.match(
+      /\b(?:the\s+)?(?:wooden\s+)?door(?:way)?(?:\s+(?:to\s+the\s+)?(east|west|north|south))?\b/i,
+    );
+    if (eastWest !== null) {
+      const facing = eastWest[1]?.toLowerCase();
+      return facing !== undefined ? `wooden doorway ${facing}` : 'wooden doorway';
+    }
+    return 'named target';
+  })();
 
   if (wantsTrap && wantsLock) {
     return [
