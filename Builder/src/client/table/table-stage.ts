@@ -359,7 +359,12 @@ function paintSemanticSvg(
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
     const fill = feature.referenceKind === 'hazard' ? '#c47a4a' : '#f2d38a';
     const kindLabel = feature.referenceKind ?? 'prop';
-    return `<g class="map-poi-target" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="map-poi-marker" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+    const isTorch = /sconce|torch|lantern|lamp|candle|braziert/i.test(feature.label);
+    const torchGlow = isTorch
+      ? `<circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.15}" fill="url(#map-torch-glow)" aria-hidden="true" />`
+      : '';
+    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="map-poi-marker" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+      ${torchGlow}
       <circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
       <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)}</title>
     </g>`;
@@ -411,6 +416,11 @@ function paintSemanticSvg(
               <rect width="8" height="8" fill="#1c2430" />
               <path d="M0 8 L8 0" stroke="#3a4a5c" stroke-width="1" stroke-opacity="0.7" />
             </pattern>
+            <radialGradient id="map-torch-glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.45" />
+              <stop offset="55%" stop-color="#f59e0b" stop-opacity="0.12" />
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+            </radialGradient>
           </defs>
           <rect width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0c0a08'}" />
           <g data-layer="terrain_art">${cells}</g>
@@ -418,7 +428,7 @@ function paintSemanticSvg(
             .filter((cell) => !cell.known)
             .map(
               (cell) =>
-                `<rect aria-hidden="true" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" class="map-square-fog-hatch" />`,
+                `<rect aria-hidden="true" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" class="map-square-fog-hatch map-fog-mist" />`,
             )
             .join('')}</g>
           <g data-layer="grid_reference">${gridLines.join('')}</g>
@@ -430,6 +440,11 @@ function paintSemanticSvg(
           <g data-layer="overhead_environment" data-testid="table-stage-notable-features"></g>
         </svg>
       </div>
+    </div>
+    <div class="table-stage-atmosphere" data-testid="table-stage-atmosphere" aria-hidden="true">
+      <span class="cavern-dust cavern-dust-a"></span>
+      <span class="cavern-dust cavern-dust-b"></span>
+      <span class="cavern-dust cavern-dust-c"></span>
     </div>
     <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
       <summary>Map help</summary>
@@ -473,7 +488,7 @@ function paintSemanticSvg(
   if (!reduceMotion) {
     requestAnimationFrame(() => {
       wrap?.querySelectorAll<SVGGElement>('g.token-moving').forEach((node) => {
-        node.style.transition = 'transform 280ms ease-out';
+        node.style.transition = 'transform 350ms cubic-bezier(0.4, 0, 0.2, 1)';
         node.style.transform = 'translate(0px, 0px)';
       });
     });

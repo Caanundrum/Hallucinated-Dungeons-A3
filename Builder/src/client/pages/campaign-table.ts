@@ -215,6 +215,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let diceTrayOpen = false;
   let diceTrayRolling = false;
   let diceTrayResult: string | null = null;
+  /** Phase 3 Sprint A — last known HP for floating combat text. */
+  let lastKnownHp: number | null = null;
+  let turnBannerSplashUntil = 0;
+  let lastOwnTurnSeen = false;
   let modalChromeCleanup: (() => void) | null = null;
   /** Mobile task surface: map / play / sheet / chat (TQA-098). */
   type MobileTaskMode = 'map' | 'play' | 'sheet' | 'chat';
@@ -1794,9 +1798,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                         .slice(index + 1)
                         .some((later) => later.kind === 'director_ruling');
                     const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
+                    const narrationClass = isLatestDirectorNarration
+                      ? ' record-note-narration illuminated-dropcap'
+                      : entry.kind === 'director_ruling'
+                        ? ' illuminated-dropcap'
+                        : '';
                     return `
-                  <li data-testid="chronicle-entry">
-                    <span class="record-note"${
+                  <li data-testid="chronicle-entry"${isLatestDirectorNarration ? ' class="chronicle-entry-latest"' : ''}>
+                    <span class="record-note${narrationClass}"${
                       isLatestDirectorNarration ? ' data-testid="director-narration"' : ''
                     }>${escapeHtml(body)}</span>
                     <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
@@ -2297,6 +2306,104 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>`;
   }
 
+  function presentationEffectsAllowed(): boolean {
+    return !(reducedMotion || lowEffects);
+  }
+
+  function spawnCombatFloater(amount: number, kind: 'damage' | 'heal' | 'temp'): void {
+    if (!presentationEffectsAllowed() || amount === 0) {
+      return;
+    }
+    const host =
+      container.querySelector<HTMLElement>('[data-testid="table-character-compact"]') ??
+      container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]') ??
+      container.querySelector<HTMLElement>('[data-testid="table-page-shell"]') ??
+      container;
+    const rect = host.getBoundingClientRect();
+    const floater = document.createElement('div');
+    floater.className = `combat-floater combat-floater-${kind}`;
+    floater.dataset.testid = 'combat-floater';
+    floater.setAttribute('aria-hidden', 'true');
+    floater.textContent =
+      kind === 'damage' ? `−${amount}` : kind === 'heal' ? `+${amount}` : `+${amount} temp`;
+    floater.style.left = `${Math.round(rect.left + rect.width * 0.5)}px`;
+    floater.style.top = `${Math.round(rect.top + Math.min(72, Math.max(24, rect.height * 0.28)))}px`;
+    document.body.appendChild(floater);
+    window.setTimeout(() => {
+      floater.remove();
+    }, 1100);
+  }
+
+  function triggerDiceDrama(kind: 'crit' | 'fumble'): void {
+    if (!presentationEffectsAllowed()) {
+      return;
+    }
+    const shellEl = container.querySelector<HTMLElement>('[data-testid="table-page-shell"]');
+    if (shellEl === null) {
+      return;
+    }
+    if (kind === 'crit') {
+      const flash = document.createElement('div');
+      flash.className = 'dice-drama-flash';
+      flash.dataset.testid = 'dice-drama-flash';
+      flash.setAttribute('aria-hidden', 'true');
+      const burst = document.createElement('div');
+      burst.className = 'dice-drama-burst';
+      burst.dataset.testid = 'dice-drama-burst';
+      burst.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(flash);
+      document.body.appendChild(burst);
+      window.setTimeout(() => {
+        flash.remove();
+        burst.remove();
+      }, 900);
+      return;
+    }
+    shellEl.classList.remove('dice-nat1-shake');
+    void shellEl.offsetWidth;
+    shellEl.classList.add('dice-nat1-shake');
+    window.setTimeout(() => {
+      shellEl.classList.remove('dice-nat1-shake');
+    }, 220);
+  }
+
+  function syncTurnBannerSplash(): void {
+    const ownTurn = isOwnCombatTurn();
+    if (ownTurn && !lastOwnTurnSeen) {
+      turnBannerSplashUntil = Date.now() + 2400;
+    }
+    lastOwnTurnSeen = ownTurn;
+  }
+
+  function turnSplashHtml(): string {
+    if (!presentationEffectsAllowed() || Date.now() > turnBannerSplashUntil || !isOwnCombatTurn()) {
+      return '';
+    }
+    const label =
+      mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ??
+      'Hero';
+    return `
+      <div class="turn-splash" data-testid="turn-splash-banner" aria-live="assertive">
+        <span class="turn-splash-kicker">Your turn</span>
+        <span class="turn-splash-name">${escapeHtml(label)}</span>
+        <span class="turn-splash-blade" aria-hidden="true"></span>
+      </div>`;
+  }
+
+  function noteHpDelta(nextHp: number): void {
+    if (lastKnownHp === null) {
+      lastKnownHp = nextHp;
+      return;
+    }
+    const delta = nextHp - lastKnownHp;
+    lastKnownHp = nextHp;
+    if (delta < 0) {
+      spawnCombatFloater(Math.abs(delta), 'damage');
+    } else if (delta > 0) {
+      spawnCombatFloater(delta, 'heal');
+    }
+  }
+
   async function rollDieInTray(sides: number): Promise<void> {
     if (diceTrayRolling) {
       return;
@@ -2317,8 +2424,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     let label = `Rolled d${sides} → ${roll}.`;
     if (sides === 20 && roll === 20) {
       label = `Natural 20 on d20!`;
+      triggerDiceDrama('crit');
     } else if (sides === 20 && roll === 1) {
       label = `Natural 1 on d20.`;
+      triggerDiceDrama('fumble');
     }
     diceTrayRolling = false;
     diceTrayResult = label;
@@ -3466,6 +3575,78 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               failure instanceof ApiFailure
                 ? failure.message
                 : 'That resource could not be spent.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-sheet-hp]').forEach((button) => {
+      button.addEventListener('click', () => {
+        void (async () => {
+          if (
+            progression === null ||
+            candidate === null ||
+            busy ||
+            button.getAttribute('aria-disabled') === 'true'
+          ) {
+            return;
+          }
+          const action = button.dataset.sheetHp;
+          const maxHp = progression.sheet.hitPoints.value;
+          let hitPointsCurrent = progression.sheet.hitPointsCurrent;
+          let temporaryHitPoints = progression.sheet.temporaryHitPoints ?? 0;
+          let announce = '';
+          let floater: { amount: number; kind: 'damage' | 'heal' | 'temp' } | null = null;
+          if (action === 'damage') {
+            if (temporaryHitPoints > 0) {
+              temporaryHitPoints -= 1;
+              announce = 'Absorbed 1 damage with temporary Hit Points.';
+              floater = { amount: 1, kind: 'damage' };
+            } else {
+              hitPointsCurrent = Math.max(0, hitPointsCurrent - 1);
+              announce = 'Took 1 damage.';
+              floater = { amount: 1, kind: 'damage' };
+            }
+          } else if (action === 'heal') {
+            if (hitPointsCurrent >= maxHp) {
+              return;
+            }
+            hitPointsCurrent = Math.min(maxHp, hitPointsCurrent + 1);
+            announce = 'Healed 1 Hit Point.';
+            floater = { amount: 1, kind: 'heal' };
+          } else if (action === 'temp') {
+            temporaryHitPoints += 1;
+            announce = 'Gained 1 temporary Hit Point.';
+            floater = { amount: 1, kind: 'temp' };
+          } else if (action === 'clear-temp') {
+            temporaryHitPoints = 0;
+            announce = 'Cleared temporary Hit Points.';
+          } else {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const updated = await updateCharacterTrackers({
+              candidateId: candidate.candidateId,
+              characterId: progression.characterId,
+              hitPointsCurrent,
+              temporaryHitPoints,
+            });
+            progression = { ...progression, sheet: updated.sheet };
+            lastKnownHp = updated.sheet.hitPointsCurrent;
+            if (floater !== null) {
+              spawnCombatFloater(floater.amount, floater.kind);
+            }
+            shell.announce(announce);
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Hit Points could not be updated.';
           } finally {
             busy = false;
             render();
@@ -4961,11 +5142,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     infoSlot.innerHTML = infoRailBody();
     actionSlot.innerHTML = playerActionBar();
+    syncTurnBannerSplash();
     commsSlot.innerHTML = commsDockBody();
     sheetModalSlot.innerHTML = characterSheetModalHtml();
     const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
     if (overlaySlot !== null) {
-      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}${diceTrayOverlayHtml()}`;
+      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}${diceTrayOverlayHtml()}${turnSplashHtml()}`;
     }
     const combatHost = container.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
     if (combatHost !== null) {
@@ -4974,6 +5156,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const diceHost = container.querySelector<HTMLElement>('[data-testid="dice-fab-host"]');
     if (diceHost !== null) {
       diceHost.innerHTML = diceFabButtonHtml();
+    }
+
+    if (progression !== null) {
+      const hpNow =
+        typeof progression.sheet.hitPointsCurrent === 'number'
+          ? progression.sheet.hitPointsCurrent
+          : progression.sheet.hitPoints.value;
+      noteHpDelta(hpNow);
+    }
+    pageShell.classList.toggle('table-combat-active', encounter?.status === 'active');
+    pageShell.classList.toggle('table-own-turn', isOwnCombatTurn());
+    if (Date.now() < turnBannerSplashUntil && presentationEffectsAllowed()) {
+      window.setTimeout(() => {
+        if (isPageMountCurrent(container, mountToken)) {
+          render();
+        }
+      }, Math.max(50, turnBannerSplashUntil - Date.now()));
     }
 
     const infoRail = container.querySelector<HTMLElement>('[data-testid="table-info-rail"]');
