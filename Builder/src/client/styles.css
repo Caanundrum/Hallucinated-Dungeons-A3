@@ -752,7 +752,13 @@ a.account-chip-label:focus-visible {
 .table-action-bar {
   flex-shrink: 0;
   margin: 0;
-  /* Cap the dock; never scroll the outer section — only .dm-thread-list scrolls (FQA-023). */
+  /*
+   * FQA-023: max-height alone does not give flex children a definite size, so the
+   * thread list grew with content (~5k px) and was clipped by overflow:hidden —
+   * newest entries were unreachable. A definite height + flex-basis:0 makes
+   * .dm-thread-list the only scroll owner inside the dock.
+   */
+  height: min(42vh, 22rem);
   max-height: min(42vh, 22rem);
   overflow: hidden;
   padding: var(--space-2) var(--space-3);
@@ -768,6 +774,11 @@ a.account-chip-label:focus-visible {
   min-height: 0;
 }
 
+.table-action-bar:has(.dm-play-thread.is-expanded) {
+  height: min(70vh, 36rem);
+  max-height: min(70vh, 36rem);
+}
+
 .table-action-bar-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -775,6 +786,9 @@ a.account-chip-label:focus-visible {
   align-items: start;
   min-height: 0;
   flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .table-action-bar-inner.table-action-bar-compact {
@@ -792,13 +806,15 @@ a.account-chip-label:focus-visible {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
 }
 
 .dm-play-thread {
-  /* Parent action bar owns height; thread fills remaining space without its own outer scroll. */
-  flex: 1 1 auto;
+  /* Take remaining dock space; never grow past the dock (FQA-023). */
+  flex: 1 1 0;
   min-height: 0;
-  max-height: none;
+  max-height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -810,9 +826,9 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread.is-expanded {
-  /* Expanded still stays inside the action bar; list remains the only scroll owner. */
-  flex: 1 1 auto;
-  max-height: none;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .dm-play-thread-chrome {
@@ -855,8 +871,10 @@ a.account-chip-label:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  flex: 1 1 auto;
-  min-height: 4.5rem;
+  /* flex-basis 0 + min-height 0: shrink below content so overflow-y creates a scroller (FQA-023). */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -926,6 +944,10 @@ a.account-chip-label:focus-visible {
 .rules-catalog-entry.selected {
   font-weight: 600;
   color: var(--color-accent, inherit);
+}
+
+.table-dashboard .panel.table-action-bar {
+  margin-bottom: 0;
 }
 
 .table-dashboard .table-turn-banner {
@@ -1133,9 +1155,15 @@ a.account-chip-label:focus-visible {
   }
 
   .table-action-bar {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
+    height: min(42dvh, 22rem);
     max-height: min(42dvh, 22rem);
     overflow: hidden;
+  }
+
+  .table-action-bar:has(.dm-play-thread.is-expanded) {
+    height: min(70dvh, 36rem);
+    max-height: min(70dvh, 36rem);
   }
 }
 
@@ -1294,24 +1322,28 @@ a.account-chip-label:focus-visible {
   }
 
   .table-dashboard[data-mobile-task='play'] .table-action-bar {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    height: auto;
     max-height: none;
     min-height: 0;
     overflow: hidden;
   }
 
   .table-dashboard[data-mobile-task='play'] .table-action-bar:has(.dm-play-thread.is-expanded) {
+    height: auto;
     max-height: none;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
-    max-height: none;
+    max-height: 100%;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
-    max-height: none;
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: 100%;
   }
 
 
