@@ -8,8 +8,10 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import {
   composeDirectorScene,
   directorNarrationBeat,
+  directorOwnedCompositionHint,
   featureLabelWithState,
   matchLandmarkDestination,
+  matchPresentedExit,
   nextObjectState,
   newSceneId,
   type ComposedScene,
@@ -155,21 +157,29 @@ function inferTravelKind(
     return { kind: 'return_hint', returnToSceneId: prior ?? null };
   }
   const active = activeSceneInstance(runtime);
-  // Open-ended landmark destinations compose outside the interior→exterior→danger chain.
-  if (matchLandmarkDestination(destinationHint)) {
-    return { kind: 'landmark', returnToSceneId: active?.sceneId ?? null };
-  }
-  if (active?.purpose === 'travel') {
-    if (/\bencounter|ambush|danger|ahead|forward|onward\b/i.test(destinationHint)) {
-      return { kind: 'encounter', returnToSceneId: active.sceneId };
+
+  // Landmark travel only when engaging a Director-presented exit — not freeform naming.
+  if (active !== null) {
+    const landmarkExits = active.exits.filter((exit) =>
+      matchLandmarkDestination(exit.destinationHint),
+    );
+    if (
+      landmarkExits.length > 0 &&
+      matchPresentedExit(landmarkExits, destinationHint) !== null
+    ) {
+      return { kind: 'landmark', returnToSceneId: active.sceneId };
     }
-    return { kind: 'landmark', returnToSceneId: active.sceneId };
+  }
+
+  if (active?.purpose === 'travel') {
+    // Forward progress from a trail is a Director encounter; player does not pick which.
+    return { kind: 'encounter', returnToSceneId: active.sceneId };
   }
   if (active?.purpose === 'exploration' || active?.purpose === 'social' || active?.purpose === 'rest') {
     return { kind: 'exterior', returnToSceneId: active.sceneId };
   }
   if (active?.purpose === 'encounter' || active?.purpose === 'hazard') {
-    if (/\bleave|travel|head|go to|climb|enter\b/i.test(destinationHint)) {
+    if (/\bleave|travel|head|go to|climb|enter|onward|forward\b/i.test(destinationHint)) {
       return { kind: 'landmark', returnToSceneId: active.sceneId };
     }
     return { kind: 'return_hint', returnToSceneId: (runtime.sceneStack ?? []).at(-1) ?? null };
@@ -230,6 +240,17 @@ export function travelSceneRuntime(options: {
     };
   }
 
+  const premise = options.runtime.premiseKey ?? 'an unfolding adventure';
+  const stackDepth = options.runtime.sceneStack?.length ?? 0;
+  // Stable Director seed — do not hash player freeform text into scene identity.
+  const seedKey = `${options.campaignId}:${inferred.kind}:${active.sceneId}:${stackDepth}`;
+  const directorHint = directorOwnedCompositionHint({
+    kind: inferred.kind,
+    premise,
+    seedKey,
+    playerDeclaration: options.destinationHint,
+    presentedExits: active.exits,
+  });
   const sceneId = newSceneId(
     inferred.kind === 'encounter'
       ? 'encounter'
@@ -240,9 +261,9 @@ export function travelSceneRuntime(options: {
   const composed = composeDirectorScene({
     kind: inferred.kind,
     sceneId,
-    premise: options.runtime.premiseKey ?? options.destinationHint,
-    destinationHint: options.destinationHint,
-    seedKey: `${options.campaignId}:${inferred.kind}:${options.destinationHint}`,
+    premise,
+    destinationHint: directorHint,
+    seedKey,
     returnToSceneId: inferred.returnToSceneId,
   });
   const runtime = applyComposedSceneToRuntime({

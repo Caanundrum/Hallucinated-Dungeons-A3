@@ -151,23 +151,23 @@ test.describe('Batch 2/3 Director scene loop', () => {
     await beginAdventure(page);
     await openTableAdvancedControls(page);
 
-    await page
-      .getByTestId('nl-intent-input')
-      .fill('climb to the ruined watchtower on the ridge');
+    // Leave into Director-authored exterior (premise), then take the presented ridge exit.
+    await page.getByTestId('nl-intent-input').fill('leave the room');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/watchtower|ridge|tower/i, {
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/marsh|boardwalk|reed/i, {
       timeout: 30_000,
     });
-    // Materially different layout — tall tower footprint, shutter, and contract exits on the map.
-    await expect(page.getByTestId('map-notable-features')).toContainText(
-      /shutter|masonry|parapet|arrow|ladder/i,
-      { timeout: 20_000 },
+    await page.getByTestId('nl-intent-input').fill('take the trail toward higher ground');
+    await page.getByTestId('interpret-nl-intent').click();
+    await confirmDraft(page);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(
+      /watchtower|ridge|tower|dock|cavern|bridge|ruin/i,
+      {
+        timeout: 30_000,
+      },
     );
-    await expect(page.getByTestId('map-notable-features')).toContainText(
-      /parapet stair|ladder back/i,
-      { timeout: 10_000 },
-    );
+    // Materially different landmark layout with contract exits on the map.
     await expect(page.getByTestId('map-exit-marker').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('map-terrain-summary')).toContainText(/[1-9]\d* exit/i);
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Marsh boardwalk/i);

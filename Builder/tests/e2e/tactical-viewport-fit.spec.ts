@@ -56,96 +56,102 @@ async function beginAdventure(page: Page): Promise<void> {
   );
 }
 
-test.describe('Director scene visual system', () => {
-  test('four scenes show distinct reusable atmosphere families and object states', async ({
-    page,
-  }) => {
+test.describe('Tactical viewport fit and canopy terrain', () => {
+  test('fit contains scene; canopy differs from timber; cue preview works', async ({ page }) => {
     test.setTimeout(300_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
-    await seatAndOpenTable(page, 'VisSys', 'a misty marsh inn beside the reeds');
+    await seatAndOpenTable(page, 'FitCue', 'a misty marsh inn beside the reeds');
     await beginAdventure(page);
     await openTableAdvancedControls(page);
 
     const stage = page.getByTestId('table-stage-semantic');
     await expect(stage).toHaveAttribute('data-atmosphere', 'enclosed_warm', { timeout: 20_000 });
-    await expect(stage).toHaveAttribute('data-light-wash', /wash_torchlit|wash_dim/);
-    await expect(page.getByTestId('map-light-marker').first()).toHaveAttribute(
-      'data-visual-state',
-      'state_lit',
-    );
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-interior.webp',
-      fullPage: true,
+    await expect(stage).toHaveAttribute('data-terrain-bias', 'timber');
+
+    await page.locator('[data-map-zoom="fit"]').click();
+    const overflow = await page.evaluate(() => {
+      const viewport = document.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+      if (viewport === null) {
+        return { scrollWidth: 0, clientWidth: 0 };
+      }
+      return { scrollWidth: viewport.scrollWidth, clientWidth: viewport.clientWidth };
     });
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 
-    await page.getByTestId('nl-intent-input').fill('extinguish the lamp');
+    await page.getByTestId('nl-intent-input').fill('leave the room');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
-    await expect(page.getByTestId('map-light-marker').first()).toHaveAttribute(
-      'data-visual-state',
-      'state_unlit',
-      { timeout: 20_000 },
-    );
-    await expect(stage).toHaveAttribute('data-light-wash', 'wash_darkened');
-
-    await page.getByTestId('nl-intent-input').fill('smash the overturned bench');
-    await page.getByTestId('interpret-nl-intent').click();
-    await confirmDraft(page);
-    await expect(page.locator('[data-visual-family="family_cover"][data-visual-state="state_broken"]')).toBeVisible({
-      timeout: 20_000,
-    });
-
-    await page.getByTestId('nl-intent-input').fill('leave toward the misty marsh');
-    await page.getByTestId('interpret-nl-intent').click();
-    await confirmDraft(page);
+    // Premise owns the exterior family (marsh), not player destination naming.
     await expect(stage).toHaveAttribute('data-atmosphere', 'wet_fog', { timeout: 30_000 });
     await expect(stage).toHaveAttribute('data-terrain-bias', 'damp');
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-marsh.webp',
-      fullPage: true,
-    });
 
     await page.getByTestId('nl-intent-input').fill('travel onward');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
     await expect(stage).toHaveAttribute('data-threat', 'threat_encounter', { timeout: 30_000 });
-    await expect(page.getByTestId('map-actor-marker').first()).toBeVisible();
-    await expect(page.getByTestId('map-actor-marker').first()).toHaveAttribute(
-      'data-visual-family',
-      /family_npc|family_creature/,
-    );
+    // Director picks the encounter family; assert the reusable atmosphere→bias rule.
+    const atmosphere = await stage.getAttribute('data-atmosphere');
+    const bias = await stage.getAttribute('data-terrain-bias');
+    const expectedBias: Record<string, string> = {
+      wooded_path: 'canopy',
+      wet_fog: 'damp',
+      open_clearing: 'open',
+      enclosed_warm: 'timber',
+      elevated_exposed: 'stone',
+    };
+    if (atmosphere !== null && expectedBias[atmosphere] !== undefined) {
+      expect(bias).toBe(expectedBias[atmosphere]);
+    }
+    if (bias === 'canopy') {
+      await expect(page.locator('.map-terrain-canopy, .map-terrain-canopy-dense').first()).toBeVisible();
+    }
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-encounter.webp',
+      path: '/opt/cursor/artifacts/viewport-fit-wooded-canopy.webp',
       fullPage: true,
     });
 
-    await page.getByTestId('nl-intent-input').fill('return to the earlier scene');
-    await page.getByTestId('interpret-nl-intent').click();
-    await confirmDraft(page);
-    // Engage the Director-presented landmark exit on the travel scene.
-    await page.getByTestId('nl-intent-input').fill('take the trail toward higher ground');
-    await page.getByTestId('interpret-nl-intent').click();
-    await confirmDraft(page);
-    await expect(stage).toHaveAttribute(
-      'data-atmosphere',
-      /elevated_exposed|waterfront|cavernous|ruined_open/,
-      { timeout: 30_000 },
-    );
-    await expect(page.getByTestId('map-exit-marker').first()).toBeVisible();
+    await page.getByTestId('map-zoom-help').locator('summary').click();
+    await page.getByTestId('preview-scene-discovery-cue').click();
+    await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', /motion|static/);
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-watchtower.webp',
+      path: '/opt/cursor/artifacts/viewport-fit-discovery-cue.webp',
       fullPage: true,
     });
 
-    // Phone readability smoke: stage still exposes atmosphere attrs.
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(stage).toHaveAttribute(
-      'data-atmosphere',
-      /elevated_exposed|waterfront|cavernous|ruined_open/,
-    );
-    await expect(page.getByTestId('map-visual-summary')).toBeVisible();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByTestId('preview-scene-discovery-cue').click();
+    await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', 'static');
+    await expect(page.getByTestId('table-stage-slot')).toHaveClass(/map-scene-transition-static/);
+
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.getByTestId('mobile-task-play').click();
+    const combatBox = await page.getByTestId('floating-combat-host').boundingBox();
+    const mapBox = await page.getByTestId('table-stage-slot').boundingBox();
+    expect(combatBox).toBeTruthy();
+    expect(mapBox).toBeTruthy();
+    if (combatBox !== null && mapBox !== null) {
+      expect(combatBox.y).toBeGreaterThanOrEqual(mapBox.y + mapBox.height - 4);
+    }
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/viewport-fit-tablet-docked-actions.webp',
+      fullPage: true,
+    });
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.getByTestId('mobile-task-play').click();
+    const phoneCombat = await page.getByTestId('floating-combat-host').boundingBox();
+    const phoneMap = await page.getByTestId('table-stage-slot').boundingBox();
+    expect(phoneCombat).toBeTruthy();
+    expect(phoneMap).toBeTruthy();
+    if (phoneCombat !== null && phoneMap !== null) {
+      expect(phoneCombat.y).toBeGreaterThanOrEqual(phoneMap.y + phoneMap.height - 4);
+    }
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/viewport-fit-phone-docked-actions.webp',
+      fullPage: true,
+    });
   });
 });

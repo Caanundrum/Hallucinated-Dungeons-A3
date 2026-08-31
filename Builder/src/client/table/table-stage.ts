@@ -77,6 +77,8 @@ function edgeHitBox(
 export interface TableStageHandle {
   readonly destroy: () => void;
   readonly renderMap: (map: MapBundleProjection) => void;
+  readonly previewDiscoveryCue: () => void;
+  readonly fitToViewport: () => void;
   readonly setSquareClickHandler: (
     handler: ((square: { column: number; row: number }) => void) | null,
   ) => void;
@@ -250,30 +252,58 @@ function paintSemanticSvg(
             : cell.known
               ? ' map-square-floor'
               : '';
-      const textureOverlay =
-        cell.known && cell.terrain === 'blocked'
-          ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-blocked" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-rubble-texture)" opacity="0.55" pointer-events="none" />`
-          : cell.known && cell.terrain === 'difficult'
-            ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-damp-texture)" opacity="${visuals.terrainBias === 'damp' ? '0.55' : '0.4'}" pointer-events="none" />`
-            : cell.known && visuals.terrainBias === 'timber'
-              ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-timber" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-timber-texture)" opacity="0.32" pointer-events="none" />`
-              : cell.known
-                ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-stone" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-stone-texture)" opacity="0.35" pointer-events="none" />`
-                : '';
+      const textureOverlay = (() => {
+        if (!cell.known) {
+          return '';
+        }
+        const x = cell.column * pixelsPerSquare;
+        const y = cell.row * pixelsPerSquare;
+        const s = pixelsPerSquare;
+        if (cell.terrain === 'blocked') {
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-blocked" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-rubble-texture)" opacity="0.55" pointer-events="none" />`;
+        }
+        if (cell.terrain === 'difficult') {
+          if (visuals.terrainBias === 'canopy') {
+            return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-canopy-dense" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-canopy-dense-texture)" opacity="0.62" pointer-events="none" />`;
+          }
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-damp-texture)" opacity="${visuals.terrainBias === 'damp' ? '0.55' : '0.4'}" pointer-events="none" />`;
+        }
+        if (visuals.terrainBias === 'timber') {
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-timber" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-timber-texture)" opacity="0.32" pointer-events="none" />`;
+        }
+        if (visuals.terrainBias === 'canopy') {
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-canopy" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-canopy-texture)" opacity="0.48" pointer-events="none" />`;
+        }
+        if (visuals.terrainBias === 'open') {
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-scrub" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-scrub-texture)" opacity="0.38" pointer-events="none" />`;
+        }
+        if (visuals.terrainBias === 'damp') {
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-damp-texture)" opacity="0.28" pointer-events="none" />`;
+        }
+        return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-stone" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-stone-texture)" opacity="0.35" pointer-events="none" />`;
+      })();
       return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry, visuals.terrainBias)}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
     })
     .join('');
+  const gridStroke =
+    visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open'
+      ? '#6a8a5a'
+      : visuals.terrainBias === 'damp'
+        ? '#5a7a7a'
+        : '#c4a574';
+  const gridOpacity =
+    visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open' ? '0.22' : '0.28';
   const gridLines: string[] = [];
   for (let column = 0; column <= columns; column += 1) {
     const x = column * pixelsPerSquare;
     gridLines.push(
-      `<line class="map-grid-line" x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="#c4a574" stroke-opacity="0.28" />`,
+      `<line class="map-grid-line" x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="${gridStroke}" stroke-opacity="${gridOpacity}" />`,
     );
   }
   for (let row = 0; row <= rows; row += 1) {
     const y = row * pixelsPerSquare;
     gridLines.push(
-      `<line class="map-grid-line" x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#c4a574" stroke-opacity="0.28" />`,
+      `<line class="map-grid-line" x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="${gridStroke}" stroke-opacity="${gridOpacity}" />`,
     );
   }
   const edges = map.edges
@@ -567,6 +597,26 @@ function paintSemanticSvg(
               <path d="M0 5 H14" stroke="#1a120c" stroke-width="0.8" stroke-opacity="0.4" />
               <path d="M0 1 H14 M0 9 H14" stroke="#4a3a28" stroke-width="0.5" stroke-opacity="0.25" />
             </pattern>
+            <pattern id="map-canopy-texture" width="16" height="16" patternUnits="userSpaceOnUse">
+              <rect width="16" height="16" fill="#1a2818" fill-opacity="0" />
+              <ellipse cx="4" cy="5" rx="3.2" ry="2.4" fill="#3a5a34" fill-opacity="0.45" />
+              <ellipse cx="11" cy="4" rx="3.6" ry="2.6" fill="#2e4a2c" fill-opacity="0.4" />
+              <ellipse cx="8" cy="11" rx="4" ry="2.8" fill="#456838" fill-opacity="0.38" />
+              <path d="M7 8 V14" stroke="#2a1e14" stroke-width="0.9" stroke-opacity="0.35" />
+            </pattern>
+            <pattern id="map-canopy-dense-texture" width="14" height="14" patternUnits="userSpaceOnUse">
+              <rect width="14" height="14" fill="#142018" fill-opacity="0" />
+              <ellipse cx="3" cy="4" rx="3.4" ry="2.6" fill="#1e3820" fill-opacity="0.55" />
+              <ellipse cx="10" cy="6" rx="3.8" ry="2.8" fill="#243c24" fill-opacity="0.5" />
+              <ellipse cx="6" cy="11" rx="4.2" ry="2.6" fill="#1a3020" fill-opacity="0.48" />
+              <path d="M2 9 L6 3 L10 10" fill="none" stroke="#5a7048" stroke-width="0.7" stroke-opacity="0.4" />
+            </pattern>
+            <pattern id="map-scrub-texture" width="12" height="12" patternUnits="userSpaceOnUse">
+              <rect width="12" height="12" fill="#283020" fill-opacity="0" />
+              <path d="M2 9 Q3 4 4 9 M6 10 Q7 5 8 10 M9 9 Q10 6 11 9" fill="none" stroke="#6a8a4a" stroke-width="0.7" stroke-opacity="0.4" />
+              <circle cx="3" cy="3" r="1.1" fill="#4a6840" fill-opacity="0.35" />
+              <circle cx="9" cy="4" r="1.3" fill="#3a5834" fill-opacity="0.3" />
+            </pattern>
             <radialGradient id="map-torch-glow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stop-color="#f0a030" stop-opacity="0.42" />
               <stop offset="45%" stop-color="#c47a28" stop-opacity="0.16" />
@@ -624,7 +674,12 @@ function paintSemanticSvg(
     </div>
     <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
       <summary>Map help</summary>
-      <p class="record-meta">Fit scales the scene. Drag to pan when zoomed. Center focuses the party token.</p>
+      <p class="record-meta">Fit shows the whole scene without sideways scrolling. Drag to pan when zoomed. Center focuses the party token.</p>
+      <p class="table-player-actions">
+        <button type="button" data-testid="preview-scene-discovery-cue" data-map-zoom="preview-cue">
+          Preview discovery cue
+        </button>
+      </p>
     </details>
     <details class="map-fog-legend visually-hidden" data-testid="map-fog-legend" aria-label="Map legend">
       <summary>Map legend</summary>
@@ -738,24 +793,19 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       applyZoom(1);
       return;
     }
-    // Blend contain→cover so the projection fills the tactical region confidently
-    // without enlarging cells until the room becomes hard to read.
-    const pad = 6;
+    // Contain the full Director scene — no forced horizontal crop/scrollbar at default Fit.
+    const pad = 8;
     const vw = Math.max(48, viewport.clientWidth - pad);
     const vh = Math.max(48, viewport.clientHeight - pad);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const cover = Math.max(vw / size.width, vh / size.height);
-    // Bias toward cover so unused cavern void shrinks; slight crop of fog edges is OK.
-    const blended = contain + (cover - contain) * 0.72;
     const { pixelsPerSquare } = currentMap.coordinateSpace;
-    const minReadable = 28 / Math.max(pixelsPerSquare, 1);
-    const fit = Math.min(Math.max(blended, minReadable), cover * 0.96);
-    applyZoom(Math.max(fit, contain));
-    const displayW = size.width * zoomScale;
-    const displayH = size.height * zoomScale;
+    // Keep cells readable on tiny viewports without exceeding the frame.
+    const minReadable = 22 / Math.max(pixelsPerSquare, 1);
+    const fit = Math.min(Math.max(contain * 0.98, Math.min(minReadable, contain)), contain);
+    applyZoom(Math.max(0.35, fit));
     viewport.scrollTo({
-      left: Math.max(0, (displayW - viewport.clientWidth) / 2),
-      top: Math.max(0, (displayH - viewport.clientHeight) / 2),
+      left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
+      top: Math.max(0, (size.height * zoomScale - viewport.clientHeight) / 2),
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     });
   }
@@ -894,6 +944,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           applyZoom(zoomScale / 1.15);
         } else if (mode === 'fit') {
           fitMapToViewport();
+        } else if (mode === 'preview-cue') {
+          playSceneDiscoveryCue();
         } else if (mode === 'center') {
           centerOnParty();
         } else if (mode === 'preset') {
@@ -1247,28 +1299,48 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let priorMapBundleId: string | null = null;
   let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function playSceneDiscoveryCue(): void {
+    host.classList.remove('map-scene-transition', 'map-scene-transition-static');
+    void host.offsetWidth;
+    if (prefersReducedMotion()) {
+      host.classList.add('map-scene-transition-static');
+      host.setAttribute('data-scene-cue', 'static');
+    } else {
+      host.classList.add('map-scene-transition');
+      host.setAttribute('data-scene-cue', 'motion');
+    }
+    if (transitionTimer !== null) {
+      clearTimeout(transitionTimer);
+    }
+    transitionTimer = setTimeout(() => {
+      host.classList.remove('map-scene-transition', 'map-scene-transition-static');
+      host.removeAttribute('data-scene-cue');
+      transitionTimer = null;
+    }, prefersReducedMotion() ? 520 : 700);
+  }
+
   return {
     renderMap(map: MapBundleProjection) {
       const sceneChanged =
         priorMapBundleId !== null &&
         priorMapBundleId !== map.mapBundleId &&
-        map.mapBundleId.startsWith('director:');
+        (map.mapBundleId.startsWith('director:') || priorMapBundleId.startsWith('director:'));
       priorMapBundleId = map.mapBundleId;
       paint(map);
-      if (sceneChanged && !prefersReducedMotion()) {
-        host.classList.remove('map-scene-transition');
-        // Force reflow so the animation can restart.
-        void host.offsetWidth;
-        host.classList.add('map-scene-transition');
-        host.setAttribute('data-testid', host.getAttribute('data-testid') ?? 'table-stage');
-        if (transitionTimer !== null) {
-          clearTimeout(transitionTimer);
-        }
-        transitionTimer = setTimeout(() => {
-          host.classList.remove('map-scene-transition');
-          transitionTimer = null;
-        }, 700);
+      if (sceneChanged) {
+        requestAnimationFrame(() => {
+          ensureViewportHeight();
+          fitMapToViewport();
+          playSceneDiscoveryCue();
+        });
       }
+    },
+    previewDiscoveryCue() {
+      playSceneDiscoveryCue();
+    },
+    fitToViewport() {
+      ensureViewportHeight();
+      fitMapToViewport();
     },
     setSquareClickHandler(handler) {
       squareClickHandler = handler;

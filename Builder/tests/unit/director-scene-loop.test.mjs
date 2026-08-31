@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   composeDirectorScene,
   directorNarrationBeat,
+  directorOwnedCompositionHint,
   nextObjectState,
   featureLabelWithState,
   matchLandmarkDestination,
@@ -201,5 +202,62 @@ describe('Batch 3 Director scene abstraction', () => {
     const travel = directorNarrationBeat('travel', { scene, priorTitle: 'Warm inn' });
     assert.match(travel, /Warm inn/);
     assert.ok(travel.includes(scene.title));
+  });
+
+  it('keeps encounter family under Director seed, not player phrasing', () => {
+    const wolfAsk = composeDirectorScene({
+      kind: 'encounter',
+      sceneId: 'e-wolf',
+      destinationHint: 'travel onward into the wolf thicket',
+      seedKey: 'camp:authority:enc',
+    });
+    const banditAsk = composeDirectorScene({
+      kind: 'encounter',
+      sceneId: 'e-bandit',
+      destinationHint: 'travel onward into the bandit ambush',
+      seedKey: 'camp:authority:enc',
+    });
+    assert.equal(wolfAsk.templateId, banditAsk.templateId);
+    assert.equal(wolfAsk.environment, banditAsk.environment);
+  });
+
+  it('resolves composition hints from presented exits or premise/seed, not invented names', () => {
+    const invented = directorOwnedCompositionHint({
+      kind: 'landmark',
+      premise: 'a misty marsh inn',
+      seedKey: 'camp:hint:1',
+      playerDeclaration: 'climb to the crystal palace',
+      presentedExits: [
+        {
+          label: 'Trail toward higher ground',
+          destinationHint: 'the ruined watchtower on the ridge',
+        },
+      ],
+    });
+    assert.ok(!/palace/i.test(invented));
+    assert.match(invented, /watchtower|dock|cavern|bridge|ruin/i);
+
+    const viaExit = directorOwnedCompositionHint({
+      kind: 'landmark',
+      premise: 'a misty marsh inn',
+      seedKey: 'camp:hint:1',
+      playerDeclaration: 'take the trail toward higher ground',
+      presentedExits: [
+        {
+          label: 'Trail toward higher ground',
+          destinationHint: 'the ruined watchtower on the ridge',
+        },
+      ],
+    });
+    assert.match(viaExit, /watchtower/i);
+
+    const exterior = directorOwnedCompositionHint({
+      kind: 'exterior',
+      premise: 'a misty marsh inn beside the reeds',
+      seedKey: 'camp:hint:ext',
+      playerDeclaration: 'leave toward the crystal palace',
+      presentedExits: [],
+    });
+    assert.match(exterior, /marsh/i);
   });
 });

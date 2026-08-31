@@ -412,7 +412,7 @@ function pickExteriorFamily(hint: string, seed: number): {
   return pickExteriorFamily('forest', seed);
 }
 
-function pickEncounterFamily(hint: string, seed: number): {
+function pickEncounterFamily(seed: number): {
   templateId: string;
   title: string;
   environment: SceneEnvironment;
@@ -423,44 +423,62 @@ function pickEncounterFamily(hint: string, seed: number): {
   creatureKind: 'creature' | 'npc';
   hazardLabel: string;
 } {
-  const text = hint.toLowerCase();
-  if (/\b(bandit|ambush|road)\b/.test(text) || seed % 3 === 0) {
-    return {
-      templateId: 'encounter_road_ambush',
-      title: 'Roadside ambush clearing',
-      environment: 'hill_clearing',
-      lighting: 'dusk',
-      mood: 'Broken brush and a waiting silence.',
-      description: 'A wary lookout waits in the brush where the road narrows.',
-      creatureLabel: 'Wary bandit lookout',
-      creatureKind: 'npc',
-      hazardLabel: 'Tripwire brush',
-    };
-  }
-  if (/\b(wolf|beast|hunt)\b/.test(text) || seed % 3 === 1) {
-    return {
-      templateId: 'encounter_wolf_pack',
-      title: 'Wolf-haunted thicket',
-      environment: 'forest_path',
-      lighting: 'dim',
-      mood: 'Yellow eyes catch the last light.',
-      description: 'A lean wolf holds the trail beside thorn and debris.',
-      creatureLabel: 'Lean wolf',
-      creatureKind: 'creature',
-      hazardLabel: 'Thorny bramble',
-    };
-  }
-  return {
+  // Director/seed owns the encounter family — never player phrasing.
+  const wolf = {
+    templateId: 'encounter_wolf_pack',
+    title: 'Wolf-haunted thicket',
+    environment: 'forest_path' as const,
+    lighting: 'dim' as const,
+    mood: 'Yellow eyes catch the last light.',
+    description: 'A lean wolf holds the trail beside thorn and debris.',
+    creatureLabel: 'Lean wolf',
+    creatureKind: 'creature' as const,
+    hazardLabel: 'Thorny bramble',
+  };
+  const ambush = {
+    templateId: 'encounter_road_ambush',
+    title: 'Roadside ambush clearing',
+    environment: 'hill_clearing' as const,
+    lighting: 'dusk' as const,
+    mood: 'Broken brush and a waiting silence.',
+    description: 'A wary lookout waits in the brush where the road narrows.',
+    creatureLabel: 'Wary bandit lookout',
+    creatureKind: 'npc' as const,
+    hazardLabel: 'Tripwire brush',
+  };
+  const stranger = {
     templateId: 'encounter_watchful_stranger',
     title: 'Watchful stranger at the ford',
-    environment: 'marsh_trail',
-    lighting: 'overcast',
+    environment: 'marsh_trail' as const,
+    lighting: 'overcast' as const,
     mood: 'Someone waits where the path narrows.',
     description: 'A cloaked stranger waits at the ford beside slick stones.',
     creatureLabel: 'Cloaked stranger',
-    creatureKind: 'npc',
+    creatureKind: 'npc' as const,
     hazardLabel: 'Slick stones',
   };
+  if (seed % 3 === 0) {
+    return ambush;
+  }
+  if (seed % 3 === 1) {
+    return wolf;
+  }
+  return stranger;
+}
+
+function landmarkHintForSeed(seed: number): string {
+  switch (seed % 5) {
+    case 0:
+      return 'the ruined watchtower on the ridge';
+    case 1:
+      return 'the foggy riverside docks';
+    case 2:
+      return 'the limestone cavern mouth';
+    case 3:
+      return 'the rope bridge over the gorge';
+    default:
+      return 'the overgrown ruin lane';
+  }
 }
 
 type LandmarkFamily = {
@@ -757,6 +775,11 @@ function composeExterior(options: {
         destinationHint: 'the encounter ahead',
       },
       {
+        exitId: `${options.sceneId}:exit-landmark`,
+        label: 'Trail toward higher ground',
+        destinationHint: landmarkHintForSeed(seed),
+      },
+      {
         exitId: `${options.sceneId}:exit-return`,
         label: 'Way back',
         destinationHint: 'return to the earlier scene',
@@ -775,7 +798,7 @@ function composeEncounter(options: {
   readonly returnToSceneId: string | null;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
-  const family = pickEncounterFamily(options.destinationHint, seed);
+  const family = pickEncounterFamily(seed);
   const columns = 11 + (seed % 2);
   const rows = 8 + (seed % 2);
   const cells = perimeterCells(columns, rows);
@@ -1050,8 +1073,70 @@ function composeLandmark(options: {
 }
 
 /**
+ * Composition destinations are Director-owned.
+ * Player declarations may only select among exits already presented on the
+ * active scene; they never invent a new scene family by naming it.
+ */
+export function directorOwnedCompositionHint(options: {
+  readonly kind: Exclude<SceneComposeKind, 'return_hint'>;
+  readonly premise: string;
+  readonly seedKey: string;
+  readonly playerDeclaration?: string;
+  readonly presentedExits?: readonly {
+    readonly label: string;
+    readonly destinationHint: string;
+  }[];
+}): string {
+  const seed = hashSeed(options.seedKey);
+  const declaration = options.playerDeclaration?.trim() ?? '';
+  const exits = options.presentedExits ?? [];
+  if (declaration.length > 0 && exits.length > 0) {
+    const matched = matchPresentedExit(exits, declaration);
+    if (matched !== null) {
+      return matched.destinationHint;
+    }
+  }
+  if (options.kind === 'exterior') {
+    return inferExteriorHint(options.premise, seed);
+  }
+  if (options.kind === 'encounter') {
+    return 'the encounter ahead';
+  }
+  if (options.kind === 'landmark') {
+    return landmarkHintForSeed(seed);
+  }
+  return options.premise;
+}
+
+export function matchPresentedExit(
+  exits: readonly { readonly label: string; readonly destinationHint: string }[],
+  declaration: string,
+): { readonly label: string; readonly destinationHint: string } | null {
+  const text = declaration.toLowerCase();
+  let best: { exit: (typeof exits)[number]; score: number } | null = null;
+  for (const exit of exits) {
+    if (/\breturn to the earlier scene\b/i.test(exit.destinationHint)) {
+      continue;
+    }
+    const hay = `${exit.label} ${exit.destinationHint}`.toLowerCase();
+    let score = 0;
+    for (const token of hay.split(/\W+/).filter((token) => token.length > 3)) {
+      if (text.includes(token)) {
+        score += 1;
+      }
+    }
+    if (score > 0 && (best === null || score > best.score)) {
+      best = { exit, score };
+    }
+  }
+  return best?.exit ?? null;
+}
+
+/**
  * Compose a Director scene from the structured contract.
- * Kind + premise/hint choose a composition family; seedKey keeps it stable.
+ * Kind + Director-owned hint/premise choose a composition family; seedKey keeps it stable.
+ * Player freeform text must not be passed as destinationHint for family selection —
+ * use directorOwnedCompositionHint first.
  */
 export function composeDirectorScene(options: {
   readonly kind: SceneComposeKind;
