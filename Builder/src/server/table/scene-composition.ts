@@ -424,43 +424,56 @@ function pickEncounterFamily(hint: string, seed: number): {
   hazardLabel: string;
 } {
   const text = hint.toLowerCase();
-  if (/\b(bandit|ambush|road)\b/.test(text) || seed % 3 === 0) {
-    return {
-      templateId: 'encounter_road_ambush',
-      title: 'Roadside ambush clearing',
-      environment: 'hill_clearing',
-      lighting: 'dusk',
-      mood: 'Broken brush and a waiting silence.',
-      description: 'A wary lookout waits in the brush where the road narrows.',
-      creatureLabel: 'Wary bandit lookout',
-      creatureKind: 'npc',
-      hazardLabel: 'Tripwire brush',
-    };
-  }
-  if (/\b(wolf|beast|hunt)\b/.test(text) || seed % 3 === 1) {
-    return {
-      templateId: 'encounter_wolf_pack',
-      title: 'Wolf-haunted thicket',
-      environment: 'forest_path',
-      lighting: 'dim',
-      mood: 'Yellow eyes catch the last light.',
-      description: 'A lean wolf holds the trail beside thorn and debris.',
-      creatureLabel: 'Lean wolf',
-      creatureKind: 'creature',
-      hazardLabel: 'Thorny bramble',
-    };
-  }
-  return {
+  const wolf = {
+    templateId: 'encounter_wolf_pack',
+    title: 'Wolf-haunted thicket',
+    environment: 'forest_path' as const,
+    lighting: 'dim' as const,
+    mood: 'Yellow eyes catch the last light.',
+    description: 'A lean wolf holds the trail beside thorn and debris.',
+    creatureLabel: 'Lean wolf',
+    creatureKind: 'creature' as const,
+    hazardLabel: 'Thorny bramble',
+  };
+  const ambush = {
+    templateId: 'encounter_road_ambush',
+    title: 'Roadside ambush clearing',
+    environment: 'hill_clearing' as const,
+    lighting: 'dusk' as const,
+    mood: 'Broken brush and a waiting silence.',
+    description: 'A wary lookout waits in the brush where the road narrows.',
+    creatureLabel: 'Wary bandit lookout',
+    creatureKind: 'npc' as const,
+    hazardLabel: 'Tripwire brush',
+  };
+  const stranger = {
     templateId: 'encounter_watchful_stranger',
     title: 'Watchful stranger at the ford',
-    environment: 'marsh_trail',
-    lighting: 'overcast',
+    environment: 'marsh_trail' as const,
+    lighting: 'overcast' as const,
     mood: 'Someone waits where the path narrows.',
     description: 'A cloaked stranger waits at the ford beside slick stones.',
     creatureLabel: 'Cloaked stranger',
-    creatureKind: 'npc',
+    creatureKind: 'npc' as const,
     hazardLabel: 'Slick stones',
   };
+  // Keyword hints beat seed rotation so "wolf thicket" cannot become a road ambush.
+  if (/\b(wolf|beast|hunt|thicket|forest|wooded|woods)\b/.test(text)) {
+    return wolf;
+  }
+  if (/\b(bandit|ambush|road)\b/.test(text)) {
+    return ambush;
+  }
+  if (/\b(ford|stranger|marsh)\b/.test(text)) {
+    return stranger;
+  }
+  if (seed % 3 === 0) {
+    return ambush;
+  }
+  if (seed % 3 === 1) {
+    return wolf;
+  }
+  return stranger;
 }
 
 type LandmarkFamily = {
