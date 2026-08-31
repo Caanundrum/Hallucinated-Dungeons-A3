@@ -159,11 +159,17 @@ test.describe('Batch 2/3 Director scene loop', () => {
     await expect(page.getByTestId('map-scene-banner')).toContainText(/watchtower|ridge|tower/i, {
       timeout: 30_000,
     });
-    // Materially different layout — tall tower footprint and shutter object.
+    // Materially different layout — tall tower footprint, shutter, and contract exits on the map.
     await expect(page.getByTestId('map-notable-features')).toContainText(
-      /shutter|masonry|parapet|arrow/i,
+      /shutter|masonry|parapet|arrow|ladder/i,
       { timeout: 20_000 },
     );
+    await expect(page.getByTestId('map-notable-features')).toContainText(
+      /parapet stair|ladder back/i,
+      { timeout: 10_000 },
+    );
+    await expect(page.getByTestId('map-exit-marker').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('map-terrain-summary')).toContainText(/[1-9]\d* exit/i);
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Marsh boardwalk/i);
   });
 

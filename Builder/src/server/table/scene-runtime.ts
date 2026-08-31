@@ -124,17 +124,18 @@ export function applyComposedSceneToRuntime(options: {
   }
 
   const accountIds = options.accountIds ?? Object.keys(runtime.exploredByAccount);
-  const inhabitantSquares = composed.features
+  const contractSquares = composed.features
     .filter(
       (feature) =>
         feature.objectKind === 'creature' ||
         feature.objectKind === 'npc' ||
+        feature.objectKind === 'exit' ||
         composed.inhabitantObjectIds.includes(feature.objectId),
     )
     .map((feature) => ({ column: feature.column, row: feature.row }));
   const explored =
     mode === 'establish' || mode === 'travel'
-      ? seedExploredAroundSpawn(accountIds, composed.spawn, 2, inhabitantSquares)
+      ? seedExploredAroundSpawn(accountIds, composed.spawn, 2, contractSquares)
       : runtime.exploredByAccount;
 
   const seatTokens =

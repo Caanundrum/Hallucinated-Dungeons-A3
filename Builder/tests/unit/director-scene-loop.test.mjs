@@ -103,6 +103,35 @@ describe('Batch 3 Director scene abstraction', () => {
     assert.ok(tower.exits.length >= 2);
     assert.ok(docks.exits.length >= 2);
     assert.ok(tower.features.some((f) => /shutter|masonry/i.test(f.label)));
+    const towerExits = tower.features.filter((f) => f.objectKind === 'exit');
+    assert.ok(towerExits.length >= 2, 'watchtower contract exits must project as features');
+    assert.ok(towerExits.some((f) => /parapet|stair/i.test(f.label)));
+    assert.ok(towerExits.some((f) => /ladder/i.test(f.label)));
+    assert.ok(
+      tower.edges.filter((e) => e.kind === 'door').length >= 1,
+      'watchtower must expose door/exit edges on the tactical map',
+    );
+    const dist = Math.abs(towerExits[0].column - tower.spawn.column) + Math.abs(towerExits[0].row - tower.spawn.row);
+    assert.ok(dist <= 4, 'exit markers must stay inside spawn vision');
+  });
+
+  it('projects contract exits for every scene kind', () => {
+    for (const kind of /** @type {const} */ (['interior', 'exterior', 'encounter', 'landmark'])) {
+      const scene = composeDirectorScene({
+        kind,
+        sceneId: `exit-${kind}`,
+        premise: 'misty marsh inn',
+        destinationHint:
+          kind === 'landmark' ? 'climb to the ruined watchtower on the ridge' : 'travel onward into danger',
+        seedKey: `camp:exit:${kind}`,
+      });
+      assert.ok(scene.exits.length >= 1, `${kind} needs at least one contract exit`);
+      assert.ok(
+        scene.features.filter((f) => f.objectKind === 'exit').length >= scene.exits.length,
+        `${kind} must materialize every contract exit`,
+      );
+      assert.ok(scene.edges.some((e) => e.kind === 'door'), `${kind} must have door geometry`);
+    }
   });
 
   it('persists non-light cover state across travel and return', () => {

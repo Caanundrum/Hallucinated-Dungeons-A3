@@ -13,6 +13,7 @@ import {
   type MapReferenceMarkerKind,
   type MapSquareCoordinate,
 } from '../../shared/map-contract.js';
+import { attachExitsToComposedScene } from './scene-exit-projection.js';
 
 export const SCENE_PURPOSES = [
   'exploration',
@@ -50,6 +51,7 @@ export const SCENE_OBJECT_KINDS = [
   'prop',
   'creature',
   'npc',
+  'exit',
 ] as const;
 export type SceneObjectKind = (typeof SCENE_OBJECT_KINDS)[number];
 
@@ -1061,35 +1063,37 @@ export function composeDirectorScene(options: {
 }): ComposedScene {
   const premise = options.premise?.trim() || 'an unfolding adventure';
   const hint = options.destinationHint?.trim() || premise;
+  let composed: ComposedScene;
   if (options.kind === 'interior') {
-    return composeInterior({
+    composed = composeInterior({
       sceneId: options.sceneId,
       premise,
       seedKey: options.seedKey,
     });
-  }
-  if (options.kind === 'encounter') {
-    return composeEncounter({
+  } else if (options.kind === 'encounter') {
+    composed = composeEncounter({
       sceneId: options.sceneId,
       destinationHint: hint,
       seedKey: `${options.seedKey}:enc`,
       returnToSceneId: options.returnToSceneId ?? null,
     });
-  }
-  if (options.kind === 'landmark') {
-    return composeLandmark({
+  } else if (options.kind === 'landmark') {
+    composed = composeLandmark({
       sceneId: options.sceneId,
       destinationHint: hint,
       seedKey: `${options.seedKey}:landmark`,
       returnToSceneId: options.returnToSceneId ?? null,
     });
+  } else {
+    composed = composeExterior({
+      sceneId: options.sceneId,
+      destinationHint: hint,
+      seedKey: `${options.seedKey}:ext`,
+      returnToSceneId: options.returnToSceneId ?? null,
+    });
   }
-  return composeExterior({
-    sceneId: options.sceneId,
-    destinationHint: hint,
-    seedKey: `${options.seedKey}:ext`,
-    returnToSceneId: options.returnToSceneId ?? null,
-  });
+  // System-wide: every contract exit becomes a visible tactical primitive.
+  return attachExitsToComposedScene(composed);
 }
 
 export function featureLabelWithState(feature: ComposedSceneFeature): string {
@@ -1099,7 +1103,7 @@ export function featureLabelWithState(feature: ComposedSceneFeature): string {
       '',
     )
     .trim();
-  if (feature.objectKind === 'creature' || feature.objectKind === 'npc') {
+  if (feature.objectKind === 'creature' || feature.objectKind === 'npc' || feature.objectKind === 'exit') {
     return base;
   }
   if (feature.objectKind === 'light') {
