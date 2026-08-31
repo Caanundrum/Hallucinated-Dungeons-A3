@@ -4196,6 +4196,142 @@ html.hd-low-effects .table-stage-svg-viewport,
   overflow: hidden;
 }
 
+.scene-atmosphere-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  transition: opacity 280ms ease, background 280ms ease;
+}
+
+.table-stage-atmosphere.atmosphere-enclosed_warm .scene-atmosphere-wash {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(240, 160, 48, 0.35), transparent 55%),
+    linear-gradient(180deg, rgba(60, 36, 18, 0.45), rgba(20, 12, 8, 0.2));
+}
+
+.table-stage-atmosphere.atmosphere-enclosed_cool .scene-atmosphere-wash {
+  background:
+    radial-gradient(ellipse at 50% 10%, rgba(120, 140, 160, 0.22), transparent 50%),
+    linear-gradient(180deg, rgba(24, 28, 36, 0.5), rgba(10, 10, 14, 0.25));
+}
+
+.table-stage-atmosphere.atmosphere-wet_fog .scene-atmosphere-wash {
+  background:
+    radial-gradient(circle at 20% 40%, rgba(148, 180, 188, 0.28), transparent 45%),
+    radial-gradient(circle at 75% 55%, rgba(100, 130, 140, 0.22), transparent 50%),
+    linear-gradient(180deg, rgba(20, 40, 44, 0.4), rgba(8, 16, 20, 0.3));
+}
+
+.table-stage-atmosphere.atmosphere-elevated_exposed .scene-atmosphere-wash {
+  background:
+    linear-gradient(180deg, rgba(180, 190, 210, 0.2), transparent 40%),
+    linear-gradient(0deg, rgba(40, 28, 18, 0.35), transparent 35%),
+    radial-gradient(ellipse at 50% 0%, rgba(220, 200, 160, 0.18), transparent 55%);
+}
+
+.table-stage-atmosphere.atmosphere-open_clearing .scene-atmosphere-wash,
+.table-stage-atmosphere.threat_encounter .scene-atmosphere-wash {
+  background:
+    radial-gradient(ellipse at 70% 40%, rgba(180, 60, 40, 0.18), transparent 50%),
+    linear-gradient(180deg, rgba(40, 24, 16, 0.35), rgba(12, 10, 8, 0.2));
+}
+
+.table-stage-atmosphere.threat_encounter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 2px rgba(180, 70, 50, 0.35), inset 0 0 48px rgba(120, 30, 20, 0.18);
+  pointer-events: none;
+}
+
+.table-stage-atmosphere.atmosphere-wooded_path .scene-atmosphere-wash {
+  background: linear-gradient(180deg, rgba(36, 48, 28, 0.35), rgba(16, 20, 12, 0.2));
+}
+
+.table-stage-atmosphere.atmosphere-settled_street .scene-atmosphere-wash {
+  background: linear-gradient(180deg, rgba(60, 55, 40, 0.28), rgba(20, 18, 14, 0.18));
+}
+
+.table-stage-atmosphere.atmosphere-cavernous .scene-atmosphere-wash {
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(40, 50, 60, 0.35), transparent 55%),
+    linear-gradient(180deg, rgba(8, 10, 16, 0.55), rgba(6, 8, 12, 0.3));
+}
+
+.table-stage-atmosphere.atmosphere-waterfront .scene-atmosphere-wash {
+  background:
+    linear-gradient(0deg, rgba(30, 70, 80, 0.35), transparent 40%),
+    radial-gradient(circle at 60% 70%, rgba(100, 150, 160, 0.2), transparent 45%);
+}
+
+.table-stage-atmosphere.atmosphere-ruined_open .scene-atmosphere-wash {
+  background: linear-gradient(180deg, rgba(70, 65, 50, 0.3), rgba(24, 20, 16, 0.22));
+}
+
+.table-stage-atmosphere.wash_darkened .scene-atmosphere-wash {
+  opacity: 0.42;
+  filter: brightness(0.55) saturate(0.7);
+}
+
+.table-stage-atmosphere.wash_torchlit .scene-atmosphere-wash {
+  opacity: 0.28;
+}
+
+.table-stage-atmosphere.wash_daylight .scene-atmosphere-wash {
+  opacity: 0.14;
+  filter: brightness(1.08);
+}
+
+.table-stage-atmosphere.wash_overcast .scene-atmosphere-wash {
+  opacity: 0.26;
+  filter: saturate(0.75);
+}
+
+.table-stage-atmosphere.wash_dusk .scene-atmosphere-wash {
+  opacity: 0.3;
+  filter: sepia(0.2) brightness(0.9);
+}
+
+.table-stage-atmosphere.wash_dim .scene-atmosphere-wash {
+  opacity: 0.34;
+  filter: brightness(0.75);
+}
+
+.map-poi-target.state_unlit .map-poi-core {
+  filter: grayscale(0.4) brightness(0.7);
+}
+
+.map-poi-target.state_broken .map-poi-core {
+  filter: brightness(0.75) saturate(0.8);
+}
+
+.map-poi-target.family_npc .map-poi-core,
+.map-poi-target.family_creature .map-poi-core {
+  stroke: #f8e7b0;
+  stroke-width: 2;
+}
+
+[data-testid="table-stage"].map-scene-transition .table-stage-semantic,
+[data-testid="table-stage-host"].map-scene-transition .table-stage-semantic,
+.map-scene-transition .table-stage-semantic {
+  animation: mapSceneDiscover 640ms ease-out;
+}
+
+@keyframes mapSceneDiscover {
+  0% {
+    opacity: 0.35;
+    filter: brightness(0.7);
+  }
+  45% {
+    opacity: 1;
+    filter: brightness(1.05);
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+  }
+}
+
 .cavern-dust {
   position: absolute;
   inset: -12%;
@@ -4382,6 +4518,7 @@ html.hd-low-effects .table-stage-svg-viewport,
   .map-torch-glow,
   .map-fog-mist,
   .cavern-dust,
+  .map-scene-transition .table-stage-semantic,
   [data-testid="table-page-shell"].table-combat-active::after {
     animation: none !important;
   }

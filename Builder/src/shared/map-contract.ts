@@ -215,6 +215,14 @@ export interface MapBundleProjection {
   readonly sceneBanner: string;
   /** Named points of interest for richer cell labels than bare terrain. */
   readonly notableFeatures: readonly MapNotableFeatureRecord[];
+  /**
+   * Director scene contract presentation fields (Batch visual system).
+   * Renderer atmosphere is driven from these — never from fixture titles.
+   */
+  readonly sceneEnvironment?: string | null;
+  readonly sceneLighting?: string | null;
+  readonly scenePurpose?: string | null;
+  readonly sceneMood?: string | null;
   readonly viewerSeatId: string | null;
   readonly exploredSquareIds: readonly string[];
   readonly visibleSquareIds: readonly string[];

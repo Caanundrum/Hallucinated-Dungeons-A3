@@ -31,6 +31,14 @@ import {
   doorAuthorityFromStored,
   formatDoorAuthorityLabel,
 } from '../../shared/play-authority-contract.js';
+import {
+  objectVisualFamily,
+  resolveSceneVisuals,
+  terrainFillCss,
+  terrainFillPixi,
+  voidFillCss,
+  type SceneVisualPresentation,
+} from './scene-visual-system.js';
 
 function edgeAccessibleLabel(edge: MapEdgeRecord): string {
   const facing =
@@ -96,36 +104,39 @@ function isEmberferryScene(map: MapBundleProjection): boolean {
   return map.artProvenance === 'original_phase5_starter_v1';
 }
 
-function terrainColor(terrain: string, known = true, emberferry = false): number {
-  if (!known) {
-    return 0x1c2430; // fog — distinct from empty void (TQA-057)
-  }
+/** Legacy Emberferry tint retained for starter-pack provenance only. */
+function terrainColor(
+  terrain: string,
+  known = true,
+  emberferry = false,
+  bias: SceneVisualPresentation['terrainBias'] = 'dry',
+): number {
   if (emberferry) {
+    if (!known) {
+      return 0x1c2430;
+    }
     switch (terrain) {
       case 'blocked':
-        return 0x0f2a3a; // river / rock in shadow
+        return 0x0f2a3a;
       case 'difficult':
-        return 0x3d5a4a; // ember-mist boards / flooded stone
+        return 0x3d5a4a;
       default:
-        return 0x6b4e2e; // timber dock / dry stone
+        return 0x6b4e2e;
     }
   }
-  switch (terrain) {
-    case 'blocked':
-      return 0x1a1410;
-    case 'difficult':
-      return 0x3a3328;
-    default:
-      return 0x2a241c;
-  }
+  return terrainFillPixi(terrain, known, bias);
 }
 
-function terrainCss(terrain: string, known: boolean, emberferry = false): string {
-  if (!known) {
-    // Cool, deep unexplored void — distinct from warm explored stone.
-    return '#0a1018';
-  }
+function terrainCss(
+  terrain: string,
+  known: boolean,
+  emberferry = false,
+  bias: SceneVisualPresentation['terrainBias'] = 'dry',
+): string {
   if (emberferry) {
+    if (!known) {
+      return '#0a1018';
+    }
     switch (terrain) {
       case 'blocked':
         return '#0f2a3a';
@@ -135,17 +146,7 @@ function terrainCss(terrain: string, known: boolean, emberferry = false): string
         return '#6b4e2e';
     }
   }
-  switch (terrain) {
-    case 'blocked':
-      // Dense rubble / solid wall mass
-      return '#12100e';
-    case 'difficult':
-      // Damp, cooler stone
-      return '#2f3a38';
-    default:
-      // Warm damp-stone floor under sconce light
-      return '#322b22';
-  }
+  return terrainFillCss(terrain, known, bias);
 }
 
 function tokenPixelBox(
@@ -220,6 +221,7 @@ function paintSemanticSvg(
     document.documentElement.classList.contains('hd-low-effects') ||
     document.documentElement.classList.contains('hd-reduced-motion');
   const emberferry = isEmberferryScene(map);
+  const visuals = resolveSceneVisuals(map);
   const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
   const width = columns * pixelsPerSquare;
   const height = rows * pixelsPerSquare;
@@ -252,11 +254,13 @@ function paintSemanticSvg(
         cell.known && cell.terrain === 'blocked'
           ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-blocked" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-rubble-texture)" opacity="0.55" pointer-events="none" />`
           : cell.known && cell.terrain === 'difficult'
-            ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-damp-texture)" opacity="0.4" pointer-events="none" />`
-            : cell.known
-              ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-stone" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-stone-texture)" opacity="0.35" pointer-events="none" />`
-              : '';
-      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry)}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
+            ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-damp-texture)" opacity="${visuals.terrainBias === 'damp' ? '0.55' : '0.4'}" pointer-events="none" />`
+            : cell.known && visuals.terrainBias === 'timber'
+              ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-timber" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-timber-texture)" opacity="0.32" pointer-events="none" />`
+              : cell.known
+                ? `<rect aria-hidden="true" class="map-terrain-texture map-terrain-stone" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-stone-texture)" opacity="0.35" pointer-events="none" />`
+                : '';
+      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry, visuals.terrainBias)}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
     })
     .join('');
   const gridLines: string[] = [];
@@ -401,61 +405,86 @@ function paintSemanticSvg(
   const paintFeatureDot = (feature: (typeof map.notableFeatures)[number]): string => {
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
-    const kindLabel = feature.referenceKind ?? 'prop';
-    const isActor = kindLabel === 'creature' || kindLabel === 'npc';
-    const isExit = kindLabel === 'exit' || feature.objectKind === 'exit';
-    const isTorch =
-      kindLabel === 'lighting' || /sconce|torch|lantern|lamp|candle|brazier/i.test(feature.label);
-    const isRubble =
-      kindLabel === 'cover' || /rubble|cover|debris/i.test(feature.label);
-    const isDamp =
-      kindLabel === 'hazard' || /damp|wet|slick|hazard/i.test(feature.label);
+    const kindLabel = feature.referenceKind ?? feature.objectKind ?? 'prop';
+    const visual = objectVisualFamily(feature);
+    const isActor = visual.family === 'family_creature' || visual.family === 'family_npc';
+    const isExit =
+      visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
+    const isTorch = visual.family === 'family_light';
+    const isUnlit = visual.stateVariant === 'state_unlit';
+    const isBroken = visual.stateVariant === 'state_broken';
+    const isCover = visual.family === 'family_cover';
+    const isHazard = visual.family === 'family_hazard';
+    const isDampHazard = isHazard && visuals.terrainBias === 'damp';
     const fill = isExit
       ? '#6ea8c9'
-      : isActor
+      : visual.family === 'family_npc'
         ? '#c45c5c'
-        : kindLabel === 'hazard'
-          ? '#c47a4a'
-          : isTorch
-            ? '#f0c043'
-            : '#f2d38a';
-    const dampWash = isDamp
+        : visual.family === 'family_creature'
+          ? '#b84a3a'
+          : isHazard
+            ? visual.stateVariant === 'state_disarmed'
+              ? '#8a7a62'
+              : '#c47a4a'
+            : isTorch
+              ? isUnlit
+                ? '#5a5048'
+                : '#f0c043'
+              : isBroken
+                ? '#6a5844'
+                : '#f2d38a';
+    const dampWash = isDampHazard || (isHazard && /damp|wet|slick/i.test(feature.label))
       ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
          <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
       : '';
-    const rubbleChips = isRubble
-      ? `<g class="map-rubble-detail" pointer-events="none" aria-hidden="true">
-          <ellipse class="map-rubble-wash" cx="${x}" cy="${y + 7}" rx="${pixelsPerSquare * 0.7}" ry="${pixelsPerSquare * 0.38}" fill="#1a1410" opacity="0.55" />
+    const rubbleChips = isCover
+      ? `<g class="map-rubble-detail${isBroken ? ' is-broken' : ''}" pointer-events="none" aria-hidden="true">
+          <ellipse class="map-rubble-wash" cx="${x}" cy="${y + 7}" rx="${pixelsPerSquare * (isBroken ? 0.85 : 0.7)}" ry="${pixelsPerSquare * 0.38}" fill="#1a1410" opacity="${isBroken ? '0.7' : '0.55'}" />
           <rect class="map-rubble-chip" x="${x - 14}" y="${y + 2}" width="7" height="4.5" rx="0.8" fill="#5a4a38" transform="rotate(-18 ${x - 10} ${y + 4})" />
           <rect class="map-rubble-chip" x="${x - 4}" y="${y + 6}" width="8" height="3.5" rx="0.6" fill="#3a3028" transform="rotate(12 ${x} ${y + 8})" />
           <rect class="map-rubble-chip" x="${x + 5}" y="${y + 1}" width="6" height="4" rx="0.6" fill="#6a5844" transform="rotate(28 ${x + 8} ${y + 3})" />
-          <rect class="map-rubble-chip" x="${x + 1}" y="${y + 8}" width="5" height="3" rx="0.5" fill="#4a4034" transform="rotate(-8 ${x + 3} ${y + 9.5})" />
+          ${
+            isBroken
+              ? `<rect class="map-rubble-chip" x="${x - 8}" y="${y - 2}" width="5" height="3" rx="0.5" fill="#4a4034" transform="rotate(-32 ${x - 6} ${y})" />
+                 <rect class="map-rubble-chip" x="${x + 3}" y="${y + 9}" width="6" height="2.5" rx="0.5" fill="#2a2218" />`
+              : `<rect class="map-rubble-chip" x="${x + 1}" y="${y + 8}" width="5" height="3" rx="0.5" fill="#4a4034" transform="rotate(-8 ${x + 3} ${y + 9.5})" />`
+          }
         </g>`
       : '';
-    const torchGlow = isTorch
-      ? `<ellipse class="map-sconce-pool" cx="${x}" cy="${y}" rx="${pixelsPerSquare * 2.4}" ry="${pixelsPerSquare * 2.1}" fill="url(#map-sconce-pool)" pointer-events="none" aria-hidden="true" />
+    const torchGlow =
+      isTorch && !isUnlit
+        ? `<ellipse class="map-sconce-pool" cx="${x}" cy="${y}" rx="${pixelsPerSquare * 2.4}" ry="${pixelsPerSquare * 2.1}" fill="url(#map-sconce-pool)" pointer-events="none" aria-hidden="true" />
          <circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.45}" fill="url(#map-torch-glow)" aria-hidden="true" />
          <circle class="map-torch-core-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.6}" fill="url(#map-torch-core)" aria-hidden="true" />`
-      : '';
+        : isTorch && isUnlit
+          ? `<circle class="map-torch-unlit" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.55}" fill="#2a241c" stroke="#6a5844" stroke-width="1" opacity="0.85" aria-hidden="true" />`
+          : '';
     const actorRing = isActor
-      ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="#f2d38a" stroke-width="1.5" stroke-opacity="0.85" pointer-events="none" aria-hidden="true" />`
+      ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="${visual.family === 'family_creature' ? '#e07060' : '#f2d38a'}" stroke-width="1.5" stroke-opacity="0.9" pointer-events="none" aria-hidden="true" />`
       : '';
     const exitChevron = isExit
-      ? `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
+      ? visual.family === 'family_exit_vertical'
+        ? `<g class="map-exit-vertical" pointer-events="none" aria-hidden="true">
+             <polygon points="${x},${y - 11} ${x + 6},${y - 2} ${x - 6},${y - 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" />
+             <rect x="${x - 3}" y="${y - 1}" width="6" height="10" fill="#6ea8c9" stroke="#1a1208" stroke-width="1" />
+           </g>`
+        : `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
       : '';
     const testId = isExit
       ? 'map-exit-marker'
       : isActor
         ? 'map-actor-marker'
-        : 'map-poi-marker';
-    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="${testId}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+        : isTorch
+          ? 'map-light-marker'
+          : 'map-poi-marker';
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
       ${actorRing}
       ${exitChevron}
       <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
-      <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)}</title>
+      <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)} · ${escapeHtml(visual.stateVariant.replace(/^state_/, ''))}</title>
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
@@ -485,6 +514,12 @@ function paintSemanticSvg(
     wrap.className = 'table-stage-semantic';
     host.appendChild(wrap);
   }
+  wrap.dataset.atmosphere = visuals.atmosphere;
+  wrap.dataset.lightWash = visuals.lightWash;
+  wrap.dataset.threat = visuals.threat;
+  wrap.dataset.elevation = visuals.elevationCue;
+  wrap.dataset.terrainBias = visuals.terrainBias;
+  wrap.dataset.testid = 'table-stage-semantic';
   const sceneTitle = map.title.trim().length > 0 ? map.title : 'Shared scene';
   wrap.innerHTML = `
     <div class="table-stage-toolbar map-zoom-pill" data-testid="map-stage-toolbar">
@@ -498,6 +533,9 @@ function paintSemanticSvg(
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
     <p class="map-terrain-summary visually-hidden" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
       ${escapeHtml(mapTerrainSummary(map))}
+    </p>
+    <p class="map-visual-summary visually-hidden" role="region" aria-label="Scene visual presentation" data-testid="map-visual-summary">
+      ${escapeHtml(visuals.semanticSummary)}
     </p>
     <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" data-pan-enabled="true">
       <div class="table-stage-svg-scaler" data-testid="table-stage-svg-scaler" style="width:${width * zoomScale}px;height:${height * zoomScale}px;">
@@ -524,6 +562,11 @@ function paintSemanticSvg(
               <path d="M1 3 Q5 1 9 4" fill="none" stroke="#5a8a8a" stroke-width="0.8" stroke-opacity="0.35" />
               <path d="M0 7 Q4 5 8 8" fill="none" stroke="#3a6060" stroke-width="0.7" stroke-opacity="0.3" />
             </pattern>
+            <pattern id="map-timber-texture" width="14" height="10" patternUnits="userSpaceOnUse">
+              <rect width="14" height="10" fill="#3a2e22" fill-opacity="0" />
+              <path d="M0 5 H14" stroke="#1a120c" stroke-width="0.8" stroke-opacity="0.4" />
+              <path d="M0 1 H14 M0 9 H14" stroke="#4a3a28" stroke-width="0.5" stroke-opacity="0.25" />
+            </pattern>
             <radialGradient id="map-torch-glow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stop-color="#f0a030" stop-opacity="0.42" />
               <stop offset="45%" stop-color="#c47a28" stop-opacity="0.16" />
@@ -544,7 +587,12 @@ function paintSemanticSvg(
               <stop offset="100%" stop-color="#8a5010" stop-opacity="0" />
             </radialGradient>
           </defs>
-          <rect class="map-scene-void" width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0a0806'}" />
+          <rect class="map-scene-void" width="${width}" height="${height}" fill="${emberferry ? '#071820' : voidFillCss(visuals.terrainBias)}" />
+          ${
+            visuals.elevationCue !== 'flat'
+              ? `<rect class="map-elevation-frame" data-elevation="${visuals.elevationCue}" x="4" y="4" width="${width - 8}" height="${height - 8}" fill="none" stroke="#c4a574" stroke-opacity="0.35" stroke-width="3" rx="${visuals.elevationCue === 'raised' ? '10' : '2'}" pointer-events="none" aria-hidden="true" />`
+              : ''
+          }
           <g data-layer="terrain_art">${cells}</g>
           <g data-layer="fog_hatch">${map.cells
             .filter((cell) => !cell.known)
@@ -568,7 +616,8 @@ function paintSemanticSvg(
         </svg>
       </div>
     </div>
-    <div class="table-stage-atmosphere" data-testid="table-stage-atmosphere" aria-hidden="true">
+    <div class="table-stage-atmosphere atmosphere-${visuals.atmosphere} ${visuals.lightWash} ${visuals.threat}" data-testid="table-stage-atmosphere" data-atmosphere="${visuals.atmosphere}" data-light-wash="${visuals.lightWash}" data-threat="${visuals.threat}" aria-hidden="true">
+      <span class="scene-atmosphere-wash" data-testid="scene-atmosphere-wash"></span>
       <span class="cavern-dust cavern-dust-a"></span>
       <span class="cavern-dust cavern-dust-b"></span>
       <span class="cavern-dust cavern-dust-c"></span>
@@ -598,8 +647,13 @@ function paintSemanticSvg(
         <div class="map-legend-group" data-testid="map-legend-entities">
           <span class="map-legend-heading">Entities &amp; references</span>
           <span><span class="swatch" style="background:#c9a227;border-radius:50%"></span> Party token</span>
-          <span><span class="swatch" style="background:#f2d38a;border-radius:50%"></span> Reference (lighting/cover/prop)</span>
-          <span><span class="swatch" style="background:#c47a4a;border-radius:50%"></span> Hazard reference</span>
+          <span><span class="swatch" style="background:#f0c043;border-radius:50%"></span> Light (lit)</span>
+          <span><span class="swatch" style="background:#5a5048;border-radius:50%"></span> Light (unlit)</span>
+          <span><span class="swatch" style="background:#f2d38a;border-radius:50%"></span> Cover / prop</span>
+          <span><span class="swatch" style="background:#6a5844;border-radius:50%"></span> Broken object</span>
+          <span><span class="swatch" style="background:#c47a4a;border-radius:50%"></span> Hazard</span>
+          <span><span class="swatch" style="background:#c45c5c;border-radius:50%"></span> Inhabitant</span>
+          <span><span class="swatch" style="background:#6ea8c9;border-radius:50%"></span> Exit</span>
         </div>
       </div>
     </details>
@@ -941,6 +995,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       return;
     }
     const emberferry = isEmberferryScene(map);
+    const visuals = resolveSceneVisuals(map);
     const { columns, rows, pixelsPerSquare } = map.coordinateSpace;
     const width = columns * pixelsPerSquare;
     const height = rows * pixelsPerSquare;
@@ -950,8 +1005,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
 
     const background = new Graphics();
+    const voidColor = Number.parseInt(voidFillCss(visuals.terrainBias).slice(1), 16);
     background.rect(0, 0, width, height).fill({
-      color: emberferry ? 0x071820 : 0x0c0a08,
+      color: emberferry ? 0x071820 : voidColor,
       alpha: 0.01,
     });
     layers.world_background.addChild(background);
@@ -962,7 +1018,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const y = cell.row * pixelsPerSquare;
       terrain
         .rect(x, y, pixelsPerSquare, pixelsPerSquare)
-        .fill(terrainColor(cell.terrain, cell.known, emberferry));
+        .fill(terrainColor(cell.terrain, cell.known, emberferry, visuals.terrainBias));
     }
     layers.terrain_art.addChild(terrain);
 
@@ -1044,12 +1100,29 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     for (const feature of map.notableFeatures) {
       const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
-      const isHazard = feature.referenceKind === 'hazard';
-      const isActor =
-        feature.referenceKind === 'creature' || feature.referenceKind === 'npc';
+      const visual = objectVisualFamily(feature);
+      const isHazard = visual.family === 'family_hazard';
+      const isActor = visual.family === 'family_creature' || visual.family === 'family_npc';
+      const isExit =
+        visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
+      const isUnlit = visual.stateVariant === 'state_unlit';
       const marker = new Graphics();
-      const color = isActor ? 0xc45c5c : isHazard ? 0xc47a4a : 0xf2d38a;
-      marker.circle(x, y, isActor ? 8 : 6).fill({ color, alpha: 0.95 });
+      const color = isExit
+        ? 0x6ea8c9
+        : visual.family === 'family_creature'
+          ? 0xb84a3a
+          : isActor
+            ? 0xc45c5c
+            : isHazard
+              ? 0xc47a4a
+              : visual.family === 'family_light'
+                ? isUnlit
+                  ? 0x5a5048
+                  : 0xf0c043
+                : visual.stateVariant === 'state_broken'
+                  ? 0x6a5844
+                  : 0xf2d38a;
+      marker.circle(x, y, isActor || isExit ? 8 : 6).fill({ color, alpha: 0.95 });
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
       const featureLabel = new Text({
@@ -1171,9 +1244,31 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   };
   window.addEventListener('resize', onResize);
 
+  let priorMapBundleId: string | null = null;
+  let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
   return {
     renderMap(map: MapBundleProjection) {
+      const sceneChanged =
+        priorMapBundleId !== null &&
+        priorMapBundleId !== map.mapBundleId &&
+        map.mapBundleId.startsWith('director:');
+      priorMapBundleId = map.mapBundleId;
       paint(map);
+      if (sceneChanged && !prefersReducedMotion()) {
+        host.classList.remove('map-scene-transition');
+        // Force reflow so the animation can restart.
+        void host.offsetWidth;
+        host.classList.add('map-scene-transition');
+        host.setAttribute('data-testid', host.getAttribute('data-testid') ?? 'table-stage');
+        if (transitionTimer !== null) {
+          clearTimeout(transitionTimer);
+        }
+        transitionTimer = setTimeout(() => {
+          host.classList.remove('map-scene-transition');
+          transitionTimer = null;
+        }, 700);
+      }
     },
     setSquareClickHandler(handler) {
       squareClickHandler = handler;
