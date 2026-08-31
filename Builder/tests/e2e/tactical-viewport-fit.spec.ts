@@ -86,10 +86,11 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
     await confirmDraft(page);
     await expect(stage).toHaveAttribute('data-atmosphere', 'wet_fog', { timeout: 30_000 });
 
-    await page.getByTestId('nl-intent-input').fill('travel onward into danger');
+    await page.getByTestId('nl-intent-input').fill('travel onward into the wolf thicket');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
     await expect(stage).toHaveAttribute('data-threat', 'threat_encounter', { timeout: 30_000 });
+    await expect(stage).toHaveAttribute('data-atmosphere', 'wooded_path');
     await expect(stage).toHaveAttribute('data-terrain-bias', 'canopy');
     await expect(page.locator('.map-terrain-canopy, .map-terrain-canopy-dense').first()).toBeVisible();
     await page.screenshot({
