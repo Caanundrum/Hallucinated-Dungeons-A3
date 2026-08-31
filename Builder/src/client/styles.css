@@ -2369,7 +2369,7 @@ select:focus-visible {
 .stat-grid,
 .ability-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
   gap: var(--space-3);
   margin: 0 0 var(--space-4);
 }
@@ -3704,9 +3704,37 @@ html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
 
 .dice-tray-stage {
   min-height: 4.5rem;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
   text-align: center;
+}
+
+.dice-roll-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dice-face-label {
+  position: static;
+  display: block;
+  margin: 0;
+  transform: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.dice-tray-stage .dice-result {
+  margin: 0.15rem 0 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  width: min(100%, 16rem);
 }
 
 .dice-tumble {
@@ -4367,6 +4395,7 @@ html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after 
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sheet-modal-body .sheet-layout,
@@ -4374,21 +4403,46 @@ html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after 
 .sheet-modal-body .sheet-panel,
 .sheet-modal-body .stat-grid,
 .sheet-modal-body .ability-grid,
+.sheet-modal-body .stat-list,
 .sheet-modal-body .record-list,
-.sheet-modal-body .actions {
+.sheet-modal-body .actions,
+.sheet-modal-body .ability-card,
+.sheet-modal-body .stat,
+.sheet-modal-body li {
   min-width: 0;
   max-width: 100%;
 }
 
-.sheet-modal-body .record-meta {
+.sheet-modal-body .ability-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.75rem), 1fr));
+}
+
+.sheet-modal-body .stat-list {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.sheet-modal-body .stat-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.sheet-modal-body .record-meta,
+.sheet-modal-body .has-breakdown {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .sheet-modal-body .stat-tooltip {
-  position: absolute;
-  z-index: 5;
-  max-width: min(16rem, 70vw);
+  position: fixed;
+  z-index: 80;
+  max-width: min(16rem, calc(100vw - 2rem));
+  pointer-events: none;
 }
 
 .sheet-modal-footer {
@@ -4472,13 +4526,18 @@ html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after 
 }
 
 .dice-face-label {
-  position: absolute;
-  bottom: -1.15rem;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  display: block;
+  margin: 0;
+  transform: none;
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.dice-tray-stage .dice-result {
+  margin: 0;
 }
 
 .dice-face.is-rolling {

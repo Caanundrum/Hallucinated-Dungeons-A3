@@ -2312,10 +2312,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   ? 'd100'
                   : 'd20';
     return `
-      <div class="dice-tumble dice-face dice-face-${family}${rolling ? ' is-rolling' : ' is-settled'}"
-        data-testid="dice-tumble" data-sides="${sides}" aria-hidden="true">
-        <span class="dice-face-shape"></span>
-        <span class="dice-face-value">${escapeHtml(shown)}</span>
+      <div class="dice-roll-visual" data-testid="dice-roll-visual">
+        <div class="dice-tumble dice-face dice-face-${family}${rolling ? ' is-rolling' : ' is-settled'}"
+          data-testid="dice-tumble" data-sides="${sides}" aria-hidden="true">
+          <span class="dice-face-shape"></span>
+          <span class="dice-face-value">${escapeHtml(shown)}</span>
+        </div>
         <span class="dice-face-label">d${sides}</span>
       </div>`;
   }
@@ -3577,10 +3579,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
-    root.querySelectorAll<HTMLButtonElement>('[data-mobile-task]').forEach((button) => {
-      button.addEventListener('click', () => {
+    // Mobile task nav is a persistent shell control — bind once via delegation.
+    // Re-binding on every render stacked listeners and stalled after repeated switches.
+    if (root.dataset.mobileTaskBound !== '1') {
+      root.dataset.mobileTaskBound = '1';
+      root.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const button = target.closest<HTMLButtonElement>('[data-mobile-task]');
+        if (button === null || !root.contains(button)) {
+          return;
+        }
         const mode = button.dataset.mobileTask as MobileTaskMode | undefined;
-        if (mode === undefined) {
+        if (mode === undefined || mode === mobileTaskMode) {
+          // Still refresh pressed state / focus when re-tapping the active mode.
+          if (mode === mobileTaskMode) {
+            button.focus({ preventScroll: true });
+          }
           return;
         }
         mobileTaskMode = mode;
@@ -3593,20 +3610,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
         render();
         requestAnimationFrame(() => {
-          const focusTarget =
-            mode === 'map'
-              ? root.querySelector<HTMLElement>('[data-testid="table-stage-slot"]')
-              : mode === 'play'
-                ? root.querySelector<HTMLElement>('[data-testid="player-action-input"]')
-                : mode === 'sheet'
-                  ? root.querySelector<HTMLElement>('[data-testid="open-table-sheet-modal"]') ??
-                    root.querySelector<HTMLElement>('[data-testid="table-character-compact"]')
-                  : root.querySelector<HTMLElement>('[data-testid="party-chat-input"]') ??
-                    root.querySelector<HTMLElement>('[data-testid="communication-dock"]');
-          focusTarget?.focus();
+          const shell = container.querySelector<HTMLElement>('[data-testid="table-page-shell"]');
+          const activeButton = shell?.querySelector<HTMLButtonElement>(
+            `[data-mobile-task="${mode}"]`,
+          );
+          activeButton?.focus({ preventScroll: true });
         });
       });
-    });
+    }
     root
       .querySelector<HTMLSelectElement>('[data-testid="speak-as-npc-select"]')
       ?.addEventListener('change', (event) => {
