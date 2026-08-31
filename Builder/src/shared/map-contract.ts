@@ -179,6 +179,7 @@ export const MAP_REFERENCE_MARKER_KINDS = [
   'prop',
   'creature',
   'npc',
+  'exit',
 ] as const;
 export type MapReferenceMarkerKind = (typeof MAP_REFERENCE_MARKER_KINDS)[number];
 

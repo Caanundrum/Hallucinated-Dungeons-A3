@@ -191,7 +191,11 @@ function mapTerrainSummary(map: MapBundleProjection): string {
     }
   }
   const scene = map.title.trim().length > 0 ? map.title : 'Scene';
-  const exits = map.edges.filter((edge) => edge.kind === 'door').length;
+  const doors = map.edges.filter((edge) => edge.kind === 'door').length;
+  const exitMarkers = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
+  ).length;
+  const exitCount = Math.max(doors, exitMarkers);
   const party =
     map.tokens.length > 0
       ? map.tokens
@@ -201,7 +205,7 @@ function mapTerrainSummary(map: MapBundleProjection): string {
           )
           .join('; ')
       : 'no party token';
-  return `${scene} · ${columns}×${rows} · ${party} · ${exits} door${exits === 1 ? '' : 's'} · ${floor} floor, ${difficult} difficult, ${blocked} blocked, ${unexplored} fog`;
+  return `${scene} · ${columns}×${rows} · ${party} · ${exitCount} exit${exitCount === 1 ? '' : 's'} · ${floor} floor, ${difficult} difficult, ${blocked} blocked, ${unexplored} fog`;
 }
 
 function paintSemanticSvg(
@@ -383,30 +387,38 @@ function paintSemanticSvg(
   const actorFeatures = map.notableFeatures.filter(
     (feature) => feature.referenceKind === 'creature' || feature.referenceKind === 'npc',
   );
+  const exitFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
+  );
   const groundFeatures = map.notableFeatures.filter(
     (feature) =>
       feature.referenceKind !== 'hazard' &&
       feature.referenceKind !== 'creature' &&
-      feature.referenceKind !== 'npc',
+      feature.referenceKind !== 'npc' &&
+      feature.referenceKind !== 'exit' &&
+      feature.objectKind !== 'exit',
   );
   const paintFeatureDot = (feature: (typeof map.notableFeatures)[number]): string => {
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
     const kindLabel = feature.referenceKind ?? 'prop';
     const isActor = kindLabel === 'creature' || kindLabel === 'npc';
+    const isExit = kindLabel === 'exit' || feature.objectKind === 'exit';
     const isTorch =
       kindLabel === 'lighting' || /sconce|torch|lantern|lamp|candle|brazier/i.test(feature.label);
     const isRubble =
       kindLabel === 'cover' || /rubble|cover|debris/i.test(feature.label);
     const isDamp =
       kindLabel === 'hazard' || /damp|wet|slick|hazard/i.test(feature.label);
-    const fill = isActor
-      ? '#c45c5c'
-      : kindLabel === 'hazard'
-        ? '#c47a4a'
-        : isTorch
-          ? '#f0c043'
-          : '#f2d38a';
+    const fill = isExit
+      ? '#6ea8c9'
+      : isActor
+        ? '#c45c5c'
+        : kindLabel === 'hazard'
+          ? '#c47a4a'
+          : isTorch
+            ? '#f0c043'
+            : '#f2d38a';
     const dampWash = isDamp
       ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
          <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
@@ -428,17 +440,27 @@ function paintSemanticSvg(
     const actorRing = isActor
       ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="#f2d38a" stroke-width="1.5" stroke-opacity="0.85" pointer-events="none" aria-hidden="true" />`
       : '';
-    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="${isActor ? 'map-actor-marker' : 'map-poi-marker'}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+    const exitChevron = isExit
+      ? `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
+      : '';
+    const testId = isExit
+      ? 'map-exit-marker'
+      : isActor
+        ? 'map-actor-marker'
+        : 'map-poi-marker';
+    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="${testId}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
       ${actorRing}
-      <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+      ${exitChevron}
+      <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
       <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)}</title>
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
   const actorLayer = actorFeatures.map(paintFeatureDot).join('');
+  const exitLayer = exitFeatures.map(paintFeatureDot).join('');
   const groundLayer = groundFeatures.map(paintFeatureDot).join('');
   const labelLayer = labelPlacements
     .map((placement) => {
@@ -538,6 +560,7 @@ function paintSemanticSvg(
           <g data-layer="structural_underlays">${edges}</g>
           <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
           <g data-layer="actor_markers" data-testid="table-stage-actor-markers">${actorLayer}</g>
+          <g data-layer="exit_markers" data-testid="table-stage-exit-markers">${exitLayer}</g>
           <g data-layer="ground_markers" data-testid="table-stage-ground-markers">${groundLayer}</g>
           <g data-layer="tokens_entities">${tokens}</g>
           <g data-layer="label_chips" data-testid="table-stage-label-chips">${labelLayer}</g>

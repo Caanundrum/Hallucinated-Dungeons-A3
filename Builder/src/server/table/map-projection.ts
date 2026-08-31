@@ -26,6 +26,7 @@ import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
 import { loadMapRuntime, activeSceneInstance, type StoredMapRuntime } from './map-runtime.js';
 import { bootstrapBlankFirstScene, mergeRuntimeEdges } from './scene-builder.js';
 import { visibleSquaresFrom } from './path-validator.js';
+import { attachExitsToStoredScene } from './scene-exit-projection.js';
 
 export class MapProjectionError extends Error {
   readonly code: string;
@@ -232,6 +233,12 @@ function applyViewerFog(
   for (const id of visibleIds) {
     exploredIds.add(id);
   }
+  // Contract exits are always player-known once the scene is established.
+  for (const feature of full.notableFeatures) {
+    if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
+      exploredIds.add(squareId(feature.column, feature.row));
+    }
+  }
 
   const cells = full.cells.map((cell) => {
     const id = squareId(cell.column, cell.row);
@@ -304,8 +311,10 @@ export function buildAuthoritativeMapBundle(options: {
   readonly currentChapterId?: string | null;
 }): MapBundleProjection {
   const { campaignId, seats, runtime } = options;
-  const directorScene = activeSceneInstance(runtime);
-  if (directorScene !== null) {
+  const directorSceneRaw = activeSceneInstance(runtime);
+  if (directorSceneRaw !== null) {
+    // Contract exits must always project as tactical primitives (including legacy scenes).
+    const directorScene = attachExitsToStoredScene(directorSceneRaw);
     const doorMerged = applyDoorOverrides(
       mergeRuntimeEdges(directorScene.edges, []),
       {
@@ -367,7 +376,7 @@ export function buildAuthoritativeMapBundle(options: {
         ? bootstrapBlankFirstScene()
         : null;
   const awaitingAdventure =
-    isBlankTable && !hasRuntimeGeometry && directorScene === null && runtime.adventureStarted !== true;
+    isBlankTable && !hasRuntimeGeometry && runtime.adventureStarted !== true;
   const cells =
     scene !== null
       ? [...scene.cells]
