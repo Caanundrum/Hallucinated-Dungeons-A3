@@ -182,6 +182,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let backgroundPlusTwo: Ability | '' = '';
   let backgroundPlusOne: Ability | '' = '';
   let quickStartOpen = false;
+  let quickStartAppliedNotice: string | null = null;
   let tutorialOpen = false;
   let tutorialStep = 0;
   let pendingChoices: CharacterChoices | null = null;
@@ -342,14 +343,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const draft = current?.draft;
     const activeStage = carouselStageForStep(activeStep);
     const activeIndex = WIZARD_STEPS.indexOf(activeStep);
+    const stageSteps = activeStage.steps as readonly WizardStep[];
+    const localIndex = stageSteps.indexOf(activeStep);
     return `
       <nav class="wizard-carousel" aria-label="Character creation stages" data-testid="wizard-carousel">
         <ol class="wizard-carousel-stages" data-testid="wizard-carousel-stages">
           ${CAROUSEL_STAGES.map((stage, stageIndex) => {
-            const stageSteps = stage.steps as readonly WizardStep[];
+            const steps = stage.steps as readonly WizardStep[];
             const isActive = stage.id === activeStage.id;
-            const done = stageSteps.every((step) => draft?.completedSteps.includes(step) === true);
-            const firstStep = stageSteps[0]!;
+            const done = steps.every((step) => draft?.completedSteps.includes(step) === true);
+            const firstStep = steps[0]!;
             const firstIndex = WIZARD_STEPS.indexOf(firstStep);
             const priorComplete =
               firstIndex === 0 ||
@@ -371,27 +374,33 @@ export function mountCharacterCreatePage(host: PageHost): void {
           }).join('')}
         </ol>
       </nav>
-      <nav class="wizard-train" aria-label="Character creation steps" data-testid="wizard-steps">
-        <ol class="wizard-steps">
-          ${WIZARD_STEPS.map((step, index) => {
-            const done = draft?.completedSteps.includes(step) === true;
-            const isActive = step === activeStep;
-            const priorComplete =
-              index === 0 ||
-              WIZARD_STEPS.slice(0, index).every((prior) => draft?.completedSteps.includes(prior) === true);
-            const allowed = index <= activeIndex || done || priorComplete;
-            return `
-              <li class="${done ? 'done' : ''} ${isActive ? 'active' : ''} ${allowed ? '' : 'locked'}">
-                <button type="button" data-step="${step}" data-testid="step-${step}"
+      <div class="wizard-stage-context" data-testid="wizard-stage-context" aria-label="Current stage steps">
+        <p class="wizard-stage-context-meta" data-testid="wizard-stage-context-meta">
+          ${escapeHtml(activeStage.label)} · Step ${localIndex + 1} of ${stageSteps.length}
+        </p>
+        <div class="wizard-local-steps" role="group" aria-label="Steps in ${escapeHtml(activeStage.label)}" data-testid="wizard-local-steps">
+          ${stageSteps
+            .map((step) => {
+              const done = draft?.completedSteps.includes(step) === true;
+              const isActive = step === activeStep;
+              const stepIndex = WIZARD_STEPS.indexOf(step);
+              const priorComplete =
+                stepIndex === 0 ||
+                WIZARD_STEPS.slice(0, stepIndex).every(
+                  (prior) => draft?.completedSteps.includes(prior) === true,
+                );
+              const allowed = stepIndex <= activeIndex || done || priorComplete;
+              return `
+                <button type="button" class="wizard-local-step${done ? ' done' : ''}${isActive ? ' active' : ''}${allowed ? '' : ' locked'}"
+                  data-step="${step}" data-testid="step-${step}"
                   aria-current="${isActive ? 'step' : 'false'}"
                   aria-disabled="${allowed ? 'false' : 'true'}">
-                  <span class="step-number">${index + 1}</span>
-                  <span class="step-label">${escapeHtml(STEP_TRAIN_LABELS[step])}</span>
-                </button>
-              </li>`;
-          }).join('')}
-        </ol>
-      </nav>`;
+                  ${escapeHtml(STEP_TRAIN_LABELS[step])}
+                </button>`;
+            })
+            .join('')}
+        </div>
+      </div>`;
   }
 
   function wizardNav(): string {
@@ -1417,12 +1426,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
           quickStartOpen = false;
           render();
           try {
+            const template = current.options.quickStartTemplates.find(
+              (entry) => entry.id === input.value,
+            );
             current = await applyQuickStartTemplate({
               candidateId: candidate.candidateId,
               draftId: current.draft.draftId,
               templateId: input.value,
             });
             activeStep = 'identity';
+            quickStartAppliedNotice = template
+              ? `${template.label} prefilled Class, Species, Background, Abilities, Gear, and Features. Rename at Identity — every choice stays editable.`
+              : 'Ready-made choices were applied. Rename at Identity — every choice stays editable.';
           } catch (failure) {
             error = failure instanceof ApiFailure ? failure.message : 'That template could not be applied.';
           } finally {
@@ -2047,7 +2062,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <div class="page page-wide create-carousel-page">
         <h1 data-testid="create-heading">Create a character</h1>
         <p class="tagline">
-          Three visual stages — Archetype, Foundation, and Identity. The SRD still validates every pick.
+          Progress through three stages — Archetype, Foundation, and Identity. Local steps sit under the active stage.
         </p>
         <p class="wizard-coach" data-testid="one-draft-disclosure">
           Alpha keeps one draft at a time. Starting a new character from the Vault discards this draft
@@ -2076,6 +2091,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
         <div class="wizard-layout wizard-carousel-layout">
           <section class="panel wizard-step-panel wizard-carousel-panel" aria-labelledby="step-heading" data-testid="wizard-carousel-panel">
             <p class="carousel-stage-kicker" data-testid="carousel-stage-kicker">${escapeHtml(carouselStageForStep(activeStep).label)} · ${escapeHtml(carouselStageForStep(activeStep).summary)}</p>
+            ${
+              quickStartAppliedNotice === null
+                ? ''
+                : `<div class="message success" role="status" data-testid="quick-start-applied-notice">${escapeHtml(quickStartAppliedNotice)}</div>`
+            }
             <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
             ${renderStepBody()}
             ${wizardNav()}
