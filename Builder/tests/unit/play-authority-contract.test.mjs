@@ -29,10 +29,10 @@ test('A2: successful unlock yields closed + unlocked, not open', () => {
     leaf: 'open',
     lock: 'unlocked',
   });
-  assert.equal(formatDoorAuthorityLabel(doorStateAfterUnlockSuccess()), 'Wooden door (closed, unlocked)');
-  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('locked')), 'Wooden door (closed, locked)');
-  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('closed')), 'Wooden door (closed)');
-  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('unlocked')), 'Wooden door (closed, unlocked)');
+  assert.equal(formatDoorAuthorityLabel(doorStateAfterUnlockSuccess()), 'Wooden doorway (closed, unlocked)');
+  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('locked')), 'Wooden doorway (closed, locked)');
+  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('closed')), 'Wooden doorway (closed)');
+  assert.equal(formatDoorAuthorityLabel(doorAuthorityFromStored('unlocked')), 'Wooden doorway (closed, unlocked)');
   assert.equal(storedDoorStateFromAuthority(doorStateAfterUnlockSuccess()), 'unlocked');
 });
 
@@ -40,15 +40,20 @@ test('FQA-017: player-facing door labels use one name with appended state', asyn
   const { formatDoorPlayerFacingLabel } = await import('../../dist/shared/play-authority-contract.js');
   assert.equal(
     formatDoorPlayerFacingLabel(doorAuthorityFromStored('closed'), 'east'),
-    'Wooden door east — closed',
+    'Wooden doorway east — closed',
   );
   assert.equal(
     formatDoorPlayerFacingLabel(doorAuthorityFromStored('locked'), 'north'),
-    'Wooden door north — closed, locked',
+    'Wooden doorway north — closed, locked',
   );
   assert.equal(
     formatDoorPlayerFacingLabel(doorAuthorityFromStored('open'), 'west'),
-    'Wooden door west — open',
+    'Wooden doorway west — open',
+  );
+  const { canonicalDoorFeatureKey } = await import('../../dist/shared/play-authority-contract.js');
+  assert.equal(
+    canonicalDoorFeatureKey('Wooden doorway east'),
+    canonicalDoorFeatureKey('Wooden door east — closed'),
   );
 });
 

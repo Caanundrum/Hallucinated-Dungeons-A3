@@ -63,6 +63,7 @@ import {
 import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
+  canonicalDoorFeatureKey,
   parsePlayerDeclaration,
   resolveIntentAuthority,
   textReferencesUnlockedDoorState,
@@ -74,6 +75,38 @@ import type { CampaignMemoryProjection } from '../../shared/campaign-memory-cont
 
 function shortFeatureLabel(label: string): string {
   return label.replace(/\s+[—-]\s+.*$/u, '').trim();
+}
+
+/** Keep exit state suffix for survey/route lines (FQA-004). */
+function exitRouteLabel(label: string): string {
+  const trimmed = label.replace(/\s+/g, ' ').trim();
+  if (/\s+[—-]\s+(open|closed|locked|unlocked)/i.test(trimmed)) {
+    return trimmed;
+  }
+  return shortFeatureLabel(trimmed);
+}
+
+export function dedupeInspectCandidateLabels(labels: readonly string[]): string[] {
+  const preferred = new Map<string, string>();
+  for (const label of labels) {
+    const trimmed = label.replace(/\s+/g, ' ').trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const key = canonicalDoorFeatureKey(trimmed);
+    const existing = preferred.get(key);
+    if (existing === undefined) {
+      preferred.set(key, trimmed);
+      continue;
+    }
+    // Prefer the label that includes mechanical state.
+    const existingHasState = /\s+[—-]\s+|\([^)]*(open|closed|locked)/i.test(existing);
+    const nextHasState = /\s+[—-]\s+|\([^)]*(open|closed|locked)/i.test(trimmed);
+    if (!existingHasState && nextHasState) {
+      preferred.set(key, trimmed);
+    }
+  }
+  return [...preferred.values()];
 }
 
 /** Player-facing fiction from the validated map — never invents unseen locations. */
@@ -89,22 +122,43 @@ export function buildSceneSurveyNarration(map: MapBundleProjection): string {
     (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
   );
   const exitNames = exitFeatures
-    .map((feature) => shortFeatureLabel(feature.label))
+    .map((feature) => {
+      const label = exitRouteLabel(feature.label);
+      if (/\s+[—-]\s+(open|closed|locked|unlocked)/i.test(label)) {
+        return label;
+      }
+      const nearby = map.edges.find(
+        (edge) =>
+          edge.kind === 'door' &&
+          Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
+      );
+      if (nearby === undefined) {
+        return label;
+      }
+      return formatDoorPlayerFacingLabel(
+        doorAuthorityFromStored(nearby.doorState),
+        nearby.orientation,
+      );
+    })
     .filter((label) => label.length > 0);
+  const uniqueExits = dedupeInspectCandidateLabels(exitNames);
   const doorEdges = map.edges.filter((edge) => edge.kind === 'door');
   // Prefer named contract exits over raw door-edge counts so prose matches the map.
   let doorLine: string;
-  if (exitNames.length >= 2) {
-    doorLine = `Visible routes: ${exitNames.join('; ')}.`;
-  } else if (exitNames.length === 1) {
+  if (uniqueExits.length >= 2) {
+    doorLine = `Visible routes: ${uniqueExits.join('; ')}.`;
+  } else if (uniqueExits.length === 1) {
     doorLine =
-      doorEdges.length > 1
-        ? `One named route is clear — ${exitNames[0]} — while another opening is marked but not yet identified.`
-        : `A single route breaks the wall ahead: ${exitNames[0]}.`;
+      doorEdges.length > 1 && uniqueExits.length < doorEdges.length
+        ? `One named route is clear — ${uniqueExits[0]} — while another opening is marked but not yet identified.`
+        : `A single route breaks the wall ahead: ${uniqueExits[0]}.`;
   } else if (doorEdges.length === 0) {
     doorLine = 'No doorway is marked on the walls you can see.';
   } else if (doorEdges.length === 1) {
-    doorLine = 'A single wooden doorway breaks the wall ahead.';
+    doorLine = `A single route breaks the wall ahead: ${formatDoorPlayerFacingLabel(
+      doorAuthorityFromStored(doorEdges[0]!.doorState),
+      doorEdges[0]!.orientation,
+    )}.`;
   } else {
     doorLine = `${doorEdges.length} openings break the walls you can see, though none are named yet.`;
   }
@@ -680,20 +734,31 @@ export function scrubExpandedInspectScope(body: string, mechanicsSummary: string
   if (!/\bdoor(?:way)?\b|\bfeature\b|\bbench\b|\bcounter\b|\blamp\b|\bhearth\b/i.test(target)) {
     return body;
   }
+  const named = target.replace(/^the\s+/i, '');
   let scrubbed = body
     .replace(
       /\b(?:timber\s+)?floorboards?(?:,?\s*(?:the\s+)?doorframes?)?(?:,?\s*and\s+(?:the\s+)?(?:nearby\s+)?furnishings?)?\b/gi,
-      target.replace(/^the\s+/i, ''),
+      named,
     )
+    .replace(/\b(?:doorframe|furnishings?|nearby furnishings?)\b/gi, named)
     .replace(
-      /\b(?:doorframe|furnishings?|nearby furnishings?)\b/gi,
-      target.replace(/^the\s+/i, ''),
+      /\b(?:the\s+)?(?:entire\s+)?(?:area|room|chamber|surroundings|target)\b(?=[^.!?\n]{0,48}\b(?:inspect|examin|search|sweep|probe|spot|find|notice))/gi,
+      `the ${named}`,
     )
-    .replace(
-      /\b(?:the\s+)?(?:entire\s+)?(?:area|room|chamber|surroundings)\b(?=[^.!?\n]{0,40}\b(?:inspect|examin|search|sweep|probe))/gi,
-      `the ${target.replace(/^the\s+/i, '')}`,
-    );
+    .replace(/\bthe target\b/gi, `the ${named}`)
+    .replace(/\bthe area\b/gi, `the ${named}`);
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || body;
+}
+
+/** Strip internal grid ids like c4r3 from player-facing Director prose. */
+export function scrubEngineCoordinates(body: string): string {
+  return body
+    .replace(/\bat\s+c\d+r\d+\b/gi, '')
+    .replace(/\b\(c\d+r\d+\)/gi, '')
+    .replace(/\bc\d+r\d+\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .trim();
 }
 
 /** Builds narration body text for the given density, without inventing state. */
@@ -1119,20 +1184,19 @@ export async function interpretNaturalLanguageIntent(options: {
         accountId: options.accountId,
         campaignId: options.campaignId,
       });
-      candidateLabels = map.notableFeatures
-        .map((feature) => feature.label)
-        .filter((label) => label.trim().length > 0)
-        .slice(0, 8);
-      for (const edge of map.edges) {
-        if (edge.kind === 'door') {
-          candidateLabels.push(
+      candidateLabels = dedupeInspectCandidateLabels([
+        ...map.notableFeatures
+          .map((feature) => feature.label)
+          .filter((label) => label.trim().length > 0),
+        ...map.edges
+          .filter((edge) => edge.kind === 'door')
+          .map((edge) =>
             formatDoorPlayerFacingLabel(
               doorAuthorityFromStored(edge.doorState),
               edge.orientation,
             ),
-          );
-        }
-      }
+          ),
+      ]).slice(0, 8);
     } catch {
       candidateLabels = [];
     }
@@ -1530,14 +1594,14 @@ export async function answerDirectorAddress(options: {
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${
       mechanical ? ARBITER_CONSTITUTION : `${ARBITER_CONSTITUTION} Also answer scene questions without inventing unseen detail.`
-    }`,
+    } Never cite internal grid coordinates such as c4r3 — describe doors and props by player-facing names and directions only.`,
     userPrompt: `${context.text}\n\nPlayer ask-the-DM message:\n${text}`,
   });
 
   return {
     responseId: randomUUID(),
     campaignId: options.campaignId,
-    body: liveBody ?? simulatorBody,
+    body: scrubEngineCoordinates(liveBody ?? simulatorBody),
     mutatesState: false,
     directorIdentityLabel: name,
     directorIdentity: director.identity,
@@ -1601,15 +1665,17 @@ export async function narrateVisibleBeat(options: {
     liveCandidate.length === 0 ||
     looksLikeTruncatedDirectorProse(liveBody) ||
     looksLikeTruncatedDirectorProse(liveCandidate);
-  const body = scrubExpandedInspectScope(
-    scrubFalseTrapCertainty(
-      scrubFalseSceneDeparture(
-        preferSimulated ? simulated.body : liveCandidate,
+  const body = scrubEngineCoordinates(
+    scrubExpandedInspectScope(
+      scrubFalseTrapCertainty(
+        scrubFalseSceneDeparture(
+          preferSimulated ? simulated.body : liveCandidate,
+          options.mechanicsSummary,
+        ),
         options.mechanicsSummary,
       ),
       options.mechanicsSummary,
     ),
-    options.mechanicsSummary,
   );
   const humorApplied = preferSimulated ? simulated.humorApplied : effectiveDensity !== 'concise';
   const fallbackUsed = liveGeminiEnabled(options) && preferSimulated;

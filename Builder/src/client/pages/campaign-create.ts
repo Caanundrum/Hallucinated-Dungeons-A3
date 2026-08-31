@@ -179,7 +179,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
               : `<div class="message error" role="alert" tabindex="-1" data-testid="create-campaign-error">${escapeHtml(error)}</div>
                  <div class="actions">
                    <button type="button" data-testid="retry-director-catalog">Retry</button>
-                   <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to campaigns</a>
+                   <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Tables</a>
                  </div>`
           }
         </div>`;
@@ -326,7 +326,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
             aria-disabled="${canSubmit() ? 'false' : 'true'}">
             ${busy ? 'Creating…' : 'Create table'}
           </button>
-          <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to campaigns</a>
+          <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Tables</a>
         </div>
         ${
           canSubmit()

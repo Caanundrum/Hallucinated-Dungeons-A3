@@ -1656,6 +1656,10 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               Number.isFinite(trackers.level1SlotsRemaining)
                 ? Math.max(0, Math.floor(trackers.level1SlotsRemaining))
                 : undefined;
+            const auditReason =
+              typeof trackers.auditReason === 'string'
+                ? trackers.auditReason.trim().slice(0, 160)
+                : undefined;
             let resourceRemaining: Record<string, number> | undefined;
             if (trackers.resourceRemaining !== undefined) {
               if (
@@ -1718,6 +1722,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
               ...(resourceRemaining !== undefined ? { resourceRemaining } : {}),
               ...(level1SlotsRemaining !== undefined ? { level1SlotsRemaining } : {}),
               ...(equipmentOverrides !== undefined ? { equipmentOverrides } : {}),
+              ...(auditReason !== undefined && auditReason.length > 0 ? { auditReason } : {}),
             });
             sendJson(response, 200, character);
             return;

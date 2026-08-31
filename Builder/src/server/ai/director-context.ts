@@ -94,12 +94,21 @@ function formatMap(map: MapBundleProjection): string {
     map.viewerSeatId === null
       ? null
       : map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? null;
+  const features = map.notableFeatures
+    .map((feature) => {
+      if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
+        return feature.label;
+      }
+      return feature.label;
+    })
+    .slice(0, 12);
   const visibleDoors = map.edges
     .filter((edge) => edge.kind === 'door')
-    .map((edge) => `${edge.edgeId} (${edge.doorState ?? 'closed'})`)
-    .slice(0, 12);
-  const features = map.notableFeatures
-    .map((feature) => `${feature.label} at c${feature.column}r${feature.row}`)
+    .map((edge) => {
+      const facing = edge.orientation;
+      const state = edge.doorState ?? 'closed';
+      return `Wooden doorway ${facing} — ${state}`;
+    })
     .slice(0, 12);
   return [
     `Scene: ${map.title}`,

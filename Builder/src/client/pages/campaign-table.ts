@@ -788,6 +788,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
+  function dmPlayThreadScrollHost(): HTMLElement | null {
+    return (
+      container.querySelector<HTMLElement>('[data-testid="dm-play-thread-list"]') ??
+      container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]')
+    );
+  }
+
   function isDmThreadNearBottom(host: HTMLElement): boolean {
     return host.scrollHeight - host.scrollTop - host.clientHeight < 56;
   }
@@ -801,7 +808,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function scrollDmPlayThreadToLatest(behavior: ScrollBehavior = 'auto'): void {
-    const host = container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]');
+    const host = dmPlayThreadScrollHost();
     if (host === null) {
       return;
     }
@@ -811,7 +818,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function bindDmPlayThreadScroll(): void {
-    const host = container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]');
+    const host = dmPlayThreadScrollHost();
     if (host === null || host.dataset.scrollBound === '1') {
       return;
     }
