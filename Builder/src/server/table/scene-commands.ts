@@ -1,5 +1,5 @@
 /**
- * Director scene loop command helpers (Batch 2).
+ * Director scene loop command helpers (Batch 2 + Batch 3 coherence).
  */
 
 import type { Firestore } from 'firebase-admin/firestore';
@@ -7,7 +7,9 @@ import type { Firestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import {
   composeDirectorScene,
+  directorNarrationBeat,
   featureLabelWithState,
+  matchLandmarkDestination,
   nextObjectState,
   newSceneId,
   type ComposedScene,
@@ -40,6 +42,29 @@ export async function loadCampaignPremise(
   return name.length > 0 ? name : 'an unfolding adventure';
 }
 
+function instanceToComposed(prior: NonNullable<ReturnType<typeof activeSceneInstance>>): ComposedScene {
+  return {
+    sceneId: prior.sceneId,
+    templateId: prior.templateId,
+    title: prior.title,
+    sceneBanner: prior.sceneBanner,
+    purpose: prior.purpose,
+    environment: prior.environment,
+    lighting: prior.lighting,
+    mood: prior.mood,
+    description: prior.description ?? prior.mood,
+    columns: prior.columns,
+    rows: prior.rows,
+    cells: prior.cells,
+    edges: prior.edges,
+    features: prior.features,
+    spawn: prior.spawn,
+    exits: prior.exits,
+    doorStates: prior.doorStates,
+    inhabitantObjectIds: prior.inhabitantObjectIds ?? [],
+  };
+}
+
 export function beginAdventureRuntime(options: {
   readonly runtime: StoredMapRuntime;
   readonly premise: string;
@@ -70,7 +95,7 @@ export function beginAdventureRuntime(options: {
   return {
     runtime,
     composed,
-    chronicle: `Scene built: ${composed.title}. ${composed.mood}`,
+    chronicle: directorNarrationBeat('establish', { scene: composed }),
   };
 }
 
@@ -106,9 +131,14 @@ export function interactObjectRuntime(options: {
   if (runtime === null) {
     throw new Error('NO_ACTIVE_SCENE');
   }
+  const scene = instanceToComposed(activeSceneInstance(runtime)!);
   return {
     runtime,
-    chronicle: `${feature.label} is now ${next}.`,
+    chronicle: directorNarrationBeat('interact', {
+      scene,
+      objectLabel: feature.label.replace(/\s*\([^)]+\)\s*$/, '').trim(),
+      objectState: next,
+    }),
     label: labeled,
     nextState: next,
   };
@@ -125,17 +155,23 @@ function inferTravelKind(
     return { kind: 'return_hint', returnToSceneId: prior ?? null };
   }
   const active = activeSceneInstance(runtime);
-  if (active?.purpose === 'travel' || active?.purpose === 'exploration') {
-    if (active.purpose === 'travel' || /\bencounter|ambush|danger|ahead|forward|onward\b/i.test(destinationHint)) {
-      if (active.purpose === 'travel') {
-        return { kind: 'encounter', returnToSceneId: active.sceneId };
-      }
-    }
+  // Open-ended landmark destinations compose outside the interior→exterior→danger chain.
+  if (matchLandmarkDestination(destinationHint)) {
+    return { kind: 'landmark', returnToSceneId: active?.sceneId ?? null };
   }
-  if (active?.purpose === 'exploration') {
+  if (active?.purpose === 'travel') {
+    if (/\bencounter|ambush|danger|ahead|forward|onward\b/i.test(destinationHint)) {
+      return { kind: 'encounter', returnToSceneId: active.sceneId };
+    }
+    return { kind: 'landmark', returnToSceneId: active.sceneId };
+  }
+  if (active?.purpose === 'exploration' || active?.purpose === 'social' || active?.purpose === 'rest') {
     return { kind: 'exterior', returnToSceneId: active.sceneId };
   }
-  if (active?.purpose === 'encounter') {
+  if (active?.purpose === 'encounter' || active?.purpose === 'hazard') {
+    if (/\bleave|travel|head|go to|climb|enter\b/i.test(destinationHint)) {
+      return { kind: 'landmark', returnToSceneId: active.sceneId };
+    }
     return { kind: 'return_hint', returnToSceneId: (runtime.sceneStack ?? []).at(-1) ?? null };
   }
   return { kind: 'exterior', returnToSceneId: active?.sceneId ?? null };
@@ -165,25 +201,7 @@ export function travelSceneRuntime(options: {
       throw new Error('NO_PRIOR_SCENE');
     }
     const prior = options.runtime.sceneInstances![returnId]!;
-    // Rehydrate a composed shell for restore path.
-    const composed: ComposedScene = {
-      sceneId: prior.sceneId,
-      templateId: prior.templateId,
-      title: prior.title,
-      sceneBanner: prior.sceneBanner,
-      purpose: prior.purpose,
-      environment: prior.environment,
-      lighting: prior.lighting,
-      mood: prior.mood,
-      columns: prior.columns,
-      rows: prior.rows,
-      cells: prior.cells,
-      edges: prior.edges,
-      features: prior.features,
-      spawn: prior.spawn,
-      exits: prior.exits,
-      doorStates: prior.doorStates,
-    };
+    const composed = instanceToComposed(prior);
     const runtime = applyComposedSceneToRuntime({
       runtime: options.runtime,
       composed,
@@ -191,14 +209,34 @@ export function travelSceneRuntime(options: {
       accountIds: [options.accountId],
       seatTokens: options.seatTokens,
     });
+    const changed = prior.features.find(
+      (feature) =>
+        feature.interactable &&
+        ((feature.objectKind === 'light' && feature.state === 'unlit') ||
+          (feature.objectKind === 'cover' && feature.state === 'broken') ||
+          (feature.objectKind === 'container' &&
+            (feature.state === 'broken' || feature.state === 'open')) ||
+          (feature.objectKind === 'prop' &&
+            (feature.state === 'open' || feature.state === 'broken')) ||
+          (feature.objectKind === 'hazard' && feature.state === 'disarmed')),
+    );
     return {
       runtime,
       composed,
-      chronicle: `Returned to ${prior.title}. Prior consequences remain.`,
+      chronicle: directorNarrationBeat('return', {
+        scene: composed,
+        objectLabel: changed?.label ?? null,
+      }),
     };
   }
 
-  const sceneId = newSceneId(inferred.kind === 'encounter' ? 'encounter' : 'exterior');
+  const sceneId = newSceneId(
+    inferred.kind === 'encounter'
+      ? 'encounter'
+      : inferred.kind === 'landmark'
+        ? 'landmark'
+        : 'exterior',
+  );
   const composed = composeDirectorScene({
     kind: inferred.kind,
     sceneId,
@@ -217,7 +255,10 @@ export function travelSceneRuntime(options: {
   return {
     runtime,
     composed,
-    chronicle: `Traveled to ${composed.title}. ${composed.mood}`,
+    chronicle: directorNarrationBeat('travel', {
+      scene: composed,
+      priorTitle: active.title,
+    }),
   };
 }
 
@@ -252,16 +293,25 @@ export function matchInteractableByDeclaration(
       if (kind === 'light' && /\b(lamp|lantern|light|torch|cresset|hearth|sconce)\b/.test(text)) {
         score += 4;
       }
-      if (kind === 'cover' && /\b(rubble|bench|crate|debris|log|cart|wood|masonry)\b/.test(text)) {
+      if (
+        kind === 'cover' &&
+        /\b(rubble|bench|crate|debris|log|cart|wood|masonry|parapet|span|plinth)\b/.test(text)
+      ) {
         score += 4;
       }
-      if (kind === 'container' && /\b(crate|chest|box|counter|workbench)\b/.test(text)) {
+      if (
+        kind === 'container' &&
+        /\b(crate|chest|box|counter|workbench|freight)\b/.test(text)
+      ) {
         score += 4;
       }
-      if (kind === 'hazard' && /\b(trap|tripwire|bramble|hazard|disarm)\b/.test(text)) {
+      if (kind === 'hazard' && /\b(trap|tripwire|bramble|hazard|disarm|stones)\b/.test(text)) {
         score += 4;
       }
-      if (kind === 'prop' && /\b(shutter|window|niche)\b/.test(text)) {
+      if (
+        kind === 'prop' &&
+        /\b(shutter|window|niche|painter|skiff|rope|bridge|arrow-loop|loop)\b/.test(text)
+      ) {
         score += 3;
       }
       if (/\b(extinguish|douse|light|break|smash|move|open|close|disarm)\b/.test(text)) {

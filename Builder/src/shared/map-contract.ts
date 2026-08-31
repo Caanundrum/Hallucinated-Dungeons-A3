@@ -171,8 +171,15 @@ export interface MapNotableFeatureRecord {
   readonly interactable?: boolean;
 }
 
-/** Non-authoritative map reference markers for lighting / atmosphere cues. */
-export const MAP_REFERENCE_MARKER_KINDS = ['lighting', 'hazard', 'cover', 'prop'] as const;
+/** Non-authoritative map reference markers for lighting / atmosphere / actors. */
+export const MAP_REFERENCE_MARKER_KINDS = [
+  'lighting',
+  'hazard',
+  'cover',
+  'prop',
+  'creature',
+  'npc',
+] as const;
 export type MapReferenceMarkerKind = (typeof MAP_REFERENCE_MARKER_KINDS)[number];
 
 export function isMapReferenceMarkerKind(value: unknown): value is MapReferenceMarkerKind {

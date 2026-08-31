@@ -380,20 +380,33 @@ function paintSemanticSvg(
   const hazardFeatures = map.notableFeatures.filter(
     (feature) => feature.referenceKind === 'hazard',
   );
+  const actorFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'creature' || feature.referenceKind === 'npc',
+  );
   const groundFeatures = map.notableFeatures.filter(
-    (feature) => feature.referenceKind !== 'hazard',
+    (feature) =>
+      feature.referenceKind !== 'hazard' &&
+      feature.referenceKind !== 'creature' &&
+      feature.referenceKind !== 'npc',
   );
   const paintFeatureDot = (feature: (typeof map.notableFeatures)[number]): string => {
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
     const kindLabel = feature.referenceKind ?? 'prop';
+    const isActor = kindLabel === 'creature' || kindLabel === 'npc';
     const isTorch =
       kindLabel === 'lighting' || /sconce|torch|lantern|lamp|candle|brazier/i.test(feature.label);
     const isRubble =
       kindLabel === 'cover' || /rubble|cover|debris/i.test(feature.label);
     const isDamp =
       kindLabel === 'hazard' || /damp|wet|slick|hazard/i.test(feature.label);
-    const fill = kindLabel === 'hazard' ? '#c47a4a' : isTorch ? '#f0c043' : '#f2d38a';
+    const fill = isActor
+      ? '#c45c5c'
+      : kindLabel === 'hazard'
+        ? '#c47a4a'
+        : isTorch
+          ? '#f0c043'
+          : '#f2d38a';
     const dampWash = isDamp
       ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
          <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
@@ -412,15 +425,20 @@ function paintSemanticSvg(
          <circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.45}" fill="url(#map-torch-glow)" aria-hidden="true" />
          <circle class="map-torch-core-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.6}" fill="url(#map-torch-core)" aria-hidden="true" />`
       : '';
-    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="map-poi-marker" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+    const actorRing = isActor
+      ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="#f2d38a" stroke-width="1.5" stroke-opacity="0.85" pointer-events="none" aria-hidden="true" />`
+      : '';
+    return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="${isActor ? 'map-actor-marker' : 'map-poi-marker'}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
-      <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+      ${actorRing}
+      <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
       <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)}</title>
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
+  const actorLayer = actorFeatures.map(paintFeatureDot).join('');
   const groundLayer = groundFeatures.map(paintFeatureDot).join('');
   const labelLayer = labelPlacements
     .map((placement) => {
@@ -519,6 +537,7 @@ function paintSemanticSvg(
           <g data-layer="grid_reference">${gridLines.join('')}</g>
           <g data-layer="structural_underlays">${edges}</g>
           <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
+          <g data-layer="actor_markers" data-testid="table-stage-actor-markers">${actorLayer}</g>
           <g data-layer="ground_markers" data-testid="table-stage-ground-markers">${groundLayer}</g>
           <g data-layer="tokens_entities">${tokens}</g>
           <g data-layer="label_chips" data-testid="table-stage-label-chips">${labelLayer}</g>
@@ -1003,8 +1022,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
       const isHazard = feature.referenceKind === 'hazard';
+      const isActor =
+        feature.referenceKind === 'creature' || feature.referenceKind === 'npc';
       const marker = new Graphics();
-      marker.circle(x, y, 6).fill({ color: isHazard ? 0xc47a4a : 0xf2d38a, alpha: 0.95 });
+      const color = isActor ? 0xc45c5c : isHazard ? 0xc47a4a : 0xf2d38a;
+      marker.circle(x, y, isActor ? 8 : 6).fill({ color, alpha: 0.95 });
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
       const featureLabel = new Text({

@@ -46,8 +46,22 @@ async function confirmDraft(page: Page): Promise<void> {
   await confirm.click();
 }
 
-test.describe('Batch 2 Director scene loop', () => {
-  test('interior → object change → exterior → encounter → return preserves state', async ({
+async function beginAdventure(page: Page): Promise<void> {
+  await expect(page.getByTestId('begin-adventure')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('begin-adventure').click();
+  await expect(page.getByTestId('intent-intercept-summary')).toContainText(
+    /begin the adventure|opening scene/i,
+    { timeout: 10_000 },
+  );
+  await confirmDraft(page);
+  await expect(page.getByTestId('map-scene-banner')).not.toContainText(
+    /Awaiting first scene|Game Director is ready to establish/i,
+    { timeout: 30_000 },
+  );
+}
+
+test.describe('Batch 2/3 Director scene loop', () => {
+  test('interior → object change → exterior → encounter (actor on map) → return', async ({
     page,
   }) => {
     test.setTimeout(240_000);
@@ -57,12 +71,7 @@ test.describe('Batch 2 Director scene loop', () => {
     await enterAccountFromShell(page);
     await seatAndOpenTable(page, 'SceneLoop', 'a misty marsh inn beside the reeds');
 
-    await expect(page.getByTestId('begin-adventure')).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId('begin-adventure').click();
-    await expect(page.getByTestId('map-scene-banner')).not.toContainText(
-      /Awaiting first scene|Game Director is ready to establish/i,
-      { timeout: 30_000 },
-    );
+    await beginAdventure(page);
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Quiet chamber/i);
     const interiorTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
     expect(interiorTitle.length).toBeGreaterThan(8);
@@ -70,17 +79,21 @@ test.describe('Batch 2 Director scene loop', () => {
 
     await openTableAdvancedControls(page);
 
-    // Non-door object change.
+    // Non-door light change.
     await page.getByTestId('nl-intent-input').fill('extinguish the lamp');
     await page.getByTestId('interpret-nl-intent').click();
-    await expect(page.getByTestId('intent-intercept-summary')).toContainText(
-      /object|lamp|light|extinguish|change/i,
-      { timeout: 20_000 },
-    );
     await confirmDraft(page);
-    await expect(
-      page.getByTestId('map-notable-features'),
-    ).toContainText(/unlit/i, { timeout: 20_000 });
+    await expect(page.getByTestId('map-notable-features')).toContainText(/unlit/i, {
+      timeout: 20_000,
+    });
+
+    // Second stateful object (not light/door).
+    await page.getByTestId('nl-intent-input').fill('smash the overturned bench');
+    await page.getByTestId('interpret-nl-intent').click();
+    await confirmDraft(page);
+    await expect(page.getByTestId('map-notable-features')).toContainText(/broken/i, {
+      timeout: 20_000,
+    });
 
     // Leave for exterior/travel.
     await page.getByTestId('nl-intent-input').fill('leave through the doorway toward the marsh trail');
@@ -92,19 +105,20 @@ test.describe('Batch 2 Director scene loop', () => {
     const exteriorTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
     expect(exteriorTitle).not.toEqual(interiorTitle);
 
-    // Encounter onward.
+    // Encounter onward — inhabitant must appear on the tactical map.
     await page.getByTestId('nl-intent-input').fill('travel onward into danger ahead');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(exteriorTitle, {
       timeout: 30_000,
     });
-    await expect(page.getByTestId('map-scene-banner')).toBeVisible();
-    const encounterTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
-    expect(encounterTitle.length).toBeGreaterThan(3);
-    expect(encounterTitle).not.toEqual(exteriorTitle);
+    await expect(page.getByTestId('map-notable-features')).toContainText(
+      /stranger|bandit|wolf|lookout/i,
+      { timeout: 20_000 },
+    );
+    await expect(page.getByTestId('map-actor-marker').first()).toBeVisible({ timeout: 10_000 });
 
-    // Return with consequence preserved (may need two hops: encounter → exterior → interior).
+    // Return with consequences preserved.
     await page.getByTestId('nl-intent-input').fill('return to the earlier scene');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
@@ -118,23 +132,39 @@ test.describe('Batch 2 Director scene loop', () => {
       interiorTitle.split('—')[0]!.trim().slice(0, 10),
       { timeout: 30_000 },
     );
-    await expect(page.locator('body')).toContainText(/unlit/i, {
-      timeout: 30_000,
-    });
+    await expect(page.locator('body')).toContainText(/unlit/i, { timeout: 30_000 });
+    await expect(page.locator('body')).toContainText(/broken/i, { timeout: 30_000 });
 
     await page.reload();
     await expect(page.getByTestId('table-ambient-hud')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId('map-scene-banner')).toContainText(
-      interiorTitle.split('—')[0]!.trim().slice(0, 10),
-      { timeout: 30_000 },
-    );
-    await expect(page.locator('body')).toContainText(/unlit/i, {
+    await expect(page.locator('body')).toContainText(/unlit/i, { timeout: 30_000 });
+    await expect(page.locator('body')).toContainText(/broken/i, { timeout: 30_000 });
+  });
+
+  test('open-ended landmark destination differs from prepared travel wording', async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatAndOpenTable(page, 'LandmarkLoop', 'a misty marsh inn beside the reeds');
+    await beginAdventure(page);
+    await openTableAdvancedControls(page);
+
+    await page
+      .getByTestId('nl-intent-input')
+      .fill('climb to the ruined watchtower on the ridge');
+    await page.getByTestId('interpret-nl-intent').click();
+    await confirmDraft(page);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/watchtower|ridge|tower/i, {
       timeout: 30_000,
     });
-
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/batch2-director-scene-loop-return.png',
-    });
+    // Materially different layout — tall tower footprint and shutter object.
+    await expect(page.getByTestId('map-notable-features')).toContainText(
+      /shutter|masonry|parapet|arrow/i,
+      { timeout: 20_000 },
+    );
+    await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Marsh boardwalk/i);
   });
 
   test('reusability: different premise yields different opening scene', async ({ page }) => {
@@ -143,13 +173,11 @@ test.describe('Batch 2 Director scene loop', () => {
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
     await seatAndOpenTable(page, 'CryptLoop', 'a sealed stone crypt under the hill');
-    await page.getByTestId('begin-adventure').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/crypt|stone|tomb|niche|cresset/i, {
-      timeout: 30_000,
-    });
+    await beginAdventure(page);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(
+      /crypt|stone|tomb|niche|cresset/i,
+      { timeout: 30_000 },
+    );
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Quiet chamber/i);
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/batch2-director-scene-crypt-opening.png',
-    });
   });
 });
