@@ -152,3 +152,42 @@ test('FQA-R01/R04 correction reason and session action exclusivity', async ({ pa
   await expect(page.getByTestId('resume-session')).toHaveCount(0);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-session-suspend-only.png', fullPage: true });
 });
+
+test('FQA-R06 confirm clears draft UI before slow narration', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await dismissIntroIfPresent(page);
+  await enterAccountFromShell(page);
+  await seatAndOpenTable(page, 'FQAR06');
+  await expect(page.getByTestId('begin-adventure')).toBeVisible();
+  await page.getByTestId('begin-adventure').click();
+  await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
+  await expect(page.getByTestId('cancel-intent-intercept')).toBeVisible();
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-batch3-r06-before-confirm.png' });
+  const started = Date.now();
+  await page.getByTestId('confirm-intent-intercept').click();
+  await expect
+    .poll(
+      async () => {
+        const cancel = await page.getByTestId('cancel-intent-intercept').count();
+        const resolving = await page.getByTestId('intent-intercept-resolving').count();
+        const confirm = page.getByTestId('confirm-intent-intercept');
+        const confirmCount = await confirm.count();
+        if (cancel > 0) return 'cancel-still-visible';
+        if (resolving > 0) return 'resolving';
+        if (confirmCount === 0) return 'cleared';
+        const label = await confirm.innerText();
+        const disabled = await confirm.getAttribute('aria-disabled');
+        if (disabled === 'true' && /Resolving/i.test(label)) return 'resolving';
+        return 'pending';
+      },
+      { timeout: 3_000 },
+    )
+    .toMatch(/^(resolving|cleared)$/);
+  const clearMs = Date.now() - started;
+  expect(clearMs).toBeLessThan(2_500);
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-batch3-r06-confirm-clear.png' });
+  await page.waitForTimeout(2_000);
+  await expect(page.getByTestId('cancel-intent-intercept')).toHaveCount(0);
+});
