@@ -77,6 +77,7 @@ test.describe('Phase 3 Sprint A: immersion & combat drama', () => {
     });
     await expect(page.getByTestId('dice-drama-flash')).toBeVisible();
     await expect(page.getByTestId('dice-drama-burst')).toBeVisible();
+    await expect(page.getByTestId('table-page-shell')).toHaveAttribute('data-dice-drama', 'nat20');
     await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-nat20.png' });
 
     await page.evaluate(() => {
@@ -86,22 +87,24 @@ test.describe('Phase 3 Sprint A: immersion & combat drama', () => {
     await expect(page.getByTestId('dice-tray-result')).toContainText(/Natural 1/i, {
       timeout: 5_000,
     });
-    await expect(page.getByTestId('table-page-shell')).toHaveClass(/dice-nat1-shake/);
+    await expect(page.getByTestId('table-page-shell')).toHaveAttribute('data-dice-drama', 'nat1');
     await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-nat1.png' });
     await page.keyboard.press('Escape');
 
     await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
-    await expect(page.getByTestId('table-page-shell')).toHaveClass(/table-combat-active/, {
+    await expect(page.getByTestId('combatant-training-dummy')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('roll-initiative')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('roll-initiative').click();
+    await expect(page.getByTestId('encounter-meta')).toContainText(/Round [1-9]/i, {
       timeout: 15_000,
     });
-    // Own turn splash may appear if the seated hero wins initiative.
-    const splash = page.getByTestId('turn-splash-banner');
-    if (await splash.isVisible().catch(() => false)) {
-      await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-turn-splash.png' });
-    } else {
-      await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-combat-vignette.png' });
-    }
+    await expect(page.getByTestId('table-page-shell')).toHaveClass(/table-combat-active/, {
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('turn-splash-banner')).toBeVisible({ timeout: 3_000 });
+    await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-turn-splash.png' });
+    await page.screenshot({ path: '/opt/cursor/artifacts/phase3-sprint-a-combat-vignette.png' });
 
     // Drop-cap class on director chronicle entries when present.
     const dropCap = page.locator('.illuminated-dropcap').first();

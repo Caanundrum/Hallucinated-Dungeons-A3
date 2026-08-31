@@ -2342,6 +2342,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (shellEl === null) {
       return;
     }
+    shellEl.dataset.diceDrama = kind === 'crit' ? 'nat20' : 'nat1';
     if (kind === 'crit') {
       const flash = document.createElement('div');
       flash.className = 'dice-drama-flash';
@@ -2364,7 +2365,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     shellEl.classList.add('dice-nat1-shake');
     window.setTimeout(() => {
       shellEl.classList.remove('dice-nat1-shake');
-    }, 220);
+    }, 800);
   }
 
   function syncTurnBannerSplash(): void {
