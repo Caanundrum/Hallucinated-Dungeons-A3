@@ -2255,43 +2255,46 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>`;
   }
 
-  function diceTrayHtml(): string {
-    const dice = [4, 6, 8, 10, 12, 20, 100] as const;
+  function diceFabButtonHtml(): string {
     return `
       <button type="button" class="dice-fab" data-testid="dice-fab" aria-expanded="${diceTrayOpen}" aria-label="Open dice tray">
         <span aria-hidden="true">d20</span>
-      </button>
-      ${
-        !diceTrayOpen
-          ? ''
-          : `<div class="dice-tray-backdrop" data-testid="dice-tray-backdrop" role="presentation">
-              <div class="dice-tray" data-testid="dice-tray" role="dialog" aria-modal="true" aria-labelledby="dice-tray-title" tabindex="-1">
-                <div class="dice-tray-chrome">
-                  <h2 id="dice-tray-title">Dice tray</h2>
-                  <button type="button" class="table-secondary-action" data-testid="close-dice-tray">Close</button>
-                </div>
-                <div class="dice-tray-options" role="group" aria-label="Polyhedral dice">
-                  ${dice
-                    .map(
-                      (sides) => `
-                    <button type="button" class="dice-option" data-testid="dice-roll-d${sides}" data-dice-sides="${sides}"
-                      aria-disabled="${diceTrayRolling}">d${sides}</button>`,
-                    )
-                    .join('')}
-                </div>
-                <div class="dice-tray-stage" data-testid="dice-tray-stage" aria-live="polite">
-                  ${
-                    diceTrayRolling
-                      ? `<div class="dice-tumble" data-testid="dice-tumble" aria-hidden="true"></div>
-                         <p>Rolling…</p>`
-                      : diceTrayResult === null
-                        ? `<p class="record-meta">Pick a die to roll. Natural 20s and 1s get special styling on a d20.</p>`
-                        : `<p class="dice-result ${diceTrayResult.includes('Natural 20') ? 'dice-crit' : diceTrayResult.includes('Natural 1') ? 'dice-fumble' : ''}" data-testid="dice-tray-result">${escapeHtml(diceTrayResult)}</p>`
-                  }
-                </div>
-              </div>
-            </div>`
-      }`;
+      </button>`;
+  }
+
+  function diceTrayOverlayHtml(): string {
+    if (!diceTrayOpen) {
+      return '';
+    }
+    const dice = [4, 6, 8, 10, 12, 20, 100] as const;
+    return `
+      <div class="dice-tray-backdrop" data-testid="dice-tray-backdrop" role="presentation">
+        <div class="dice-tray" data-testid="dice-tray" role="dialog" aria-modal="true" aria-labelledby="dice-tray-title" tabindex="-1">
+          <div class="dice-tray-chrome">
+            <h2 id="dice-tray-title">Dice tray</h2>
+            <button type="button" class="table-secondary-action" data-testid="close-dice-tray">Close</button>
+          </div>
+          <div class="dice-tray-options" role="group" aria-label="Polyhedral dice">
+            ${dice
+              .map(
+                (sides) => `
+              <button type="button" class="dice-option" data-testid="dice-roll-d${sides}" data-dice-sides="${sides}"
+                aria-disabled="${diceTrayRolling}">d${sides}</button>`,
+              )
+              .join('')}
+          </div>
+          <div class="dice-tray-stage" data-testid="dice-tray-stage" aria-live="polite">
+            ${
+              diceTrayRolling
+                ? `<div class="dice-tumble" data-testid="dice-tumble" aria-hidden="true"></div>
+                   <p>Rolling…</p>`
+                : diceTrayResult === null
+                  ? `<p class="record-meta">Pick a die to roll. Natural 20s and 1s get special styling on a d20.</p>`
+                  : `<p class="dice-result ${diceTrayResult.includes('Natural 20') ? 'dice-crit' : diceTrayResult.includes('Natural 1') ? 'dice-fumble' : ''}" data-testid="dice-tray-result">${escapeHtml(diceTrayResult)}</p>`
+            }
+          </div>
+        </div>
+      </div>`;
   }
 
   async function rollDieInTray(sides: number): Promise<void> {
@@ -2688,17 +2691,42 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         overlaySlot.dataset.testid = 'table-overlay-slot';
         shellEl.appendChild(overlaySlot);
       }
+      if (shellEl !== null && shellEl.querySelector('[data-testid="table-map-chrome"]') === null) {
+        const playColumn = shellEl.querySelector('.table-play-column');
+        const stage = shellEl.querySelector<HTMLElement>('[data-testid="table-stage-slot"]');
+        if (playColumn !== null && stage !== null) {
+          const chrome = document.createElement('div');
+          chrome.className = 'table-map-chrome';
+          chrome.dataset.testid = 'table-map-chrome';
+          playColumn.insertBefore(chrome, stage);
+          chrome.appendChild(stage);
+        }
+      }
+      const mapChrome =
+        shellEl !== null
+          ? shellEl.querySelector<HTMLElement>('[data-testid="table-map-chrome"]')
+          : null;
       if (shellEl !== null && shellEl.querySelector('[data-testid="floating-combat-host"]') === null) {
         const fabHost = document.createElement('div');
         fabHost.className = 'floating-combat-host';
         fabHost.dataset.testid = 'floating-combat-host';
-        shellEl.appendChild(fabHost);
+        (mapChrome ?? shellEl).appendChild(fabHost);
+      } else if (shellEl !== null && mapChrome !== null) {
+        const existingFab = shellEl.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
+        if (existingFab !== null && !mapChrome.contains(existingFab)) {
+          mapChrome.appendChild(existingFab);
+        }
       }
       if (shellEl !== null && shellEl.querySelector('[data-testid="dice-fab-host"]') === null) {
         const diceHost = document.createElement('div');
         diceHost.className = 'dice-fab-host';
         diceHost.dataset.testid = 'dice-fab-host';
-        shellEl.appendChild(diceHost);
+        (mapChrome ?? shellEl).appendChild(diceHost);
+      } else if (shellEl !== null && mapChrome !== null) {
+        const existingDice = shellEl.querySelector<HTMLElement>('[data-testid="dice-fab-host"]');
+        if (existingDice !== null && !mapChrome.contains(existingDice)) {
+          mapChrome.appendChild(existingDice);
+        }
       }
       if (shellEl !== null && shellEl.querySelector('[data-testid="table-mobile-task-nav"]') === null) {
         const nav = document.createElement('nav');
@@ -2732,9 +2760,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </aside>
           <main class="table-play-column" aria-label="Play area">
             <div class="table-focus-restore" data-testid="table-focus-restore" hidden></div>
-            <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
-              <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
-            </section>
+            <div class="table-map-chrome" data-testid="table-map-chrome">
+              <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
+                <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
+              </section>
+              <div class="floating-combat-host" data-testid="floating-combat-host"></div>
+              <div class="dice-fab-host" data-testid="dice-fab-host"></div>
+            </div>
             <section class="panel action-composer table-action-bar" aria-labelledby="action-composer-heading" data-testid="action-composer">
               <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
               <div data-testid="table-action-slot"></div>
@@ -2747,8 +2779,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <footer class="table-dashboard-footer" data-testid="table-footer-slot"></footer>
         <div data-testid="table-sheet-modal-slot"></div>
         <div data-testid="table-overlay-slot"></div>
-        <div class="floating-combat-host" data-testid="floating-combat-host"></div>
-        <div class="dice-fab-host" data-testid="dice-fab-host"></div>
       </div>`;
   }
 
@@ -4935,7 +4965,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     sheetModalSlot.innerHTML = characterSheetModalHtml();
     const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
     if (overlaySlot !== null) {
-      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}`;
+      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}${diceTrayOverlayHtml()}`;
     }
     const combatHost = container.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
     if (combatHost !== null) {
@@ -4943,7 +4973,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     const diceHost = container.querySelector<HTMLElement>('[data-testid="dice-fab-host"]');
     if (diceHost !== null) {
-      diceHost.innerHTML = diceTrayHtml();
+      diceHost.innerHTML = diceFabButtonHtml();
     }
 
     const infoRail = container.querySelector<HTMLElement>('[data-testid="table-info-rail"]');
