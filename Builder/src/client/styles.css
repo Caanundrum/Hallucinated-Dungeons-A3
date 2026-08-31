@@ -753,7 +753,7 @@ a.account-chip-label:focus-visible {
   flex-shrink: 0;
   margin: 0;
   max-height: min(34vh, 18rem);
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-2) var(--space-3);
   position: relative;
   z-index: 4;
@@ -762,6 +762,9 @@ a.account-chip-label:focus-visible {
   border-top: var(--border-weight) solid var(--panel-border);
   border-radius: 0;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .table-action-bar-inner {
@@ -769,6 +772,8 @@ a.account-chip-label:focus-visible {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   align-items: start;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .table-action-bar-inner.table-action-bar-compact {
@@ -781,11 +786,13 @@ a.account-chip-label:focus-visible {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .dm-play-thread {
   max-height: min(28vh, 16rem);
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -804,14 +811,13 @@ a.account-chip-label:focus-visible {
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-2);
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 2;
-  margin: 0 0 var(--space-1);
-  padding: var(--space-2) var(--space-1) var(--space-2);
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 0 var(--space-2);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
   background: color-mix(in srgb, var(--color-surface) 98%, var(--color-ink) 2%);
-  box-shadow: 0 6px 10px -8px color-mix(in srgb, var(--color-ink) 35%, transparent);
 }
 
 .dm-play-thread-chrome > .record-meta {
@@ -840,9 +846,33 @@ a.account-chip-label:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.dm-thread-message p {
+.dm-thread-message {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem var(--space-2);
+  align-items: start;
+}
+
+.dm-thread-message > .record-note {
+  grid-column: 1;
+}
+
+.dm-thread-message > [data-testid='dm-thread-timestamp'] {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dm-thread-message > p {
+  grid-column: 1 / -1;
   margin: 0.15rem 0 0;
   white-space: pre-wrap;
 }
@@ -1147,11 +1177,16 @@ a.account-chip-label:focus-visible {
   .table-mobile-task-nav button {
     font-size: 0.85rem;
     padding: 0.45rem 0.35rem;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--panel-surface) 88%, #000);
+    border: 1px solid var(--panel-border);
   }
 
   .table-mobile-task-nav button[aria-pressed='true'] {
-    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
-    background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--gold-primary, var(--color-accent)) 70%, var(--color-border));
+    background: color-mix(in srgb, var(--gold-primary, var(--color-accent)) 28%, var(--panel-surface));
+    color: var(--text-gold, #f0d78c);
+    font-weight: 600;
   }
 
   .table-dashboard-body {
@@ -3388,6 +3423,23 @@ html.hd-low-effects .map-square-fog,
     radial-gradient(ellipse 70% 55% at 35% 30%, color-mix(in srgb, #3a2818 22%, transparent), transparent 70%),
     radial-gradient(ellipse 80% 70% at 70% 80%, color-mix(in srgb, #0a1218 55%, transparent), transparent 65%),
     linear-gradient(165deg, #100c08 0%, #080706 48%, #0a0e12 100%);
+}
+
+@media (max-width: 900px) {
+  .table-dashboard[data-mobile-task='map'] .table-stage-svg-viewport {
+    /* Fit must not leave a horizontal page scrollbar; pan remains available when zoomed in. */
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-stage-frame {
+    overflow: hidden;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .map-label-chip text {
+    font-size: 11px;
+  }
 }
 
 .table-stage-svg-viewport.is-panning {

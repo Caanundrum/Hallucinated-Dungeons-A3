@@ -318,6 +318,7 @@ export async function updateCharacterTrackers(options: {
     readonly quantity: number;
     readonly equipped?: boolean;
   }[];
+  readonly auditReason?: string;
 }): Promise<CharacterProjection> {
   const { candidateId, characterId, ...trackers } = options;
   return (await request<CharacterProjection>(`/api/characters/${characterId}`, {

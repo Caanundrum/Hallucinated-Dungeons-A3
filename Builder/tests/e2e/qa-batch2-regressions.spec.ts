@@ -98,7 +98,9 @@ test.describe('PQA batch 2 regressions', () => {
       await expect(closeChapter).toHaveAttribute('aria-disabled', 'true');
       await expect(page.getByTestId('chapter-travel-hint')).toContainText(/encounter/i);
     }
-    await expect(page.getByTestId('suspend-session')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('suspend-session')).toHaveCount(0);
+    await expect(page.getByTestId('resume-session')).toHaveCount(0);
+    await expect(page.getByTestId('session-encounter-gate')).toContainText(/encounter/i);
   });
 
   test('PQA-085/087/088/089/090/107: suspended notice, checkpoint, presence, art, NPCs, move select', async ({

@@ -107,7 +107,7 @@ function doorBesideSummary(edge: MapEdgeRecord): string {
 }
 
 function doorApproachLabel(edge: MapEdgeRecord): string {
-  return formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(/^Wooden door/i, 'door');
+  return formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(/^Wooden doorway/i, 'doorway');
 }
 
 function approachThenOpenCopy(sceneTitle: string, edge: MapEdgeRecord, wantsOpen: boolean): string {

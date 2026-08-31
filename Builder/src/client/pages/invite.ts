@@ -67,7 +67,7 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
               ? ''
               : `<div class="message error" role="alert" tabindex="-1" data-testid="invite-error">${escapeHtml(error)}</div>`
           }
-          <p><a href="/campaigns" data-link data-testid="invite-campaigns-link">Open campaigns</a></p>
+          <p><a href="/campaigns" data-link data-testid="invite-campaigns-link">Open Tables</a></p>
         </div>`;
       return;
     }
@@ -152,7 +152,7 @@ export function mountInvitePage(host: PageHost, inviteCode: string): void {
                    Open campaign
                  </a>`
           }
-          <a href="/campaigns" data-link data-testid="invite-campaigns-link">Open campaigns</a>
+          <a href="/campaigns" data-link data-testid="invite-campaigns-link">Open Tables</a>
         </div>
       </div>`;
 

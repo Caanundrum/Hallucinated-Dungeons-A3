@@ -587,6 +587,28 @@ test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target
   assert.match(scrubbed, /doorway/i);
 });
 
+test('FQA-R05: scrubEngineCoordinates removes grid ids from Ask DM prose', async () => {
+  const { scrubEngineCoordinates } = await import('../../dist/server/ai/director-gateway.js');
+  const scrubbed = scrubEngineCoordinates(
+    'The wooden doorway east at c4r3 is closed. Check Investigation against DC 13.',
+  );
+  assert.doesNotMatch(scrubbed, /c4r3/i);
+  assert.match(scrubbed, /wooden doorway east/i);
+});
+
+test('FQA-017: inspect candidates dedupe doorway vs door labels', async () => {
+  const { dedupeInspectCandidateLabels } = await import('../../dist/server/ai/director-gateway.js');
+  const deduped = dedupeInspectCandidateLabels([
+    'Wooden doorway east',
+    'Wooden doorway east — closed',
+    'Wooden door east — closed',
+    'Hearth lamp (lit)',
+  ]);
+  assert.equal(deduped.filter((label) => /door/i.test(label)).length, 1);
+  assert.match(deduped.join('; '), /Wooden doorway east — closed/i);
+  assert.match(deduped.join('; '), /Hearth lamp/i);
+});
+
 test('A1: unlocked-door state reference is not a lockpick draft', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),
