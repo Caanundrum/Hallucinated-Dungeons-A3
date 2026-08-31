@@ -29,6 +29,7 @@ function toInstance(
     environment: composed.environment,
     lighting: composed.lighting,
     mood: composed.mood,
+    description: composed.description,
     columns: composed.columns,
     rows: composed.rows,
     cells: composed.cells,
@@ -40,6 +41,7 @@ function toInstance(
     doorStates: { ...composed.doorStates },
     spawn: composed.spawn,
     exits: composed.exits,
+    inhabitantObjectIds: [...composed.inhabitantObjectIds],
     tokenPositions: options.tokenPositions.map((token) => ({
       ...token,
       column: composed.spawn.column,
@@ -54,8 +56,9 @@ function seedExploredAroundSpawn(
   accountIds: readonly string[],
   spawn: { column: number; row: number },
   radius = 2,
+  extraSquares: readonly { column: number; row: number }[] = [],
 ): Record<string, string[]> {
-  const squares: { column: number; row: number }[] = [];
+  const squares: { column: number; row: number }[] = [...extraSquares];
   for (let row = spawn.row - radius; row <= spawn.row + radius; row += 1) {
     for (let column = spawn.column - radius; column <= spawn.column + radius; column += 1) {
       if (column >= 0 && row >= 0) {
@@ -121,9 +124,17 @@ export function applyComposedSceneToRuntime(options: {
   }
 
   const accountIds = options.accountIds ?? Object.keys(runtime.exploredByAccount);
+  const inhabitantSquares = composed.features
+    .filter(
+      (feature) =>
+        feature.objectKind === 'creature' ||
+        feature.objectKind === 'npc' ||
+        composed.inhabitantObjectIds.includes(feature.objectId),
+    )
+    .map((feature) => ({ column: feature.column, row: feature.row }));
   const explored =
     mode === 'establish' || mode === 'travel'
-      ? seedExploredAroundSpawn(accountIds, composed.spawn)
+      ? seedExploredAroundSpawn(accountIds, composed.spawn, 2, inhabitantSquares)
       : runtime.exploredByAccount;
 
   const seatTokens =

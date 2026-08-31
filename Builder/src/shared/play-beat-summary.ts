@@ -33,16 +33,23 @@ export function resolvedSummaryAfterTableConfirm(options: {
     scene !== null ? ` Same scene — ${scene} remains current; no location change.` : '';
   if (options.commandType === 'table.begin_adventure') {
     return scene !== null
-      ? `The Game Director established ${scene}.`
+      ? `The Game Director established ${scene} as the opening scene.`
       : 'The Game Director established the opening scene.';
   }
   if (options.commandType === 'table.travel_scene') {
     return scene !== null
-      ? `The party traveled. Current scene: ${scene}.`
+      ? `The party arrives at ${scene}.`
       : 'The party traveled to a new scene.';
   }
   if (options.commandType === 'table.interact_object') {
-    return options.draftSummary.trim().length > 0
+    if (
+      typeof options.eventSummary === 'string' &&
+      options.eventSummary.trim().length > 0 &&
+      !isIntentDraftConfirmCopy(options.eventSummary)
+    ) {
+      return options.eventSummary.trim();
+    }
+    return options.draftSummary.trim().length > 0 && !isIntentDraftConfirmCopy(options.draftSummary)
       ? options.draftSummary.trim()
       : `An object changed${inScene}.`;
   }

@@ -487,6 +487,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       commandType === 'table.move' ||
       commandType === 'table.open_door' ||
       commandType === 'table.build_scene' ||
+      commandType === 'table.begin_adventure' ||
+      commandType === 'table.interact_object' ||
+      commandType === 'table.travel_scene' ||
       commandType === 'table.sync'
     );
   }
@@ -4668,49 +4671,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root
       .querySelector<HTMLButtonElement>('[data-testid="begin-adventure"]')
       ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy || !seated || tableState === null) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const accepted = await submitTableCommand({
-              candidateId: candidate.candidateId,
-              campaignId,
-              requestId: crypto.randomUUID(),
-              commandType: 'table.begin_adventure',
-              expectedStateVersion: tableState.stateVersion,
-              ...(explorationMode() || timingAuthority === null
-                ? {}
-                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
-              declaration: 'Begin the adventure.',
-            });
-            tableState = accepted.table;
-            mapBundle = await fetchCampaignMap(campaignId);
-            stageHandle?.renderMap(mapBundle);
-            const title = mapBundle.title;
-            appendDmThread(
-              'system',
-              'Table',
-              accepted.event.summary ?? `Scene built: ${title}.`,
-              'mechanics',
-            );
-            shell.announce(`Adventure begun — ${title}.`);
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'The Director could not establish the opening scene.';
-            if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
-              presentTableConflict(failure);
-            }
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        if (candidate === null || busy || !seated || tableState === null) {
+          return;
+        }
+        // Confirmable Intent Intercept — does not commit until Confirm.
+        lastSubmittedDeclaration = 'Begin the adventure.';
+        setIntentDraft({
+          draftId: crypto.randomUUID(),
+          source: 'action_composer_interpret',
+          campaignId,
+          proposedCommandType: 'table.begin_adventure',
+          summary:
+            'Ready to begin the adventure. Confirm so the Game Director establishes the opening scene from your premise.',
+          projectionVersionAtIssue: tableState.stateVersion,
+          interceptState: 'awaiting_confirmation',
+          createdAt: new Date().toISOString(),
+        });
+        shell.announce('Review the Begin the adventure draft, then Confirm or Cancel.');
+        render();
       });
 
     root

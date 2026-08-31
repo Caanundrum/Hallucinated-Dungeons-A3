@@ -815,7 +815,7 @@ export async function interpretNaturalLanguageIntent(options: {
   /** Defer Director fiction until after the player declaration is chronicled. */
   let deferDirectorNarrate = false;
 
-  // Batch 2 — reusable Director scene loop (begin / object / travel / return).
+  // Batch 2/3 — reusable Director scene loop (begin / object / travel / landmark / return).
   let sceneLoopResolved = false;
   if (
     /\b(begin (the )?adventure|start (the )?adventure|establish (the )?(first |opening )?scene)\b/i.test(
@@ -837,7 +837,10 @@ export async function interpretNaturalLanguageIntent(options: {
       'Ready to return to the earlier scene. Confirm to restore it with prior consequences.';
     sceneLoopResolved = true;
   } else if (
-    /\b(leave|travel|head (out|outside|onward)|go (outside|outdoors|onward|through)|step (out|outside)|enter the (forest|marsh|village|street|path)|follow the (path|road|trail))\b/i.test(
+    /\b(leave|travel|head (out|outside|onward|for|to)|go (outside|outdoors|onward|through|to|toward)|step (out|outside)|climb|enter the|follow the|make for|seek)\b/i.test(
+      text,
+    ) ||
+    /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
       text,
     )
   ) {

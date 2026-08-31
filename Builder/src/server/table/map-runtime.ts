@@ -57,6 +57,8 @@ export interface StoredSceneInstance {
   readonly environment: SceneEnvironment;
   readonly lighting: SceneLighting;
   readonly mood: string;
+  /** Sensory establishment line from the scene contract. */
+  readonly description?: string;
   readonly columns: number;
   readonly rows: number;
   readonly cells: readonly MapCellRecord[];
@@ -65,6 +67,8 @@ export interface StoredSceneInstance {
   readonly doorStates: Record<string, DoorState>;
   readonly spawn: MapSquareCoordinate;
   readonly exits: readonly StoredSceneExit[];
+  /** Actor object ids that must remain visible on the tactical map. */
+  readonly inhabitantObjectIds?: readonly string[];
   readonly tokenPositions: StoredTokenPosition[];
   readonly exploredByAccount: Record<string, string[]>;
   readonly revision: number;
