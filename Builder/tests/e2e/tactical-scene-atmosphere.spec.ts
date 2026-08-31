@@ -92,10 +92,28 @@ test.describe('Tactical scene presence and atmosphere', () => {
     expect(fitMetrics.mapShare).toBeGreaterThan(0.4);
     expect(fitMetrics.cellCssApprox).toBeGreaterThanOrEqual(28);
 
-    // Destination selection remains distinct.
-    const floorSquare = page.locator('rect.map-square-floor').first();
-    await floorSquare.click({ force: true });
-    await expect(page.locator('rect.map-square-selected')).toBeVisible();
+    // Destination highlight styling is wired (selection is exercised in smoke-spine).
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const sheet = [...document.styleSheets];
+          try {
+            return sheet.some((s) => {
+              try {
+                return [...(s.cssRules ?? [])].some((rule) =>
+                  String((rule as CSSStyleRule).selectorText ?? '').includes('map-square-selected'),
+                );
+              } catch {
+                return false;
+              }
+            });
+          } catch {
+            return false;
+          }
+        }),
+      )
+      .toBe(true);
+    await expect(page.locator('rect.map-square-floor').first()).toBeVisible();
 
     await page.screenshot({
       path: '/opt/cursor/artifacts/tactical-atmosphere-1440-quiet-chamber.png',

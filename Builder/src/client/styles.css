@@ -3376,6 +3376,12 @@ html.hd-low-effects .table-stage-semantic .map-torch-core-glow,
   display: none;
 }
 
+html.hd-low-effects .table-stage-semantic .map-sconce-pool,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic .map-sconce-pool {
+  opacity: 0.45;
+  animation: none;
+}
+
 html.hd-low-effects .table-stage-svg-viewport,
 .table-stage-frame.table-stage-low-effects .table-stage-svg-viewport {
   background: #0a0806;

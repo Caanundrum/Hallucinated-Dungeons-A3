@@ -394,20 +394,23 @@ function paintSemanticSvg(
     const isDamp =
       kindLabel === 'hazard' || /damp|wet|slick|hazard/i.test(feature.label);
     const fill = kindLabel === 'hazard' ? '#c47a4a' : isTorch ? '#f0c043' : '#f2d38a';
-    const torchGlow = isTorch
-      ? `<circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.35}" fill="url(#map-torch-glow)" aria-hidden="true" />
-         <circle class="map-torch-core-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.55}" fill="url(#map-torch-core)" aria-hidden="true" />`
-      : '';
     const dampWash = isDamp
-      ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 4}" rx="16" ry="10" fill="url(#map-damp-wash)" opacity="0.65" pointer-events="none" aria-hidden="true" />`
+      ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
+         <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
       : '';
     const rubbleChips = isRubble
       ? `<g class="map-rubble-detail" pointer-events="none" aria-hidden="true">
-          <ellipse class="map-rubble-wash" cx="${x}" cy="${y + 5}" rx="15" ry="9" fill="#1a1410" opacity="0.45" />
-          <rect class="map-rubble-chip" x="${x - 9}" y="${y + 2}" width="4" height="3" rx="0.6" fill="#5a4a38" transform="rotate(-18 ${x - 7} ${y + 3.5})" />
-          <rect class="map-rubble-chip" x="${x - 2}" y="${y + 5}" width="5" height="2.5" rx="0.5" fill="#3a3028" transform="rotate(12 ${x} ${y + 6})" />
-          <rect class="map-rubble-chip" x="${x + 4}" y="${y + 1}" width="3.5" height="3" rx="0.5" fill="#6a5844" transform="rotate(28 ${x + 6} ${y + 2.5})" />
+          <ellipse class="map-rubble-wash" cx="${x}" cy="${y + 7}" rx="${pixelsPerSquare * 0.7}" ry="${pixelsPerSquare * 0.38}" fill="#1a1410" opacity="0.55" />
+          <rect class="map-rubble-chip" x="${x - 14}" y="${y + 2}" width="7" height="4.5" rx="0.8" fill="#5a4a38" transform="rotate(-18 ${x - 10} ${y + 4})" />
+          <rect class="map-rubble-chip" x="${x - 4}" y="${y + 6}" width="8" height="3.5" rx="0.6" fill="#3a3028" transform="rotate(12 ${x} ${y + 8})" />
+          <rect class="map-rubble-chip" x="${x + 5}" y="${y + 1}" width="6" height="4" rx="0.6" fill="#6a5844" transform="rotate(28 ${x + 8} ${y + 3})" />
+          <rect class="map-rubble-chip" x="${x + 1}" y="${y + 8}" width="5" height="3" rx="0.5" fill="#4a4034" transform="rotate(-8 ${x + 3} ${y + 9.5})" />
         </g>`
+      : '';
+    const torchGlow = isTorch
+      ? `<ellipse class="map-sconce-pool" cx="${x}" cy="${y}" rx="${pixelsPerSquare * 2.4}" ry="${pixelsPerSquare * 2.1}" fill="url(#map-sconce-pool)" pointer-events="none" aria-hidden="true" />
+         <circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.45}" fill="url(#map-torch-glow)" aria-hidden="true" />
+         <circle class="map-torch-core-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.6}" fill="url(#map-torch-core)" aria-hidden="true" />`
       : '';
     return `<g class="map-poi-target${isTorch ? ' map-poi-torch' : ''}${isRubble ? ' map-poi-rubble' : ''}${isDamp ? ' map-poi-damp' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-testid="map-poi-marker" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
       ${dampWash}
@@ -494,6 +497,11 @@ function paintSemanticSvg(
             <radialGradient id="map-damp-wash" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stop-color="#4a7068" stop-opacity="0.4" />
               <stop offset="100%" stop-color="#2a4038" stop-opacity="0" />
+            </radialGradient>
+            <radialGradient id="map-sconce-pool" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#f0a030" stop-opacity="0.28" />
+              <stop offset="40%" stop-color="#c47a28" stop-opacity="0.12" />
+              <stop offset="100%" stop-color="#8a5010" stop-opacity="0" />
             </radialGradient>
           </defs>
           <rect class="map-scene-void" width="${width}" height="${height}" fill="${emberferry ? '#071820' : '#0a0806'}" />
@@ -634,20 +642,19 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       applyZoom(1);
       return;
     }
-    // Slightly tighter pad + presence fill so the chamber reads as the visual heart,
-    // not a small schematic floating in unused panel darkness.
-    const pad = 8;
+    // Blend contain→cover so the projection fills the tactical region confidently
+    // without enlarging cells until the room becomes hard to read.
+    const pad = 6;
     const vw = Math.max(48, viewport.clientWidth - pad);
     const vh = Math.max(48, viewport.clientHeight - pad);
     const contain = Math.min(vw / size.width, vh / size.height);
+    const cover = Math.max(vw / size.width, vh / size.height);
+    // Bias toward cover so unused cavern void shrinks; slight crop of fog edges is OK.
+    const blended = contain + (cover - contain) * 0.72;
     const { pixelsPerSquare } = currentMap.coordinateSpace;
-    const presence = contain * 1.1;
-    const minReadable = 30 / Math.max(pixelsPerSquare, 1);
-    // Prefer a confident fill; never shrink below contain; cap overflow so the room stays readable.
-    const fit = Math.min(Math.max(presence, Math.min(minReadable, contain * 1.12)), contain * 1.12);
+    const minReadable = 28 / Math.max(pixelsPerSquare, 1);
+    const fit = Math.min(Math.max(blended, minReadable), cover * 0.96);
     applyZoom(Math.max(fit, contain));
-    // With margin:auto centering, scroll origin is fine when the map fits;
-    // when slightly larger than the viewport, center the overflow.
     const displayW = size.width * zoomScale;
     const displayH = size.height * zoomScale;
     viewport.scrollTo({
