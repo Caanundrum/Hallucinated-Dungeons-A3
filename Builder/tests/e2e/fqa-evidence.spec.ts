@@ -102,11 +102,14 @@ test('FQA evidence screenshots', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Reset zoom to 100%/i })).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-map-reset-zoom.png' });
 
-  // FQA-023: thread list must be height-bounded and scrollable; action dock must not scroll.
-  // Seed a tall timeline so we prove the list shrinks (does not expand to thousands of px).
-  const scrollProof = await page.evaluate(() => {
+  // FQA-023: full dock must fit banner + thread + composer; only the thread list scrolls.
+  const dockProof = await page.evaluate(() => {
     const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
     const thread = document.querySelector('[data-testid="dm-play-thread"]') as HTMLElement | null;
+    const banner = document.querySelector('[data-testid="table-turn-banner"]') as HTMLElement | null;
+    const composer = document.querySelector(
+      '[data-testid="table-player-turn-composer"]',
+    ) as HTMLElement | null;
     let list = document.querySelector('[data-testid="dm-play-thread-list"]') as HTMLElement | null;
     if (list === null && thread !== null) {
       const empty = thread.querySelector('[data-testid="dm-play-thread-list-empty"]');
@@ -119,76 +122,106 @@ test('FQA evidence screenshots', async ({ page }) => {
         thread.appendChild(list);
       }
     }
-    if (list === null || action === null || thread === null) {
+    if (list === null || action === null || thread === null || composer === null) {
       return { ok: false as const, reason: 'missing-nodes' };
     }
     list.innerHTML = '';
     for (let i = 0; i < 48; i += 1) {
       const li = document.createElement('li');
       li.className = 'dm-thread-message dm-thread-dm';
+      li.tabIndex = -1;
       li.setAttribute('data-testid', i === 47 ? 'fqa-023-latest-seed' : 'dm-thread-message');
       li.innerHTML = `<span class="record-note"><strong>Veyra</strong></span><p>Seeded timeline beat ${i + 1}. ${'Detail '.repeat(12)}</p><span class="record-meta" data-testid="dm-thread-timestamp">Just now</span>`;
       list.appendChild(li);
     }
-    const actionStyle = getComputedStyle(action);
+    // Force layout after seeding.
+    void action.offsetHeight;
+    const actionBox = action.getBoundingClientRect();
+    const composerBox = composer.getBoundingClientRect();
+    const bannerBox = banner?.getBoundingClientRect() ?? null;
+    const threadBox = thread.getBoundingClientRect();
     const listStyle = getComputedStyle(list);
-    const threadStyle = getComputedStyle(thread);
-    const latest = document.querySelector('[data-testid="fqa-023-latest-seed"]') as HTMLElement | null;
-    const before = latest?.getBoundingClientRect() ?? null;
+    const actionStyle = getComputedStyle(action);
     list.scrollTop = list.scrollHeight;
-    const after = latest?.getBoundingClientRect() ?? null;
+    const latest = document.querySelector('[data-testid="fqa-023-latest-seed"]') as HTMLElement | null;
+    const latestBox = latest?.getBoundingClientRect() ?? null;
     const listBox = list.getBoundingClientRect();
-    const latestVisible =
-      after !== null &&
-      after.top < listBox.bottom - 4 &&
-      after.bottom > listBox.top + 4;
-    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 12;
+    // Focus an early entry — must NOT scroll the outer dock or hide the composer.
+    const early = list.querySelector('[data-testid="dm-thread-message"]') as HTMLElement | null;
+    early?.focus({ preventScroll: false });
+    early?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const afterFocusScrollTop = action.scrollTop;
+    const composerBoxAfter = composer.getBoundingClientRect();
+    const bannerBoxAfter = banner?.getBoundingClientRect() ?? null;
+    const actionBoxAfter = action.getBoundingClientRect();
+    const composerVisible =
+      composerBoxAfter.top >= actionBoxAfter.top - 1 &&
+      composerBoxAfter.bottom <= actionBoxAfter.bottom + 1 &&
+      composerBoxAfter.height > 20;
+    const bannerVisible =
+      bannerBoxAfter === null ||
+      (bannerBoxAfter.top >= actionBoxAfter.top - 1 &&
+        bannerBoxAfter.bottom <= actionBoxAfter.bottom + 1);
     return {
       ok: true as const,
       action: {
         client: action.clientHeight,
         scroll: action.scrollHeight,
         overflowY: actionStyle.overflowY,
-        height: actionStyle.height,
+        scrollTop: afterFocusScrollTop,
       },
-      thread: {
-        client: thread.clientHeight,
-        scroll: thread.scrollHeight,
-        overflowY: threadStyle.overflowY,
-      },
+      thread: { client: thread.clientHeight, top: threadBox.top, bottom: threadBox.bottom },
       list: {
         client: list.clientHeight,
         scroll: list.scrollHeight,
         overflowY: listStyle.overflowY,
         scrollTop: list.scrollTop,
       },
-      beforeTop: before?.top ?? null,
-      afterTop: after?.top ?? null,
-      latestVisible,
-      nearBottom,
+      composer: {
+        top: composerBox.top,
+        bottom: composerBox.bottom,
+        height: composerBox.height,
+        visible: composerVisible,
+      },
+      banner: bannerBox
+        ? { top: bannerBox.top, bottom: bannerBox.bottom, height: bannerBox.height }
+        : null,
+      dockFitsContent: action.scrollHeight <= action.clientHeight + 2,
+      composerInsideDock:
+        composerBox.top >= actionBox.top - 1 && composerBox.bottom <= actionBox.bottom + 1,
+      threadInsideDock:
+        threadBox.top >= actionBox.top - 1 && threadBox.bottom <= actionBox.bottom + 1,
+      latestVisible:
+        latestBox !== null &&
+        latestBox.top < listBox.bottom - 4 &&
+        latestBox.bottom > listBox.top + 4,
+      nearBottom: list.scrollHeight - list.scrollTop - list.clientHeight < 12,
+      bannerStillVisible: bannerVisible,
+      listScrollable:
+        list.scrollHeight > list.clientHeight + 40 && /(auto|scroll)/.test(listStyle.overflowY),
       actionScrollable:
         action.scrollHeight > action.clientHeight + 1 &&
         /(auto|scroll)/.test(actionStyle.overflowY),
-      listScrollable:
-        list.scrollHeight > list.clientHeight + 40 &&
-        /(auto|scroll)/.test(listStyle.overflowY),
     };
   });
-  expect(scrollProof.ok).toBe(true);
-  if (scrollProof.ok) {
-    expect(scrollProof.action.overflowY).toMatch(/hidden|clip/);
-    expect(scrollProof.actionScrollable).toBe(false);
-    expect(scrollProof.list.overflowY).toMatch(/auto|scroll/);
-    // Bounded viewport: list must stay inside the dock, not expand to thousands of px.
-    expect(scrollProof.list.client).toBeLessThan(380);
-    expect(scrollProof.list.client).toBeGreaterThan(40);
-    expect(scrollProof.list.scroll).toBeGreaterThan(scrollProof.list.client + 400);
-    expect(scrollProof.thread.client).toBeLessThanOrEqual(scrollProof.action.client + 2);
-    expect(scrollProof.listScrollable).toBe(true);
-    expect(scrollProof.nearBottom || scrollProof.latestVisible).toBe(true);
-    expect(scrollProof.list.scrollTop).toBeGreaterThan(100);
+  expect(dockProof.ok).toBe(true);
+  if (dockProof.ok) {
+    expect(dockProof.action.overflowY).toMatch(/hidden|clip/);
+    expect(dockProof.actionScrollable).toBe(false);
+    expect(dockProof.dockFitsContent).toBe(true);
+    expect(dockProof.composerInsideDock).toBe(true);
+    expect(dockProof.composer.visible).toBe(true);
+    expect(dockProof.threadInsideDock).toBe(true);
+    expect(dockProof.list.overflowY).toMatch(/auto|scroll/);
+    expect(dockProof.list.client).toBeLessThan(380);
+    expect(dockProof.list.client).toBeGreaterThan(40);
+    expect(dockProof.list.scroll).toBeGreaterThan(dockProof.list.client + 400);
+    expect(dockProof.listScrollable).toBe(true);
+    expect(dockProof.nearBottom || dockProof.latestVisible).toBe(true);
+    expect(dockProof.action.scrollTop).toBe(0);
+    expect(dockProof.bannerStillVisible).toBe(true);
   }
-  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-023-scroll-owners.png' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-023-dock-fit.png' });
 });
 
 test('FQA-R01/R04 correction reason and session action exclusivity', async ({ page }) => {
