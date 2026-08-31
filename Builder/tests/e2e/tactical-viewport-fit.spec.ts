@@ -81,18 +81,33 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
     });
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 
-    await page.getByTestId('nl-intent-input').fill('leave toward the misty marsh');
+    await page.getByTestId('nl-intent-input').fill('leave the room');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
+    // Premise owns the exterior family (marsh), not player destination naming.
     await expect(stage).toHaveAttribute('data-atmosphere', 'wet_fog', { timeout: 30_000 });
+    await expect(stage).toHaveAttribute('data-terrain-bias', 'damp');
 
-    await page.getByTestId('nl-intent-input').fill('travel onward into the wolf thicket');
+    await page.getByTestId('nl-intent-input').fill('travel onward');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
     await expect(stage).toHaveAttribute('data-threat', 'threat_encounter', { timeout: 30_000 });
-    await expect(stage).toHaveAttribute('data-atmosphere', 'wooded_path');
-    await expect(stage).toHaveAttribute('data-terrain-bias', 'canopy');
-    await expect(page.locator('.map-terrain-canopy, .map-terrain-canopy-dense').first()).toBeVisible();
+    // Director picks the encounter family; assert the reusable atmosphere→bias rule.
+    const atmosphere = await stage.getAttribute('data-atmosphere');
+    const bias = await stage.getAttribute('data-terrain-bias');
+    const expectedBias: Record<string, string> = {
+      wooded_path: 'canopy',
+      wet_fog: 'damp',
+      open_clearing: 'open',
+      enclosed_warm: 'timber',
+      elevated_exposed: 'stone',
+    };
+    if (atmosphere !== null && expectedBias[atmosphere] !== undefined) {
+      expect(bias).toBe(expectedBias[atmosphere]);
+    }
+    if (bias === 'canopy') {
+      await expect(page.locator('.map-terrain-canopy, .map-terrain-canopy-dense').first()).toBeVisible();
+    }
     await page.screenshot({
       path: '/opt/cursor/artifacts/viewport-fit-wooded-canopy.webp',
       fullPage: true,

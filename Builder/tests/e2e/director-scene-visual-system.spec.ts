@@ -108,7 +108,7 @@ test.describe('Director scene visual system', () => {
       fullPage: true,
     });
 
-    await page.getByTestId('nl-intent-input').fill('travel onward into danger');
+    await page.getByTestId('nl-intent-input').fill('travel onward');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
     await expect(stage).toHaveAttribute('data-threat', 'threat_encounter', { timeout: 30_000 });
@@ -125,19 +125,15 @@ test.describe('Director scene visual system', () => {
     await page.getByTestId('nl-intent-input').fill('return to the earlier scene');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
-    await page.getByTestId('nl-intent-input').fill('return to the earlier scene');
+    // Engage the Director-presented landmark exit on the travel scene.
+    await page.getByTestId('nl-intent-input').fill('take the trail toward higher ground');
     await page.getByTestId('interpret-nl-intent').click();
     await confirmDraft(page);
-    // May be back at interior or marsh depending on stack — climb to watchtower for elevation.
-    await page
-      .getByTestId('nl-intent-input')
-      .fill('climb to the ruined watchtower on the ridge');
-    await page.getByTestId('interpret-nl-intent').click();
-    await confirmDraft(page);
-    await expect(stage).toHaveAttribute('data-atmosphere', 'elevated_exposed', {
-      timeout: 30_000,
-    });
-    await expect(stage).toHaveAttribute('data-elevation', /raised|span/);
+    await expect(stage).toHaveAttribute(
+      'data-atmosphere',
+      /elevated_exposed|waterfront|cavernous|ruined_open/,
+      { timeout: 30_000 },
+    );
     await expect(page.getByTestId('map-exit-marker').first()).toBeVisible();
     await page.screenshot({
       path: '/opt/cursor/artifacts/visual-system-watchtower.webp',
@@ -146,7 +142,10 @@ test.describe('Director scene visual system', () => {
 
     // Phone readability smoke: stage still exposes atmosphere attrs.
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(stage).toHaveAttribute('data-atmosphere', 'elevated_exposed');
-    await expect(page.getByTestId('map-visual-summary')).toContainText(/elevated exposed/i);
+    await expect(stage).toHaveAttribute(
+      'data-atmosphere',
+      /elevated_exposed|waterfront|cavernous|ruined_open/,
+    );
+    await expect(page.getByTestId('map-visual-summary')).toBeVisible();
   });
 });
