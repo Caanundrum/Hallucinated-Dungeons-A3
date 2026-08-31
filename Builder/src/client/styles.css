@@ -3140,13 +3140,15 @@ html.hd-low-effects .map-square-fog,
   min-height: 0;
   height: 100%;
   overflow: auto;
-  display: block;
+  display: flex;
   cursor: grab;
   overscroll-behavior: contain;
   touch-action: none;
+  /* Cavern void — warm darkness beyond the chamber, not dotted UI chrome */
   background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, #3a4a5c 35%, transparent) 1px, transparent 0) 0 0 / 16px 16px,
-    #0a0c10;
+    radial-gradient(ellipse 70% 55% at 35% 30%, color-mix(in srgb, #3a2818 22%, transparent), transparent 70%),
+    radial-gradient(ellipse 80% 70% at 70% 80%, color-mix(in srgb, #0a1218 55%, transparent), transparent 65%),
+    linear-gradient(165deg, #100c08 0%, #080706 48%, #0a0e12 100%);
 }
 
 .table-stage-svg-viewport.is-panning {
@@ -3155,7 +3157,8 @@ html.hd-low-effects .map-square-fog,
 }
 
 .table-stage-svg-scaler {
-  margin: 0 auto;
+  margin: auto;
+  flex: 0 0 auto;
 }
 
 .map-scene-title {
@@ -3228,10 +3231,10 @@ html.hd-low-effects .map-square-fog,
 .map-legend-fog {
   background-image: repeating-linear-gradient(
     -45deg,
-    #1c2430,
-    #1c2430 3px,
-    #3a4a5c 3px,
-    #3a4a5c 4px
+    #05080e,
+    #05080e 3px,
+    #2a3848 3px,
+    #2a3848 4px
   ) !important;
 }
 
@@ -3262,7 +3265,40 @@ html.hd-low-effects .map-square-fog,
 
 .table-stage-semantic rect.map-square-selected {
   stroke: #f0c043;
-  stroke-width: 3;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, #f0c043 55%, transparent));
+}
+
+.table-stage-semantic .map-edge-door line:not(.map-door-glow) {
+  stroke-linecap: square;
+}
+
+.table-stage-semantic .map-edge-door[data-door-state='closed'] line:not(.map-door-glow),
+.table-stage-semantic .map-edge-door[data-door-state='open'] line:not(.map-door-glow),
+.table-stage-semantic .map-edge-door[data-door-state='unlocked'] line:not(.map-door-glow),
+.table-stage-semantic .map-edge-door[data-door-state='locked'] line:not(.map-door-glow) {
+  /* Wooden threshold emphasis without competing with the party token */
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 35%, transparent));
+}
+
+.table-stage-semantic .map-door-glow {
+  pointer-events: none;
+}
+
+.table-stage-semantic .map-edge-hit-target:focus-visible rect {
+  stroke: var(--focus-cyan, #6cf);
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--focus-cyan, #6cf) 12%, transparent);
+}
+
+.table-stage-semantic .map-poi-target:focus-visible .map-poi-core {
+  stroke: var(--focus-cyan, #6cf);
+  stroke-width: 2.5;
+}
+
+.table-stage-semantic .map-poi-rubble .map-rubble-chip {
+  stroke: #1a1208;
+  stroke-width: 0.4;
 }
 
 .table-stage-semantic g[data-token] {
@@ -3282,26 +3318,73 @@ html.hd-low-effects .map-square-fog,
 .table-stage-semantic g[data-token] .token-halo {
   pointer-events: none;
   stroke: color-mix(in srgb, var(--gold-primary, #f59e0b) 85%, #fff);
-  stroke-width: 2.5;
-  stroke-opacity: 0;
-  filter: drop-shadow(0 0 0 transparent);
+  stroke-width: 2;
+  /* Idle presence — restrained, not pulsing */
+  stroke-opacity: 0.38;
+  filter: none;
   transition:
     stroke-opacity 160ms ease,
     stroke-width 160ms ease;
 }
 
 .table-stage-semantic g[data-token]:hover .token-halo,
-.table-stage-semantic g[data-token]:focus-visible .token-halo,
 .table-stage-semantic g[data-token].is-token-hovered .token-halo {
-  stroke-opacity: 0.95;
+  stroke-opacity: 0.92;
+  stroke-width: 3.25;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--gold-primary, #f59e0b) 55%, transparent));
+}
+
+.table-stage-semantic g[data-token]:focus-visible .token-halo {
+  stroke: var(--focus-cyan, #6cf);
+  stroke-opacity: 1;
   stroke-width: 3.5;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gold-primary, #f59e0b) 70%, transparent));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--focus-cyan, #6cf) 50%, transparent));
+}
+
+.table-stage-semantic g[data-token].token-moving .token-halo {
+  stroke-opacity: 0.72;
+  stroke-width: 2.75;
+}
+
+.table-stage-semantic g[data-token] .token-body-outer {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.table-stage-semantic g[data-token]:hover .token-body-outer,
+.table-stage-semantic g[data-token].is-token-hovered .token-body-outer {
+  stroke-width: 3.1;
 }
 
 html.hd-low-effects .table-stage-semantic g[data-token] .token-halo,
 .table-stage-frame.table-stage-low-effects .table-stage-semantic g[data-token] .token-halo {
   filter: none;
   transition: none;
+  stroke-opacity: 0.5;
+}
+
+html.hd-low-effects .table-stage-semantic rect.map-square-selected,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic rect.map-square-selected {
+  filter: none;
+}
+
+html.hd-low-effects .table-stage-semantic .map-door-glow,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic .map-door-glow,
+html.hd-low-effects .table-stage-semantic .map-torch-glow,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic .map-torch-glow,
+html.hd-low-effects .table-stage-semantic .map-torch-core-glow,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic .map-torch-core-glow {
+  display: none;
+}
+
+html.hd-low-effects .table-stage-semantic .map-sconce-pool,
+.table-stage-frame.table-stage-low-effects .table-stage-semantic .map-sconce-pool {
+  opacity: 0.45;
+  animation: none;
+}
+
+html.hd-low-effects .table-stage-svg-viewport,
+.table-stage-frame.table-stage-low-effects .table-stage-svg-viewport {
+  background: #0a0806;
 }
 
 .table-stage-semantic g[data-notable-feature],
