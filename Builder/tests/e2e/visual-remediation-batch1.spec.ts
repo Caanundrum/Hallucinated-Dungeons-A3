@@ -53,10 +53,12 @@ test.describe('Visual remediation Batch 1', () => {
       const shell = document.querySelector('[data-testid="table-page-shell"]') as HTMLElement;
       const map = document.querySelector('[data-testid="table-map-chrome"]') as HTMLElement | null;
       const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
-      const mapBox = map?.getBoundingClientRect();
+      const mapStyle = map ? getComputedStyle(map).display : 'none';
+      const mapBox = map && mapStyle !== 'none' ? map.getBoundingClientRect() : null;
       const actionBox = action?.getBoundingClientRect();
       return {
         vh: window.innerHeight,
+        mapDisplay: mapStyle,
         mapH: mapBox?.height ?? 0,
         actionH: actionBox?.height ?? 0,
         docOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -64,9 +66,25 @@ test.describe('Visual remediation Batch 1', () => {
       };
     });
     expect(playMetrics.docOverflowX).toBeLessThanOrEqual(1);
-    expect(playMetrics.mapH / playMetrics.vh).toBeGreaterThanOrEqual(0.55);
-    expect(playMetrics.actionH / playMetrics.vh).toBeLessThanOrEqual(0.35);
+    // FQA-028: Play hides map chrome; Map task owns the map surface.
+    expect(playMetrics.mapDisplay).toBe('none');
+    expect(playMetrics.mapH).toBe(0);
+    expect(playMetrics.actionH / playMetrics.vh).toBeGreaterThanOrEqual(0.35);
     await page.screenshot({ path: '/opt/cursor/artifacts/batch1-a-tablet-768-play.png' });
+
+    await page.getByTestId('mobile-task-map').click();
+    await expect(page.getByTestId('table-page-shell')).toHaveAttribute('data-mobile-task', 'map');
+    const mapMetrics = await page.evaluate(() => {
+      const map = document.querySelector('[data-testid="table-map-chrome"]') as HTMLElement;
+      return {
+        vh: window.innerHeight,
+        mapH: map.getBoundingClientRect().height,
+        mapDisplay: getComputedStyle(map).display,
+      };
+    });
+    expect(mapMetrics.mapDisplay).not.toBe('none');
+    expect(mapMetrics.mapH / mapMetrics.vh).toBeGreaterThanOrEqual(0.45);
+    await page.screenshot({ path: '/opt/cursor/artifacts/batch1-a-tablet-768-map.png' });
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByTestId('mobile-task-chat').click();
