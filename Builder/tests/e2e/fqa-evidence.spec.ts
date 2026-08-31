@@ -98,3 +98,32 @@ test('FQA evidence screenshots', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Reset zoom to 100%/i })).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-map-reset-zoom.png' });
 });
+
+test('FQA-R01/R04 correction reason and session action exclusivity', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await dismissIntroIfPresent(page);
+  await enterAccountFromShell(page);
+  await seatAndOpenTable(page, 'FQAGates');
+  const campaignId = /\/campaigns\/([^/]+)/.exec(page.url())?.[1];
+  expect(campaignId).toBeTruthy();
+
+  await page.goto('/characters');
+  await page.getByTestId('character-link').first().click();
+  await expect(page.getByTestId('correction-reason-input')).toBeVisible();
+  await expect(page.getByTestId('unlock-correction-mode')).toHaveAttribute('aria-disabled', 'true');
+  await page.getByTestId('correction-reason-input').fill('QA audit reason for HP ledger');
+  await expect(page.getByTestId('unlock-correction-mode')).toHaveAttribute('aria-disabled', 'false');
+  await page.getByTestId('unlock-correction-mode').click();
+  await expect(page.getByTestId('relock-correction-mode')).toBeVisible();
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-correction-reason.png', fullPage: true });
+  await page.getByTestId('relock-correction-mode').click();
+  await expect(page.getByTestId('correction-reason-input')).toBeVisible();
+
+  await page.goto(`/campaigns/${campaignId}`);
+  await expect(page.getByTestId('campaign-detail-heading')).toBeVisible();
+  await expect(page.getByTestId('suspend-session')).toBeVisible();
+  await expect(page.getByTestId('resume-session')).toHaveCount(0);
+  await page.screenshot({ path: '/opt/cursor/artifacts/fqa-session-suspend-only.png', fullPage: true });
+});
