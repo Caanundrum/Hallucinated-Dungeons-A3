@@ -2661,7 +2661,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     playerFacingMechanicsCopy(intentDraft.summary),
                   )}</p>
                   ${
-                    intentDraft.interceptState === 'stale'
+                    intentDraft.interceptState === 'confirmed'
+                      ? `<p class="message notice" data-testid="intent-intercept-resolving">Resolving on the table…</p>
+                         <div class="action-composer-controls">
+                           <button type="button" data-testid="confirm-intent-intercept" aria-disabled="true">Resolving…</button>
+                         </div>`
+                      : intentDraft.interceptState === 'stale'
                       ? `<p class="message error" data-testid="intent-intercept-stale">Scene changed — cancel and re-declare.</p>
                          <div class="action-composer-controls">
                            <button type="button" data-testid="cancel-intent-intercept" aria-disabled="${busy}">Dismiss stale draft</button>
@@ -5005,6 +5010,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ) {
             return;
           }
+          if (intentDraft.interceptState === 'confirmed') {
+            return;
+          }
           if (intentDraft.interceptState === 'stale') {
             error = 'That draft is stale — the scene moved on. Re-declare your action.';
             render();
@@ -5041,6 +5049,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               draft.proposedCommandType === 'encounter.begin' &&
               /initiative/i.test(draft.summary);
             setIntentDraft(null);
+            render();
             const began = await submitRulesAction(
               draft.proposedCommandType,
               fieldsFromIntentDraft(draft),
@@ -5069,6 +5078,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           busy = true;
           error = null;
+          // FQA-R06: single resolving state — hide Confirm/Cancel immediately; clear on success.
+          setIntentDraft({ ...draft, interceptState: 'confirmed' });
           const declarationText = lastSubmittedDeclaration.trim();
           const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
           const resumeAfterOpenCross =
@@ -5121,9 +5132,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               appendDmThread('player', 'You', declarationText, 'declaration');
             }
             appendDmThread('system', 'Table', playerFacingMechanicsCopy(resolvedSummary), 'mechanics');
-            shell.announce('Action confirmed on the table.');
+            // Clear Confirm/Cancel in the same paint as the success announcement (FQA-R06).
             setIntentDraft(null);
             doorRecoveryVisible = false;
+            shell.announce('Action confirmed on the table.');
+            render();
             patchDmPlayThread();
             if (resumeCompound && declarationText.length > 0) {
               // Open/build first, then chain the through-step without double-narrating.
@@ -5153,15 +5166,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 ? failure.message
                 : 'That action could not be confirmed.';
             error = playerFacingMechanicsCopy(raw);
-            if (intentDraft !== null) {
-              setIntentDraft({
-                ...intentDraft,
-                interceptState: 'failed',
-                summary: playerFacingMechanicsCopy(
-                  `${intentDraft.summary} — ${error}`,
-                ),
-              });
-            }
+            setIntentDraft({
+              ...draft,
+              interceptState: 'failed',
+              summary: playerFacingMechanicsCopy(`${draft.summary} — ${error}`),
+            });
             if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
               presentTableConflict(failure);
               try {

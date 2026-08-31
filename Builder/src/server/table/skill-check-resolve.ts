@@ -123,6 +123,25 @@ function formatBonus(bonus: number): string {
   return bonus >= 0 ? `+${bonus}` : `${bonus}`;
 }
 
+/** Pull the named inspect target from a Ready-to draft summary (FQA-003). */
+export function namedInspectTargetFromDraft(draftSummary: string): string {
+  const inspect =
+    /Ready to (?:inspect|search)\s+(?:the\s+)?(.+?)(?:\s+for traps)?\s*\(/i.exec(draftSummary) ??
+    /Ready to (?:inspect|search)\s+(?:the\s+)?(.+?)(?:\s+for traps)?(?:\.|,|$)/i.exec(draftSummary);
+  const raw = inspect?.[1]?.trim();
+  if (raw !== undefined && raw.length > 0 && !/^named target$/i.test(raw)) {
+    return raw.replace(/\s+/g, ' ');
+  }
+  const door = draftSummary.match(
+    /\b(?:the\s+)?(?:wooden\s+)?door(?:way)?(?:\s+(?:to\s+the\s+)?(east|west|north|south))?\b/i,
+  );
+  if (door !== null) {
+    const facing = door[1]?.toLowerCase();
+    return facing !== undefined ? `wooden doorway ${facing}` : 'wooden doorway';
+  }
+  return 'confirmed target';
+}
+
 /**
  * Resolve a committed skill-check draft against the seated sheet.
  * Returns null when the summary is not a skill attempt.
@@ -150,6 +169,7 @@ export function resolveSkillAttemptFromSummary(
     };
   }
 
+  const namedTarget = namedInspectTargetFromDraft(draftSummary);
   const parts: string[] = [];
   const rolls: number[] = [];
   let lockYielded = false;
@@ -160,8 +180,10 @@ export function resolveSkillAttemptFromSummary(
     rolls.push(roll.natural);
     const success = roll.total >= DEFAULT_TRAP_DC;
     parts.push(
-      `Trap search (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_TRAP_DC} — ${
-        success ? 'no trap found on the confirmed target' : 'you cannot tell if the confirmed target is trapped'
+      `Trap search on the ${namedTarget} (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_TRAP_DC} — ${
+        success
+          ? `no trap found on the ${namedTarget}`
+          : `you cannot tell if the ${namedTarget} is trapped`
       }.`,
     );
   }

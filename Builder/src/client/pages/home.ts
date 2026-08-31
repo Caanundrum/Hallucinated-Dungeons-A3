@@ -88,10 +88,10 @@ export function mountHomePage(host: PageHost): void {
         <p>
           ${
             candidate?.environmentClass === 'milestone'
-              ? 'This invite-only Alpha opens with Google Sign-In. Forge heroes in the Character Vault, gather a party, and choose who narrates your world when you create a campaign.'
+              ? 'This invite-only Alpha opens with Google Sign-In. Forge heroes in the Character Vault, gather a party, and choose who narrates your world when you create a table.'
               : candidate?.publicSurface === 'gold_master'
-              ? 'Sign in with Google, shape a hero in the Character Vault, and gather a party around a narrator you choose when you create a campaign.'
-              : 'This Local Arena build may mint a development account for testing. Hosted Gold Master artifacts use Google Sign-In only and strip development identities, QA fixtures, and the QA harness. Create characters in the Character Vault and create or join campaigns with a locked Game Director identity and personality.'
+              ? 'Sign in with Google, shape a hero in the Character Vault, and gather a party around a narrator you choose when you create a table.'
+              : 'This Local Arena build may mint a development account for testing. Hosted Gold Master artifacts use Google Sign-In only and strip development identities, QA fixtures, and the QA harness. Create characters in the Character Vault and create or join tables with a locked Game Director identity and personality.'
           }
         </p>
         <div class="actions">
