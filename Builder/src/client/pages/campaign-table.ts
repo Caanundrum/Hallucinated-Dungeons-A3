@@ -834,6 +834,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     });
   }
 
+  /**
+   * FQA-023: the action dock must never become a scroll container. Focus inside
+   * a tall clipped child can still bump scrollTop under overflow:hidden; pin it.
+   */
+  function bindActionDockScrollLock(): void {
+    const dock = container.querySelector<HTMLElement>('[data-testid="action-composer"]');
+    if (dock === null || dock.dataset.scrollLockBound === '1') {
+      return;
+    }
+    dock.dataset.scrollLockBound = '1';
+    const pin = (): void => {
+      if (dock.scrollTop !== 0) {
+        dock.scrollTop = 0;
+      }
+      if (dock.scrollLeft !== 0) {
+        dock.scrollLeft = 0;
+      }
+    };
+    dock.addEventListener('scroll', pin, { passive: true });
+    dock.addEventListener('focusin', pin);
+    pin();
+  }
+
   function patchDmPlayThread(): void {
     const host = container.querySelector('[data-testid="dm-play-thread"]');
     if (host === null) {
@@ -848,6 +871,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       empty.outerHTML = rendered;
     }
     bindDmPlayThreadScroll();
+    bindActionDockScrollLock();
     if (dmThreadFollowLatest) {
       requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
     } else {
@@ -3419,6 +3443,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     }
     bindDmPlayThreadScroll();
+    bindActionDockScrollLock();
     if (dmThreadFollowLatest) {
       requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
     } else {

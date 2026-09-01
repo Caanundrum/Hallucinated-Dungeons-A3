@@ -753,14 +753,16 @@ a.account-chip-label:focus-visible {
   flex-shrink: 0;
   margin: 0;
   /*
-   * FQA-023: max-height alone does not give flex children a definite size, so the
-   * thread list grew with content (~5k px) and was clipped by overflow:hidden —
-   * newest entries were unreachable. A definite height + flex-basis:0 makes
-   * .dm-thread-list the only scroll owner inside the dock.
+   * FQA-023 complete dock layout:
+   * - definite height so flex children can shrink
+   * - overflow: clip so focus/scrollIntoView cannot shift a hidden outer scroller
+   * - inner flex column: banner (capped) + thread (minmax 0) + composer (always visible)
+   * Thread list remains the only intentional vertical scroller.
    */
-  height: min(46vh, 24rem);
-  max-height: min(46vh, 24rem);
-  overflow: hidden;
+  height: min(50vh, 28rem);
+  max-height: min(50vh, 28rem);
+  overflow: clip;
+  overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
   position: relative;
   z-index: 4;
@@ -775,8 +777,8 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  height: min(70vh, 36rem);
-  max-height: min(70vh, 36rem);
+  height: min(72vh, 38rem);
+  max-height: min(72vh, 38rem);
 }
 
 .table-action-bar-inner {
@@ -798,31 +800,46 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar-inner.table-action-bar-dm {
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   align-items: stretch;
   min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   height: 100%;
   max-height: 100%;
+  overflow: hidden;
+}
+
+.table-action-bar-dm > .table-turn-banner {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 5.25rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.table-action-bar-dm > .door-recovery-panel {
+  flex: 0 0 auto;
+}
+
+.table-action-bar-dm > .table-player-turn-composer {
+  flex: 0 0 auto;
+  min-height: 0;
+  position: relative;
+  z-index: 3;
+  margin-top: 0;
 }
 
 .dm-play-thread {
-  /* Take remaining dock space; never grow past the dock (FQA-023). */
+  /* Fill leftover dock space ONLY — never force a min that clips the composer. */
   flex: 1 1 0;
-  min-height: 14rem;
-  max-height: 100%;
+  min-height: 0;
+  max-height: none;
   overflow: hidden;
-  /*
-   * Grid reserves a real row for the message list. Flex alone let chrome+hint
-   * consume the whole min-height and left the list at 0px (unreachable entries).
-   */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(7rem, 1fr) auto;
+  grid-template-rows: auto auto minmax(4.5rem, 1fr) auto;
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
@@ -832,9 +849,9 @@ a.account-chip-label:focus-visible {
 
 .dm-play-thread.is-expanded {
   flex: 1 1 0;
-  min-height: 18rem;
-  max-height: 100%;
-  grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+  min-height: 0;
+  max-height: none;
+  grid-template-rows: auto auto minmax(7rem, 1fr) auto;
 }
 
 .dm-play-thread-chrome {
@@ -977,7 +994,7 @@ ol.record-list.dm-thread-list > li {
   border-radius: var(--radius-control);
   flex: 0 1 auto;
   min-height: 0;
-  max-height: 7.5rem;
+  max-height: 5.25rem;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -1181,14 +1198,14 @@ ol.record-list.dm-thread-list > li {
 
   .table-action-bar {
     flex: 0 0 auto;
-    height: min(46dvh, 24rem);
-    max-height: min(46dvh, 24rem);
-    overflow: hidden;
+    height: min(50dvh, 28rem);
+    max-height: min(50dvh, 28rem);
+    overflow: clip;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    height: min(70dvh, 36rem);
-    max-height: min(70dvh, 36rem);
+    height: min(72dvh, 38rem);
+    max-height: min(72dvh, 38rem);
   }
 }
 
@@ -1351,7 +1368,7 @@ ol.record-list.dm-thread-list > li {
     height: auto;
     max-height: none;
     min-height: 0;
-    overflow: hidden;
+    overflow: clip;
   }
 
   .table-dashboard[data-mobile-task='play'] .table-action-bar:has(.dm-play-thread.is-expanded) {
