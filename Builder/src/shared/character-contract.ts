@@ -232,6 +232,8 @@ export interface DerivedCharacterSheet {
     readonly name: string;
     readonly quantity: number;
     readonly equipped?: boolean;
+    /** How Class/Background kits contributed when items overlapped. */
+    readonly note?: string;
   }[];
   readonly currencyGold: number;
   readonly spellcasting: {
@@ -447,6 +449,8 @@ export interface DraftOptions {
     readonly slotCount: number;
     readonly options: readonly SelectableOption[];
   } | null;
+  /** Class/Background kit overlaps explained before create (UX 21–24). */
+  readonly kitOverlapNotes: readonly string[];
 }
 
 export function abilityModifier(score: number): number {

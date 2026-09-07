@@ -749,6 +749,16 @@ test('Rogue Expertise is required and doubles proficiency on the sheet', () => {
   assert.ok(sheet.features.some((feature) => feature.name.startsWith('Expertise:')));
   const tools = sheet.proficiencies.filter((entry) => /thieves/i.test(entry.label));
   assert.equal(tools.length, 1, 'Thieves Tools proficiency must appear once');
+  const toolGear = sheet.equipment.filter((entry) => /thieves/i.test(entry.name));
+  assert.equal(toolGear.length, 1);
+  assert.equal(toolGear[0].quantity, 1, 'Thieves Tools kit must not stack to 2');
+  const daggers = sheet.equipment.find((entry) => entry.name === 'Dagger');
+  assert.ok(daggers);
+  assert.equal(daggers.quantity, 4);
+  assert.match(daggers.note ?? '', /Class kit ×2 \+ Background kit ×2/);
+  const options = buildDraftOptions(withExpertise);
+  assert.ok(options.kitOverlapNotes.some((note) => /Thieves/i.test(note)));
+  assert.ok(options.kitOverlapNotes.some((note) => /Dagger/i.test(note)));
 });
 
 test('Rogue Weapon Mastery options are proficiency-filtered', () => {
