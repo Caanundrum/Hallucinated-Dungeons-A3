@@ -49,6 +49,12 @@ async function chooseOption(page: Page, testId: string): Promise<void> {
   await expect(page.locator('[data-testid="create-error"]')).toHaveCount(0);
 }
 
+async function waitForWizardContinue(page: Page): Promise<void> {
+  await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false', {
+    timeout: 30_000,
+  });
+}
+
 async function assignStandardArray(page: Page): Promise<void> {
   const assignment: ReadonlyArray<[string, string]> = [
     ['strength', '15'],
