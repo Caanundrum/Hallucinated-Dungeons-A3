@@ -20,8 +20,10 @@ import {
   CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
   CHRONICLE_FILTER_ALL,
+  CHRONICLE_FILTER_RECAP,
   CHRONICLE_FILTER_STORY,
   PLAY_CHRONICLE_KINDS,
+  RECAP_CHRONICLE_KINDS,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
@@ -247,7 +249,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
-  let chronicleKindFilter: string = CHRONICLE_FILTER_STORY;
+  let chronicleKindFilter: string = CHRONICLE_FILTER_RECAP;
   let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
@@ -1295,7 +1297,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" class="table-primary-action" data-testid="open-table-sheet-modal">
             View full sheet
           </button>
-          <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
         </div>
       </div>`;
   }
@@ -1912,9 +1913,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const entries =
       chronicleKindFilter === CHRONICLE_FILTER_ALL
         ? allEntries
-        : chronicleKindFilter === CHRONICLE_FILTER_STORY
-          ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
-          : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
+        : chronicleKindFilter === CHRONICLE_FILTER_RECAP
+          ? allEntries.filter((entry) => RECAP_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
+          : chronicleKindFilter === CHRONICLE_FILTER_STORY
+            ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
+            : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
     return `
       <div class="dock-pane story-feed-pane" data-testid="chronicle-pane">
         <div class="story-feed-chrome">
@@ -1925,7 +1928,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <label class="field story-feed-filter">
             <span class="visually-hidden">Filter by kind</span>
             <select data-testid="chronicle-kind-filter" aria-label="Filter Story so far by kind">
-              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Story &amp; play</option>
+              <option value="${CHRONICLE_FILTER_RECAP}" ${chronicleKindFilter === CHRONICLE_FILTER_RECAP ? 'selected' : ''}>Session recap</option>
+              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Full play log</option>
               <option value="${CHRONICLE_FILTER_ALL}" ${chronicleKindFilter === CHRONICLE_FILTER_ALL ? 'selected' : ''}>All activity</option>
               ${CHRONICLE_ENTRY_KINDS.map(
                 (kind) =>
@@ -1937,8 +1941,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </label>
         </div>
         <p class="record-meta visually-hidden" data-testid="session-record-privacy-note">
-          Play declarations, rulings, narration, and map events appear here. Private Ask the Game
-          Director advice stays in Ask DM and is never merged into this public session record.
+          Session recap defaults to Director narration and scene events. Live play chronology stays
+          in the center Action Composer timeline. Private Ask the Game Director advice stays in Ask
+          DM and is never merged into this public session record.
         </p>
         ${
           entries.length === 0
@@ -2017,8 +2022,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
               <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
             </label>
-            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
-              ${askDmConsulting ? 'Consulting…' : busy ? 'Sending…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
+            <button type="submit" data-testid="director-address-send" aria-disabled="${askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
+              ${askDmConsulting ? 'Consulting…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
             </button>
           </form>
         </div>`;
@@ -4368,7 +4373,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const send = root.querySelector<HTMLButtonElement>('[data-testid="director-address-send"]');
       send?.setAttribute(
         'aria-disabled',
-        String(busy || candidate === null || directorDraft.trim().length === 0),
+        String(askDmConsulting || candidate === null || directorDraft.trim().length === 0),
       );
     });
 
@@ -4377,11 +4382,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
         void (async () => {
-          if (candidate === null || busy || directorDraft.trim().length === 0) {
+          if (candidate === null || askDmConsulting || directorDraft.trim().length === 0) {
             return;
           }
           const question = directorDraft.trim();
-          busy = true;
+          // Ask DM is a side channel — never claim the play-mutation `busy` latch.
           askDmConsulting = true;
           error = null;
           appendAskDmThread('player', 'You', question, 'declaration');
@@ -4412,7 +4417,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : 'Ask the Game Director could not be sent.';
           } finally {
             askDmConsulting = false;
-            busy = false;
             render();
           }
         })();

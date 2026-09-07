@@ -2,14 +2,34 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  CHRONICLE_FILTER_RECAP,
+  CHRONICLE_FILTER_STORY,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
   formatDirectorProse,
   formatPlayerFacingTimestamp,
   isEpochPlaceholderTimestamp,
+  PLAY_CHRONICLE_KINDS,
+  RECAP_CHRONICLE_KINDS,
   storyBodiesEquivalent,
 } from '../../dist/shared/communication-contract.js';
+
+test('Story so far defaults to recap kinds distinct from full play log', () => {
+  assert.equal(CHRONICLE_FILTER_RECAP, 'recap');
+  assert.equal(CHRONICLE_FILTER_STORY, 'story');
+  assert.ok(RECAP_CHRONICLE_KINDS.has('director_ruling'));
+  assert.ok(RECAP_CHRONICLE_KINDS.has('scene_built'));
+  assert.ok(RECAP_CHRONICLE_KINDS.has('door_opened'));
+  assert.ok(RECAP_CHRONICLE_KINDS.has('play_resolved'));
+  assert.equal(RECAP_CHRONICLE_KINDS.has('play_declaration'), false);
+  assert.equal(RECAP_CHRONICLE_KINDS.has('token_moved'), false);
+  assert.ok(PLAY_CHRONICLE_KINDS.has('play_declaration'));
+  assert.ok(PLAY_CHRONICLE_KINDS.has('token_moved'));
+  for (const kind of RECAP_CHRONICLE_KINDS) {
+    assert.ok(PLAY_CHRONICLE_KINDS.has(kind), `recap kind ${kind} stays inside play kinds`);
+  }
+});
 
 test('PQA-157/159: dmThreadFromChronicleEntries rebuilds play thread from Chronicle', () => {
   const thread = dmThreadFromChronicleEntries({
