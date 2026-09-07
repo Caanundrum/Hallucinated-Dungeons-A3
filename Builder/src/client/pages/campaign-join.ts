@@ -7,6 +7,7 @@ import { ERROR_CODES } from '../../shared/contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
+  createCampaignInvitation,
   discardDraft,
   fetchCampaignDetail,
   fetchTablesHub,
@@ -56,6 +57,8 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
+  let invitePath: string | null = null;
+  let inviteCopyFeedback: string | null = null;
   const { created: justCreated, privateTable: createdPrivate } = joinQueryFlags();
   const mountToken = beginPageMount(container);
 
@@ -68,22 +71,40 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
       return '';
     }
     const privateInvite = createdPrivate
-      ? `<p class="record-meta" data-testid="join-created-invite-hint">
-           Private tables use invite links. After you take a seat, open the campaign page to copy,
-           refresh, or revoke an invite.
-         </p>
-         <p>
-           <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-created-invite-link">
-             Open campaign for invite tools
-           </a>
-         </p>`
+      ? `<div data-testid="join-created-invite-panel">
+           <p class="record-meta" data-testid="join-created-invite-hint">
+             Private tables use invite links. Create a link here to share — you can refresh or revoke it later
+             on the campaign page. Rotation replaces the old link.
+           </p>
+           ${
+             invitePath === null
+               ? `<p>
+                    <button type="button" data-testid="join-create-invite" ${busy ? 'aria-disabled="true"' : ''}>
+                      Create invite link
+                    </button>
+                  </p>`
+               : `<p class="record-meta" data-testid="join-invite-path">${escapeHtml(invitePath)}</p>
+                  <p>
+                    <button type="button" data-testid="join-copy-invite" ${busy ? 'aria-disabled="true"' : ''}>
+                      Copy invite link
+                    </button>
+                  </p>`
+           }
+           ${
+             inviteCopyFeedback === null
+               ? ''
+               : `<p class="message success" data-testid="join-invite-copy-feedback">${escapeHtml(inviteCopyFeedback)}</p>`
+           }
+         </div>`
       : '';
     return `
       <section class="panel" data-testid="join-created-orientation" aria-labelledby="join-created-heading">
         <h2 id="join-created-heading">Table created — now take a seat</h2>
         <p>
           ${escapeHtml(tableName)} is ready. Pick a character below to sit at this table the same way
-          every other player does.
+          every other player does${
+            directorLabel === null ? '' : ` with ${escapeHtml(directorLabel)} as Game Director`
+          }.
         </p>
         ${privateInvite}
       </section>`;
@@ -235,6 +256,54 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
       .querySelector<HTMLButtonElement>('[data-testid="join-table-submit"]')
       ?.addEventListener('click', () => {
         void submitJoin(false);
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="join-create-invite"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          busy = true;
+          error = null;
+          inviteCopyFeedback = null;
+          renderForm();
+          try {
+            const invitation = await createCampaignInvitation({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            invitePath = `${window.location.origin}${invitation.invitePath}`;
+            shell.announce('Invite link ready.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The invitation could not be created.';
+          } finally {
+            busy = false;
+            renderForm();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="join-copy-invite"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (invitePath === null) {
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(invitePath);
+            inviteCopyFeedback = 'Invite URL copied.';
+            shell.announce('Invite URL copied.');
+          } catch {
+            inviteCopyFeedback = 'Could not copy automatically — select the URL above and copy it.';
+          }
+          renderForm();
+        })();
       });
 
     container

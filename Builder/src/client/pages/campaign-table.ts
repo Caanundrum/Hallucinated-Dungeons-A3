@@ -186,7 +186,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let sessionZeroComplete = false;
   let sessionZeroGateActive = false;
   let directorIdentityLabel = 'the Game Director';
-  type InfoTab = 'character' | 'notes' | 'people' | 'tools';
+  type InfoTab = 'character' | 'notes' | 'people' | 'rules' | 'tools';
   let activeInfoTab: InfoTab = 'character';
   let infoRailCollapsed = false;
   let commsRailCollapsed = false;
@@ -514,6 +514,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
             <p>${escapeHtml(formatDirectorProse(message.body))}</p>
             <span class="record-meta" data-testid="dm-thread-timestamp">${escapeHtml(stamped)}</span>
+            ${
+              message.speaker === 'dm' &&
+              (message.kind === 'mechanics' ||
+                message.kind === 'narration' ||
+                message.kind === 'ruling_hint')
+                ? `<p class="dm-thread-report">
+                     <button type="button" class="button ghost" data-testid="report-wrong-resolution"
+                       data-message-id="${escapeHtml(message.messageId)}">
+                       Report wrong resolution
+                     </button>
+                   </p>`
+                : ''
+            }
           </li>`;
         })
         .join('')}
@@ -1567,6 +1580,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     character: 'Character',
     notes: 'Notes',
     people: 'People',
+    rules: 'Rules',
     tools: 'Tools',
   };
 
@@ -1576,7 +1590,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function visibleInfoTabs(): InfoTab[] {
-    const tabs: InfoTab[] = ['character', 'notes', 'people'];
+    const tabs: InfoTab[] = ['character', 'notes', 'people', 'rules'];
     if (trainingToolsVisible()) {
       tabs.push('tools');
     }
@@ -1714,6 +1728,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return `<section class="table-info-pane" data-testid="table-notes-panel">${notesPanelBody()}</section>`;
       case 'people':
         return `<section class="table-info-pane" data-testid="table-people-panel">${peoplePanelBody()}</section>`;
+      case 'rules':
+        return `
+          <section class="table-info-pane" data-testid="table-rules-panel">
+            <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
+            <p class="record-meta" data-testid="rules-catalog-meta">
+              ${
+                rulesCatalog === null
+                  ? 'Loading SRD reference…'
+                  : 'SRD 5.2.1 character reference'
+              }
+            </p>
+            <label class="field">
+              <span>Quick search</span>
+              <input type="search" data-testid="rules-catalog-search" placeholder="Filter by title or summary"
+                value="${escapeHtml(rulesSearchQuery)}" />
+            </label>
+            <p class="record-meta">Rules live in this Character reference rail. Ask the Game Director stays in the conversation dock for rulings.</p>
+            <button type="button" class="table-primary-action" data-testid="open-rules-modal">Open full rules catalog</button>
+          </section>`;
       case 'tools':
         return `
           <section class="table-info-pane" data-testid="table-tools-panel">
@@ -3490,7 +3523,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         if (!onTable) return;
         event.preventDefault();
         rulesModalOpen = true;
-        activeTab = 'rules_desk';
+        activeInfoTab = 'rules';
+        infoRailCollapsed = false;
         render();
       });
     }
@@ -3507,6 +3541,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         scrollDmPlayThreadToLatest('smooth');
         shell.announce('Jumped to the latest table beat.');
       });
+    root.querySelectorAll<HTMLButtonElement>('[data-testid="report-wrong-resolution"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const messageId = button.dataset.messageId ?? '';
+        const target = dmThread.find((message) => message.messageId === messageId);
+        appendDmThread(
+          'system',
+          'Table',
+          target === undefined
+            ? 'Wrong-resolution report noted. Re-declare the beat or use Correction mode on your sheet for ledger fixes.'
+            : `Wrong-resolution report noted for: “${target.body.slice(0, 120)}${target.body.length > 120 ? '…' : ''}”. Re-declare the action, or say the map summary is wrong so the Director reconciles live door state.`,
+          'system',
+        );
+        shell.announce('Wrong-resolution report recorded in the play thread.');
+        patchDmPlayThread();
+      });
+    });
     root
       .querySelector<HTMLButtonElement>('[data-testid="dm-thread-expand"]')
       ?.addEventListener('click', () => {
@@ -3771,6 +3821,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             `[data-mobile-task="${mode}"]`,
           );
           activeButton?.focus({ preventScroll: true });
+          // Fit while Map was hidden under Play leaves a postage-stamp zoom — re-fit on Map task.
+          if (mode === 'map') {
+            requestAnimationFrame(() => {
+              stageHandle?.fitToViewport();
+            });
+          }
         });
       });
     }
@@ -4924,8 +4980,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
-      .querySelector<HTMLButtonElement>('[data-testid="open-selected-door"]')
-      ?.addEventListener('click', () => {
+      .querySelectorAll<HTMLButtonElement>('[data-testid="open-selected-door"]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
         void (async () => {
           const affordance = selectedDoorOpenAffordance();
           if (
@@ -4966,6 +5023,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             render();
           }
         })();
+      });
       });
 
     root
@@ -5492,6 +5550,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     infoSlot.innerHTML = infoRailBody();
     actionSlot.innerHTML = playerActionBar();
+    const mapChrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+    if (mapChrome !== null) {
+      let mapDoorActions = mapChrome.querySelector<HTMLElement>('[data-testid="map-door-actions"]');
+      const affordance = selectedDoorOpenAffordance();
+      const showMapOpen = affordance !== null && affordance.canOpen;
+      if (showMapOpen) {
+        if (mapDoorActions === null) {
+          mapDoorActions = document.createElement('div');
+          mapDoorActions.className = 'table-map-door-actions';
+          mapDoorActions.dataset.testid = 'map-door-actions';
+          mapChrome.appendChild(mapDoorActions);
+        }
+        mapDoorActions.innerHTML = `<button type="button" class="table-primary-action" data-testid="open-selected-door" aria-disabled="${busy}">Open doorway</button>`;
+      } else if (mapDoorActions !== null) {
+        mapDoorActions.remove();
+      }
+    }
     syncTurnBannerSplash();
     commsSlot.innerHTML = commsDockBody();
     sheetModalSlot.innerHTML = characterSheetModalHtml();

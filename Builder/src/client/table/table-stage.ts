@@ -698,7 +698,7 @@ function paintSemanticSvg(
     <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
       <summary>Map help</summary>
       <p class="record-meta">Fit shows the whole scene without sideways scrolling. Drag to pan when zoomed. Center focuses the party token.</p>
-      <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Zoom buttons and Fit stay in the toolbar.</p>
+      <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Use Zoom in / Zoom out / Fit in the toolbar. On Map task, Open doorway appears under the map when a door is selected and you are beside it.</p>
       <p class="table-player-actions">
         <button type="button" data-testid="preview-scene-discovery-cue" data-map-zoom="preview-cue">
           Preview discovery cue

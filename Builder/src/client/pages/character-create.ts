@@ -69,25 +69,25 @@ const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
   identity: 'Identity',
 };
 
-/** Visual 3-stage carousel (Gemini polish Batch 4) grouping SRD wizard steps. */
+/** Visual 3-stage carousel grouping SRD wizard steps (matches actual Class → Background → Species order). */
 const CAROUSEL_STAGES = [
   {
     id: 'archetype',
     label: 'Archetype',
-    summary: 'Class & species',
-    steps: ['class', 'species'] as const satisfies readonly WizardStep[],
+    summary: 'Class, background & species',
+    steps: ['class', 'background', 'species'] as const satisfies readonly WizardStep[],
   },
   {
     id: 'foundation',
     label: 'Foundation',
-    summary: 'Background & attributes',
-    steps: ['background', 'abilities'] as const satisfies readonly WizardStep[],
+    summary: 'Attributes & loadout',
+    steps: ['abilities', 'equipment'] as const satisfies readonly WizardStep[],
   },
   {
     id: 'identity',
     label: 'Identity',
-    summary: 'Gear, features & name',
-    steps: ['equipment', 'features', 'identity'] as const satisfies readonly WizardStep[],
+    summary: 'Features & name',
+    steps: ['features', 'identity'] as const satisfies readonly WizardStep[],
   },
 ] as const;
 
@@ -471,12 +471,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map(
             (entry) => `
-          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}">
+          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}"${busy ? ' aria-busy="true"' : ''}>
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${options.selected === entry.id ? 'checked' : ''} ${busy ? 'disabled' : ''}
               data-testid="option-${escapeHtml(entry.id)}" />
             <span class="option-card-crest" aria-hidden="true">${escapeHtml(entry.label.slice(0, 1))}</span>
-            <span class="option-label">${escapeHtml(entry.label)}</span>
+            <span class="option-label">${escapeHtml(entry.label)}${busy && options.selected === entry.id ? ' · Saving…' : ''}</span>
             ${entry.summary === undefined ? '' : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`}
           </label>`,
           )
@@ -507,11 +507,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
             const isSelected = visibleSelected.includes(entry.id);
             const disabled = busy || (atCap && !isSelected);
             return `
-          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''}>
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
               data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
-            <span class="option-label">${escapeHtml(entry.label)}</span>
+            <span class="option-label">${escapeHtml(entry.label)}${busy && isSelected ? ' · Saving…' : ''}</span>
             ${
               entry.summary === undefined
                 ? ''
@@ -603,6 +603,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return `
       <h3>Choose a Background</h3>
       <p class="step-helper" data-testid="background-nav-hint">${escapeHtml(STEP_HELPERS.background)}</p>
+      ${
+        state.draft.choices.classId !== null && state.draft.choices.classSkills.length > 0
+          ? `<p class="wizard-coach" data-testid="skill-overlap-coach">
+               You already picked class skills (${escapeHtml(state.draft.choices.classSkills.join(', '))}).
+               Background skills that match are omitted below so you choose replacements yourself —
+               nothing is silently dropped after the fact.
+             </p>`
+          : `<p class="record-meta" data-testid="skill-overlap-coach-wait">
+               Choose a class first if you want overlap guidance before background skills appear.
+             </p>`
+      }
       ${optionList({
         name: 'background',
         testId: 'background-options',
@@ -1134,30 +1145,53 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '';
     }
     const identity = state.draft.choices.identity;
+    const tokenInitial = identity.name.trim().charAt(0).toUpperCase() || '?';
+    const nameMax = CHARACTER_NAME_MAX_LENGTH;
+    const readiness = state.draft.unresolved;
 
     return `
       <h3>Identity & final review</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
       <p class="record-meta" data-testid="identity-autosave-notice">
         Identity fields save automatically after you pause typing. While a save is in flight, controls may
-        briefly show <strong>Working…</strong> — your draft is still safe on the server.
+        briefly show <strong>Saving…</strong> — your draft is still safe on the server.
       </p>
-      <label for="character-name">Name</label>
+      <div class="identity-token-preview" data-testid="identity-token-preview" aria-live="polite">
+        <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>
+        <span class="record-meta">Map token initial preview</span>
+      </div>
+      <label for="character-name">Character name (required, max ${nameMax} characters)</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
-        maxlength="${CHARACTER_NAME_MAX_LENGTH}"
+        maxlength="${nameMax}" aria-label="Character name"
         value="${escapeHtml(identity.name)}" autocomplete="off" placeholder="Something the bard can pronounce" />
-      <label for="character-pronouns">Pronouns</label>
+      <label for="character-pronouns">Pronouns (optional)</label>
       <input id="character-pronouns" type="text" data-identity="pronouns" data-testid="identity-pronouns"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Pronouns"
         value="${escapeHtml(identity.pronouns)}" autocomplete="off" placeholder="Optional" />
-      <label for="character-appearance">Appearance</label>
+      <label for="character-appearance">Appearance (optional)</label>
       <input id="character-appearance" type="text" data-identity="appearance" data-testid="identity-appearance"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Appearance"
         value="${escapeHtml(identity.appearance)}" autocomplete="off" placeholder="Optional — scar, hat, ominous vibes…" />
-      <label for="character-concept">Concept</label>
+      <label for="character-concept">Concept (optional)</label>
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Concept"
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
+
+      <section class="panel" data-testid="character-readiness-summary" aria-labelledby="readiness-heading">
+        <h3 id="readiness-heading">What can this character do?</h3>
+        ${
+          readiness.length === 0
+            ? `<p class="message success" data-testid="readiness-ready">Ready to create — class, background, species, skills, and features are complete.</p>`
+            : `<ul class="record-list" data-testid="readiness-blockers">
+                ${readiness
+                  .map(
+                    (item) =>
+                      `<li data-testid="readiness-blocker">${escapeHtml(item.message)}</li>`,
+                  )
+                  .join('')}
+              </ul>`
+        }
+      </section>
 
       <h3>Final review</h3>
       ${
