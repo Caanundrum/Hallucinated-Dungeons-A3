@@ -595,8 +595,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
+    const choices = displayChoices();
+    const classSkillIds = choices.classSkillIds ?? [];
+    const classSkillLabels = classSkillIds.map((skillId) => {
+      const fromClass = state.options.classDetail?.skillOptions.find((entry) => entry.id === skillId);
+      return fromClass?.label ?? skillId;
+    });
     const detail = state.options.backgroundDetail;
-    const bonuses = state.draft.choices.backgroundAbilityBonuses;
+    const bonuses = choices.backgroundAbilityBonuses;
     const inferred = detail === null ? null : inferBonusPattern(bonuses, detail.abilityOptions);
     const pattern = backgroundBonusPattern ?? inferred;
     const plusTwoAbility: Ability | '' =
@@ -616,9 +622,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <h3>Choose a Background</h3>
       <p class="step-helper" data-testid="background-nav-hint">${escapeHtml(STEP_HELPERS.background)}</p>
       ${
-        state.draft.choices.classId !== null && state.draft.choices.classSkills.length > 0
+        choices.classId !== null && classSkillIds.length > 0
           ? `<p class="wizard-coach" data-testid="skill-overlap-coach">
-               You already picked class skills (${escapeHtml(state.draft.choices.classSkills.join(', '))}).
+               You already picked class skills (${escapeHtml(classSkillLabels.join(', '))}).
                Background skills that match are omitted below so you choose replacements yourself —
                nothing is silently dropped after the fact.
              </p>`
@@ -630,7 +636,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         name: 'background',
         testId: 'background-options',
         entries: state.options.catalog.backgrounds,
-        selected: state.draft.choices.backgroundId,
+        selected: choices.backgroundId,
       })}
       ${
         detail === null
@@ -2077,6 +2083,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       match?.focus();
     }
   }
+
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {
