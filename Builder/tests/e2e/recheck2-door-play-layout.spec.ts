@@ -177,4 +177,100 @@ test.describe('Recheck 2 door + play layout', () => {
       fullPage: false,
     });
   });
+
+  test('named premise entities and location art appear on opening scene', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await acceptAllLegalForPlay(page);
+
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    await page.getByTestId('identity-name').fill('PremisePip');
+    await page.getByTestId('identity-name').dispatchEvent('change');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await page.getByTestId('create-character').click();
+
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await page.getByTestId('campaign-name').fill('Premise Named Camp');
+    await page.getByTestId('campaign-name').dispatchEvent('change');
+    const premise =
+      'At the Blue Heron, Mara Venn waits for a missing courier. A broken silver lantern and locked red warehouse door mark the canal loft.';
+    await page.getByTestId('campaign-summary').fill(premise);
+    await page.getByTestId('campaign-summary').dispatchEvent('input');
+    await page.getByTestId('campaign-summary').dispatchEvent('change');
+    await expect(page.getByTestId('premise-committed-facts')).toContainText(/Blue Heron/i);
+    await expect(page.getByTestId('premise-committed-facts')).toContainText(/Mara Venn/i);
+    await page.getByTestId('identity-garrick').click();
+    await page.getByTestId('personality-seasoned_host').click();
+    await page.getByTestId('create-campaign-submit').click();
+    await expect(page.getByTestId('join-table-heading')).toBeVisible();
+    await joinTableWithFirstCharacter(page);
+    if (!(await page.getByTestId('action-composer').isVisible().catch(() => false))) {
+      const openTable = page.getByTestId('open-campaign-table');
+      if (await openTable.isVisible().catch(() => false)) await openTable.click();
+    }
+    await expect(page.getByTestId('action-composer')).toBeVisible({ timeout: 30_000 });
+    const begin = page.getByTestId('begin-adventure');
+    if (await begin.isVisible().catch(() => false)) {
+      await begin.click();
+      const confirm = page.getByTestId('confirm-intent-intercept');
+      if (await confirm.isVisible({ timeout: 5_000 }).catch(() => false)) await confirm.click();
+    }
+    await expect
+      .poll(async () => page.getByTestId('map-scene-banner').innerText().catch(() => ''), {
+        timeout: 60_000,
+      })
+      .toMatch(/canal|warehouse|loft|inn|chamber|room/i);
+    await expect(page.getByTestId('scene-location-backdrop')).toBeVisible();
+    await expect
+      .poll(
+        async () => {
+          const summary =
+            (await page.getByTestId('map-terrain-summary').innerText().catch(() => '')) ?? '';
+          const labels = await page.locator('[data-testid="map-label-chip"]').allInnerTexts();
+          const thread =
+            (await page.locator('[data-testid="dm-play-thread"]').innerText().catch(() => '')) ?? '';
+          return `${summary}\n${labels.join(' ')}\n${thread}`;
+        },
+        { timeout: 45_000 },
+      )
+      .toMatch(/Blue Heron/i);
+    const mapHay = await page.evaluate(() => {
+      const summary = document.querySelector('[data-testid="map-terrain-summary"]')?.textContent ?? '';
+      const labels = Array.from(document.querySelectorAll('[data-testid="map-label-chip"]'))
+        .map((el) => el.textContent ?? '')
+        .join(' ');
+      const thread = document.querySelector('[data-testid="dm-play-thread"]')?.textContent ?? '';
+      return `${summary}\n${labels}\n${thread}`;
+    });
+    expect(mapHay).toMatch(/Mara Venn/i);
+    expect(mapHay).toMatch(/silver lantern/i);
+    expect(mapHay).toMatch(/red warehouse door|locked red/i);
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/recheck2_premise_entities_map.png',
+      fullPage: false,
+    });
+
+    // Report wrong resolution requires confirm + reason (no instant public beat).
+    const reportBtn = page.getByTestId('report-wrong-resolution').first();
+    if (await reportBtn.isVisible().catch(() => false)) {
+      await reportBtn.click();
+      await expect(page.getByTestId('wrong-resolution-report')).toBeVisible();
+      await page.getByTestId('wrong-resolution-report-reason').fill('Premise entities were missing before this fix.');
+      await page.screenshot({
+        path: '/opt/cursor/artifacts/recheck2_report_confirm_modal.png',
+        fullPage: false,
+      });
+      await page.getByTestId('wrong-resolution-report-cancel').click();
+      await expect(page.getByTestId('wrong-resolution-report')).toHaveCount(0);
+    }
+  });
 });
