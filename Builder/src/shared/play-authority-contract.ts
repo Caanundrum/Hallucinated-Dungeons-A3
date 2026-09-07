@@ -16,6 +16,7 @@
 
 import type { DoorState } from './map-contract.js';
 import type { IntentDraftCommandType } from './intent-draft-contract.js';
+import { declarationNegatesDoorOpen } from './resolved-action-receipt.js';
 
 /** Who may author which kind of fact. */
 export const PLAY_AUTHORITY_ROLES = ['player', 'director', 'mechanics'] as const;
@@ -530,6 +531,8 @@ export function parsePlayerDeclaration(
 
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
+  // Negation / exclusion: "without opening", "do not open" — never draft open_door.
+  const negatesOpen = declarationNegatesDoorOpen(trimmed);
   // Adjectival "open/opened wooden door" is door state, not an open-door verb.
   const withoutOpenDoorNoun = trimmed.replace(
     /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
@@ -543,10 +546,12 @@ export function parsePlayerDeclaration(
     /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
     /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
   const openDoorVerb =
+    !negatesOpen &&
     /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(withoutOpenDoorNoun) &&
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun);
   const wantsOpenDoor =
     !wantsUnlock &&
+    !negatesOpen &&
     (openDoorVerb ||
       // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
       (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));

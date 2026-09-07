@@ -69,6 +69,10 @@ import {
   textReferencesUnlockedDoorState,
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
+import {
+  declarationIsDoorOpenOrPassage,
+  declarationNegatesDoorOpen,
+} from '../../shared/resolved-action-receipt.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
@@ -466,6 +470,10 @@ function stripAdjectivalOpenDoor(text: string): string {
 }
 
 function mentionsDoorIntent(text: string): boolean {
+  // Negation: "without opening" / "do not open" is not an open-door intent.
+  if (declarationNegatesDoorOpen(text)) {
+    return false;
+  }
   // Adjectival "open wooden door" is door state, not an open-door verb.
   const withoutOpenNoun = stripAdjectivalOpenDoor(text);
   const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(withoutOpenNoun);
@@ -1060,6 +1068,11 @@ export async function interpretNaturalLanguageIntent(options: {
       'Ready to leave for another scene. Confirm so the Game Director establishes the next place.';
     sceneLoopResolved = true;
   } else if (
+    // Door open/passage belongs to door authority — never steal into prop interact
+    // via "open the" + fuzzy label match (wood ⊂ wooden → Wood pile).
+    !declarationIsDoorOpenOrPassage(rawText) &&
+    !declarationNegatesDoorOpen(rawText) &&
+    !mentionsDoorIntent(text) &&
     /\b(extinguish|douse|snuff|relight|ignite|kindle|break|smash|kick|shatter|move the|clear the|open the|close the|disarm)\b/i.test(
       text,
     )

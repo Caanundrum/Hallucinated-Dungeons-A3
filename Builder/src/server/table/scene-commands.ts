@@ -4,6 +4,11 @@
 
 import type { Firestore } from 'firebase-admin/firestore';
 
+import {
+  declarationIsDoorOpenOrPassage,
+  declarationMentionsLabelWord,
+  declarationNegatesDoorOpen,
+} from '../../shared/resolved-action-receipt.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import {
   composeDirectorScene,
@@ -119,7 +124,10 @@ export function interactObjectRuntime(options: {
   readonly runtime: StoredMapRuntime;
   readonly chronicle: string;
   readonly label: string;
+  readonly priorState: string;
   readonly nextState: string;
+  readonly objectId: string;
+  readonly baseLabel: string;
 } {
   const active = activeSceneInstance(options.runtime);
   if (active === null) {
@@ -129,10 +137,12 @@ export function interactObjectRuntime(options: {
   if (feature === undefined || !feature.interactable) {
     throw new Error('OBJECT_NOT_INTERACTABLE');
   }
+  const priorState = feature.state;
   const next = nextObjectState(feature, options.declaration);
   if (next === null || next === feature.state) {
     throw new Error('OBJECT_STATE_UNCHANGED');
   }
+  const baseLabel = feature.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
   const labeled = featureLabelWithState({ ...feature, state: next });
   const runtime = updateSceneObjectState({
     runtime: options.runtime,
@@ -148,11 +158,14 @@ export function interactObjectRuntime(options: {
     runtime,
     chronicle: directorNarrationBeat('interact', {
       scene,
-      objectLabel: feature.label.replace(/\s*\([^)]+\)\s*$/, '').trim(),
+      objectLabel: baseLabel,
       objectState: next,
     }),
     label: labeled,
+    priorState,
     nextState: next,
+    objectId: options.objectId,
+    baseLabel,
   };
 }
 
@@ -301,6 +314,14 @@ export function matchInteractableByDeclaration(
   if (active === null) {
     return null;
   }
+  // Doorway open/passage language is door authority — never fuzzy-match props
+  // (e.g. "wood" from "Wood pile" inside "wooden doorway").
+  if (
+    declarationIsDoorOpenOrPassage(declaration) ||
+    declarationNegatesDoorOpen(declaration)
+  ) {
+    return null;
+  }
   const text = declaration.toLowerCase();
   const interactable = active.features.filter((feature) => feature.interactable);
   if (
@@ -318,7 +339,12 @@ export function matchInteractableByDeclaration(
       const label = feature.label.toLowerCase();
       const kind = feature.objectKind;
       let score = 0;
-      if (label.split(/\s+/).some((word) => word.length > 3 && text.includes(word))) {
+      // Word-boundary only — "wood" must not hit inside "wooden".
+      if (
+        label
+          .split(/\s+/)
+          .some((word) => declarationMentionsLabelWord(declaration, word))
+      ) {
         score += 3;
       }
       if (kind === 'light' && /\b(lamp|lantern|light|torch|cresset|hearth|sconce)\b/.test(text)) {
@@ -326,7 +352,8 @@ export function matchInteractableByDeclaration(
       }
       if (
         kind === 'cover' &&
-        /\b(rubble|bench|crate|debris|log|cart|wood|masonry|parapet|span|plinth)\b/.test(text)
+        /\b(rubble|bench|crate|debris|log|cart|wood|masonry|parapet|span|plinth)\b/.test(text) &&
+        !/\b(?:door|doorway|gate|entry(?:way)?)\b/.test(text)
       ) {
         score += 4;
       }

@@ -1211,6 +1211,13 @@ export function nextObjectState(
   declaration: string,
 ): SceneObjectState | null {
   const text = declaration.toLowerCase();
+  // Doorway language never mutates cover/props — door authority owns that.
+  if (
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/.test(text) &&
+    /\b(?:open|opens|opening|close|closes|closing|through|beyond)\b/.test(text)
+  ) {
+    return null;
+  }
   if (feature.objectKind === 'light') {
     if (/\b(extinguish|douse|snuff|put out|darken)\b/.test(text)) return 'unlit';
     if (/\b(light|relight|ignite|kindle)\b/.test(text)) return 'lit';
@@ -1223,6 +1230,10 @@ export function nextObjectState(
     }
     if (/\b(close|shut)\b/.test(text) && feature.objectKind === 'container') return 'closed';
     if (/\b(move|clear|shift|push)\b/.test(text)) return 'broken';
+    // Cover: never treat bare "open" as smash/break.
+    if (feature.objectKind === 'cover' && /\bopen\b/.test(text)) {
+      return null;
+    }
     return feature.state === 'intact' ? 'broken' : feature.state === 'closed' ? 'open' : 'intact';
   }
   if (feature.objectKind === 'hazard') {
