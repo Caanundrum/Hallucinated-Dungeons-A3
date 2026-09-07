@@ -11,11 +11,12 @@ async function chooseOption(page: Page, testId: string): Promise<void> {
   await page.getByTestId(testId).click();
   await expect(page.getByTestId('create-heading')).toBeVisible();
   await expect(page.locator('[data-testid="create-error"]')).toHaveCount(0);
-  // Continue stays clickable while saving; wait until the step is complete when present.
-  const continueBtn = page.getByTestId('wizard-continue');
-  if (await continueBtn.count()) {
-    await expect(continueBtn).toHaveAttribute('aria-disabled', 'false', { timeout: 30_000 });
-  }
+}
+
+async function waitForWizardContinue(page: Page): Promise<void> {
+  await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false', {
+    timeout: 30_000,
+  });
 }
 
 async function assignStandardArray(page: Page): Promise<void> {
@@ -52,18 +53,23 @@ test.describe('Rogue Expertise and kit overlap', () => {
     for (const skill of ['acrobatics', 'deception', 'investigation', 'perception']) {
       await chooseOption(page, `check-${skill}`);
     }
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
+    await expect(page.getByTestId('option-wayfarer')).toBeVisible({ timeout: 30_000 });
 
     await chooseOption(page, 'option-wayfarer');
     await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-halfling');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Ability');
     await chooseOption(page, 'option-standard-array');
     await assignStandardArray(page);
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Equipment');
@@ -71,6 +77,7 @@ test.describe('Rogue Expertise and kit overlap', () => {
     await chooseOption(page, 'option-wayfarer-kit');
     await expect(page.getByTestId('equipment-overlap-note')).toContainText(/Thieves/i);
     await expect(page.getByTestId('equipment-overlap-note')).toContainText(/kept ×1/i);
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText(/Features/i);
@@ -86,6 +93,7 @@ test.describe('Rogue Expertise and kit overlap', () => {
       path: '/opt/cursor/artifacts/recheck-expertise-controls.png',
       fullPage: true,
     });
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText(/Identity/i);
