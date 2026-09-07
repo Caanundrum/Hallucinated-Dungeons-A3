@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterArena} from './arena-page.js';
+import { acceptAllLegalForPlay, enterArena } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1c actual-page journey: Character Vault, custom and
@@ -25,6 +25,7 @@ async function enterArenaForCharacters(page: Page): Promise<string> {
   }
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  await acceptAllLegalForPlay(page);
   // Resolve the account id from the Account page rather than diagnostics.
   await page.getByTestId('nav-account').click();
   await expect(page.getByTestId('account-page-id')).toBeVisible();
