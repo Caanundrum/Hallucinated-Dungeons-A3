@@ -119,8 +119,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <h3 class="preview-subheading">Expected play rhythm</h3>
         <p data-testid="preview-play-rhythm">${escapeHtml(preview.playRhythm)}</p>
         <p class="message notice" data-testid="preview-lock-reminder">
-          Creating this campaign locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
-          for ordinary users. The Game Director may narrate at your table when live narration is enabled.
+          Creating this table locks ${escapeHtml(identityLabel)} · ${escapeHtml(personalityLabel)}
+          for ordinary users. Permanence keeps the voice consistent for every seated player. The
+          Game Director may narrate at your table when live narration is enabled.
         </p>
       </section>`;
   }
@@ -131,17 +132,17 @@ export function mountCampaignCreatePage(host: PageHost): void {
     );
     if (submit !== null) {
       submit.setAttribute('aria-disabled', canSubmit() ? 'false' : 'true');
-      submit.textContent = busy ? 'Creating…' : 'Create campaign';
+      submit.textContent = busy ? 'Creating…' : 'Create table';
     }
 
     const previewName = container.querySelector<HTMLElement>('[data-testid="preview-campaign-name"]');
     if (previewName !== null) {
-      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
+      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled table';
     }
 
     const missing: string[] = [];
     if (name.trim().length === 0) {
-      missing.push('a campaign title');
+      missing.push('a table title');
     }
     if (directorIdentity === null) {
       missing.push('a Game Director identity');
@@ -208,7 +209,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <h1 data-testid="create-campaign-heading">Create a table</h1>
         <p class="tagline">
           Name the table, choose public or private visibility, pick a Game Director identity and
-          personality, then create. You join the same way every other player does.
+          personality, then create. You take a seat the same way every other player does.
         </p>
         <p class="message notice" data-testid="director-config-notice">${escapeHtml(catalog.configurationNotice)}</p>
         ${
@@ -220,8 +221,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <section class="panel" aria-labelledby="table-visibility-heading">
           <h2 id="table-visibility-heading">1. Visibility</h2>
           <p>
-            Public tables appear in the open lobby. Private tables are invite-only. Public tables
-            may optionally require a password to join.
+            Public tables appear in the open lobby. Private tables are invite-only — after you
+            create one, you can copy an invite link from the table page (and refresh or revoke it
+            later). Public tables may optionally require a password to join.
           </p>
           <ul class="option-list" data-testid="table-visibility-list">
             ${CAMPAIGN_VISIBILITY.map(
@@ -255,8 +257,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
           </label>
           <label class="field">
             <span>Adventure premise (optional)</span>
-            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3" placeholder="Example: a misty marsh inn, a stone crypt, a forest workshop…">${escapeHtml(summary)}</textarea>
-            <span class="record-meta">The Game Director uses this to establish your opening scene. Leave blank for a Director-chosen start.</span>
+            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3" placeholder="Example: a canal town missing courier, a misty marsh inn, a stone crypt…">${escapeHtml(summary)}</textarea>
+            <span class="record-meta" data-testid="premise-continuity-hint">
+              The opening scene keeps your core location and quest hook when you name them here. The
+              Game Director inspires the rest — the premise is not quoted word-for-word.
+            </span>
           </label>
         </section>
 
@@ -428,13 +433,21 @@ export function mountCampaignCreatePage(host: PageHost): void {
                 ? { joinPassword: joinPassword.trim() }
                 : {}),
             });
-            shell.announce(`Table ${campaign.name} created.`);
-            navigate(`/campaigns/${campaign.campaignId}/join`);
+            shell.announce(
+              visibility === 'private'
+                ? `Private table ${campaign.name} created — take a seat, then copy an invite from the table page.`
+                : `Table ${campaign.name} created — now take a seat.`,
+            );
+            navigate(
+              `/campaigns/${campaign.campaignId}/join?created=1${
+                visibility === 'private' ? '&private=1' : ''
+              }`,
+            );
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'The campaign could not be created.';
+                : 'The table could not be created.';
           } finally {
             busy = false;
             render();

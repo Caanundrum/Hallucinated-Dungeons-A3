@@ -192,4 +192,22 @@ test.describe('Batch 2/3 Director scene loop', () => {
     );
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Quiet chamber/i);
   });
+
+  test('canal town + missing courier opening keeps location and quest hook', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await seatAndOpenTable(
+      page,
+      'CanalCourier',
+      'a canal town and a missing courier carrying a sealed package',
+    );
+    await beginAdventure(page);
+    await expect(page.getByTestId('map-scene-banner')).toContainText(/canal|warehouse|loft/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Cottage parlor/i);
+    await expect(page.getByTestId('map-terrain-summary')).toContainText(/canal|courier|warehouse|freight/i);
+  });
 });
