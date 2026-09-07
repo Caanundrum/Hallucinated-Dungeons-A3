@@ -26,6 +26,11 @@ import {
   layoutMapLabels,
   type MapLabelAnchor,
 } from '../../shared/map-label-layout.js';
+import {
+  doorBoundToExitFeature,
+  formatEdgeAccessibleLabel,
+  formatMapTerrainSummary,
+} from '../../shared/map-presentation.js';
 import { escapeHtml } from '../dom-utils.js';
 import {
   doorAuthorityFromStored,
@@ -40,21 +45,6 @@ import {
   voidFillCss,
   type SceneVisualPresentation,
 } from './scene-visual-system.js';
-
-function edgeAccessibleLabel(edge: MapEdgeRecord): string {
-  const facing =
-    edge.orientation === 'north'
-      ? 'north'
-      : edge.orientation === 'south'
-        ? 'south'
-        : edge.orientation === 'east'
-          ? 'east'
-          : 'west';
-  if (edge.kind === 'door') {
-    return formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
-  }
-  return `Wall facing ${facing}`;
-}
 
 function edgeHitBox(
   edge: MapEdgeRecord,
@@ -177,31 +167,6 @@ function tokenLabelFontSize(
   return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.34));
 }
 
-function mapTerrainSummary(map: MapBundleProjection): string {
-  const scene = map.title.trim().length > 0 ? map.title : 'Scene';
-  const exitLabels = map.notableFeatures
-    .filter((feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit')
-    .map((feature) => feature.label)
-    .filter((label) => label.trim().length > 0);
-  const doors = map.edges.filter((edge) => edge.kind === 'door');
-  const routes =
-    exitLabels.length > 0
-      ? exitLabels.join('; ')
-      : doors.length === 0
-        ? 'no marked exits'
-        : `${doors.length} unmarked opening${doors.length === 1 ? '' : 's'}`;
-  const props = map.notableFeatures
-    .filter((feature) => feature.referenceKind !== 'exit' && feature.objectKind !== 'exit')
-    .slice(0, 4)
-    .map((feature) => feature.label);
-  const party =
-    map.tokens.length > 0
-      ? map.tokens.map((token) => token.label).join(', ')
-      : 'no party token';
-  const propLine = props.length > 0 ? ` · Nearby: ${props.join('; ')}` : '';
-  return `${scene} · Routes: ${routes} · Party: ${party}${propLine}`;
-}
-
 function paintSemanticSvg(
   host: HTMLElement,
   map: MapBundleProjection,
@@ -322,7 +287,7 @@ function paintSemanticSvg(
         x2 = x + pixelsPerSquare;
       }
       const hit = edgeHitBox(edge, pixelsPerSquare);
-      const label = edgeAccessibleLabel(edge);
+      const label = formatEdgeAccessibleLabel(edge, map.edges);
       const selected = selectedEdgeId === edge.edgeId ? ' map-edge-selected' : '';
       const doorClass = edge.kind === 'door' ? ' map-edge-door' : ' map-edge-wall';
       const doorStateAttr =
@@ -332,7 +297,9 @@ function paintSemanticSvg(
           ? ' stroke-dasharray="6 4"'
           : edge.kind === 'door' && edge.doorState === 'unlocked'
             ? ' stroke-dasharray="2 3"'
-            : '';
+            : edge.kind === 'door' && edge.doorState === 'open'
+              ? ' stroke-dasharray="10 6"'
+              : '';
       const doorGlow =
         edge.kind === 'door' && !lowEffects
           ? `<line class="map-door-glow" aria-hidden="true" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${widthStroke + 5}" stroke-opacity="0.28" stroke-linecap="round" pointer-events="none" />`
@@ -554,7 +521,16 @@ function paintSemanticSvg(
         : isTorch
           ? 'map-light-marker'
           : 'map-poi-marker';
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" tabindex="0" role="button" aria-label="${escapeHtml(feature.label)}">
+    const boundDoor = isExit ? doorBoundToExitFeature(map, feature) : null;
+    const doorOwnedExit = boundDoor !== null;
+    const accessibleName = doorOwnedExit
+      ? `Exit marker for ${formatEdgeAccessibleLabel(boundDoor, map.edges)}`
+      : feature.label;
+    // Door edges own the interactive name; exit dots bound to a door are markers only (146/147).
+    const interactiveAttrs = doorOwnedExit
+      ? `role="img" aria-label="${escapeHtml(accessibleName)}"`
+      : `tabindex="0" role="button" aria-label="${escapeHtml(accessibleName)}"`;
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -609,7 +585,7 @@ function paintSemanticSvg(
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
     <p class="map-terrain-summary visually-hidden" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
-      ${escapeHtml(mapTerrainSummary(map))}
+      ${escapeHtml(formatMapTerrainSummary(map))}
     </p>
     <p class="map-visual-summary visually-hidden" role="region" aria-label="Scene visual presentation" data-testid="map-visual-summary">
       ${escapeHtml(visuals.semanticSummary)}
@@ -722,6 +698,7 @@ function paintSemanticSvg(
     <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
       <summary>Map help</summary>
       <p class="record-meta">Fit shows the whole scene without sideways scrolling. Drag to pan when zoomed. Center focuses the party token.</p>
+      <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Zoom buttons and Fit stay in the toolbar.</p>
       <p class="table-player-actions">
         <button type="button" data-testid="preview-scene-discovery-cue" data-map-zoom="preview-cue">
           Preview discovery cue
@@ -1137,6 +1114,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const x = edge.column * pixelsPerSquare;
       const y = edge.row * pixelsPerSquare;
       const isDoor = edge.kind === 'door';
+      const strokeCss = isDoor ? doorStrokeColor(edge.doorState) : '#8a7a62';
+      const strokeColor = Number.parseInt(strokeCss.slice(1), 16);
       if (edge.orientation === 'east') {
         structural.moveTo(x + pixelsPerSquare, y).lineTo(x + pixelsPerSquare, y + pixelsPerSquare);
       } else if (edge.orientation === 'west') {
@@ -1148,7 +1127,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       structural.stroke({
         width: isDoor ? 4 : 5,
-        color: isDoor ? 0xb86b2b : 0x8a7a62,
+        color: Number.isFinite(strokeColor) ? strokeColor : isDoor ? 0xb86b2b : 0x8a7a62,
         alpha: 0.95,
       });
     }

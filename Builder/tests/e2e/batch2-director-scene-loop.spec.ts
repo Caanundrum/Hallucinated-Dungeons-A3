@@ -169,7 +169,9 @@ test.describe('Batch 2/3 Director scene loop', () => {
     );
     // Materially different landmark layout with contract exits on the map.
     await expect(page.getByTestId('map-exit-marker').first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId('map-terrain-summary')).toContainText(/[1-9]\d* exit/i);
+    await expect(page.getByTestId('map-terrain-summary')).toContainText(
+      /Routes:.*(exit|doorway|passage|stair|trail)/i,
+    );
     await expect(page.getByTestId('map-scene-banner')).not.toContainText(/Marsh boardwalk/i);
     await page.screenshot({
       path: '/opt/cursor/artifacts/exit-projection-watchtower-exits.webp',

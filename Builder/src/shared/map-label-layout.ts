@@ -127,7 +127,17 @@ export function layoutMapLabels(
     return left.id.localeCompare(right.id);
   });
 
-  for (const anchor of ordered) {
+  // At dense Fit / low zoom, keep tokens + exits; collapse other markers until zoomed (169).
+  const visible = zoom < 0.92
+    ? ordered.filter(
+        (anchor) =>
+          anchor.kind === 'token' ||
+          anchor.referenceKind === 'exit' ||
+          /^door:/.test(anchor.id),
+      )
+    : ordered;
+
+  for (const anchor of visible) {
     const displayText = shortenMapLabel(anchor.fullLabel);
     const size = estimateChipSize(displayText, fontSize);
     let placed: MapLabelPlacement | null = null;

@@ -383,7 +383,7 @@ function summaryForActionStep(step: DeclarationActionStep): string {
     case 'unlock_door':
       return 'Ready to attempt unlocking the door. Confirm to roll.';
     case 'move':
-      return 'Ready to move toward the marked destination. Confirm to commit the step.';
+      return 'Ready to move. Confirm to commit the step.';
     case 'dialogue':
       return step.targetRef !== null
         ? `Speak with ${step.targetRef} — the Game Director answers in the play thread.`

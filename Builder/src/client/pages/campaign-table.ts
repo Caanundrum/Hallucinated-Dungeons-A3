@@ -46,9 +46,13 @@ import type { CampaignPresenceProjection } from '../../shared/presence-contract.
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection, MapEdgeRecord } from '../../shared/map-contract.js';
 import {
+  formatEdgeAccessibleLabel,
+  formatMoveTravelSummary,
+  isAdjacentToDoorEdge,
+} from '../../shared/map-presentation.js';
+import {
   doorAuthorityFromStored,
   formatDoorAuthorityStateSuffix,
-  formatDoorPlayerFacingLabel,
 } from '../../shared/play-authority-contract.js';
 import type {
   PresentationCueKind,
@@ -160,34 +164,18 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
-  const facing =
-    edge.orientation === 'north'
-      ? 'north'
-      : edge.orientation === 'south'
-        ? 'south'
-        : edge.orientation === 'east'
-          ? 'east'
-          : 'west';
-  if (edge.kind === 'door') {
-    return formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
-  }
-  return `Wall facing ${facing}`;
-}
-
-function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
+function doorDetailCopy(
+  edge: MapEdgeRecord,
+  mapTitle: string,
+  options?: { readonly openControlVisible?: boolean },
+): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
-  const facing =
-    edge.orientation === 'north'
-      ? 'north'
-      : edge.orientation === 'south'
-        ? 'south'
-        : edge.orientation === 'east'
-          ? 'east'
-          : 'west';
-  const label = formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
+  const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
-  return `Selected ${label} in ${scene} (${stateLabel}). Use Open adjacent door when you are next to a closed unlocked door, or declare an interaction in the play channel.`;
+  if (options?.openControlVisible === true) {
+    return `Selected ${label} in ${scene} (${stateLabel}). Use Open doorway beside the play channel, or declare open / step through.`;
+  }
+  return `Selected ${label} in ${scene} (${stateLabel}). Declare open / step through in the play channel when you are beside it.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -553,11 +541,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     readonly map: MapBundleProjection;
     readonly start: { readonly column: number; readonly row: number };
   }): string {
-    const { path, map } = options;
-    const squares = path.length;
-    const feet = squares * map.coordinateSpace.feetPerSquare;
-    const scene = map.title.trim().length > 0 ? map.title : 'the map';
-    return `Moved ${squares} square${squares === 1 ? '' : 's'} (${feet} ft) across ${scene} toward the marked destination.`;
+    return formatMoveTravelSummary({
+      path: options.path,
+      map: options.map,
+      start: options.start,
+    });
+  }
+
+  function selectedDoorOpenAffordance(): {
+    readonly edge: MapEdgeRecord;
+    readonly adjacent: boolean;
+    readonly canOpen: boolean;
+  } | null {
+    if (mapBundle === null || selectedEdgeId === null) {
+      return null;
+    }
+    const edge = mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
+    if (edge === undefined || edge.kind !== 'door' || edge.doorState === 'open') {
+      return null;
+    }
+    const ownToken = mapBundle.tokens.find((token) => token.seatId === ownSeatId);
+    const adjacent =
+      ownToken !== undefined && isAdjacentToDoorEdge(ownToken.footprint.anchor, edge);
+    const canOpen =
+      adjacent && edge.doorState !== 'locked' && seated && !sessionIsSuspended();
+    return { edge, adjacent, canOpen };
   }
 
   function persistIntentDraft(draft: ActionDraftSuggestion | null): void {
@@ -2646,9 +2654,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               if (edge === undefined || edge.kind !== 'door') {
                 return '';
               }
+              const affordance = selectedDoorOpenAffordance();
               return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-                doorDetailCopy(edge, mapBundle?.title ?? ''),
+                doorDetailCopy(edge, mapBundle?.title ?? '', {
+                  openControlVisible: affordance?.canOpen === true,
+                }),
               )}</p>`;
+            })()
+          }
+          ${
+            (() => {
+              const affordance = selectedDoorOpenAffordance();
+              if (affordance === null || !affordance.canOpen) {
+                return '';
+              }
+              return `<div class="table-player-actions" data-testid="selected-door-actions">
+                   <button type="button" class="table-primary-action" data-testid="open-selected-door"
+                     aria-disabled="${busy}">Open doorway</button>
+                 </div>`;
             })()
           }
           ${
@@ -2953,9 +2976,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
-      shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
+      const affordance = selectedDoorOpenAffordance();
+      shell.announce(
+        doorDetailCopy(edge, mapBundle?.title ?? '', {
+          openControlVisible: affordance?.canOpen === true,
+        }),
+      );
     } else {
-      movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+      movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
     }
     render();
@@ -4896,6 +4924,51 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
+      .querySelector<HTMLButtonElement>('[data-testid="open-selected-door"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          const affordance = selectedDoorOpenAffordance();
+          if (
+            candidate === null ||
+            busy ||
+            !seated ||
+            tableState === null ||
+            mapBundle === null ||
+            affordance === null ||
+            !affordance.canOpen
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.open_door',
+              expectedStateVersion: tableState.stateVersion,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+              edgeId: affordance.edge.edgeId,
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            selectedEdgeId = affordance.edge.edgeId;
+            shell.announce('Door opened on the table.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
       .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -4975,7 +5048,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             source: 'action_composer_interpret',
             campaignId,
             proposedCommandType: 'table.move',
-            summary: 'Intent Intercept draft: move toward the marked destination.',
+            summary:
+              mapBundle !== null
+                ? `Intent Intercept draft: ${formatMoveTravelSummary({
+                    path: [moveTarget],
+                    map: mapBundle,
+                    start:
+                      mapBundle.tokens.find((token) => token.seatId === ownSeatId)?.footprint
+                        .anchor ?? moveTarget,
+                  })}`
+                : 'Intent Intercept draft: move to the selected square.',
             path: [moveTarget],
             interceptState: 'awaiting_confirmation',
             createdAt: new Date().toISOString(),
