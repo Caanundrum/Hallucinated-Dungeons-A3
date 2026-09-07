@@ -141,6 +141,7 @@ export const DECLARATION_ACTION_KINDS = [
   'dialogue',
   'move',
   'open_door',
+  'close_door',
   'unlock_door',
   'inspect',
   'attack',
@@ -372,6 +373,8 @@ function commandTypeForActionKind(kind: DeclarationActionKind): IntentDraftComma
       return 'table.move';
     case 'open_door':
       return 'table.open_door';
+    case 'close_door':
+      return 'table.close_door';
     case 'unlock_door':
       // Unlock is a skill/table.sync path until a dedicated command exists.
       return 'table.sync';
@@ -396,6 +399,8 @@ function summaryForActionStep(step: DeclarationActionStep): string {
   switch (step.kind) {
     case 'open_door':
       return 'Ready to open the door. Confirm to commit.';
+    case 'close_door':
+      return 'Ready to close the door. Confirm to commit.';
     case 'unlock_door':
       return 'Ready to attempt unlocking the door. Confirm to roll.';
     case 'move':
@@ -584,6 +589,12 @@ export function parsePlayerDeclaration(
       // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
       (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));
 
+  const wantsCloseDoor =
+    !wantsUnlock &&
+    !wantsOpenDoor &&
+    /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(trimmed) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed);
+
   // Door state / listen / lock-check without opening — Perception/fiction, not move/open.
   // Bare negation with an explicit move verb is movement only (not inspect+move).
   // Trap / disarm / careful search is a skill check — never a casual door-state read.
@@ -632,6 +643,8 @@ export function parsePlayerDeclaration(
     }
   } else if (wantsOpenDoor) {
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
+  } else if (wantsCloseDoor) {
+    actionSequence.push({ kind: 'close_door', targetRef: null, outcomeHint: null });
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
   // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).

@@ -10,6 +10,7 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'table.sync',
   'table.move',
   'table.open_door',
+  'table.close_door',
   'table.build_scene',
   'table.begin_adventure',
   'table.interact_object',

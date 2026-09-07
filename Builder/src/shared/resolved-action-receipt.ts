@@ -74,6 +74,14 @@ export function declarationIsDoorOpenOrPassage(text: string): boolean {
   return openVerb || passage;
 }
 
+/** Close / shut a doorway — door authority, never scene-prop interact. */
+export function declarationIsDoorClose(text: string): boolean {
+  return (
+    /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(text) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text)
+  );
+}
+
 /** Word-boundary label match — never treat "wooden" as a hit for label word "wood". */
 export function declarationMentionsLabelWord(declaration: string, labelWord: string): boolean {
   const word = labelWord.toLowerCase().replace(/[^a-z0-9']/g, '');

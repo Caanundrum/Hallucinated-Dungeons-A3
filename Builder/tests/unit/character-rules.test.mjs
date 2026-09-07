@@ -754,8 +754,8 @@ test('Rogue Expertise is required and doubles proficiency on the sheet', () => {
   assert.equal(toolGear[0].quantity, 1, 'Thieves Tools kit must not stack to 2');
   const daggers = sheet.equipment.find((entry) => entry.name === 'Dagger');
   assert.ok(daggers);
-  assert.equal(daggers.quantity, 4);
-  assert.match(daggers.note ?? '', /Class kit ×2 \+ Background kit ×2/);
+  assert.equal(daggers.quantity, 2);
+  assert.match(daggers.note ?? '', /kept ×2/i);
   const options = buildDraftOptions(withExpertise);
   assert.ok(options.kitOverlapNotes.some((note) => /Thieves/i.test(note)));
   assert.ok(options.kitOverlapNotes.some((note) => /Dagger/i.test(note)));

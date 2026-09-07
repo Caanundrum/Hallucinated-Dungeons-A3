@@ -120,6 +120,7 @@ import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import { bindModalChrome } from '../modal-engine.js';
+import { promptWrongResolutionReport } from '../confirm-dialog.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -541,6 +542,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       commandType.startsWith('progression.') ||
       commandType === 'table.move' ||
       commandType === 'table.open_door' ||
+      commandType === 'table.close_door' ||
       commandType === 'table.build_scene' ||
       commandType === 'table.begin_adventure' ||
       commandType === 'table.interact_object' ||
@@ -733,7 +735,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
       if (
         interpreted.proposedCommandType !== 'table.move' &&
-        interpreted.proposedCommandType !== 'table.open_door'
+        interpreted.proposedCommandType !== 'table.open_door' &&
+        interpreted.proposedCommandType !== 'table.close_door'
       ) {
         break;
       }
@@ -3543,18 +3546,38 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     root.querySelectorAll<HTMLButtonElement>('[data-testid="report-wrong-resolution"]').forEach((button) => {
       button.addEventListener('click', () => {
-        const messageId = button.dataset.messageId ?? '';
-        const target = dmThread.find((message) => message.messageId === messageId);
-        appendDmThread(
-          'system',
-          'Table',
-          target === undefined
-            ? 'Wrong-resolution report noted. Re-declare the beat or use Correction mode on your sheet for ledger fixes.'
-            : `Wrong-resolution report noted for: “${target.body.slice(0, 120)}${target.body.length > 120 ? '…' : ''}”. Re-declare the action, or say the map summary is wrong so the Director reconciles live door state.`,
-          'system',
-        );
-        shell.announce('Wrong-resolution report recorded in the play thread.');
-        patchDmPlayThread();
+        void (async () => {
+          const messageId = button.dataset.messageId ?? '';
+          const target = dmThread.find((message) => message.messageId === messageId);
+          const preview =
+            target === undefined
+              ? 'Selected table beat'
+              : target.body.length > 280
+                ? `${target.body.slice(0, 280)}…`
+                : target.body;
+          const report = await promptWrongResolutionReport({
+            targetPreview: preview,
+            testId: 'wrong-resolution-report',
+          });
+          if (report === null) {
+            return;
+          }
+          const targetLine =
+            target === undefined
+              ? 'an earlier table beat'
+              : `“${target.body.length > 280 ? `${target.body.slice(0, 280)}…` : target.body}”`;
+          const body = `Wrong-resolution report for ${targetLine}. Player note: ${report.reason}`;
+          if (report.audience === 'private') {
+            appendAskDmThread('player', 'You', body, 'declaration');
+            activeTab = 'director_address';
+            shell.announce('Wrong-resolution report sent privately to the Director.');
+          } else {
+            appendDmThread('system', 'Table', body, 'system');
+            shell.announce('Wrong-resolution report recorded in the play thread.');
+            patchDmPlayThread();
+          }
+          render();
+        })();
       });
     });
     root
