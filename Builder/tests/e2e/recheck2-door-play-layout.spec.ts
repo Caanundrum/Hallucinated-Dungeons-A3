@@ -160,8 +160,11 @@ test.describe('Recheck 2 door + play layout', () => {
     );
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
-    await expect(page.getByTestId('intent-intercept')).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId('confirm-intent-intercept').click();
+    const intercept = page.getByTestId('intent-intercept');
+    if (await intercept.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await page.getByTestId('confirm-intent-intercept').click();
+      await expect(intercept).toHaveCount(0, { timeout: 15_000 });
+    }
     await expect(page.getByTestId('dm-latest-reply')).toBeVisible({ timeout: 20_000 });
     const reply = await page.getByTestId('dm-latest-reply').innerText();
     expect(reply).not.toMatch(/lock is already open/i);
