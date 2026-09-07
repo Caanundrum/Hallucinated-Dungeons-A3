@@ -150,9 +150,9 @@ test.describe('Phase 1 character creation and Character Vault', () => {
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('draft-list')).toBeVisible();
-    await expect(page.getByTestId('resume-draft')).toContainText('Fighter');
+    await expect(page.getByTestId('draft-resume-link')).toContainText('Fighter');
 
-    await page.getByTestId('resume-draft').click();
+    await page.getByTestId('draft-resume-link').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
     // Resume lands on the first unresolved step; open Class to confirm the
     // earlier choice persisted on the same draft.
