@@ -62,14 +62,37 @@ test('FQA evidence screenshots', async ({ page }) => {
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-awaiting-first-scene.png', fullPage: true });
 
   const storyFilter = page.getByTestId('chronicle-kind-filter');
-  await expect(storyFilter).toHaveValue('story');
+  await expect(storyFilter).toHaveValue('recap');
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-story-filter.png' });
 
+  await expect(page.getByTestId('table-character-sheet-link')).toHaveCount(0);
   await page.getByTestId('open-table-sheet-modal').click();
   await expect(page.getByTestId('sheet-modal-tab-equipment')).toHaveCount(0);
   await expect(page.getByTestId('sheet-modal-full-page-link')).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-sheet-modal.png' });
   await page.keyboard.press('Escape');
+
+  // Ask Director must not latch global play `busy` (composer stays idle).
+  await page.route('**/api/campaigns/*/director-address', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        directorIdentityLabel: 'Veyra',
+        body: 'Ask stays on a side channel — table state unchanged.',
+      }),
+    });
+  });
+  await page.getByTestId('dock-tab-director_address').click();
+  await page.getByTestId('director-address-input').fill('Can I climb and cast in the same turn?');
+  await page.getByTestId('director-address-send').click();
+  await expect(page.getByTestId('ask-dm-consulting')).toBeVisible();
+  await expect(page.getByTestId('director-address-send')).toContainText(/Consulting/i);
+  await expect(page.getByTestId('submit-player-action')).toContainText(/Tell/i);
+  await expect(page.getByTestId('submit-player-action')).not.toContainText(/Sending/i);
+  await expect(page.getByTestId('director-address-reply')).toContainText(/side channel|unchanged/i);
+  await page.unroute('**/api/campaigns/*/director-address');
 
   await page.getByTestId('dice-fab').click();
   await expect(page.getByTestId('dice-tray')).toContainText(/Practice dice tray/i);
