@@ -348,3 +348,37 @@ test('validateDmNpcDirective and validateDmSceneDirective gate schema', () => {
   assert.equal(sceneBad.ok, false);
   assert.ok(sceneBad.errors.length >= 2);
 });
+
+test('inspect doorway for traps is skill-check draft, not casual door-state prose', () => {
+  const parsed = parsePlayerDeclaration('I inspect the doorway carefully for traps.');
+  assert.equal(parsed.actionSequence[0]?.kind, 'inspect');
+  assert.equal(parsed.actionSequence[0]?.outcomeHint, 'trap_search');
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'propose_command');
+  assert.match(resolved.summary, /Ready to search carefully for traps/i);
+  assert.doesNotMatch(resolved.summary, /Game Director narrates its visible state/i);
+});
+
+test('is the door locked is door_state Director narrate, not open_door', () => {
+  const parsed = parsePlayerDeclaration('Is the door locked?');
+  assert.equal(parsed.actionSequence[0]?.kind, 'inspect');
+  assert.equal(parsed.actionSequence[0]?.outcomeHint, 'door_state');
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'director_narrate_only');
+  assert.match(resolved.summary, /without opening it/i);
+});
+
+test('move beside the doorway marks beside_door move intent', () => {
+  const parsed = parsePlayerDeclaration('I move beside the doorway without opening it.');
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'move' && step.outcomeHint === 'beside_door'));
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'propose_command');
+  assert.equal(resolved.proposedCommandType, 'table.move');
+});
+
+test('map summary still says closed is map_state_correction narrate', () => {
+  const parsed = parsePlayerDeclaration('The map summary still says closed but the door is already open.');
+  assert.equal(parsed.actionSequence[0]?.outcomeHint, 'map_state_correction');
+  const resolved = resolveIntentAuthority(parsed);
+  assert.equal(resolved.disposition, 'director_narrate_only');
+});

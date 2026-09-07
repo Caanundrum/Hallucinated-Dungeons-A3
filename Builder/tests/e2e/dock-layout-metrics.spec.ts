@@ -70,12 +70,14 @@ test('dock layout metrics', async ({ page }) => {
   expect(metrics.openSheetPresent).toBe(true);
   expect(metrics.chronicleFilter).toBe('recap');
   expect(metrics.actionMaxH).toBe('none');
-  expect(metrics.bannerOverflowY).toMatch(/hidden|clip|visible/);
-  expect(metrics.bannerMaxH).toBe('none');
+  // Banner is capped so it cannot starve the timeline (recheck: 72px thread).
+  expect(metrics.bannerOverflowY).toMatch(/auto|scroll/);
+  expect(metrics.bannerMaxH).not.toBe('none');
   expect(metrics.slotFlexes).toBe(true);
   expect(Math.abs(metrics.gapPlayMinusChildren)).toBeLessThan(12);
   expect(metrics.innerH).toBeGreaterThan(metrics.actionH * 0.8);
-  expect(metrics.threadH).toBeGreaterThan(80);
+  expect(metrics.threadH).toBeGreaterThan(180);
   expect(metrics.actionH).toBeGreaterThan(280);
+  expect(metrics.actionH).toBeGreaterThan(metrics.mapH);
   await page.screenshot({ path: '/opt/cursor/artifacts/dock-layout-metrics.png' });
 });

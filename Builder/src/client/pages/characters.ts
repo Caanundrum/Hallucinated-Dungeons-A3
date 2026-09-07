@@ -163,7 +163,7 @@ export function mountCharactersPage(host: PageHost): void {
                             : `${draft.unresolvedCount} decisions remaining`;
                       return `
                     <li data-testid="draft-item">
-                      <a class="record-note" href="/characters/new" data-link data-testid="resume-draft"
+                      <a class="record-note" href="/characters/new" data-link data-testid="draft-resume-link"
                         ${playActionsBlocked() ? 'data-legal-gated-play="true"' : ''}>
                         ${escapeHtml(title)}
                       </a>

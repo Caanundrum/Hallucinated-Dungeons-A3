@@ -317,10 +317,24 @@ export function resolveIntentAuthority(
       : '';
 
   // Perception / presence checks are Director narration, never map or combat commands.
+  // Trap / hazard searches are confirmable skill-check drafts (not casual prose).
   if (only.kind === 'inspect') {
+    if (only.outcomeHint === 'trap_search') {
+      return {
+        disposition: 'propose_command',
+        actionSequence: [only],
+        ignoredWorldFacts,
+        clarificationPrompt: null,
+        summary:
+          'Ready to search carefully for traps. Confirm to roll Investigation against the named target.' +
+          inventIgnoredNote,
+        proposedCommandType: 'table.sync',
+      };
+    }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
       only.outcomeHint === 'door_state' || only.outcomeHint === 'listen';
+    const mapCorrection = only.outcomeHint === 'map_state_correction';
     return {
       disposition: 'director_narrate_only',
       actionSequence: [only],
@@ -329,6 +343,8 @@ export function resolveIntentAuthority(
       summary:
         (seekingPresence
           ? 'You are looking for who is present — the Game Director will answer in fiction.'
+          : mapCorrection
+            ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
             ? only.outcomeHint === 'listen'
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
@@ -558,7 +574,9 @@ export function parsePlayerDeclaration(
   const openDoorVerb =
     !negatesOpen &&
     /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(withoutOpenDoorNoun) &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun);
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun) &&
+    // "already open" / "is open" is state description, not an open action.
+    !/\b(?:already\s+open|is\s+open|says?\s+closed|still\s+closed)\b/i.test(trimmed);
   const wantsOpenDoor =
     !wantsUnlock &&
     !negatesOpen &&
@@ -568,25 +586,43 @@ export function parsePlayerDeclaration(
 
   // Door state / listen / lock-check without opening — Perception/fiction, not move/open.
   // Bare negation with an explicit move verb is movement only (not inspect+move).
+  // Trap / disarm / careful search is a skill check — never a casual door-state read.
+  const wantsTrapOrHazardSearch =
+    /\b(?:traps?|disarm|search\s+for|look\s+for\s+traps?)\b/i.test(trimmed);
   const doorSenseVerb =
     /\b(?:listen(?:s|ing)?|check(?:s|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)|look(?:s|ing)?\s+at|study)\b/i.test(
       trimmed,
     ) ||
     (/\block(?:ed)?\b/i.test(trimmed) &&
       /\b(?:check|see|whether|if|inspect|examin)\b/i.test(trimmed)) ||
-    /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/i.test(trimmed);
+    /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/i.test(trimmed) ||
+    // "Is the door locked?" / "Is it locked?" — state query, not open.
+    /\bis\s+(?:the\s+)?(?:door|doorway|gate|lock)\s+locked\b/i.test(trimmed) ||
+    /\bis\s+it\s+locked\b/i.test(trimmed);
   const explicitMoveVerb =
     /\b(?:walks?|walking|moves?|moving|goes?|going|steps?|stepping|approaches?)\b/i.test(trimmed);
   const wantsDoorStateRead =
+    !wantsTrapOrHazardSearch &&
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
     !wantsUnlock &&
     !wantsOpenDoor &&
     (doorSenseVerb || (negatesOpen && !explicitMoveVerb));
 
+  // Approach / stand beside a doorway is door-adjacent movement, not free mark-square.
+  const wantsBesideDoor =
+    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\b/i.test(trimmed) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed);
+
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
   }
-  if (wantsDoorStateRead) {
+  if (wantsTrapOrHazardSearch && !wantsUnlock) {
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: 'trap_search',
+    });
+  } else if (wantsDoorStateRead) {
     const listenHint = /\blisten\b/i.test(trimmed) ? 'listen' : 'door_state';
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: listenHint });
   } else if (stepThroughPassage && !openDoorVerb && !refsUnlocked) {
@@ -605,7 +641,8 @@ export function parsePlayerDeclaration(
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
     !wantsUnlock &&
     !wantsOpenDoor &&
-    !wantsDoorStateRead
+    !wantsDoorStateRead &&
+    !wantsTrapOrHazardSearch
   ) {
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   }
@@ -637,13 +674,31 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
+  // "Map still says closed" / summary corrections — Director narrates live edge truth.
+  if (
+    actionSequence.length === 0 &&
+    ((/\b(summary|routes?|map)\b/i.test(trimmed) &&
+      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(trimmed)) ||
+      (/\b(door|doorway)\b/i.test(trimmed) &&
+        /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(trimmed)))
+  ) {
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'map_state_correction' });
+  }
+
   const wantsMove =
-    /(?:\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b)/i.test(
+    (/(\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b)/i.test(
       trimmed,
-    ) && !wantsUnlock;
+    ) ||
+      wantsBesideDoor) &&
+    !wantsUnlock &&
+    !wantsTrapOrHazardSearch;
   if (wantsMove) {
     if (!actionSequence.some((step) => step.kind === 'move')) {
-      actionSequence.push({ kind: 'move', targetRef: null, outcomeHint: null });
+      actionSequence.push({
+        kind: 'move',
+        targetRef: null,
+        outcomeHint: wantsBesideDoor ? 'beside_door' : null,
+      });
     }
   }
 

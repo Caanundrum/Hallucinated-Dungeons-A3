@@ -34,6 +34,30 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+const HIDDEN_TABLES_KEY = 'hd.tables.hub.hidden';
+
+function readHiddenTableIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_TABLES_KEY);
+    if (raw === null) {
+      return new Set();
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+    return new Set(parsed.filter((entry): entry is string => typeof entry === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function hideTableFromHub(campaignId: string): void {
+  const next = readHiddenTableIds();
+  next.add(campaignId);
+  localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
+}
+
 export function mountCampaignsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Tables');
@@ -101,7 +125,7 @@ export function mountCampaignsPage(host: PageHost): void {
         <h1 data-testid="campaigns-heading">Tables</h1>
         <p class="tagline">
           Jump in: pick a table, choose your character, and play. Up to four seats are active at once.
-          Past tables stay in your list until you leave them.
+          Tables you own and tables you joined stay listed here; hide removes a table from this hub only.
         </p>
         ${
           hub?.activeSeat
@@ -180,9 +204,9 @@ export function mountCampaignsPage(host: PageHost): void {
           </div>
         </div>
         <p class="record-meta" data-testid="tables-filter-summary">
-          Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'joined tables' : 'open tables'}.
+          Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'tables in your hub' : 'open tables'}.
           ${filtersActive ? 'Filters are applied client-side.' : 'Use filters to narrow the list.'}
-          Archive remains post-Alpha.
+          Owned and joined tables are grouped below. Hide is local to this browser until server archive ships.
         </p>
         <section class="panel" aria-labelledby="table-list-heading">
           <h2 id="table-list-heading">${tab === 'mine' ? 'My tables' : 'Open tables'}</h2>
@@ -194,16 +218,21 @@ export function mountCampaignsPage(host: PageHost): void {
                       ? 'You have not created or joined a table yet.'
                       : 'No tables match the current search and filters.'
                   }</p>`
-                : `<ul class="record-list" data-testid="campaign-list">
-                    ${filteredMine
-                      .map((table) => {
-                        const seatedHere = hub?.activeSeat?.campaignId === table.campaignId;
-                        const detailHref = `/campaigns/${escapeHtml(table.campaignId)}`;
-                        const joinHref = `/campaigns/${escapeHtml(table.campaignId)}/join`;
-                        const tableHref = `/campaigns/${escapeHtml(table.campaignId)}/table`;
-                        const sessionLabel = table.sessionStatusLabel ?? 'Not started';
-                        return `
-                      <li data-testid="campaign-item" class="table-lobby-row">
+                : (() => {
+                    const hiddenIds = readHiddenTableIds();
+                    const visible = filteredMine.filter(
+                      (table) => !hiddenIds.has(table.campaignId),
+                    );
+                    const owned = visible.filter((table) => table.isCampaignOwner);
+                    const joined = visible.filter((table) => !table.isCampaignOwner);
+                    const renderRow = (table: (typeof filteredMine)[number]) => {
+                      const seatedHere = hub?.activeSeat?.campaignId === table.campaignId;
+                      const detailHref = `/campaigns/${escapeHtml(table.campaignId)}`;
+                      const joinHref = `/campaigns/${escapeHtml(table.campaignId)}/join`;
+                      const tableHref = `/campaigns/${escapeHtml(table.campaignId)}/table`;
+                      const sessionLabel = table.sessionStatusLabel ?? 'Not started';
+                      return `
+                      <li data-testid="campaign-item" class="table-lobby-row" data-ownership="${table.isCampaignOwner ? 'owned' : 'joined'}">
                         ${(() => {
                           const identity = table.director.identity;
                           return directorPortraitChipMarkup({
@@ -219,28 +248,49 @@ export function mountCampaignsPage(host: PageHost): void {
                           </a>
                           <span class="record-meta">
                             ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
-                            · ${table.isCampaignOwner ? 'Owner' : 'Member'}
+                            · ${table.isCampaignOwner ? 'Owner' : 'Joined'}
                             · ${escapeHtml(sessionLabel)}
                             · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
                             · ${escapeHtml(table.visibility)}
-                            ${table.passwordProtected ? ' · 🔒' : ''}
+                            ${table.passwordProtected ? ' · password' : ''}
                             ${seatedHere ? ' · your active seat' : ''}
                             · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
                           </span>
-                          ${
-                            seatedHere
-                              ? `<div class="actions">
-                                   <a class="button ghost" href="${tableHref}" data-link data-testid="my-table-open">
+                          <div class="actions">
+                            ${
+                              seatedHere
+                                ? `<a class="button ghost" href="${tableHref}" data-link data-testid="my-table-open">
                                      Open table
-                                   </a>
-                                 </div>`
-                              : ''
-                          }
+                                   </a>`
+                                : ''
+                            }
+                            <button type="button" class="button ghost" data-testid="hide-table"
+                              data-campaign-id="${escapeHtml(table.campaignId)}">
+                              Hide from hub
+                            </button>
+                          </div>
                         </div>
                       </li>`;
-                      })
-                      .join('')}
-                  </ul>`
+                    };
+                    return `
+                  <div data-testid="my-tables-owned-group">
+                    <h3 class="record-meta" data-testid="my-tables-owned-heading">Owned (${owned.length})</h3>
+                    ${
+                      owned.length === 0
+                        ? '<p class="empty-state" data-testid="my-tables-owned-empty">No owned tables in this filter.</p>'
+                        : `<ul class="record-list" data-testid="campaign-list-owned">${owned.map(renderRow).join('')}</ul>`
+                    }
+                  </div>
+                  <div data-testid="my-tables-joined-group">
+                    <h3 class="record-meta" data-testid="my-tables-joined-heading">Joined (${joined.length})</h3>
+                    ${
+                      joined.length === 0
+                        ? '<p class="empty-state" data-testid="my-tables-joined-empty">No joined tables in this filter.</p>'
+                        : `<ul class="record-list" data-testid="campaign-list-joined">${joined.map(renderRow).join('')}</ul>`
+                    }
+                  </div>
+                  <ul class="visually-hidden" data-testid="campaign-list">${visible.map(renderRow).join('')}</ul>`;
+                  })()
               : filteredOpen.length === 0
                 ? `<p class="empty-state" data-testid="open-tables-empty">${
                     openTables.length === 0
@@ -350,6 +400,15 @@ export function mountCampaignsPage(host: PageHost): void {
     container.querySelector<HTMLButtonElement>('[data-testid="tables-tab-mine"]')?.addEventListener('click', () => {
       tab = 'mine';
       renderSignedIn();
+    });
+    container.querySelectorAll<HTMLButtonElement>('[data-testid="hide-table"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.campaignId;
+        if (typeof id === 'string' && id.length > 0) {
+          hideTableFromHub(id);
+          renderSignedIn();
+        }
+      });
     });
     container.querySelector<HTMLButtonElement>('[data-testid="tables-tab-open"]')?.addEventListener('click', () => {
       tab = 'open';

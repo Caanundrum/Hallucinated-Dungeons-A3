@@ -110,3 +110,44 @@ test('move travel summary names destination instead of marked destination', () =
     'Wooden doorway east — closed',
   );
 });
+
+test('route summary follows live door edge state, not baked exit labels', () => {
+  const map = {
+    mapId: 'm1',
+    campaignId: 'c1',
+    title: 'Quiet chamber',
+    coordinateSpace: {
+      columns: 8,
+      rows: 6,
+      pixelsPerSquare: 48,
+      feetPerSquare: 5,
+      origin: 'top_left',
+    },
+    cells: [],
+    edges: [
+      {
+        edgeId: 'door-e',
+        column: 4,
+        row: 3,
+        orientation: 'east',
+        kind: 'door',
+        doorState: 'open',
+      },
+    ],
+    tokens: [],
+    notableFeatures: [
+      {
+        featureId: 'exit-1',
+        label: 'Wooden doorway east — closed',
+        column: 4,
+        row: 3,
+        referenceKind: 'exit',
+        objectKind: 'exit',
+      },
+    ],
+    provenance: { kind: 'procedural_local_placeholder' },
+  };
+  const summary = formatMapTerrainSummary(map);
+  assert.match(summary, /Wooden doorway east — open/);
+  assert.doesNotMatch(summary, /— closed/);
+});

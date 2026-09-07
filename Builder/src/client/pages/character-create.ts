@@ -69,25 +69,25 @@ const STEP_TRAIN_LABELS: Record<WizardStep, string> = {
   identity: 'Identity',
 };
 
-/** Visual 3-stage carousel (Gemini polish Batch 4) grouping SRD wizard steps. */
+/** Visual 3-stage carousel grouping SRD wizard steps (matches actual Class → Background → Species order). */
 const CAROUSEL_STAGES = [
   {
     id: 'archetype',
     label: 'Archetype',
-    summary: 'Class & species',
-    steps: ['class', 'species'] as const satisfies readonly WizardStep[],
+    summary: 'Class, background & species',
+    steps: ['class', 'background', 'species'] as const satisfies readonly WizardStep[],
   },
   {
     id: 'foundation',
     label: 'Foundation',
-    summary: 'Background & attributes',
-    steps: ['background', 'abilities'] as const satisfies readonly WizardStep[],
+    summary: 'Attributes & loadout',
+    steps: ['abilities', 'equipment'] as const satisfies readonly WizardStep[],
   },
   {
     id: 'identity',
     label: 'Identity',
-    summary: 'Gear, features & name',
-    steps: ['equipment', 'features', 'identity'] as const satisfies readonly WizardStep[],
+    summary: 'Features & name',
+    steps: ['features', 'identity'] as const satisfies readonly WizardStep[],
   },
 ] as const;
 
@@ -188,6 +188,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let pendingChoices: CharacterChoices | null = null;
   /** Choices currently being saved — identity edits merge against this while busy. */
   let inFlightChoices: CharacterChoices | null = null;
+  /** Advance to next wizard step once the in-flight save finishes. */
+  let pendingAdvance = false;
   let openGeneration = 0;
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let legalGateBusy = false;
@@ -247,6 +249,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return pendingChoices ?? inFlightChoices ?? current!.draft.choices;
   }
 
+  /** Optimistic UI selection while a save is in flight or queued. */
+  function displayChoices(): CharacterChoices {
+    return latestChoices();
+  }
+
   function tutorialDismissed(): boolean {
     return tutorialDismissedThisSession || isCreatorTutorialDismissed();
   }
@@ -304,16 +311,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
         draftId: current.draft.draftId,
         choices: next,
       });
-      const firstIncomplete = WIZARD_STEPS.find(
-        (step) => !current?.draft.completedSteps.includes(step),
-      );
-      if (firstIncomplete !== undefined) {
-        const incompleteIndex = WIZARD_STEPS.indexOf(firstIncomplete);
-        const activeIndex = WIZARD_STEPS.indexOf(activeStep);
-        if (incompleteIndex < activeIndex) {
-          activeStep = firstIncomplete;
-        }
-      }
+      // Do not auto-rewind activeStep here. A late/stale save that still lists an
+      // earlier step incomplete was yanking players (and e2e) back to Class after
+      // Continue. Downstream clears on class/species change already handle invalidation.
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
@@ -324,6 +324,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
         pendingChoices = null;
         await commitChoices(queued);
         return;
+      }
+      if (pendingAdvance) {
+        pendingAdvance = false;
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (
+          index >= 0 &&
+          index < WIZARD_STEPS.length - 1 &&
+          stepIsComplete(activeStep)
+        ) {
+          activeStep = WIZARD_STEPS[index + 1]!;
+        }
       }
       render();
     }
@@ -422,8 +433,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
         </button>`
       : `
         <button type="button" data-testid="wizard-continue"
-          aria-disabled="${!complete || busy}">
-          ${busy ? 'Saving…' : 'Continue'}
+          aria-disabled="${!complete}">
+          ${busy && complete ? 'Saving…' : 'Continue'}
         </button>`;
 
     return `
@@ -471,12 +482,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map(
             (entry) => `
-          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}">
+          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy && options.selected === entry.id ? ' is-saving' : ''}"${busy && options.selected === entry.id ? ' aria-busy="true"' : ''}>
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
-              ${options.selected === entry.id ? 'checked' : ''} ${busy ? 'disabled' : ''}
+              ${options.selected === entry.id ? 'checked' : ''}
               data-testid="option-${escapeHtml(entry.id)}" />
             <span class="option-card-crest" aria-hidden="true">${escapeHtml(entry.label.slice(0, 1))}</span>
-            <span class="option-label">${escapeHtml(entry.label)}</span>
+            <span class="option-label">${escapeHtml(entry.label)}${busy && options.selected === entry.id ? ' · Saving…' : ''}</span>
             ${entry.summary === undefined ? '' : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`}
           </label>`,
           )
@@ -491,24 +502,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly selected: readonly string[];
     /** When set, unchecked options disable once this many are selected. */
     readonly maxChoose?: number;
+    /** Prefix for per-option test ids (defaults to `check`). */
+    readonly optionTestIdPrefix?: string;
   }): string {
     const visibleSelected = options.selected.filter((id) =>
       options.entries.some((entry) => entry.id === id),
     );
     const atCap =
       options.maxChoose !== undefined && visibleSelected.length >= options.maxChoose;
+    const optionPrefix = options.optionTestIdPrefix ?? 'check';
     return `
       <div class="option-list compact" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
           .map((entry) => {
             const isSelected = visibleSelected.includes(entry.id);
-            const disabled = busy || (atCap && !isSelected);
+            // Cap still blocks over-select; busy must NOT disable — rapid picks queue via pendingChoices.
+            const disabled = atCap && !isSelected;
             return `
-          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${busy && isSelected ? ' is-saving' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''}>
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
-              data-testid="check-${escapeHtml(entry.id)}" />
-            <span class="option-label">${escapeHtml(entry.label)}</span>
+              data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
+            <span class="option-label">${escapeHtml(entry.label)}${busy && isSelected ? ' · Saving…' : ''}</span>
             ${
               entry.summary === undefined
                 ? ''
@@ -546,7 +561,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         name: 'class',
         testId: 'class-options',
         entries: state.options.catalog.classes,
-        selected: state.draft.choices.classId,
+        selected: displayChoices().classId,
       })}
       ${
         detail === null
@@ -569,7 +584,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
             (skill) =>
               !(state.options.backgroundDetail?.skillIds ?? []).includes(skill.id),
           ),
-          selected: state.draft.choices.classSkillIds,
+          selected: displayChoices().classSkillIds,
           maxChoose: detail.skillChoiceCount,
         })}`
       }`;
@@ -580,8 +595,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
+    const choices = displayChoices();
+    const classSkillIds = choices.classSkillIds ?? [];
+    const classSkillLabels = classSkillIds.map((skillId) => {
+      const fromClass = state.options.classDetail?.skillOptions.find((entry) => entry.id === skillId);
+      return fromClass?.label ?? skillId;
+    });
     const detail = state.options.backgroundDetail;
-    const bonuses = state.draft.choices.backgroundAbilityBonuses;
+    const bonuses = choices.backgroundAbilityBonuses;
     const inferred = detail === null ? null : inferBonusPattern(bonuses, detail.abilityOptions);
     const pattern = backgroundBonusPattern ?? inferred;
     const plusTwoAbility: Ability | '' =
@@ -600,11 +621,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return `
       <h3>Choose a Background</h3>
       <p class="step-helper" data-testid="background-nav-hint">${escapeHtml(STEP_HELPERS.background)}</p>
+      ${
+        choices.classId !== null && classSkillIds.length > 0
+          ? `<p class="wizard-coach" data-testid="skill-overlap-coach">
+               You already picked class skills (${escapeHtml(classSkillLabels.join(', '))}).
+               Background skills that match are omitted below so you choose replacements yourself —
+               nothing is silently dropped after the fact.
+             </p>`
+          : `<p class="record-meta" data-testid="skill-overlap-coach-wait">
+               Choose a class first if you want overlap guidance before background skills appear.
+             </p>`
+      }
       ${optionList({
         name: 'background',
         testId: 'background-options',
         entries: state.options.catalog.backgrounds,
-        selected: state.draft.choices.backgroundId,
+        selected: choices.backgroundId,
       })}
       ${
         detail === null
@@ -892,16 +924,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
       }`;
   }
 
-  /** Item names in a kit's label, stripping quantities and gold totals. */
-  function equipmentItemNames(label: string): readonly string[] {
-    return label
-      .split(',')
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0 && !/\bGP\b/i.test(part))
-      .map((part) => part.replace(/\s*\([^)]*\)\s*/g, '').trim())
-      .filter((part) => part.length > 0);
-  }
-
   function renderEquipmentStep(): string {
     const state = current;
     if (state === null) {
@@ -920,26 +942,25 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const backgroundKit = backgroundDetail.equipmentOptions.find(
       (option) => option.id === state.draft.choices.backgroundEquipmentOptionId,
     );
+    const overlapNotes = state.options.kitOverlapNotes;
     const overlapNote =
-      classKit === undefined || backgroundKit === undefined
-        ? ''
-        : (() => {
-            const classItems = new Set(
-              equipmentItemNames(classKit.label).map((name) => name.toLowerCase()),
-            );
-            const backgroundItems = equipmentItemNames(backgroundKit.label);
-            const overlapping = backgroundItems.filter((name) => classItems.has(name.toLowerCase()));
-            return `
-        <p class="wizard-coach" data-testid="equipment-overlap-note">
-          Identical items from Class and Background kits consolidate into one stack on your sheet.
-          Swap either kit above if you want different gear — Alpha does not support per-item swaps.
-          ${
-            overlapping.length > 0
-              ? `Shared this time: ${escapeHtml(overlapping.join(', '))}.`
-              : ''
-          }
-        </p>`;
-          })();
+      classKit === undefined || backgroundKit === undefined || overlapNotes.length === 0
+        ? classKit !== undefined && backgroundKit !== undefined
+          ? `<p class="wizard-coach" data-testid="equipment-overlap-note">
+               Kits chosen. Matching tools keep one set; other shared items show Class + Background totals on the sheet.
+             </p>`
+          : ''
+        : `<div class="wizard-coach" data-testid="equipment-overlap-note">
+             <p>Before you continue, kit overlap is calculated as:</p>
+             <ul class="record-list">
+               ${overlapNotes
+                 .map(
+                   (note) =>
+                     `<li data-testid="equipment-overlap-item"><span class="record-note">${escapeHtml(note)}</span></li>`,
+                 )
+                 .join('')}
+             </ul>
+           </div>`;
 
     return `
       <h3>Starting equipment</h3>
@@ -1044,25 +1065,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
         }`
         }`;
 
-    return `
-      <h3>${escapeHtml(detail.label)} level 1 features</h3>
-      <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
-      <ul class="record-list">
-        ${detail.features
-          .map(
-            (feature) =>
-              `<li><span class="record-note">${escapeHtml(feature.name)}</span><span class="record-meta">${escapeHtml(feature.summary)}</span></li>`,
-          )
-          .join('')}
-      </ul>
+    const requiredPicks = `
       ${
         state.options.expertise === null
           ? ''
           : `
-      <h3>Expertise</h3>
+      <section class="panel" data-testid="expertise-panel" aria-labelledby="expertise-heading">
+      <h3 id="expertise-heading">Expertise (required)</h3>
       <p class="step-helper" data-testid="expertise-helper">
         Choose exactly ${state.options.expertise.slotCount} skills you are proficient in. Expertise doubles
-        your Proficiency Bonus on those skills.
+        your Proficiency Bonus on those skills. You cannot finish this character until these are chosen.
       </p>
       ${
         state.options.expertise.options.length === 0
@@ -1070,17 +1082,20 @@ export function mountCharacterCreatePage(host: PageHost): void {
           : checkboxList({
               name: 'expertise-skill',
               testId: 'expertise-options',
+              optionTestIdPrefix: 'expertise-check',
               entries: state.options.expertise.options,
               selected: state.draft.choices.expertiseSkillIds,
               maxChoose: state.options.expertise.slotCount,
             })
-      }`
+      }
+      </section>`
       }
       ${
         state.options.weaponMastery === null
           ? ''
           : `
-      <h3>Weapon Mastery</h3>
+      <section class="panel" data-testid="weapon-mastery-panel" aria-labelledby="weapon-mastery-heading">
+      <h3 id="weapon-mastery-heading">Weapon Mastery (required)</h3>
       <p class="step-helper" data-testid="weapon-mastery-helper">
         Choose exactly ${state.options.weaponMastery.slotCount} weapons you are proficient with. Only
         mastery-capable weapons for ${escapeHtml(detail.label)} are listed.
@@ -1088,11 +1103,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${checkboxList({
         name: 'weapon-mastery',
         testId: 'weapon-mastery-options',
+        optionTestIdPrefix: 'mastery-check',
         entries: state.options.weaponMastery.options,
         selected: state.draft.choices.weaponMasteryWeaponNames,
         maxChoose: state.options.weaponMastery.slotCount,
-      })}`
-      }
+      })}
+      </section>`
+      }`;
+
+    return `
+      <h3>${escapeHtml(detail.label)} level 1 features</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
+      ${requiredPicks}
+      <ul class="record-list" data-testid="class-feature-list">
+        ${detail.features
+          .filter(
+            (feature) =>
+              feature.name !== 'Expertise' && feature.name !== 'Weapon Mastery',
+          )
+          .map(
+            (feature) =>
+              `<li><span class="record-note">${escapeHtml(feature.name)}</span><span class="record-meta">${escapeHtml(feature.summary)}</span></li>`,
+          )
+          .join('')}
+      </ul>
       ${classChoices}
       ${
         state.options.backgroundFeatDetail === null
@@ -1129,30 +1163,53 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '';
     }
     const identity = state.draft.choices.identity;
+    const tokenInitial = identity.name.trim().charAt(0).toUpperCase() || '?';
+    const nameMax = CHARACTER_NAME_MAX_LENGTH;
+    const readiness = state.draft.unresolved;
 
     return `
       <h3>Identity & final review</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
       <p class="record-meta" data-testid="identity-autosave-notice">
         Identity fields save automatically after you pause typing. While a save is in flight, controls may
-        briefly show <strong>Working…</strong> — your draft is still safe on the server.
+        briefly show <strong>Saving…</strong> — your draft is still safe on the server.
       </p>
-      <label for="character-name">Name</label>
+      <div class="identity-token-preview" data-testid="identity-token-preview" aria-live="polite">
+        <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>
+        <span class="record-meta">Map token initial preview</span>
+      </div>
+      <label for="character-name">Character name (required, max ${nameMax} characters)</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
-        maxlength="${CHARACTER_NAME_MAX_LENGTH}"
+        maxlength="${nameMax}" aria-label="Character name"
         value="${escapeHtml(identity.name)}" autocomplete="off" placeholder="Something the bard can pronounce" />
-      <label for="character-pronouns">Pronouns</label>
+      <label for="character-pronouns">Pronouns (optional)</label>
       <input id="character-pronouns" type="text" data-identity="pronouns" data-testid="identity-pronouns"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Pronouns"
         value="${escapeHtml(identity.pronouns)}" autocomplete="off" placeholder="Optional" />
-      <label for="character-appearance">Appearance</label>
+      <label for="character-appearance">Appearance (optional)</label>
       <input id="character-appearance" type="text" data-identity="appearance" data-testid="identity-appearance"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Appearance"
         value="${escapeHtml(identity.appearance)}" autocomplete="off" placeholder="Optional — scar, hat, ominous vibes…" />
-      <label for="character-concept">Concept</label>
+      <label for="character-concept">Concept (optional)</label>
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}"
+        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Concept"
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
+
+      <section class="panel" data-testid="character-readiness-summary" aria-labelledby="readiness-heading">
+        <h3 id="readiness-heading">What can this character do?</h3>
+        ${
+          readiness.length === 0
+            ? `<p class="message success" data-testid="readiness-ready">Ready to create — class, background, species, skills, and features are complete.</p>`
+            : `<ul class="record-list" data-testid="readiness-blockers">
+                ${readiness
+                  .map(
+                    (item) =>
+                      `<li data-testid="readiness-blocker">${escapeHtml(item.message)}</li>`,
+                  )
+                  .join('')}
+              </ul>`
+        }
+      </section>
 
       <h3>Final review</h3>
       ${
@@ -1351,7 +1408,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="wizard-continue"]')
       ?.addEventListener('click', () => {
         const index = WIZARD_STEPS.indexOf(activeStep);
-        if (index < 0 || index >= WIZARD_STEPS.length - 1 || busy || !stepIsComplete(activeStep)) {
+        if (index < 0 || index >= WIZARD_STEPS.length - 1 || !stepIsComplete(activeStep)) {
+          return;
+        }
+        if (busy) {
+          pendingAdvance = true;
           return;
         }
         activeStep = WIZARD_STEPS[index + 1]!;
@@ -2022,6 +2083,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       match?.focus();
     }
   }
+
 
   function render(): void {
     if (!isPageMountCurrent(container, mountToken)) {

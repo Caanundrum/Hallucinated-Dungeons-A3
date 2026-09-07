@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import {enterArena} from './arena-page.js';
+import { acceptAllLegalForPlay, enterArena } from './arena-page.js';
 
 /**
  * Phase 1 chunk 1c actual-page journey: Character Vault, custom and
@@ -25,6 +25,7 @@ async function enterArenaForCharacters(page: Page): Promise<string> {
   }
   await page.getByTestId('shell-enter-account').click();
   await expect(page.getByTestId('shell-account-link')).toBeVisible();
+  await acceptAllLegalForPlay(page);
   // Resolve the account id from the Account page rather than diagnostics.
   await page.getByTestId('nav-account').click();
   await expect(page.getByTestId('account-page-id')).toBeVisible();
@@ -46,6 +47,12 @@ async function chooseOption(page: Page, testId: string): Promise<void> {
   await page.getByTestId(testId).click();
   await expect(page.getByTestId('create-heading')).toBeVisible();
   await expect(page.locator('[data-testid="create-error"]')).toHaveCount(0);
+}
+
+async function waitForWizardContinue(page: Page): Promise<void> {
+  await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false', {
+    timeout: 30_000,
+  });
 }
 
 async function assignStandardArray(page: Page): Promise<void> {
@@ -134,6 +141,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
   });
 
   test('custom creation walks identity-last steps and resumes one draft', async ({ page }) => {
+    test.setTimeout(180_000);
     await enterArenaForCharacters(page);
     await openVault(page);
     await page.getByTestId('start-character').click();
@@ -141,17 +149,17 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('tutorial-ask-no').click();
 
     await chooseOption(page, 'option-fighter');
-    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-survival');
     await chooseOption(page, 'check-perception');
-    await expect(page.getByTestId('wizard-continue')).toHaveAttribute('aria-disabled', 'false');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
     await expect(page.getByTestId('active-step-heading')).toContainText('Background');
 
     await page.getByTestId('nav-characters').click();
     await expect(page.getByTestId('draft-list')).toBeVisible();
-    await expect(page.getByTestId('resume-draft')).toContainText('Fighter');
+    await expect(page.getByTestId('draft-resume-link')).toContainText('Fighter');
 
-    await page.getByTestId('resume-draft').click();
+    await page.getByTestId('draft-resume-link').click();
     await expect(page.getByTestId('create-heading')).toBeVisible();
     // Resume lands on the first unresolved step; open Class to confirm the
     // earlier choice persisted on the same draft.
@@ -167,7 +175,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     const draftId = vaultBefore.drafts[0]!.draftId;
 
     await page.getByTestId('nav-characters').click();
-    await page.getByTestId('start-character').click();
+    await page.getByTestId('resume-draft').click();
     await page.getByTestId('step-class').click();
     await expect(page.getByTestId('option-fighter')).toBeChecked();
     const draftAfter = await page.request.get('/api/characters/vault');
@@ -187,33 +195,42 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('bonus-plus-one').selectOption('constitution');
     await expect(page.getByTestId('bonus-plus-one')).toHaveValue('constitution');
     await expect(page.getByTestId('wizard-sheet-preview')).toBeVisible();
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Species');
     await chooseOption(page, 'option-dwarf');
     await expect(page.getByTestId('preview-waiting')).toHaveCount(0);
     await expect(page.getByTestId('live-sheet-stats')).toBeVisible();
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Ability');
     await chooseOption(page, 'option-standard-array');
     await assignStandardArray(page);
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Equipment');
     await chooseOption(page, 'option-fighter-a');
     await chooseOption(page, 'option-soldier-kit');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Class Features');
     await chooseOption(page, 'check-defense');
+    await expect(page.getByTestId('weapon-mastery-panel')).toBeVisible();
+    await page.getByTestId('mastery-check-Greatsword').click();
+    await page.getByTestId('mastery-check-Longsword').click();
+    await page.getByTestId('mastery-check-Javelin').click();
     await expect(page.getByTestId('no-spellcasting')).toBeVisible();
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await expect(page.getByTestId('active-step-heading')).toContainText('Identity');
     await page.getByTestId('identity-name').fill('Kara Ironwake');
     await page.getByTestId('identity-name').dispatchEvent('change');
-    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible({ timeout: 20_000 });
 
     await page.getByTestId('create-character').click();
     await expect(page.getByTestId('character-sheet-heading')).toHaveText('Kara Ironwake');

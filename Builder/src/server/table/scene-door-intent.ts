@@ -70,10 +70,43 @@ function isAdjacentToDoor(
   );
 }
 
-function nextStepTowardClosedDoor(
+function isBlockedSquare(map: MapBundleProjection, square: MapSquareCoordinate): boolean {
+  const cell = map.cells.find(
+    (entry) => entry.column === square.column && entry.row === square.row,
+  );
+  return cell?.terrain === 'blocked';
+}
+
+/** Near-side and far-side squares that count as beside a door edge. */
+function adjacentSquaresForDoor(edge: MapEdgeRecord): MapSquareCoordinate[] {
+  if (edge.orientation === 'east') {
+    return [
+      { column: edge.column, row: edge.row },
+      { column: edge.column + 1, row: edge.row },
+    ];
+  }
+  if (edge.orientation === 'west') {
+    return [
+      { column: edge.column, row: edge.row },
+      { column: edge.column - 1, row: edge.row },
+    ];
+  }
+  if (edge.orientation === 'south') {
+    return [
+      { column: edge.column, row: edge.row },
+      { column: edge.column, row: edge.row + 1 },
+    ];
+  }
+  return [
+    { column: edge.column, row: edge.row },
+    { column: edge.column, row: edge.row - 1 },
+  ];
+}
+
+function nearestClosedDoor(
   anchor: MapSquareCoordinate,
   map: MapBundleProjection,
-): MapSquareCoordinate | null {
+): MapEdgeRecord | null {
   const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
   if (closedDoors.length === 0) {
     return null;
@@ -87,11 +120,19 @@ function nextStepTowardClosedDoor(
       nearest = door;
     }
   }
-  if (isAdjacentToDoor(anchor, nearest)) {
+  return nearest;
+}
+
+function nextStepTowardSquare(
+  anchor: MapSquareCoordinate,
+  target: MapSquareCoordinate,
+  map: MapBundleProjection,
+): MapSquareCoordinate | null {
+  if (anchor.column === target.column && anchor.row === target.row) {
     return null;
   }
-  const columnDelta = nearest.column - anchor.column;
-  const rowDelta = nearest.row - anchor.row;
+  const columnDelta = target.column - anchor.column;
+  const rowDelta = target.row - anchor.row;
   const candidates: MapSquareCoordinate[] = [];
   if (columnDelta !== 0) {
     candidates.push({ column: anchor.column + Math.sign(columnDelta), row: anchor.row });
@@ -100,14 +141,79 @@ function nextStepTowardClosedDoor(
     candidates.push({ column: anchor.column, row: anchor.row + Math.sign(rowDelta) });
   }
   for (const candidate of candidates) {
-    const cell = map.cells.find(
-      (entry) => entry.column === candidate.column && entry.row === candidate.row,
-    );
-    if (cell?.terrain !== 'blocked') {
+    if (!isBlockedSquare(map, candidate)) {
       return candidate;
     }
   }
   return null;
+}
+
+function nextStepTowardClosedDoor(
+  anchor: MapSquareCoordinate,
+  map: MapBundleProjection,
+): MapSquareCoordinate | null {
+  const nearest = nearestClosedDoor(anchor, map);
+  if (nearest === null || isAdjacentToDoor(anchor, nearest)) {
+    return null;
+  }
+  const targets = adjacentSquaresForDoor(nearest).filter((square) => !isBlockedSquare(map, square));
+  if (targets.length === 0) {
+    return null;
+  }
+  targets.sort(
+    (left, right) =>
+      Math.abs(left.column - anchor.column) +
+      Math.abs(left.row - anchor.row) -
+      (Math.abs(right.column - anchor.column) + Math.abs(right.row - anchor.row)),
+  );
+  return nextStepTowardSquare(anchor, targets[0]!, map);
+}
+
+/**
+ * Full walk path that lands beside the nearest closed door in one confirm
+ * (beside / next to / adjacent declarations). Caps at movement budget squares.
+ */
+function pathBesideClosedDoor(
+  anchor: MapSquareCoordinate,
+  map: MapBundleProjection,
+  maxSteps = 6,
+): MapSquareCoordinate[] | null {
+  const nearest = nearestClosedDoor(anchor, map);
+  if (nearest === null || isAdjacentToDoor(anchor, nearest)) {
+    return null;
+  }
+  const targets = adjacentSquaresForDoor(nearest).filter((square) => !isBlockedSquare(map, square));
+  if (targets.length === 0) {
+    return null;
+  }
+  targets.sort(
+    (left, right) =>
+      Math.abs(left.column - anchor.column) +
+      Math.abs(left.row - anchor.row) -
+      (Math.abs(right.column - anchor.column) + Math.abs(right.row - anchor.row)),
+  );
+  const destination = targets[0]!;
+  const path: MapSquareCoordinate[] = [];
+  let cursor = anchor;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (isAdjacentToDoor(cursor, nearest)) {
+      break;
+    }
+    const next = nextStepTowardSquare(cursor, destination, map);
+    if (next === null) {
+      break;
+    }
+    path.push(next);
+    cursor = next;
+  }
+  return path.length > 0 ? path : null;
+}
+
+function wantsBesideDoorIntent(text: string): boolean {
+  return (
+    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\b/i.test(text) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text)
+  );
 }
 
 function doorBesideSummary(edge: MapEdgeRecord): string {
@@ -244,7 +350,7 @@ export function resolveDoorIntentForMap(
     };
   }
 
-  if (mentionsMovementIntent(text) || wantsOpen) {
+  if (mentionsMovementIntent(text) || wantsOpen || wantsBesideDoorIntent(text)) {
     const approachOpen = nextStepThroughOpenDoor(tokenAnchor, map);
     if (approachOpen !== null && !isOnOpenDoorPassage(tokenAnchor, map)) {
       return {
@@ -255,15 +361,20 @@ export function resolveDoorIntentForMap(
           : `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
-    const nearestClosed =
-      closedDoors.length === 0
-        ? null
-        : closedDoors.reduce((best, door) => {
-            const distance = Math.abs(tokenAnchor.column - door.column) + Math.abs(tokenAnchor.row - door.row);
-            const bestDistance =
-              Math.abs(tokenAnchor.column - best.column) + Math.abs(tokenAnchor.row - best.row);
-            return distance < bestDistance ? door : best;
-          });
+    const nearestClosed = nearestClosedDoor(tokenAnchor, map);
+    if (wantsBesideDoorIntent(text) && nearestClosed !== null) {
+      const besidePath = pathBesideClosedDoor(tokenAnchor, map);
+      if (besidePath !== null) {
+        const steps = besidePath.length;
+        const feet = steps * map.coordinateSpace.feetPerSquare;
+        return {
+          proposedCommandType: 'table.move',
+          path: besidePath,
+          edgeId: nearestClosed.edgeId,
+          summary: `Ready to move beside the ${doorApproachLabel(nearestClosed)} in ${sceneTitle} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to arrive adjacent — then declare open / inspect.`,
+        };
+      }
+    }
     const approachClosed = nextStepTowardClosedDoor(tokenAnchor, map);
     if (approachClosed !== null && nearestClosed !== null) {
       return {

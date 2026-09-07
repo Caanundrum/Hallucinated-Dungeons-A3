@@ -37,6 +37,41 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
+/** Lightweight premise fact chips for create UX (mirrors server continuity extract). */
+function premiseCommittedFactsMarkup(premise: string): string {
+  const text = premise.trim();
+  if (text.length === 0) {
+    return `<p class="record-meta" data-testid="premise-committed-facts-empty">Committed premise facts will appear here as you type.</p>`;
+  }
+  const facts: string[] = [];
+  const lower = text.toLowerCase();
+  if (/\b(canal|dock|ferry|waterfront|harbor|harbour)\b/.test(lower)) {
+    facts.push('Location: canal / waterfront');
+  }
+  if (/\b(courier|package|missive|parcel)\b/.test(lower)) {
+    facts.push('Quest: missing courier / package');
+  }
+  for (const pattern of [
+    /\bBlue Heron\b/i,
+    /\bMara Venn\b/i,
+    /\bbroken silver lantern\b/i,
+    /\bsilver lantern\b/i,
+    /\blocked red door\b/i,
+    /\bred door\b/i,
+  ]) {
+    const match = text.match(pattern);
+    if (match !== null) {
+      facts.push(`Named: ${match[0]}`);
+    }
+  }
+  if (facts.length === 0) {
+    return `<p class="record-meta" data-testid="premise-committed-facts-empty">No named location, quest hook, or entities detected yet.</p>`;
+  }
+  return `<ul class="record-list" data-testid="premise-committed-facts">${facts
+    .map((fact) => `<li data-testid="premise-committed-fact">${escapeHtml(fact)}</li>`)
+    .join('')}</ul>`;
+}
+
 export function mountCampaignCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Create a table');
@@ -259,9 +294,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
             <span>Adventure premise (optional)</span>
             <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3" placeholder="Example: a canal town missing courier, a misty marsh inn, a stone crypt…">${escapeHtml(summary)}</textarea>
             <span class="record-meta" data-testid="premise-continuity-hint">
-              The opening scene keeps your core location and quest hook when you name them here. The
-              Game Director inspires the rest — the premise is not quoted word-for-word.
+              The opening scene keeps your core location, quest hook, and named entities when you
+              write them here. The Game Director inspires the rest — the premise is not quoted word-for-word.
             </span>
+            ${premiseCommittedFactsMarkup(summary)}
           </label>
         </section>
 

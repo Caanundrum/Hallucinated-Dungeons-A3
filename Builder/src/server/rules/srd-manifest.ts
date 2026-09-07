@@ -320,7 +320,7 @@ export const SPECIES: readonly SpeciesRecord[] = [
     features: [
       { name: 'Brave', summary: 'You have Advantage on saving throws you make to avoid or end the Frightened condition.' },
       { name: 'Halfling Nimbleness', summary: 'You can move through the space of any creature that is a size larger than you.' },
-      { name: 'Luck', summary: 'When you roll a 1 on the d20 of a D20 Test, you can reroll the die once.' },
+      { name: 'Halfling Luck', summary: 'Species trait: when you roll a natural 1 on a D20 Test, you can reroll the die once. This is not the Lucky origin feat.' },
       { name: 'Naturally Stealthy', summary: 'You can take the Hide action even when obscured only by a creature at least one size larger.' },
     ],
     choices: [],
@@ -1045,7 +1045,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
 export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
   Alert: 'Add your Proficiency Bonus to Initiative. You cannot be surprised while conscious.',
   Tough: 'Your Hit Point maximum increases by twice your level (at level 1: +2 HP).',
-  Lucky: 'You have Luck Points equal to your Proficiency Bonus to spend on rerolls.',
+  Lucky: 'Origin feat resource: Luck Points equal to your Proficiency Bonus for rerolls. Distinct from Halfling Luck (species natural-1 reroll).',
   Skilled: 'You gain proficiency in three skills or tools of your choice.',
   Musician: 'You gain proficiency with three musical instruments and can grant Heroic Inspiration.',
   'Magic Initiate (Wizard)': 'Learn two Wizard cantrips and one level 1 Wizard spell.',

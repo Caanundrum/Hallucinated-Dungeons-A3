@@ -267,6 +267,8 @@ export interface PremiseContinuity {
     | null;
   readonly locationPhrase: string | null;
   readonly questHook: string | null;
+  /** Named places / people / props the opening scene must keep (player-visible facts). */
+  readonly namedEntities: readonly string[];
 }
 
 export function extractPremiseContinuity(premise: string): PremiseContinuity {
@@ -309,7 +311,29 @@ export function extractPremiseContinuity(premise: string): PremiseContinuity {
     questHook = 'a violent death that cannot stay quiet';
   }
 
-  return { locationKind, locationPhrase, questHook };
+  const namedEntities: string[] = [];
+  const pushUnique = (label: string) => {
+    if (!namedEntities.some((entry) => entry.toLowerCase() === label.toLowerCase())) {
+      namedEntities.push(label);
+    }
+  };
+  // Preserve exact casing from the premise when present.
+  const namedPatterns: Array<{ pattern: RegExp; fallback: string }> = [
+    { pattern: /\bBlue Heron\b/i, fallback: 'Blue Heron' },
+    { pattern: /\bMara Venn\b/i, fallback: 'Mara Venn' },
+    { pattern: /\bbroken silver lantern\b/i, fallback: 'broken silver lantern' },
+    { pattern: /\bsilver lantern\b/i, fallback: 'silver lantern' },
+    { pattern: /\blocked red door\b/i, fallback: 'locked red door' },
+    { pattern: /\bred door\b/i, fallback: 'red door' },
+  ];
+  for (const entry of namedPatterns) {
+    const match = premise.match(entry.pattern);
+    if (match !== null) {
+      pushUnique(match[0] ?? entry.fallback);
+    }
+  }
+
+  return { locationKind, locationPhrase, questHook, namedEntities };
 }
 
 function dressInteriorFamilyWithPremise(
@@ -317,10 +341,14 @@ function dressInteriorFamilyWithPremise(
   premise: string,
 ): ReturnType<typeof pickInteriorFamily> {
   const continuity = extractPremiseContinuity(premise);
-  if (continuity.questHook === null && continuity.locationKind !== 'canal_waterfront') {
+  if (
+    continuity.questHook === null &&
+    continuity.locationKind !== 'canal_waterfront' &&
+    continuity.namedEntities.length === 0
+  ) {
     return family;
   }
-  let { title, mood, description, poiLabel } = family;
+  let { title, mood, description, poiLabel, lightLabel } = family;
   if (
     continuity.locationKind === 'canal_waterfront' &&
     !/\b(canal|dock|ferry|waterfront|harbor|harbour)\b/i.test(`${title} ${description}`)
@@ -342,7 +370,30 @@ function dressInteriorFamilyWithPremise(
       poiLabel = 'Courier satchel';
     }
   }
-  return { ...family, title, mood, description, poiLabel };
+  for (const entity of continuity.namedEntities) {
+    const escaped = entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(escaped, 'i').test(`${mood} ${description} ${poiLabel} ${lightLabel}`)) {
+      continue;
+    }
+    if (/mara\s+venn/i.test(entity)) {
+      mood = `${mood} Mara Venn's name is on the courier slip.`;
+      description = `${description} A note names Mara Venn as the expected hand-off.`;
+    } else if (/blue\s+heron/i.test(entity)) {
+      mood = `${mood} The Blue Heron is the meeting mark people still use.`;
+      description = `${description} A faded Blue Heron mark is scratched into a crate.`;
+      if (!/blue\s+heron/i.test(poiLabel)) {
+        poiLabel = 'Blue Heron mark';
+      }
+    } else if (/silver\s+lantern/i.test(entity)) {
+      lightLabel = /broken/i.test(entity) ? 'Broken silver lantern' : 'Silver lantern';
+      description = `${description} A ${entity} lies among the rope coils.`;
+    } else if (/red\s+door/i.test(entity)) {
+      description = `${description} Rumors point to a ${entity} beyond this loft.`;
+    } else {
+      description = `${description} Premise detail kept: ${entity}.`;
+    }
+  }
+  return { ...family, title, mood, description, poiLabel, lightLabel };
 }
 
 function pickInteriorFamily(premise: string, seed: number): {

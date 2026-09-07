@@ -722,8 +722,9 @@ a.account-chip-label:focus-visible {
 
 .table-map-chrome {
   position: relative;
-  flex: 1 1 14rem;
-  min-height: 12rem;
+  /* Desktop: give the play dock more than half the column so the timeline is usable. */
+  flex: 0.85 1 12rem;
+  min-height: 10rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -752,16 +753,14 @@ a.account-chip-label:focus-visible {
 .table-action-bar {
   /*
    * FQA-023 / dock height remediation:
-   * Grow into leftover play-column space instead of a hard 50vh cap.
-   * `height: 0` + flex-grow makes the used height definite so nested
-   * flex/grid children (timeline) can fill; the thread list remains the
-   * only intentional vertical scroller.
+   * Dock must outgrow the map on desktop so the thread list is hundreds of px,
+   * not pinned at the 4.5rem floor.
    */
-  flex: 1 1 18rem;
+  flex: 1.35 1 22rem;
   margin: 0;
   height: 0;
   max-height: none;
-  min-height: 16rem;
+  min-height: min(42vh, 24rem);
   overflow: clip;
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
@@ -823,10 +822,10 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar-dm > .table-turn-banner {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: none;
-  overflow: hidden;
+  max-height: 5.25rem;
+  overflow-y: auto;
 }
 
 .table-action-bar-dm > .door-recovery-panel {
@@ -849,7 +848,8 @@ a.account-chip-label:focus-visible {
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(4.5rem, 1fr) auto;
+  /* Desktop floor: usable timeline (≥12rem), not the old 4.5rem/72px trap. */
+  grid-template-rows: auto auto minmax(12rem, 1fr) auto;
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
@@ -861,7 +861,7 @@ a.account-chip-label:focus-visible {
   flex: 1 1 0;
   min-height: 0;
   max-height: none;
-  grid-template-rows: auto auto minmax(7rem, 1fr) auto;
+  grid-template-rows: auto auto minmax(16rem, 1fr) auto;
 }
 
 .dm-play-thread-chrome {
@@ -1002,10 +1002,10 @@ ol.record-list.dm-thread-list > li {
   margin-bottom: 0;
   padding: var(--space-2);
   border-radius: var(--radius-control);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: none;
-  overflow: hidden;
+  max-height: 5.25rem;
+  overflow-y: auto;
 }
 
 .table-dashboard .table-turn-title {
@@ -1322,6 +1322,17 @@ ol.record-list.dm-thread-list > li {
     display: none !important;
   }
 
+  .table-map-door-actions {
+    display: none;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    justify-content: center;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-map-door-actions {
+    display: flex;
+  }
+
   .table-dashboard[data-mobile-task='play'] .table-info-rail,
   .table-dashboard[data-mobile-task='play'] .table-comms-rail {
     display: none !important;
@@ -1391,12 +1402,14 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
+    grid-template-rows: auto auto minmax(4.5rem, 1fr) auto;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
+    grid-template-rows: auto auto minmax(7rem, 1fr) auto;
   }
 
 

@@ -75,6 +75,7 @@ import {
 } from '../../shared/resolved-action-receipt.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
+import { formatMapRouteSummary } from '../../shared/map-presentation.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
 
 function shortFeatureLabel(label: string): string {
@@ -343,6 +344,30 @@ async function resolveDirectorNarrateOutput(options: {
     return inspectHint === 'listen'
       ? 'You listen at the doorway. Nothing answers through the wood, and the door stays closed.'
       : 'You check the doorway without opening it. It remains closed on the table.';
+  }
+
+  // Explicit map-summary / door-state corrections: answer from live edges, never baked labels.
+  const correctionText = options.structured.rawText.toLowerCase();
+  if (
+    inspectHint === 'map_state_correction' ||
+    ((/\b(summary|routes?|map)\b/.test(correctionText) &&
+      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/.test(
+        correctionText,
+      )) ||
+      (/\b(door|doorway)\b/.test(correctionText) &&
+        /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/.test(
+          correctionText,
+        )))
+  ) {
+    if (map !== null) {
+      const liveRoutes = formatMapRouteSummary(map);
+      const openDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
+      if (openDoors.length > 0) {
+        return `You're right to check. Live table state: ${liveRoutes}. The doorway is already open on the map — the route line now matches that open state. No further Confirm is required for this correction.`;
+      }
+      return `Live table state: ${liveRoutes}. That is the authoritative door summary for this scene.`;
+    }
+    return 'No door routes are on the table yet to reconcile.';
   }
 
   if (inspectHint === 'who_is_present') {
@@ -1074,8 +1099,12 @@ export async function interpretNaturalLanguageIntent(options: {
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door') ||
     (authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'inspect' &&
+      authority.actionSequence[0]?.outcomeHint === 'trap_search') ||
+    (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'move' &&
-      !mentionsDoorIntent(text));
+      !mentionsDoorIntent(text) &&
+      authority.actionSequence[0]?.outcomeHint !== 'beside_door');
 
   /** Defer Director fiction until after the player declaration is chronicled. */
   let deferDirectorNarrate = false;
@@ -1147,7 +1176,9 @@ export async function interpretNaturalLanguageIntent(options: {
   } else if (authorityShortCircuit) {
     if (
       authority.disposition === 'propose_command' &&
-      authority.actionSequence[0]?.kind === 'unlock_door'
+      (authority.actionSequence[0]?.kind === 'unlock_door' ||
+        (authority.actionSequence[0]?.kind === 'inspect' &&
+          authority.actionSequence[0]?.outcomeHint === 'trap_search'))
     ) {
       proposedCommandType = 'table.sync';
       summary = buildSkillCheckDraftSummary(seatedSheet, text);

@@ -1095,11 +1095,33 @@ export async function acceptTableCommand(options: {
     if (commandType === 'table.open_door' && openEdgeId !== undefined) {
       doorStates[openEdgeId] = 'open';
       if (activeSceneId && sceneInstances[activeSceneId]) {
+        const activeScene = sceneInstances[activeSceneId]!;
+        const openEdge =
+          activeScene.edges.find((edge) => edge.edgeId === openEdgeId) ??
+          runtimeEdges.find((edge) => edge.edgeId === openEdgeId) ??
+          null;
+        const features = activeScene.features.map((feature) => {
+          const isExit =
+            feature.objectKind === 'exit' ||
+            feature.referenceKind === 'exit' ||
+            feature.objectId.includes(':exit');
+          if (!isExit || openEdge === null) {
+            return feature;
+          }
+          const near =
+            Math.abs(feature.column - openEdge.column) + Math.abs(feature.row - openEdge.row) <= 1;
+          if (!near) {
+            return feature;
+          }
+          const base = feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked)\b/i, '').trim();
+          return { ...feature, label: `${base} — open` };
+        });
         sceneInstances = {
           ...sceneInstances,
           [activeSceneId]: {
-            ...sceneInstances[activeSceneId]!,
-            doorStates: { ...sceneInstances[activeSceneId]!.doorStates, [openEdgeId]: 'open' },
+            ...activeScene,
+            features,
+            doorStates: { ...activeScene.doorStates, [openEdgeId]: 'open' },
           },
         };
       }
