@@ -62,12 +62,29 @@ export function buildSkillCheckDraftSummary(
   const wantsLock =
     textRequestsLockPicking(text) ||
     (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
+  // Broad room surveys are Director perception — never "Which feature…".
+  const broadSurvey =
+    /\b(?:survey|look\s+around|peer\s+around|look\s+and\s+listen)\b/i.test(text) ||
+    (/\b(?:examin(?:e|es|ing)|search(?:es|ing)?|investigat(?:e|es|ing)|inspect(?:s|ing)?)\b/i.test(
+      text,
+    ) &&
+      /\b(?:chamber|room|scene|surroundings|area|here)\b/i.test(text) &&
+      !/\b(?:door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(text) &&
+      !wantsTrap &&
+      !wantsLock);
+  if (broadSurvey) {
+    return 'You look and listen across the scene — the Game Director narrates what is perceptible. Name a single feature only if you want a focused Investigation roll.';
+  }
   const ambiguousTarget =
     /\b(most suspicious|anything unusual|something suspicious|visible feature|the area|this area|the room|the chamber)\b/i.test(
       text,
     ) && !/\b(door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(text);
   const candidates = options.candidateLabels ?? [];
-  if (ambiguousTarget || (candidates.length > 1 && !/\b(door|doorway|gate|lock)\b/i.test(text))) {
+  // Only force a feature pick when the player asked for a focused roll without a target.
+  if (
+    (wantsTrap || wantsLock) &&
+    (ambiguousTarget || (candidates.length > 1 && !/\b(door|doorway|gate|lock)\b/i.test(text)))
+  ) {
     const list =
       candidates.length > 0
         ? candidates.slice(0, 6).join('; ')

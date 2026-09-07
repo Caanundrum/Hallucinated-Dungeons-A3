@@ -319,6 +319,8 @@ export function resolveIntentAuthority(
   // Perception / presence checks are Director narration, never map or combat commands.
   if (only.kind === 'inspect') {
     const seekingPresence = only.outcomeHint === 'who_is_present';
+    const doorState =
+      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen';
     return {
       disposition: 'director_narrate_only',
       actionSequence: [only],
@@ -327,7 +329,11 @@ export function resolveIntentAuthority(
       summary:
         (seekingPresence
           ? 'You are looking for who is present — the Game Director will answer in fiction.'
-          : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
+          : doorState
+            ? only.outcomeHint === 'listen'
+              ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
+              : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
+            : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
       proposedCommandType: 'table.sync',
     };
   }
@@ -525,9 +531,13 @@ export function parsePlayerDeclaration(
     /\b(?:survey(?:s|ing)?|look(?:s|ing)?\s+and\s+listen|listen(?:s|ing)?\s+carefully|look(?:s|ing)?\s+carefully|peer(?:s|ing)?\s+around|take(?:s|ing)?\s+(?:a\s+)?look\s+around|describe\s+only\s+what)\b/i.test(
       trimmed,
     ) ||
-    (/\b(?:look(?:s|ing)?|listen(?:s|ing)?)\b/i.test(trimmed) &&
-      /\b(?:chamber|room|scene|surroundings|area)\b/i.test(trimmed) &&
-      !/\b(?:open|opens|opening|unlock|attack|strike|cast)\b/i.test(trimmed));
+    // Broad examine/search/investigate of the scene — not a targeted prop roll.
+    (/\b(?:examin(?:e|es|ing)|search(?:es|ing)?|investigat(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?)\b/i.test(
+      trimmed,
+    ) &&
+      /\b(?:chamber|room|scene|surroundings|area|here)\b/i.test(trimmed) &&
+      !/\b(?:door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(trimmed) &&
+      !/\b(?:unlock|attack|strike|cast|open|opens|opening)\b/i.test(trimmed));
 
   const wantsUnlock = textRequestsLockPicking(trimmed);
   const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
@@ -556,11 +566,31 @@ export function parsePlayerDeclaration(
       // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
       (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));
 
+  // Door state / listen / lock-check without opening — Perception/fiction, not move/open.
+  // Bare negation with an explicit move verb is movement only (not inspect+move).
+  const doorSenseVerb =
+    /\b(?:listen(?:s|ing)?|check(?:s|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)|look(?:s|ing)?\s+at|study)\b/i.test(
+      trimmed,
+    ) ||
+    (/\block(?:ed)?\b/i.test(trimmed) &&
+      /\b(?:check|see|whether|if|inspect|examin)\b/i.test(trimmed)) ||
+    /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/i.test(trimmed);
+  const explicitMoveVerb =
+    /\b(?:walks?|walking|moves?|moving|goes?|going|steps?|stepping|approaches?)\b/i.test(trimmed);
+  const wantsDoorStateRead =
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
+    !wantsUnlock &&
+    !wantsOpenDoor &&
+    (doorSenseVerb || (negatesOpen && !explicitMoveVerb));
+
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
   }
-  // "Through the open door" with no open verb is transit/move, not open_door.
-  if (stepThroughPassage && !openDoorVerb && !refsUnlocked) {
+  if (wantsDoorStateRead) {
+    const listenHint = /\blisten\b/i.test(trimmed) ? 'listen' : 'door_state';
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: listenHint });
+  } else if (stepThroughPassage && !openDoorVerb && !refsUnlocked) {
+    // "Through the open door" with no open verb is transit/move, not open_door.
     if (!actionSequence.some((step) => step.kind === 'move')) {
       actionSequence.push({ kind: 'move', targetRef: null, outcomeHint: null });
     }
@@ -574,7 +604,8 @@ export function parsePlayerDeclaration(
     isInterrogative &&
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
     !wantsUnlock &&
-    !wantsOpenDoor
+    !wantsOpenDoor &&
+    !wantsDoorStateRead
   ) {
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   }

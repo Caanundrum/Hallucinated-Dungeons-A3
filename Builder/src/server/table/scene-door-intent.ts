@@ -8,6 +8,7 @@ import {
   formatDoorAuthorityLabel,
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
+import { declarationNegatesDoorOpen } from '../../shared/resolved-action-receipt.js';
 
 import { isOnOpenDoorPassage, nextStepThroughOpenDoor } from './move-planner.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
@@ -29,6 +30,9 @@ function stripOpenDoorNounPhrases(text: string): string {
 }
 
 function wantsOpenDoorAction(text: string): boolean {
+  if (declarationNegatesDoorOpen(text)) {
+    return false;
+  }
   const withoutOpenNoun = stripOpenDoorNounPhrases(text);
   return /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
     withoutOpenNoun,
@@ -36,6 +40,10 @@ function wantsOpenDoorAction(text: string): boolean {
 }
 
 function wantsDoorPassage(text: string): boolean {
+  // Negated open + passage language is not a crossing intent against a closed door.
+  if (declarationNegatesDoorOpen(text)) {
+    return false;
+  }
   return (
     /\b(?:steps?\s+through|enter(?:s|ing)?|through|beyond|continue)\b/i.test(text) ||
     /\b(?:go|walk|move|step)s?\s+(?:west|east|north|south|back)\b/i.test(text)
@@ -140,7 +148,11 @@ export function resolveDoorIntentForMap(
   const wantsOpen = !wantsUnlock && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
   const wantsCross = wantsDoorPassage(text);
   const wantsInspect =
-    /\b(?:inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|push|pull)\b/.test(text) &&
+    (/\b(?:inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|listen|locked)\b/.test(
+      text,
+    ) ||
+      /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/.test(text) ||
+      declarationNegatesDoorOpen(text)) &&
     !/\b(?:investigat|search\s+for|trap|disarm)\b/.test(text) &&
     !wantsOpen &&
     !wantsUnlock;
@@ -150,7 +162,7 @@ export function resolveDoorIntentForMap(
     return null;
   }
 
-  // PQA-155: plain inspect/check reads current door state; open is a separate confirm.
+  // PQA-155: plain inspect/check/listen reads current door state; open is a separate confirm.
   if (adjacentClosed !== undefined && wantsInspect) {
     const authority = doorAuthorityFromStored(adjacentClosed.doorState);
     const lockNote =
@@ -159,10 +171,13 @@ export function resolveDoorIntentForMap(
         : authority.lock === 'unlocked'
           ? ' The lock is already open; you can declare opening the door when ready.'
           : ' It looks solid and ordinary from a casual look — no trap signs without a careful search.';
+    const listenNote = /\blisten\b/.test(text)
+      ? ' You hear only the quiet of the chamber beyond the wood — nothing that forces a roll.'
+      : '';
     return {
       proposedCommandType: 'table.sync',
       edgeId: adjacentClosed.edgeId,
-      summary: `${doorBesideSummary(adjacentClosed)}.${lockNote} Confirm to open it, or declare a trap or lock check if you want a roll.`,
+      summary: `${doorBesideSummary(adjacentClosed)}.${lockNote}${listenNote} No open or move is prepared — declare opening only when you intend to open it.`,
     };
   }
 

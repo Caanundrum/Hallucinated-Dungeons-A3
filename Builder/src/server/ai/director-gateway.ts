@@ -318,6 +318,33 @@ async function resolveDirectorNarrateOutput(options: {
     return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
   }
 
+  if (inspectHint === 'door_state' || inspectHint === 'listen') {
+    if (map !== null) {
+      const closed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
+      const open = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
+      const door =
+        closed[0] ?? open[0] ?? null;
+      if (door !== null) {
+        const authority = doorAuthorityFromStored(door.doorState);
+        const facing = door.orientation;
+        const label = formatDoorPlayerFacingLabel(authority, facing);
+        if (inspectHint === 'listen') {
+          return `You press an ear toward ${label}. Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
+        }
+        const lockLine =
+          authority.lock === 'locked'
+            ? 'The mechanism is locked.'
+            : authority.lock === 'unlocked'
+              ? 'The lock is already open; the leaf is still closed.'
+              : 'From a casual check it looks closed and ordinary.';
+        return `You check ${label} without opening it. ${lockLine} The doorway stays shut on the table.`;
+      }
+    }
+    return inspectHint === 'listen'
+      ? 'You listen at the doorway. Nothing answers through the wood, and the door stays closed.'
+      : 'You check the doorway without opening it. It remains closed on the table.';
+  }
+
   if (inspectHint === 'who_is_present') {
     const established =
       memory?.npcs.filter((npc) => npc.audience === 'public' || npc.audience === 'private') ?? [];
@@ -430,11 +457,21 @@ function mentionsDoorStateIntent(text: string): boolean {
   if (mentionsDoorHazardIntent(text) || textReferencesUnlockedDoorState(text)) {
     return false;
   }
+  if (declarationNegatesDoorOpen(text)) {
+    return (
+      /(listen|swing|ajar|hinge|free\s*swing|push|pull|test|inspect|check|examine|look\s*at|study|locked).*(door|gate|entry)/.test(
+        text,
+      ) ||
+      /(door|gate|entry).*(listen|swing|ajar|hinge|stuck|free|push|pull|test|inspect|check|examine|state|locked)/.test(
+        text,
+      )
+    );
+  }
   return (
-    /(swing|ajar|hinge|free\s*swing|push|pull|test|inspect|check|examine|look\s*at|study).*(door|gate|entry)/.test(
+    /(listen|swing|ajar|hinge|free\s*swing|push|pull|test|inspect|check|examine|look\s*at|study).*(door|gate|entry)/.test(
       text,
     ) ||
-    /(door|gate|entry).*(swing|ajar|hinge|stuck|free|push|pull|test|inspect|check|examine|state)/.test(
+    /(door|gate|entry).*(listen|swing|ajar|hinge|stuck|free|push|pull|test|inspect|check|examine|state)/.test(
       text,
     )
   );
@@ -454,6 +491,17 @@ function mentionsSkillCheckIntent(text: string): boolean {
 /** Vague investigate/search that must clarify a target before drafting a roll. */
 function mentionsAmbiguousInspectIntent(text: string): boolean {
   if (mentionsDoorHazardIntent(text) || mentionsDoorStateIntent(text)) {
+    return false;
+  }
+  // Broad scene surveys are Director perception — not skill-target clarifies.
+  if (
+    /\b(?:survey|look\s+around|peer\s+around|look\s+and\s+listen)\b/.test(text) ||
+    (/\b(?:examin(?:e|es|ing)|search(?:es|ing)?|investigat(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?)\b/.test(
+      text,
+    ) &&
+      /\b(?:chamber|room|scene|surroundings|area|here)\b/.test(text) &&
+      !/\b(?:door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/.test(text))
+  ) {
     return false;
   }
   return (
