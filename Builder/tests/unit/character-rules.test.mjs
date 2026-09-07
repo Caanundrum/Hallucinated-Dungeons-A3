@@ -61,6 +61,41 @@ function legalCharacterFor(classId, overrides = {}) {
     classChoiceIds[choice.id] = choice.from.slice(0, choice.choose).map((option) => option.id);
   }
 
+  const proficientForExpertise = [...classSkillIds, ...background.skillIds];
+  for (const choice of species.choices) {
+    if (choice.grantsSkillProficiency === true && speciesChoiceIds[choice.id]) {
+      proficientForExpertise.push(speciesChoiceIds[choice.id]);
+    }
+  }
+  const expertiseFeature = classRecord.features.find((feature) => feature.name === 'Expertise');
+  const expertiseSlots =
+    expertiseFeature !== undefined && /\b(?:two|2)\b/i.test(expertiseFeature.summary) ? 2 : 0;
+  const expertiseSkillIds =
+    overrides.expertiseSkillIds ??
+    (expertiseSlots > 0 ? proficientForExpertise.slice(0, expertiseSlots) : []);
+
+  const hasMastery = classRecord.features.some((feature) => feature.name === 'Weapon Mastery');
+  const masterySlots = hasMastery ? (classId === 'fighter' ? 3 : 2) : 0;
+  // Prefer owned kit weapons when present in the mastery map; fall back to any proficient mastery weapon.
+  const defaultMastery =
+    masterySlots === 0
+      ? []
+      : (() => {
+          const kitNames = (classRecord.equipmentOptions[0]?.items ?? []).map((item) => item.name);
+          const preferred = kitNames.filter((name) =>
+            ['Dagger', 'Shortsword', 'Scimitar', 'Shortbow', 'Longsword', 'Longbow', 'Greataxe', 'Greatsword', 'Handaxe', 'Javelin', 'Spear', 'Quarterstaff', 'Sickle', 'Rapier'].includes(
+              name,
+            ),
+          );
+          const unique = [...new Set(preferred)];
+          if (unique.length >= masterySlots) {
+            return unique.slice(0, masterySlots);
+          }
+          // Fighter often has enough; Rogue kit is Dagger/Shortsword/Shortbow.
+          const fallback = ['Dagger', 'Shortsword', 'Shortbow', 'Scimitar', 'Rapier', 'Longsword', 'Longbow', 'Greataxe'];
+          return [...new Set([...unique, ...fallback])].slice(0, masterySlots);
+        })();
+
   const casting = classRecord.spellcasting;
   const cantripIds = casting === null
     ? []
@@ -116,6 +151,8 @@ function legalCharacterFor(classId, overrides = {}) {
     originFeatSpellIds:
       humanMagicListId === null ? [] : spellsForList(humanMagicListId, 1).slice(0, 1).map((spell) => spell.id),
     classChoiceIds,
+    expertiseSkillIds,
+    weaponMasteryWeaponNames: overrides.weaponMasteryWeaponNames ?? defaultMastery,
     identity: { name: 'Test Character', pronouns: 'they/them', appearance: '', concept: '' },
   };
   const merged = { ...base, ...overrides };
@@ -658,27 +695,91 @@ test('PQA-195 Human without Origin feat still labels Versatile as Unassigned', (
 });
 
 test('PQA-211 Fighter mastery slots pad Unassigned and honor explicit picks', () => {
-  const auto = deriveSheet(legalCharacterFor('fighter', { classEquipmentOptionId: 'fighter-a' }));
+  const incomplete = {
+    ...legalCharacterFor('fighter', { classEquipmentOptionId: 'fighter-a' }),
+    weaponMasteryWeaponNames: [],
+  };
+  const auto = deriveSheet(incomplete);
   assert.equal(auto.weaponMasterySlotCount, 3);
   assert.equal((auto.weaponMasteries ?? []).length, 3);
-  assert.ok((auto.weaponMasteries ?? []).some((entry) => entry.assigned === false || entry.name === 'Unassigned'));
+  assert.ok((auto.weaponMasteries ?? []).every((entry) => entry.assigned === false || entry.name === 'Unassigned'));
+  assert.ok(validateChoices(incomplete).some((problem) => problem.code === 'WEAPON_MASTERY_REQUIRED'));
 
   const explicit = deriveSheet(
     legalCharacterFor('fighter', {
       classEquipmentOptionId: 'fighter-a',
-      weaponMasteryWeaponNames: ['Longsword', 'Longbow'],
+      weaponMasteryWeaponNames: ['Longsword', 'Longbow', 'Greataxe'],
     }),
   );
   const assigned = (explicit.weaponMasteries ?? []).filter((entry) => entry.assigned !== false);
-  assert.equal(assigned.length, 2);
+  assert.equal(assigned.length, 3);
   assert.deepEqual(
     assigned.map((entry) => entry.name).sort(),
-    ['Longbow', 'Longsword'],
+    ['Greataxe', 'Longbow', 'Longsword'],
   );
-  assert.equal((explicit.weaponMasteries ?? []).filter((entry) => entry.assigned === false).length, 1);
 
   const options = buildDraftOptions(legalCharacterFor('fighter'));
   assert.notEqual(options.weaponMastery, null);
   assert.equal(options.weaponMastery.slotCount, 3);
   assert.ok(options.weaponMastery.options.some((option) => option.id === 'Longbow'));
+});
+
+test('Rogue Expertise is required and doubles proficiency on the sheet', () => {
+  const without = {
+    ...legalCharacterFor('rogue', { backgroundId: 'criminal' }),
+    expertiseSkillIds: [],
+  };
+  assert.ok(validateChoices(without).some((problem) => problem.code === 'EXPERTISE_REQUIRED'));
+
+  const withExpertise = legalCharacterFor('rogue', {
+    backgroundId: 'criminal',
+    classSkillIds: ['acrobatics', 'investigation', 'perception', 'deception'],
+    expertiseSkillIds: ['investigation', 'stealth'],
+    weaponMasteryWeaponNames: ['Dagger', 'Shortsword'],
+  });
+  assert.deepEqual(validateChoices(withExpertise), []);
+  const sheet = deriveSheet(withExpertise);
+  const investigation = sheet.skills.find((skill) => skill.id === 'investigation');
+  assert.ok(investigation);
+  assert.equal(investigation.expertise, true);
+  assert.equal(
+    investigation.bonus.value,
+    sheet.abilityModifiers.intelligence + sheet.proficiencyBonus.value * 2,
+  );
+  assert.ok(sheet.features.some((feature) => feature.name.startsWith('Expertise:')));
+  const tools = sheet.proficiencies.filter((entry) => /thieves/i.test(entry.label));
+  assert.equal(tools.length, 1, 'Thieves Tools proficiency must appear once');
+});
+
+test('Rogue Weapon Mastery options are proficiency-filtered', () => {
+  const options = buildDraftOptions(
+    legalCharacterFor('rogue', {
+      backgroundId: 'criminal',
+      weaponMasteryWeaponNames: ['Dagger', 'Shortsword'],
+    }),
+  );
+  assert.notEqual(options.weaponMastery, null);
+  assert.equal(options.weaponMastery.slotCount, 2);
+  const ids = options.weaponMastery.options.map((option) => option.id);
+  assert.ok(ids.includes('Dagger'));
+  assert.ok(ids.includes('Shortsword'));
+  assert.ok(ids.includes('Shortbow'));
+  assert.equal(ids.includes('Greataxe'), false);
+  assert.equal(ids.includes('Greatsword'), false);
+  assert.equal(ids.includes('Longsword'), false);
+  assert.equal(ids.includes('Longbow'), false);
+  assert.notEqual(options.expertise, null);
+  assert.equal(options.expertise.slotCount, 2);
+});
+
+test('class skill helper path: Criminal Rogue Stealth is background-granted not class', () => {
+  const overlapping = sanitizeChoices({
+    ...emptyChoices(),
+    classId: 'rogue',
+    backgroundId: 'criminal',
+    classSkillIds: ['acrobatics', 'deception', 'perception', 'stealth'],
+  });
+  assert.equal(overlapping.classSkillIds.includes('stealth'), false);
+  assert.ok(overlapping.classSkillIds.includes('acrobatics'));
+  assert.ok(validateChoices(overlapping).some((problem) => problem.code === 'CLASS_SKILL_COUNT'));
 });

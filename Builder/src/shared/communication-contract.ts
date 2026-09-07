@@ -250,7 +250,7 @@ export interface DmThreadMessage {
   readonly kind: 'prompt' | 'declaration' | 'ruling_hint' | 'narration' | 'mechanics' | 'system';
 }
 
-/** Chronicle kinds that belong in the default Story / play timeline filter. */
+/** Chronicle kinds that belong in the full Story / play timeline filter. */
 export const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
   'play_declaration',
   'director_ruling',
@@ -260,7 +260,21 @@ export const PLAY_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
   'token_moved',
 ]);
 
-/** Sentinel filter value: Story so far defaults to play/story kinds, not all activity. */
+/**
+ * Concise Session recap for the right-rail Story so far pane.
+ * Live play chronology (declarations, moves, beat-by-beat resolve) stays in the
+ * center Action Composer timeline — this rail is a recap, not a duplicate log.
+ */
+export const RECAP_CHRONICLE_KINDS = new Set<ChronicleEntryKind>([
+  'director_ruling',
+  'scene_built',
+  'door_opened',
+  'play_resolved',
+]);
+
+/** Sentinel filter value: Story so far defaults to a concise session recap. */
+export const CHRONICLE_FILTER_RECAP = 'recap';
+/** Full play/story kinds (declarations + moves + rulings). */
 export const CHRONICLE_FILTER_STORY = 'story';
 export const CHRONICLE_FILTER_ALL = 'all';
 

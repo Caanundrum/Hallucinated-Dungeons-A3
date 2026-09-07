@@ -20,8 +20,10 @@ import {
   CHRONICLE_ENTRY_KINDS,
   CHRONICLE_ENTRY_KIND_LABELS,
   CHRONICLE_FILTER_ALL,
+  CHRONICLE_FILTER_RECAP,
   CHRONICLE_FILTER_STORY,
   PLAY_CHRONICLE_KINDS,
+  RECAP_CHRONICLE_KINDS,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
@@ -44,9 +46,13 @@ import type { CampaignPresenceProjection } from '../../shared/presence-contract.
 import { PRESENCE_HEARTBEAT_INTERVAL_MS } from '../../shared/presence-contract.js';
 import type { MapBundleProjection, MapEdgeRecord } from '../../shared/map-contract.js';
 import {
+  formatEdgeAccessibleLabel,
+  formatMoveTravelSummary,
+  isAdjacentToDoorEdge,
+} from '../../shared/map-presentation.js';
+import {
   doorAuthorityFromStored,
   formatDoorAuthorityStateSuffix,
-  formatDoorPlayerFacingLabel,
 } from '../../shared/play-authority-contract.js';
 import type {
   PresentationCueKind,
@@ -158,34 +164,18 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-function edgeAccessibleLabelFromEdge(edge: MapEdgeRecord): string {
-  const facing =
-    edge.orientation === 'north'
-      ? 'north'
-      : edge.orientation === 'south'
-        ? 'south'
-        : edge.orientation === 'east'
-          ? 'east'
-          : 'west';
-  if (edge.kind === 'door') {
-    return formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
-  }
-  return `Wall facing ${facing}`;
-}
-
-function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
+function doorDetailCopy(
+  edge: MapEdgeRecord,
+  mapTitle: string,
+  options?: { readonly openControlVisible?: boolean },
+): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
-  const facing =
-    edge.orientation === 'north'
-      ? 'north'
-      : edge.orientation === 'south'
-        ? 'south'
-        : edge.orientation === 'east'
-          ? 'east'
-          : 'west';
-  const label = formatDoorPlayerFacingLabel(doorAuthorityFromStored(edge.doorState), facing);
+  const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
-  return `Selected ${label} in ${scene} (${stateLabel}). Use Open adjacent door when you are next to a closed unlocked door, or declare an interaction in the play channel.`;
+  if (options?.openControlVisible === true) {
+    return `Selected ${label} in ${scene} (${stateLabel}). Use Open doorway beside the play channel, or declare open / step through.`;
+  }
+  return `Selected ${label} in ${scene} (${stateLabel}). Declare open / step through in the play channel when you are beside it.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -247,7 +237,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
-  let chronicleKindFilter: string = CHRONICLE_FILTER_STORY;
+  let chronicleKindFilter: string = CHRONICLE_FILTER_RECAP;
   let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
@@ -551,11 +541,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     readonly map: MapBundleProjection;
     readonly start: { readonly column: number; readonly row: number };
   }): string {
-    const { path, map } = options;
-    const squares = path.length;
-    const feet = squares * map.coordinateSpace.feetPerSquare;
-    const scene = map.title.trim().length > 0 ? map.title : 'the map';
-    return `Moved ${squares} square${squares === 1 ? '' : 's'} (${feet} ft) across ${scene} toward the marked destination.`;
+    return formatMoveTravelSummary({
+      path: options.path,
+      map: options.map,
+      start: options.start,
+    });
+  }
+
+  function selectedDoorOpenAffordance(): {
+    readonly edge: MapEdgeRecord;
+    readonly adjacent: boolean;
+    readonly canOpen: boolean;
+  } | null {
+    if (mapBundle === null || selectedEdgeId === null) {
+      return null;
+    }
+    const edge = mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
+    if (edge === undefined || edge.kind !== 'door' || edge.doorState === 'open') {
+      return null;
+    }
+    const ownToken = mapBundle.tokens.find((token) => token.seatId === ownSeatId);
+    const adjacent =
+      ownToken !== undefined && isAdjacentToDoorEdge(ownToken.footprint.anchor, edge);
+    const canOpen =
+      adjacent && edge.doorState !== 'locked' && seated && !sessionIsSuspended();
+    return { edge, adjacent, canOpen };
   }
 
   function persistIntentDraft(draft: ActionDraftSuggestion | null): void {
@@ -1295,7 +1305,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <button type="button" class="table-primary-action" data-testid="open-table-sheet-modal">
             View full sheet
           </button>
-          <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="table-character-sheet-link">Open full sheet page</a>
         </div>
       </div>`;
   }
@@ -1912,9 +1921,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const entries =
       chronicleKindFilter === CHRONICLE_FILTER_ALL
         ? allEntries
-        : chronicleKindFilter === CHRONICLE_FILTER_STORY
-          ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
-          : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
+        : chronicleKindFilter === CHRONICLE_FILTER_RECAP
+          ? allEntries.filter((entry) => RECAP_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
+          : chronicleKindFilter === CHRONICLE_FILTER_STORY
+            ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
+            : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
     return `
       <div class="dock-pane story-feed-pane" data-testid="chronicle-pane">
         <div class="story-feed-chrome">
@@ -1925,7 +1936,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <label class="field story-feed-filter">
             <span class="visually-hidden">Filter by kind</span>
             <select data-testid="chronicle-kind-filter" aria-label="Filter Story so far by kind">
-              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Story &amp; play</option>
+              <option value="${CHRONICLE_FILTER_RECAP}" ${chronicleKindFilter === CHRONICLE_FILTER_RECAP ? 'selected' : ''}>Session recap</option>
+              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Full play log</option>
               <option value="${CHRONICLE_FILTER_ALL}" ${chronicleKindFilter === CHRONICLE_FILTER_ALL ? 'selected' : ''}>All activity</option>
               ${CHRONICLE_ENTRY_KINDS.map(
                 (kind) =>
@@ -1937,8 +1949,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           </label>
         </div>
         <p class="record-meta visually-hidden" data-testid="session-record-privacy-note">
-          Play declarations, rulings, narration, and map events appear here. Private Ask the Game
-          Director advice stays in Ask DM and is never merged into this public session record.
+          Session recap defaults to Director narration and scene events. Live play chronology stays
+          in the center Action Composer timeline. Private Ask the Game Director advice stays in Ask
+          DM and is never merged into this public session record.
         </p>
         ${
           entries.length === 0
@@ -2017,8 +2030,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
               <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
             </label>
-            <button type="submit" data-testid="director-address-send" aria-disabled="${busy || askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
-              ${askDmConsulting ? 'Consulting…' : busy ? 'Sending…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
+            <button type="submit" data-testid="director-address-send" aria-disabled="${askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
+              ${askDmConsulting ? 'Consulting…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
             </button>
           </form>
         </div>`;
@@ -2641,9 +2654,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               if (edge === undefined || edge.kind !== 'door') {
                 return '';
               }
+              const affordance = selectedDoorOpenAffordance();
               return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-                doorDetailCopy(edge, mapBundle?.title ?? ''),
+                doorDetailCopy(edge, mapBundle?.title ?? '', {
+                  openControlVisible: affordance?.canOpen === true,
+                }),
               )}</p>`;
+            })()
+          }
+          ${
+            (() => {
+              const affordance = selectedDoorOpenAffordance();
+              if (affordance === null || !affordance.canOpen) {
+                return '';
+              }
+              return `<div class="table-player-actions" data-testid="selected-door-actions">
+                   <button type="button" class="table-primary-action" data-testid="open-selected-door"
+                     aria-disabled="${busy}">Open doorway</button>
+                 </div>`;
             })()
           }
           ${
@@ -2948,9 +2976,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
-      shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
+      const affordance = selectedDoorOpenAffordance();
+      shell.announce(
+        doorDetailCopy(edge, mapBundle?.title ?? '', {
+          openControlVisible: affordance?.canOpen === true,
+        }),
+      );
     } else {
-      movePreviewNote = `Selected ${edgeAccessibleLabelFromEdge(edge)}. Declare an interaction in the play channel.`;
+      movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
     }
     render();
@@ -4368,7 +4401,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const send = root.querySelector<HTMLButtonElement>('[data-testid="director-address-send"]');
       send?.setAttribute(
         'aria-disabled',
-        String(busy || candidate === null || directorDraft.trim().length === 0),
+        String(askDmConsulting || candidate === null || directorDraft.trim().length === 0),
       );
     });
 
@@ -4377,11 +4410,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
         void (async () => {
-          if (candidate === null || busy || directorDraft.trim().length === 0) {
+          if (candidate === null || askDmConsulting || directorDraft.trim().length === 0) {
             return;
           }
           const question = directorDraft.trim();
-          busy = true;
+          // Ask DM is a side channel — never claim the play-mutation `busy` latch.
           askDmConsulting = true;
           error = null;
           appendAskDmThread('player', 'You', question, 'declaration');
@@ -4412,7 +4445,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : 'Ask the Game Director could not be sent.';
           } finally {
             askDmConsulting = false;
-            busy = false;
             render();
           }
         })();
@@ -4892,6 +4924,51 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
+      .querySelector<HTMLButtonElement>('[data-testid="open-selected-door"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          const affordance = selectedDoorOpenAffordance();
+          if (
+            candidate === null ||
+            busy ||
+            !seated ||
+            tableState === null ||
+            mapBundle === null ||
+            affordance === null ||
+            !affordance.canOpen
+          ) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const accepted = await submitTableCommand({
+              candidateId: candidate.candidateId,
+              campaignId,
+              requestId: crypto.randomUUID(),
+              commandType: 'table.open_door',
+              expectedStateVersion: tableState.stateVersion,
+              ...(explorationMode() || timingAuthority === null
+                ? {}
+                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+              edgeId: affordance.edge.edgeId,
+            });
+            tableState = accepted.table;
+            mapBundle = await fetchCampaignMap(campaignId);
+            selectedEdgeId = affordance.edge.edgeId;
+            shell.announce('Door opened on the table.');
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    root
       .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
       ?.addEventListener('click', () => {
         void (async () => {
@@ -4971,7 +5048,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             source: 'action_composer_interpret',
             campaignId,
             proposedCommandType: 'table.move',
-            summary: 'Intent Intercept draft: move toward the marked destination.',
+            summary:
+              mapBundle !== null
+                ? `Intent Intercept draft: ${formatMoveTravelSummary({
+                    path: [moveTarget],
+                    map: mapBundle,
+                    start:
+                      mapBundle.tokens.find((token) => token.seatId === ownSeatId)?.footprint
+                        .anchor ?? moveTarget,
+                  })}`
+                : 'Intent Intercept draft: move to the selected square.',
             path: [moveTarget],
             interceptState: 'awaiting_confirmation',
             createdAt: new Date().toISOString(),

@@ -980,6 +980,8 @@ export interface QuickStartTemplate {
   readonly backgroundFeatSpellIds?: readonly string[];
   readonly originFeatCantripIds?: readonly string[];
   readonly originFeatSpellIds?: readonly string[];
+  readonly expertiseSkillIds?: readonly string[];
+  readonly weaponMasteryWeaponNames?: readonly string[];
 }
 
 export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
@@ -993,6 +995,7 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     speciesChoiceIds: {}, classChoiceIds: { 'fighting-style': ['defense'] },
     classEquipmentOptionId: 'fighter-a', backgroundEquipmentOptionId: 'soldier-kit',
     cantripIds: [], spellIds: [],
+    weaponMasteryWeaponNames: ['Greatsword', 'Longsword', 'Javelin'],
   },
   {
     id: 'devoted-healer', label: 'Devoted Healer',
@@ -1018,6 +1021,8 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
     speciesChoiceIds: {}, classChoiceIds: {},
     classEquipmentOptionId: 'rogue-a', backgroundEquipmentOptionId: 'criminal-kit',
     cantripIds: [], spellIds: [],
+    expertiseSkillIds: ['investigation', 'stealth'],
+    weaponMasteryWeaponNames: ['Dagger', 'Shortsword'],
   },
   {
     id: 'studious-mage', label: 'Studious Mage',

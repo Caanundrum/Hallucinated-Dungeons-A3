@@ -722,8 +722,8 @@ a.account-chip-label:focus-visible {
 
 .table-map-chrome {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1 1 14rem;
+  min-height: 12rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -750,17 +750,18 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar {
-  flex-shrink: 0;
-  margin: 0;
   /*
-   * FQA-023 complete dock layout:
-   * - definite height so flex children can shrink
-   * - overflow: clip so focus/scrollIntoView cannot shift a hidden outer scroller
-   * - inner flex column: banner (capped) + thread (minmax 0) + composer (always visible)
-   * Thread list remains the only intentional vertical scroller.
+   * FQA-023 / dock height remediation:
+   * Grow into leftover play-column space instead of a hard 50vh cap.
+   * `height: 0` + flex-grow makes the used height definite so nested
+   * flex/grid children (timeline) can fill; the thread list remains the
+   * only intentional vertical scroller.
    */
-  height: min(50vh, 28rem);
-  max-height: min(50vh, 28rem);
+  flex: 1 1 18rem;
+  margin: 0;
+  height: 0;
+  max-height: none;
+  min-height: 16rem;
   overflow: clip;
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
@@ -773,12 +774,21 @@ a.account-chip-label:focus-visible {
   box-shadow: none;
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  height: min(72vh, 38rem);
-  max-height: min(72vh, 38rem);
+  flex: 1.35 1 22rem;
+  height: 0;
+  max-height: none;
+}
+
+/* Slot host must participate in the dock flex column or the timeline cannot grow. */
+.table-action-bar > [data-testid='table-action-slot'] {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .table-action-bar-inner {
@@ -787,9 +797,10 @@ a.account-chip-label:focus-visible {
   gap: var(--space-3);
   align-items: start;
   min-height: 0;
-  flex: 1 1 auto;
-  height: 100%;
-  max-height: 100%;
+  flex: 1 1 0;
+  width: 100%;
+  height: auto;
+  max-height: none;
   overflow: hidden;
 }
 
@@ -805,18 +816,17 @@ a.account-chip-label:focus-visible {
   gap: var(--space-2);
   align-items: stretch;
   min-height: 0;
-  flex: 1 1 auto;
-  height: 100%;
-  max-height: 100%;
+  flex: 1 1 0;
+  height: auto;
+  max-height: none;
   overflow: hidden;
 }
 
 .table-action-bar-dm > .table-turn-banner {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  max-height: 5.25rem;
-  overflow-x: hidden;
-  overflow-y: auto;
+  max-height: none;
+  overflow: hidden;
 }
 
 .table-action-bar-dm > .door-recovery-panel {
@@ -992,11 +1002,10 @@ ol.record-list.dm-thread-list > li {
   margin-bottom: 0;
   padding: var(--space-2);
   border-radius: var(--radius-control);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  max-height: 5.25rem;
-  overflow-x: hidden;
-  overflow-y: auto;
+  max-height: none;
+  overflow: hidden;
 }
 
 .table-dashboard .table-turn-title {
@@ -1197,15 +1206,17 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar {
-    flex: 0 0 auto;
-    height: min(50dvh, 28rem);
-    max-height: min(50dvh, 28rem);
+    flex: 1 1 14rem;
+    height: 0;
+    max-height: none;
+    min-height: 12rem;
     overflow: clip;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    height: min(72dvh, 38rem);
-    max-height: min(72dvh, 38rem);
+    flex: 1.2 1 16rem;
+    height: 0;
+    max-height: none;
   }
 }
 
@@ -3881,7 +3892,8 @@ html.hd-low-effects .table-stage-svg-viewport,
 }
 
 .comms-story-tier {
-  flex: 0 0 60%;
+  /* Recap pane — keep lean so Chat / Ask get the conversation budget. */
+  flex: 0 0 35%;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -3891,7 +3903,7 @@ html.hd-low-effects .table-stage-svg-viewport,
 }
 
 .comms-interactive-tier {
-  flex: 0 0 40%;
+  flex: 0 0 65%;
   min-height: 0;
   overflow: hidden;
   display: flex;

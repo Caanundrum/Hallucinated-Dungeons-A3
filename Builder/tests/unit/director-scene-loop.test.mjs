@@ -5,6 +5,7 @@ import {
   composeDirectorScene,
   directorNarrationBeat,
   directorOwnedCompositionHint,
+  extractPremiseContinuity,
   nextObjectState,
   featureLabelWithState,
   matchLandmarkDestination,
@@ -259,5 +260,47 @@ describe('Batch 3 Director scene abstraction', () => {
       presentedExits: [],
     });
     assert.match(exterior, /marsh/i);
+  });
+});
+
+describe('Premise continuity into opening interiors (UX 67–70)', () => {
+  it('extracts canal waterfront and courier quest hooks', () => {
+    const continuity = extractPremiseContinuity(
+      'A canal town waits for a missing courier and the package they carried.',
+    );
+    assert.equal(continuity.locationKind, 'canal_waterfront');
+    assert.match(continuity.locationPhrase ?? '', /canal/i);
+    assert.match(continuity.questHook ?? '', /courier/i);
+  });
+
+  it('canal + courier opening never becomes Cottage parlor', () => {
+    for (let seed = 0; seed < 12; seed += 1) {
+      const scene = composeDirectorScene({
+        kind: 'interior',
+        sceneId: `canal-${seed}`,
+        premise: 'a canal town and a missing courier',
+        seedKey: `camp-canal:${seed}`,
+      });
+      assert.notEqual(scene.title, 'Cottage parlor');
+      assert.match(scene.title, /canal|warehouse|loft/i);
+      assert.match(`${scene.mood} ${scene.description}`, /canal/i);
+      assert.match(`${scene.mood} ${scene.description}`, /courier|package/i);
+      assert.ok(
+        scene.features.some((feature) => /courier|ledger|freight/i.test(feature.label)),
+        'expected a premise-tied prop',
+      );
+    }
+  });
+
+  it('town without cottage keyword does not lottery into Cottage parlor', () => {
+    for (let seed = 0; seed < 8; seed += 1) {
+      const scene = composeDirectorScene({
+        kind: 'interior',
+        sceneId: `town-${seed}`,
+        premise: 'a busy market town seeking answers',
+        seedKey: `camp-town:${seed}`,
+      });
+      assert.notEqual(scene.title, 'Cottage parlor');
+    }
   });
 });

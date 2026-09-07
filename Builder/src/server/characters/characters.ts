@@ -311,6 +311,8 @@ export async function applyQuickStart(options: {
     backgroundFeatSpellIds: template.backgroundFeatSpellIds ?? [],
     originFeatCantripIds: template.originFeatCantripIds ?? [],
     originFeatSpellIds: template.originFeatSpellIds ?? [],
+    expertiseSkillIds: template.expertiseSkillIds ?? [],
+    weaponMasteryWeaponNames: template.weaponMasteryWeaponNames ?? [],
     // Identity is intentionally left empty: the player supplies it at the
     // final review step, exactly as the custom path requires.
     identity: stored.choices.identity,

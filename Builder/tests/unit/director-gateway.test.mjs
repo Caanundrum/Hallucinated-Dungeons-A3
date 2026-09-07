@@ -228,7 +228,7 @@ test('PQA-184: movement drafts use scene language, not column/row', async () => 
   });
   assert.equal(interpreted.proposedCommandType, 'table.move');
   assert.deepEqual(interpreted.path, [{ column: 3, row: 4 }]);
-  assert.match(interpreted.summary, /marked destination|Confirm to commit/i);
+  assert.match(interpreted.summary, /Ready to move|Confirm to commit/i);
   assert.doesNotMatch(interpreted.summary, /column\s+\d+|row\s+\d+/i);
 });
 
@@ -250,7 +250,7 @@ test('hosted NL interpret keeps deterministic command types', async () => {
   assert.equal(interpreted.proposedCommandType, 'table.move');
   assert.deepEqual(interpreted.path, [{ column: 3, row: 4 }]);
   assert.equal(interpreted.interceptState, 'awaiting_confirmation');
-  assert.match(interpreted.summary, /marked destination|Confirm to commit/i);
+  assert.match(interpreted.summary, /Ready to move|Confirm to commit/i);
   assert.doesNotMatch(interpreted.summary, /column\s+\d+|row\s+\d+/i);
   assert.doesNotMatch(interpreted.summary, /LIVE GEMINI/i);
 });

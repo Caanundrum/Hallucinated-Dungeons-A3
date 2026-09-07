@@ -100,17 +100,16 @@ export function mountCampaignsPage(host: PageHost): void {
       <div class="page">
         <h1 data-testid="campaigns-heading">Tables</h1>
         <p class="tagline">
-          Jump in: pick a table, choose your character, and play. Four seats are active at once;
-          membership history is unlimited.
+          Jump in: pick a table, choose your character, and play. Up to four seats are active at once.
+          Past tables stay in your list until you leave them.
         </p>
         ${
           hub?.activeSeat
             ? `<p class="message notice" data-testid="return-to-table">
-                 You are seated at
-                 <a href="/campaigns/${escapeHtml(hub.activeSeat.campaignId)}/table" data-link>
-                   ${escapeHtml(hub.activeSeat.campaignName)}
+                 <a class="table-primary-action" href="/campaigns/${escapeHtml(hub.activeSeat.campaignId)}/table" data-link data-testid="return-to-table-link">
+                   Return to ${escapeHtml(hub.activeSeat.campaignName)}
                  </a>
-                 as ${escapeHtml(hub.activeSeat.characterName)}.
+                 <span class="record-meta"> Seated as ${escapeHtml(hub.activeSeat.characterName)}.</span>
                </p>`
             : ''
         }
@@ -199,9 +198,9 @@ export function mountCampaignsPage(host: PageHost): void {
                     ${filteredMine
                       .map((table) => {
                         const seatedHere = hub?.activeSeat?.campaignId === table.campaignId;
-                        const href = seatedHere
-                          ? `/campaigns/${escapeHtml(table.campaignId)}/table`
-                          : `/campaigns/${escapeHtml(table.campaignId)}/join`;
+                        const detailHref = `/campaigns/${escapeHtml(table.campaignId)}`;
+                        const joinHref = `/campaigns/${escapeHtml(table.campaignId)}/join`;
+                        const tableHref = `/campaigns/${escapeHtml(table.campaignId)}/table`;
                         const sessionLabel = table.sessionStatusLabel ?? 'Not started';
                         return `
                       <li data-testid="campaign-item" class="table-lobby-row">
@@ -214,8 +213,8 @@ export function mountCampaignsPage(host: PageHost): void {
                           });
                         })()}
                         <div class="table-lobby-copy">
-                          <a class="record-note" href="${href}" data-link
-                            data-testid="${seatedHere ? 'my-table-open' : 'my-table-join'}">
+                          <a class="record-note" href="${seatedHere ? detailHref : joinHref}" data-link
+                            data-testid="${seatedHere ? 'my-table-view-campaign' : 'my-table-join'}">
                             ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}
                           </a>
                           <span class="record-meta">
@@ -228,6 +227,15 @@ export function mountCampaignsPage(host: PageHost): void {
                             ${seatedHere ? ' · your active seat' : ''}
                             · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
                           </span>
+                          ${
+                            seatedHere
+                              ? `<div class="actions">
+                                   <a class="button ghost" href="${tableHref}" data-link data-testid="my-table-open">
+                                     Open table
+                                   </a>
+                                 </div>`
+                              : ''
+                          }
                         </div>
                       </li>`;
                       })

@@ -29,6 +29,10 @@ import {
   DEFAULT_VISION_RADIUS_SQUARES,
   type MovementPreviewProjection,
 } from '../../shared/movement-contract.js';
+import {
+  describeMoveDestination,
+  formatMoveTravelSummary,
+} from '../../shared/map-presentation.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import type { RulesCommandFields } from '../../shared/rules-combat-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
@@ -654,6 +658,7 @@ export async function acceptTableCommand(options: {
 
   // Pre-validate movement / door outside the transaction using current runtime.
   let movePath: readonly { readonly column: number; readonly row: number }[] | undefined;
+  let moveDestinationLabel: string | null = null;
   let openEdgeId: string | undefined;
   let buildSceneEdges: StoredMapRuntime['runtimeEdges'] | undefined;
   let buildSceneTitle: string | null | undefined;
@@ -838,6 +843,7 @@ export async function acceptTableCommand(options: {
       );
     }
     movePath = path;
+    moveDestinationLabel = describeMoveDestination(map, path[path.length - 1]!);
     eventType = 'table.token_moved';
   }
 
@@ -1166,7 +1172,7 @@ export async function acceptTableCommand(options: {
           ? objectMutation.baseLabel
           : commandType === 'table.open_door'
             ? doorTargetLabel
-            : sceneTitle ?? 'the table',
+            : moveDestinationLabel ?? sceneTitle ?? 'the table',
       targetKind: receiptTargetKind,
       mutations: receiptMutations,
       doorStatesAfter: doorStates,
@@ -1313,11 +1319,24 @@ export async function acceptTableCommand(options: {
         body: `${seat.characterName || 'A player'} opened a door on the table.`,
       });
     } else if (eventType === 'table.token_moved' && movePath !== undefined && movePath.length > 0) {
+      const mapForChronicle = buildAuthoritativeMapBundle({
+        campaignId,
+        seats: mapContext.seats,
+        runtime: mapContext.runtime,
+        adventureTemplateId: mapContext.adventureTemplateId,
+        currentChapterId: mapContext.currentChapterId,
+      });
+      const startToken = mapForChronicle.tokens.find((entry) => entry.seatId === seat.seatId);
       await appendChronicleEntry({
         firestore,
         campaignId,
         kind: 'token_moved',
-        body: `${seat.characterName || 'A player'} moved across the table toward a marked destination.`,
+        body: formatMoveTravelSummary({
+          path: movePath,
+          map: mapForChronicle,
+          ...(startToken !== undefined ? { start: startToken.footprint.anchor } : {}),
+          actorLabel: seat.characterName || 'A player',
+        }),
       });
     }
     if (skillResolution !== null) {

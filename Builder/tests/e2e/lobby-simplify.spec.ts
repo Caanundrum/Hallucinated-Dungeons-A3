@@ -55,6 +55,8 @@ async function createPublicTable(
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
   await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  await expect(page.getByTestId('join-created-orientation')).toBeVisible();
+  await expect(page.url()).toContain('created=1');
   const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
   expect(match).toBeTruthy();
   return match![1]!;
@@ -71,6 +73,9 @@ async function createPrivateTable(page: Page, name: string): Promise<string> {
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
   await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  await expect(page.getByTestId('join-created-orientation')).toBeVisible();
+  await expect(page.getByTestId('join-created-invite-hint')).toBeVisible();
+  await expect(page.url()).toMatch(/created=1.*private=1|private=1.*created=1/);
   const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
   expect(match).toBeTruthy();
   return match![1]!;
@@ -245,7 +250,8 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     // Leave the zero-scroll table cockpit before using global Tables nav.
     await page.getByTestId('table-back').click();
     await page.getByTestId('nav-campaigns').click();
-    await expect(page.getByTestId('my-table-open')).toContainText(tableName);
+    await expect(page.getByTestId('my-table-view-campaign')).toContainText(tableName);
+    await expect(page.getByTestId('my-table-open')).toHaveText('Open table');
     await page.getByTestId('my-table-open').click();
     await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('join-table-heading')).toHaveCount(0);

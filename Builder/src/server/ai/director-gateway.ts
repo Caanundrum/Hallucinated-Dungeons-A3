@@ -1162,7 +1162,7 @@ export async function interpretNaturalLanguageIntent(options: {
         summary =
           authority.summary.startsWith('Ready to')
             ? authority.summary
-            : 'Ready to move toward the marked destination on the map. Confirm to commit the step.';
+            : 'Ready to move. Confirm to commit the step.';
         if (authority.ignoredWorldFacts.length > 0 && !/ignored|Game Director/i.test(summary)) {
           summary = `${summary} Player-authored places were ignored — only the Game Director establishes those.`;
         }
@@ -1311,8 +1311,7 @@ export async function interpretNaturalLanguageIntent(options: {
     if (legalStep) {
       proposedCommandType = 'table.move';
       path = [options.moveTarget];
-      summary =
-        'Ready to move toward the marked destination on the map. Confirm to commit the step.';
+      summary = 'Ready to move. Confirm to commit the step.';
     } else {
       proposedCommandType = 'table.sync';
       summary =

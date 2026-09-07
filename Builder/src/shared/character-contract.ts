@@ -137,8 +137,14 @@ export interface CharacterChoices {
   /** Class-specific level-1 choices, keyed by the choice id in the manifest. */
   readonly classChoiceIds: Readonly<Record<string, readonly string[]>>;
   /**
+   * Skill ids chosen for Expertise (double proficiency). Required when the
+   * class grants Expertise at level 1 (Rogue). Must be proficient skills.
+   */
+  readonly expertiseSkillIds: readonly string[];
+  /**
    * Weapon names chosen for Weapon Mastery slots (Fighter 3, other mastery
-   * classes 2). Empty means the server auto-assigns from starting weapons.
+   * classes 2). Must be weapons the class is proficient with that have a
+   * mastery property. Empty is incomplete — create is blocked until filled.
    */
   readonly weaponMasteryWeaponNames: readonly string[];
   readonly identity: CharacterIdentity;
@@ -213,6 +219,8 @@ export interface DerivedCharacterSheet {
     readonly label: string;
     readonly ability: Ability;
     readonly proficient: boolean;
+    /** True when Expertise doubles proficiency on this skill. */
+    readonly expertise?: boolean;
     readonly bonus: DerivedValue;
   }[];
   readonly senses: readonly string[];
@@ -431,6 +439,11 @@ export interface DraftOptions {
     readonly spellOptions: readonly SelectableOption[];
   } | null;
   readonly weaponMastery: {
+    readonly slotCount: number;
+    readonly options: readonly SelectableOption[];
+  } | null;
+  /** Expertise skill picks when the class grants Expertise at level 1. */
+  readonly expertise: {
     readonly slotCount: number;
     readonly options: readonly SelectableOption[];
   } | null;

@@ -254,6 +254,97 @@ export function matchLandmarkDestination(hint: string): boolean {
   );
 }
 
+/** Location + quest signals extracted from owner premise for opening continuity (UX 67–70). */
+export interface PremiseContinuity {
+  readonly locationKind:
+    | 'canal_waterfront'
+    | 'inn'
+    | 'crypt'
+    | 'workshop'
+    | 'cottage'
+    | 'town'
+    | 'marsh'
+    | null;
+  readonly locationPhrase: string | null;
+  readonly questHook: string | null;
+}
+
+export function extractPremiseContinuity(premise: string): PremiseContinuity {
+  const text = premise.toLowerCase();
+  let locationKind: PremiseContinuity['locationKind'] = null;
+  let locationPhrase: string | null = null;
+  if (/\b(canal|dock|docks|pier|harbor|harbour|ferry|waterfront|wharf|quay)\b/.test(text)) {
+    locationKind = 'canal_waterfront';
+    locationPhrase = /\bcanal\b/.test(text)
+      ? 'a canal-town waterfront'
+      : 'a dockside waterfront';
+  } else if (/\b(inn|tavern|pub|alehouse)\b/.test(text)) {
+    locationKind = 'inn';
+    locationPhrase = 'a roadside inn';
+  } else if (/\b(crypt|tomb|catacomb|grave)\b/.test(text)) {
+    locationKind = 'crypt';
+    locationPhrase = 'a stone crypt';
+  } else if (/\b(workshop|forge|smith|tinker)\b/.test(text)) {
+    locationKind = 'workshop';
+    locationPhrase = 'a working workshop';
+  } else if (/\b(cottage|cabin|hut)\b/.test(text)) {
+    locationKind = 'cottage';
+    locationPhrase = 'a modest cottage';
+  } else if (/\b(marsh|bog|fen)\b/.test(text)) {
+    locationKind = 'marsh';
+    locationPhrase = 'a marsh settlement';
+  } else if (/\b(town|village|city|settlement)\b/.test(text)) {
+    locationKind = 'town';
+    locationPhrase = 'a busy town';
+  }
+
+  let questHook: string | null = null;
+  if (
+    /\b(courier|package|missive|parcel|delivery|missing\s+(?:packet|letter|courier))\b/.test(text)
+  ) {
+    questHook = 'a missing courier and the package they carried';
+  } else if (/\b(kidnap|abduct|ransom)\b/.test(text)) {
+    questHook = 'a disappearance that needs answering';
+  } else if (/\b(murder|assassin|poison)\b/.test(text)) {
+    questHook = 'a violent death that cannot stay quiet';
+  }
+
+  return { locationKind, locationPhrase, questHook };
+}
+
+function dressInteriorFamilyWithPremise(
+  family: ReturnType<typeof pickInteriorFamily>,
+  premise: string,
+): ReturnType<typeof pickInteriorFamily> {
+  const continuity = extractPremiseContinuity(premise);
+  if (continuity.questHook === null && continuity.locationKind !== 'canal_waterfront') {
+    return family;
+  }
+  let { title, mood, description, poiLabel } = family;
+  if (
+    continuity.locationKind === 'canal_waterfront' &&
+    !/\b(canal|dock|ferry|waterfront|harbor|harbour)\b/i.test(`${title} ${description}`)
+  ) {
+    title = 'Canal warehouse loft';
+    description = `Wet stone and rope coils mark this canal loft. ${description}`;
+    mood = `Canal air and lantern smoke. ${mood}`;
+  }
+  if (continuity.questHook !== null) {
+    const hookAlreadyPresent = new RegExp(
+      continuity.questHook.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i',
+    ).test(`${mood} ${description}`);
+    if (!hookAlreadyPresent) {
+      mood = `${mood} Word of ${continuity.questHook} presses on the room.`;
+      description = `${description} You are here because of ${continuity.questHook}.`;
+    }
+    if (/\bcourier\b/i.test(continuity.questHook) && !/\bcourier\b/i.test(poiLabel)) {
+      poiLabel = 'Courier satchel';
+    }
+  }
+  return { ...family, title, mood, description, poiLabel };
+}
+
 function pickInteriorFamily(premise: string, seed: number): {
   templateId: string;
   title: string;
@@ -269,6 +360,30 @@ function pickInteriorFamily(premise: string, seed: number): {
   poiState: SceneObjectState;
 } {
   const text = premise.toLowerCase();
+  const continuity = extractPremiseContinuity(premise);
+  if (
+    continuity.locationKind === 'canal_waterfront' ||
+    (/\b(courier|package|missive|parcel)\b/.test(text) &&
+      /\b(town|village|city|canal|dock|ferry)\b/.test(text))
+  ) {
+    return {
+      templateId: 'interior_canal_warehouse',
+      title: 'Canal warehouse loft',
+      environment: 'stone_interior',
+      lighting: 'dim',
+      mood: 'Wet stone, rope coils, and a draft off the canal.',
+      description:
+        'A canal-side warehouse loft holds a hanging lantern, crate stacks, and a freight door east toward the waterfront.',
+      lightLabel: 'Hanging lantern',
+      coverLabel: 'Crate stack',
+      poiLabel: continuity.questHook !== null && /\bcourier\b/i.test(continuity.questHook)
+        ? 'Courier satchel'
+        : 'Freight ledger',
+      poiKind: 'container',
+      poiRef: 'prop',
+      poiState: 'intact',
+    };
+  }
   if (/\b(inn|tavern|pub|alehouse)\b/.test(text)) {
     return {
       templateId: 'interior_inn_common',
@@ -331,6 +446,29 @@ function pickInteriorFamily(premise: string, seed: number): {
       poiKind: 'prop',
       poiRef: 'prop',
       poiState: 'closed',
+    };
+  }
+  // Town/village without a cottage keyword must not lottery into Cottage parlor (67–70).
+  if (continuity.locationKind === 'town' || continuity.locationKind === 'marsh') {
+    return {
+      templateId: 'interior_warehouse',
+      title: continuity.locationKind === 'marsh' ? 'Marsh boardwalk shed' : 'Dim warehouse bay',
+      environment: 'stone_interior',
+      lighting: 'dim',
+      mood:
+        continuity.locationKind === 'marsh'
+          ? 'Damp boards and reed-scented fog press at the shutters.'
+          : 'Dust hangs in the rafters; a freight door waits east toward town.',
+      description:
+        continuity.locationKind === 'marsh'
+          ? 'A boardwalk shed holds a hanging lantern, reed bundles, and a door east onto the marsh path.'
+          : 'A freight bay holds a hanging lantern, rubble, and a sealed crate beside the town street door.',
+      lightLabel: 'Hanging lantern',
+      coverLabel: 'Rubble pile',
+      poiLabel: 'Freight crate',
+      poiKind: 'container',
+      poiRef: 'prop',
+      poiState: 'intact',
     };
   }
   const families = [
@@ -612,7 +750,10 @@ function composeInterior(options: {
   readonly seedKey: string;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
-  const family = pickInteriorFamily(options.premise, seed);
+  const family = dressInteriorFamilyWithPremise(
+    pickInteriorFamily(options.premise, seed),
+    options.premise,
+  );
   const columns = 10 + (seed % 3);
   const rows = 7 + (seed % 2);
   const cells = perimeterCells(columns, rows);
@@ -696,6 +837,9 @@ function composeInterior(options: {
 
 function inferExteriorHint(premise: string, seed: number): string {
   const text = premise.toLowerCase();
+  if (/\b(canal|dock|docks|pier|harbor|harbour|ferry|waterfront)\b/.test(text)) {
+    return 'the canal towpath';
+  }
   if (/\bmarsh|bog\b/.test(text)) return 'the marsh trail';
   if (/\bvillage|town\b/.test(text)) return 'the village street';
   if (/\bforest|wood\b/.test(text)) return 'the forest path';

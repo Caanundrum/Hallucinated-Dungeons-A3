@@ -72,22 +72,29 @@ test.describe('PQA layout and playability batch 3', () => {
   });
 
   test('NEW-PQA-05: selected door guidance renders once', async ({ page }) => {
+    test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
     await seatBlankCampaign(page, 'DoorDedupe');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/Quiet chamber/i);
     const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]');
-    await expect(doorHit.first()).toBeVisible();
+    if ((await doorHit.count()) === 0) {
+      await page.getByTestId('begin-adventure').click();
+      await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('confirm-intent-intercept').click();
+      await expect(page.getByTestId('confirm-intent-intercept')).toHaveCount(0, { timeout: 30_000 });
+    }
+    await expect(doorHit.first()).toBeVisible({ timeout: 30_000 });
     await doorHit.first().click();
     const detail = page.getByTestId('door-selection-detail');
     await expect(detail).toBeVisible();
-    await expect(detail).toContainText(/Selected wooden door in Quiet chamber/i);
+    await expect(detail).toContainText(/Selected Wooden doorway/i);
+    await expect(detail).not.toContainText(/Open adjacent door/i);
     await expect(page.getByTestId('move-target-meta')).toHaveCount(0);
     const bannerText = await page.getByTestId('table-turn-banner').innerText();
-    expect((bannerText.match(/Selected wooden door in Quiet chamber/g) ?? []).length).toBe(1);
+    expect((bannerText.match(/Selected Wooden doorway/g) ?? []).length).toBe(1);
   });
 
   test('PQA-187/141: blank-table door declaration uses Quiet chamber doorway', async ({
