@@ -311,22 +311,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
         draftId: current.draft.draftId,
         choices: next,
       });
-      const firstIncomplete = WIZARD_STEPS.find(
-        (step) => !current?.draft.completedSteps.includes(step),
-      );
-      if (firstIncomplete !== undefined) {
-        const incompleteIndex = WIZARD_STEPS.indexOf(firstIncomplete);
-        const activeIndex = WIZARD_STEPS.indexOf(activeStep);
-        // Only rewind when the user is past an incomplete earlier step and the
-        // active step is not itself already marked complete (avoids yanking back
-        // after Continue while a stale in-flight response lands).
-        if (
-          incompleteIndex < activeIndex &&
-          current?.draft.completedSteps.includes(activeStep) !== true
-        ) {
-          activeStep = firstIncomplete;
-        }
-      }
+      // Do not auto-rewind activeStep here. A late/stale save that still lists an
+      // earlier step incomplete was yanking players (and e2e) back to Class after
+      // Continue. Downstream clears on class/species change already handle invalidation.
     } catch (failure) {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
