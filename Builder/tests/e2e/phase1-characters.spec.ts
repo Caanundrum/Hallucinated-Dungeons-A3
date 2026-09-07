@@ -168,7 +168,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     const draftId = vaultBefore.drafts[0]!.draftId;
 
     await page.getByTestId('nav-characters').click();
-    await page.getByTestId('start-character').click();
+    await page.getByTestId('resume-draft').click();
     await page.getByTestId('step-class').click();
     await expect(page.getByTestId('option-fighter')).toBeChecked();
     const draftAfter = await page.request.get('/api/characters/vault');
