@@ -149,7 +149,7 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('tutorial-ask-no').click();
 
     await chooseOption(page, 'option-fighter');
-    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-survival');
     await chooseOption(page, 'check-perception');
     await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
