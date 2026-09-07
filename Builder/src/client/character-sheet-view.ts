@@ -406,6 +406,10 @@ export function renderCharacterSheet(
                       }</span>
                       <span class="record-meta">${
                         equipped ? 'Equipped' : 'Carried'
+                      }${
+                        item.note !== undefined && item.note.length > 0
+                          ? ` · ${escapeHtml(item.note)}`
+                          : ''
                       } · Alpha tracks equip and quantity; attunement and encumbrance are out of Alpha scope.</span>
                       ${
                         interactive

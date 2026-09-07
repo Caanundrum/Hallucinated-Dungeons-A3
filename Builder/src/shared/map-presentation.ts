@@ -145,14 +145,27 @@ export function formatMoveTravelSummary(options: {
   return `${prefix} ${squares} square${squares === 1 ? '' : 's'} (${feet} ft)${origin} across ${scene} toward ${dest}.`;
 }
 
-/** Route line for the map summary live region — uses door labels, not "unmarked opening". */
+/** Route line for the map summary live region — live door edge state, never baked exit labels. */
 export function formatMapRouteSummary(map: Pick<MapBundleProjection, 'edges' | 'notableFeatures'>): string {
-  const exitLabels = map.notableFeatures
-    .filter((feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit')
-    .map((feature) => feature.label.trim())
-    .filter((label) => label.length > 0);
-  if (exitLabels.length > 0) {
-    return exitLabels.join('; ');
+  const exitFeatures = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'exit' || feature.objectKind === 'exit',
+  );
+  if (exitFeatures.length > 0) {
+    const labels = exitFeatures.map((feature) => {
+      const door = doorBoundToExitFeature(map, feature);
+      if (door !== null) {
+        return formatDoorPlayerFacingLabel(
+          doorAuthorityFromStored(door.doorState),
+          edgeFacingLabel(door.orientation),
+        );
+      }
+      // Strip any baked open/closed suffix from legacy stored exit labels.
+      return feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked)\b/i, '').trim();
+    });
+    const usable = labels.filter((label) => label.length > 0);
+    if (usable.length > 0) {
+      return usable.join('; ');
+    }
   }
   const doors = map.edges.filter((edge) => edge.kind === 'door');
   if (doors.length === 0) {

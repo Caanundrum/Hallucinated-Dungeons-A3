@@ -491,12 +491,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly selected: readonly string[];
     /** When set, unchecked options disable once this many are selected. */
     readonly maxChoose?: number;
+    /** Prefix for per-option test ids (defaults to `check`). */
+    readonly optionTestIdPrefix?: string;
   }): string {
     const visibleSelected = options.selected.filter((id) =>
       options.entries.some((entry) => entry.id === id),
     );
     const atCap =
       options.maxChoose !== undefined && visibleSelected.length >= options.maxChoose;
+    const optionPrefix = options.optionTestIdPrefix ?? 'check';
     return `
       <div class="option-list compact" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
@@ -507,7 +510,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}">
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
-              data-testid="check-${escapeHtml(entry.id)}" />
+              data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
             <span class="option-label">${escapeHtml(entry.label)}</span>
             ${
               entry.summary === undefined
@@ -892,16 +895,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
       }`;
   }
 
-  /** Item names in a kit's label, stripping quantities and gold totals. */
-  function equipmentItemNames(label: string): readonly string[] {
-    return label
-      .split(',')
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0 && !/\bGP\b/i.test(part))
-      .map((part) => part.replace(/\s*\([^)]*\)\s*/g, '').trim())
-      .filter((part) => part.length > 0);
-  }
-
   function renderEquipmentStep(): string {
     const state = current;
     if (state === null) {
@@ -920,26 +913,25 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const backgroundKit = backgroundDetail.equipmentOptions.find(
       (option) => option.id === state.draft.choices.backgroundEquipmentOptionId,
     );
+    const overlapNotes = state.options.kitOverlapNotes;
     const overlapNote =
-      classKit === undefined || backgroundKit === undefined
-        ? ''
-        : (() => {
-            const classItems = new Set(
-              equipmentItemNames(classKit.label).map((name) => name.toLowerCase()),
-            );
-            const backgroundItems = equipmentItemNames(backgroundKit.label);
-            const overlapping = backgroundItems.filter((name) => classItems.has(name.toLowerCase()));
-            return `
-        <p class="wizard-coach" data-testid="equipment-overlap-note">
-          Identical items from Class and Background kits consolidate into one stack on your sheet.
-          Swap either kit above if you want different gear — Alpha does not support per-item swaps.
-          ${
-            overlapping.length > 0
-              ? `Shared this time: ${escapeHtml(overlapping.join(', '))}.`
-              : ''
-          }
-        </p>`;
-          })();
+      classKit === undefined || backgroundKit === undefined || overlapNotes.length === 0
+        ? classKit !== undefined && backgroundKit !== undefined
+          ? `<p class="wizard-coach" data-testid="equipment-overlap-note">
+               Kits chosen. Matching tools keep one set; other shared items show Class + Background totals on the sheet.
+             </p>`
+          : ''
+        : `<div class="wizard-coach" data-testid="equipment-overlap-note">
+             <p>Before you continue, kit overlap is calculated as:</p>
+             <ul class="record-list">
+               ${overlapNotes
+                 .map(
+                   (note) =>
+                     `<li data-testid="equipment-overlap-item"><span class="record-note">${escapeHtml(note)}</span></li>`,
+                 )
+                 .join('')}
+             </ul>
+           </div>`;
 
     return `
       <h3>Starting equipment</h3>
@@ -1044,25 +1036,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
         }`
         }`;
 
-    return `
-      <h3>${escapeHtml(detail.label)} level 1 features</h3>
-      <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
-      <ul class="record-list">
-        ${detail.features
-          .map(
-            (feature) =>
-              `<li><span class="record-note">${escapeHtml(feature.name)}</span><span class="record-meta">${escapeHtml(feature.summary)}</span></li>`,
-          )
-          .join('')}
-      </ul>
+    const requiredPicks = `
       ${
         state.options.expertise === null
           ? ''
           : `
-      <h3>Expertise</h3>
+      <section class="panel" data-testid="expertise-panel" aria-labelledby="expertise-heading">
+      <h3 id="expertise-heading">Expertise (required)</h3>
       <p class="step-helper" data-testid="expertise-helper">
         Choose exactly ${state.options.expertise.slotCount} skills you are proficient in. Expertise doubles
-        your Proficiency Bonus on those skills.
+        your Proficiency Bonus on those skills. You cannot finish this character until these are chosen.
       </p>
       ${
         state.options.expertise.options.length === 0
@@ -1070,17 +1053,20 @@ export function mountCharacterCreatePage(host: PageHost): void {
           : checkboxList({
               name: 'expertise-skill',
               testId: 'expertise-options',
+              optionTestIdPrefix: 'expertise-check',
               entries: state.options.expertise.options,
               selected: state.draft.choices.expertiseSkillIds,
               maxChoose: state.options.expertise.slotCount,
             })
-      }`
+      }
+      </section>`
       }
       ${
         state.options.weaponMastery === null
           ? ''
           : `
-      <h3>Weapon Mastery</h3>
+      <section class="panel" data-testid="weapon-mastery-panel" aria-labelledby="weapon-mastery-heading">
+      <h3 id="weapon-mastery-heading">Weapon Mastery (required)</h3>
       <p class="step-helper" data-testid="weapon-mastery-helper">
         Choose exactly ${state.options.weaponMastery.slotCount} weapons you are proficient with. Only
         mastery-capable weapons for ${escapeHtml(detail.label)} are listed.
@@ -1088,11 +1074,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${checkboxList({
         name: 'weapon-mastery',
         testId: 'weapon-mastery-options',
+        optionTestIdPrefix: 'mastery-check',
         entries: state.options.weaponMastery.options,
         selected: state.draft.choices.weaponMasteryWeaponNames,
         maxChoose: state.options.weaponMastery.slotCount,
-      })}`
-      }
+      })}
+      </section>`
+      }`;
+
+    return `
+      <h3>${escapeHtml(detail.label)} level 1 features</h3>
+      <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
+      ${requiredPicks}
+      <ul class="record-list" data-testid="class-feature-list">
+        ${detail.features
+          .filter(
+            (feature) =>
+              feature.name !== 'Expertise' && feature.name !== 'Weapon Mastery',
+          )
+          .map(
+            (feature) =>
+              `<li><span class="record-note">${escapeHtml(feature.name)}</span><span class="record-meta">${escapeHtml(feature.summary)}</span></li>`,
+          )
+          .join('')}
+      </ul>
       ${classChoices}
       ${
         state.options.backgroundFeatDetail === null

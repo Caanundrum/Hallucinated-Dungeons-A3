@@ -898,14 +898,59 @@ function equipmentOptionFor(
   return options.find((option) => option.id === id) ?? null;
 }
 
-function consolidateEquipment(
-  items: readonly { readonly name: string; readonly quantity: number }[],
-): { readonly name: string; readonly quantity: number }[] {
-  const quantities = new Map<string, number>();
-  for (const item of items) {
-    quantities.set(item.name, (quantities.get(item.name) ?? 0) + item.quantity);
+/**
+ * Combine class + background starting kits without silent double-grants.
+ * Matching tools (and identical named kits/packs) take the larger quantity;
+ * other shared items still stack, with an explicit source note for the sheet.
+ */
+function combineStartingEquipment(
+  classEquipment: EquipmentOption | null,
+  backgroundEquipment: EquipmentOption | null,
+): {
+  readonly equipment: { readonly name: string; readonly quantity: number; readonly note?: string }[];
+  readonly overlapNotes: readonly string[];
+} {
+  const classItems = classEquipment?.items ?? [];
+  const backgroundItems = backgroundEquipment?.items ?? [];
+  const classByName = new Map(classItems.map((item) => [item.name, item.quantity]));
+  const backgroundByName = new Map(backgroundItems.map((item) => [item.name, item.quantity]));
+  const names = new Set([...classByName.keys(), ...backgroundByName.keys()]);
+  const equipment: { name: string; quantity: number; note?: string }[] = [];
+  const overlapNotes: string[] = [];
+
+  for (const name of names) {
+    const fromClass = classByName.get(name) ?? 0;
+    const fromBackground = backgroundByName.get(name) ?? 0;
+    const isToolOrPack =
+      /\btools?\b/i.test(name) || /\bpack\b/i.test(name) || /\bkit\b/i.test(name);
+    if (fromClass > 0 && fromBackground > 0) {
+      if (isToolOrPack) {
+        const quantity = Math.max(fromClass, fromBackground);
+        equipment.push({
+          name,
+          quantity,
+          note: `Shared by Class and Background kits — kept ×${quantity} (not stacked).`,
+        });
+        overlapNotes.push(
+          `${name}: Class kit ×${fromClass} and Background kit ×${fromBackground} overlap; kept ×${quantity}.`,
+        );
+      } else {
+        const quantity = fromClass + fromBackground;
+        equipment.push({
+          name,
+          quantity,
+          note: `Class kit ×${fromClass} + Background kit ×${fromBackground}.`,
+        });
+        overlapNotes.push(
+          `${name}: Class kit ×${fromClass} + Background kit ×${fromBackground} = ×${quantity}.`,
+        );
+      }
+    } else {
+      equipment.push({ name, quantity: fromClass + fromBackground });
+    }
   }
-  return [...quantities.entries()].map(([name, quantity]) => ({ name, quantity }));
+
+  return { equipment, overlapNotes };
 }
 
 function originFeatSummary(featName: string, fallback: string): string {
@@ -1251,10 +1296,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     { label: 'Perception', amount: perception?.bonus.value ?? modifiers.wisdom, ruleId: 'skill.perception' },
   ]);
 
-  const equipment = consolidateEquipment([
-    ...(classEquipment?.items ?? []),
-    ...(backgroundEquipment?.items ?? []),
-  ]);
+  const { equipment } = combineStartingEquipment(classEquipment, backgroundEquipment);
 
   const features = [
     ...classRecord.features
@@ -1742,6 +1784,14 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
               })),
             };
           })(),
+    kitOverlapNotes: combineStartingEquipment(
+      classRecord === null
+        ? null
+        : equipmentOptionFor(classRecord.equipmentOptions, choices.classEquipmentOptionId),
+      backgroundRecord === null
+        ? null
+        : equipmentOptionFor(backgroundRecord.equipmentOptions, choices.backgroundEquipmentOptionId),
+    ).overlapNotes,
   };
 }
 
