@@ -43,8 +43,54 @@ import {
   terrainFillCss,
   terrainFillPixi,
   voidFillCss,
+  type SceneAtmosphereFamily,
   type SceneVisualPresentation,
 } from './scene-visual-system.js';
+
+/** Location silhouette art keyed by atmosphere — readable place cue behind the grid. */
+function locationBackdropSvg(atmosphere: SceneAtmosphereFamily): string {
+  if (atmosphere === 'waterfront' || atmosphere === 'wet_fog') {
+    return `
+      <path fill="#1a3a42" fill-opacity="0.55" d="M0 170 Q80 150 160 168 T320 165 T400 172 V220 H0 Z"/>
+      <rect x="40" y="120" width="70" height="50" rx="2" fill="#2a2218" fill-opacity="0.5"/>
+      <rect x="130" y="100" width="90" height="70" rx="2" fill="#241c14" fill-opacity="0.45"/>
+      <rect x="250" y="110" width="60" height="60" rx="2" fill="#2c241a" fill-opacity="0.4"/>
+      <path stroke="#6a9aaa" stroke-opacity="0.35" stroke-width="2" fill="none" d="M0 185 Q100 175 200 188 T400 180"/>`;
+  }
+  if (atmosphere === 'enclosed_warm') {
+    return `
+      <path fill="#3a2818" fill-opacity="0.4" d="M40 220 L80 90 L200 40 L320 90 L360 220 Z"/>
+      <ellipse cx="200" cy="150" rx="36" ry="18" fill="#c47a28" fill-opacity="0.25"/>
+      <rect x="170" y="155" width="60" height="40" fill="#2a1c12" fill-opacity="0.45"/>`;
+  }
+  if (atmosphere === 'enclosed_cool' || atmosphere === 'cavernous') {
+    return `
+      <path fill="#1a222c" fill-opacity="0.5" d="M0 220 V120 Q60 70 120 110 T240 100 T400 130 V220 Z"/>
+      <path fill="#121820" fill-opacity="0.45" d="M60 220 V140 Q100 100 140 130 V220 Z"/>
+      <path fill="#121820" fill-opacity="0.45" d="M220 220 V135 Q270 95 320 140 V220 Z"/>`;
+  }
+  if (atmosphere === 'settled_street' || atmosphere === 'open_clearing') {
+    return `
+      <path fill="#2a3020" fill-opacity="0.35" d="M0 160 L60 100 L90 160 Z"/>
+      <path fill="#2a3020" fill-opacity="0.3" d="M300 165 L360 95 L400 165 Z"/>
+      <rect x="120" y="120" width="160" height="70" fill="#2c2418" fill-opacity="0.35"/>`;
+  }
+  if (atmosphere === 'wooded_path') {
+    return `
+      <path fill="#1c2818" fill-opacity="0.45" d="M20 220 V80 Q50 40 70 90 V220 Z"/>
+      <path fill="#1c2818" fill-opacity="0.4" d="M110 220 V60 Q140 20 160 80 V220 Z"/>
+      <path fill="#1c2818" fill-opacity="0.45" d="M280 220 V70 Q310 30 340 85 V220 Z"/>`;
+  }
+  if (atmosphere === 'ruined_open' || atmosphere === 'elevated_exposed') {
+    return `
+      <path fill="#3a3428" fill-opacity="0.4" d="M30 220 L30 110 L90 90 L90 220 Z"/>
+      <path fill="#322c22" fill-opacity="0.35" d="M200 220 L210 80 L280 100 L270 220 Z"/>
+      <path fill="#2a241c" fill-opacity="0.3" d="M320 220 L340 130 L390 150 L380 220 Z"/>`;
+  }
+  return `
+    <path fill="#241c14" fill-opacity="0.35" d="M0 180 Q200 150 400 180 V220 H0 Z"/>
+    <rect x="150" y="110" width="100" height="70" rx="4" fill="#2a2218" fill-opacity="0.4"/>`;
+}
 
 function edgeHitBox(
   edge: MapEdgeRecord,
@@ -691,6 +737,9 @@ function paintSemanticSvg(
     </div>
     <div class="table-stage-atmosphere atmosphere-${visuals.atmosphere} ${visuals.lightWash} ${visuals.threat}" data-testid="table-stage-atmosphere" data-atmosphere="${visuals.atmosphere}" data-light-wash="${visuals.lightWash}" data-threat="${visuals.threat}" aria-hidden="true">
       <span class="scene-atmosphere-wash" data-testid="scene-atmosphere-wash"></span>
+      <svg class="scene-location-backdrop" data-testid="scene-location-backdrop" data-location-art="${visuals.atmosphere}" viewBox="0 0 400 220" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        ${locationBackdropSvg(visuals.atmosphere)}
+      </svg>
       <span class="cavern-dust cavern-dust-a"></span>
       <span class="cavern-dust cavern-dust-b"></span>
       <span class="cavern-dust cavern-dust-c"></span>
@@ -817,14 +866,20 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       applyZoom(1);
       return;
     }
+    const dashboard = host.closest<HTMLElement>('.table-dashboard');
+    const mobileMapTask = dashboard?.dataset.mobileTask === 'map';
     // Contain the full Director scene — never force horizontal overflow after Fit.
     // Reserve space for outward label plates that extend past the grid bounds.
-    const labelPad = Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
-    const pad = 8;
+    // Mobile Map task: smaller pad so Fit fills more of the canvas (Recheck 175).
+    const labelPad = mobileMapTask
+      ? Math.min(36, Math.max(16, viewport.clientWidth * 0.06))
+      : Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
+    const pad = mobileMapTask ? 4 : 8;
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
     const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.5);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const fit = Math.min(contain * 0.96, contain);
+    const fitScale = mobileMapTask ? 0.99 : 0.96;
+    const fit = Math.min(contain * fitScale, contain);
     applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({
       left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),

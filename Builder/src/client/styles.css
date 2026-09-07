@@ -3558,7 +3558,18 @@ html.hd-low-effects .map-square-fog,
   }
 
   .table-dashboard[data-mobile-task='map'] .map-label-chip text {
-    font-size: 11px;
+    font-size: 13px;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .map-label-plate {
+    /* Larger hit area so doorway / player labels stay readable at Fit. */
+    transform-box: fill-box;
+  }
+
+  .table-dashboard[data-mobile-task='map'] .table-stage-svg-viewport {
+    /* Give Fit nearly the full map chrome — reduce empty void around the grid. */
+    justify-content: center;
+    align-items: center;
   }
 }
 
@@ -4685,6 +4696,24 @@ html.hd-low-effects .table-stage-svg-viewport,
   background:
     linear-gradient(0deg, rgba(30, 70, 80, 0.35), transparent 40%),
     radial-gradient(circle at 60% 70%, rgba(100, 150, 160, 0.2), transparent 45%);
+}
+
+.scene-location-backdrop {
+  position: absolute;
+  inset: auto 0 0 0;
+  width: 100%;
+  height: min(48%, 14rem);
+  pointer-events: none;
+  opacity: 0.9;
+  z-index: 0;
+}
+
+.scene-atmosphere-wash {
+  z-index: 1;
+}
+
+.table-stage-atmosphere .cavern-dust {
+  z-index: 2;
 }
 
 .table-stage-atmosphere.atmosphere-ruined_open .scene-atmosphere-wash {

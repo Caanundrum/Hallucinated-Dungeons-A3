@@ -56,6 +56,8 @@ function premiseCommittedFactsMarkup(premise: string): string {
     /\bMara Venn\b/i,
     /\bbroken silver lantern\b/i,
     /\bsilver lantern\b/i,
+    /\blocked red warehouse door\b/i,
+    /\bred warehouse door\b/i,
     /\blocked red door\b/i,
     /\bred door\b/i,
   ]) {
