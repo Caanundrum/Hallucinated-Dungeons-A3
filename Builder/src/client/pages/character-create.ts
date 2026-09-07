@@ -553,10 +553,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
           ? ''
           : `
         <h3>${escapeHtml(detail.label)} skill proficiencies</h3>
-        <p>
+        <p data-testid="class-skill-helper">
           Choose ${detail.skillChoiceCount}. Hit Die d${detail.hitDie}. Saving Throws:
           ${detail.savingThrowProficiencies.map((ability) => escapeHtml(ABILITY_LABELS[ability])).join(', ')}.
-          Skills your Background already grants are omitted so you do not lose a class pick.
+          ${
+            state.options.backgroundDetail === null
+              ? 'Pick your Background next — if it grants a skill you chose here, that class pick will free up for another skill.'
+              : `Skills your Background (${escapeHtml(state.options.backgroundDetail.label)}) already grants are omitted so you do not lose a class pick.`
+          }
         </p>
         ${checkboxList({
           name: 'class-skill',
@@ -1052,13 +1056,34 @@ export function mountCharacterCreatePage(host: PageHost): void {
           .join('')}
       </ul>
       ${
+        state.options.expertise === null
+          ? ''
+          : `
+      <h3>Expertise</h3>
+      <p class="step-helper" data-testid="expertise-helper">
+        Choose exactly ${state.options.expertise.slotCount} skills you are proficient in. Expertise doubles
+        your Proficiency Bonus on those skills.
+      </p>
+      ${
+        state.options.expertise.options.length === 0
+          ? `<p class="message notice" data-testid="expertise-needs-skills">Finish class and Background skill picks before choosing Expertise.</p>`
+          : checkboxList({
+              name: 'expertise-skill',
+              testId: 'expertise-options',
+              entries: state.options.expertise.options,
+              selected: state.draft.choices.expertiseSkillIds,
+              maxChoose: state.options.expertise.slotCount,
+            })
+      }`
+      }
+      ${
         state.options.weaponMastery === null
           ? ''
           : `
       <h3>Weapon Mastery</h3>
       <p class="step-helper" data-testid="weapon-mastery-helper">
-        Choose up to ${state.options.weaponMastery.slotCount} weapon masteries. Unassigned slots appear
-        on your sheet until you pick.
+        Choose exactly ${state.options.weaponMastery.slotCount} weapons you are proficient with. Only
+        mastery-capable weapons for ${escapeHtml(detail.label)} are listed.
       </p>
       ${checkboxList({
         name: 'weapon-mastery',
@@ -1622,7 +1647,25 @@ export function mountCharacterCreatePage(host: PageHost): void {
         if (max !== undefined && selected.length > max) {
           selected = selected.slice(0, max);
         }
-        void commitChoices({ ...foundation, classSkillIds: selected });
+        // Drop Expertise picks that are no longer among proficient skills.
+        const backgroundSkills = state.options.backgroundDetail?.skillIds ?? [];
+        const proficient = new Set([...selected, ...backgroundSkills]);
+        const expertiseSkillIds = foundation.expertiseSkillIds.filter((id) => proficient.has(id));
+        void commitChoices({ ...foundation, classSkillIds: selected, expertiseSkillIds });
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('input[name="expertise-skill"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const foundation = latestChoices();
+        const max = state.options.expertise?.slotCount;
+        let selected = [
+          ...container.querySelectorAll<HTMLInputElement>('input[name="expertise-skill"]:checked'),
+        ].map((checked) => checked.value);
+        if (max !== undefined && selected.length > max) {
+          selected = selected.slice(0, max);
+        }
+        void commitChoices({ ...foundation, expertiseSkillIds: selected });
       });
     });
 

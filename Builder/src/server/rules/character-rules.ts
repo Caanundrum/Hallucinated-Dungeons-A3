@@ -56,8 +56,10 @@ import {
   findWeapon,
   magicInitiateSpellListId,
   spellsForList,
+  WEAPONS,
   type ClassRecord,
   type EquipmentOption,
+  type WeaponRecord,
 } from './srd-manifest.js';
 
 /** Proficiency Bonus at level 1. Single-class progression only (Section 1.5.19). */
@@ -72,13 +74,89 @@ const WEAPON_MASTERY_BY_NAME: Readonly<Record<string, string>> = {
   Scimitar: 'Nick',
   Shortsword: 'Vex',
   Longbow: 'Slow',
+  Shortbow: 'Vex',
   Javelin: 'Slow',
   Handaxe: 'Vex',
   Dagger: 'Nick',
   Spear: 'Sap',
   Quarterstaff: 'Topple',
   Sickle: 'Nick',
+  Rapier: 'Vex',
 };
+
+/** How many Expertise skill picks a class grants at level 1 (0 when none). */
+export function expertiseSlotCount(classRecord: ClassRecord | null): number {
+  if (classRecord === null) {
+    return 0;
+  }
+  const feature = classRecord.features.find((entry) => entry.name === 'Expertise');
+  if (feature === undefined) {
+    return 0;
+  }
+  const two = /\b(?:two|2)\b/i.test(feature.summary);
+  return two ? 2 : 0;
+}
+
+/** How many Weapon Mastery slots a class grants at level 1. */
+export function weaponMasterySlotCount(classRecord: ClassRecord | null): number {
+  if (classRecord === null) {
+    return 0;
+  }
+  if (!classRecord.features.some((feature) => feature.name === 'Weapon Mastery')) {
+    return 0;
+  }
+  return classRecord.id === 'fighter' ? 3 : 2;
+}
+
+/** Whether the class weapon proficiency grants cover this weapon. */
+export function classIsProficientWithWeapon(
+  classRecord: ClassRecord,
+  weapon: WeaponRecord,
+): boolean {
+  for (const grant of classRecord.weaponProficiencies) {
+    const lower = grant.toLowerCase();
+    if (lower === 'simple weapons' && weapon.category.startsWith('simple')) {
+      return true;
+    }
+    if (lower === 'martial weapons' && weapon.category.startsWith('martial')) {
+      return true;
+    }
+    if (
+      lower.includes('finesse or light') &&
+      weapon.category.startsWith('martial') &&
+      (weapon.properties.includes('Finesse') || weapon.properties.includes('Light'))
+    ) {
+      return true;
+    }
+    if (
+      lower.includes('light property') &&
+      !lower.includes('finesse') &&
+      weapon.category.startsWith('martial') &&
+      weapon.properties.includes('Light')
+    ) {
+      return true;
+    }
+    if (lower === weapon.label.toLowerCase() || lower === weapon.id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Mastery-capable weapons this class is proficient with. */
+export function masteryWeaponsForClass(classRecord: ClassRecord): readonly {
+  readonly name: string;
+  readonly property: string;
+}[] {
+  return WEAPONS.filter(
+    (weapon) =>
+      WEAPON_MASTERY_BY_NAME[weapon.label] !== undefined &&
+      classIsProficientWithWeapon(classRecord, weapon),
+  ).map((weapon) => ({
+    name: weapon.label,
+    property: WEAPON_MASTERY_BY_NAME[weapon.label]!,
+  }));
+}
 
 export function emptyChoices(): CharacterChoices {
   return {
@@ -103,6 +181,7 @@ export function emptyChoices(): CharacterChoices {
     originFeatCantripIds: [],
     originFeatSpellIds: [],
     classChoiceIds: {},
+    expertiseSkillIds: [],
     weaponMasteryWeaponNames: [],
     identity: { name: '', pronouns: '', appearance: '', concept: '' },
   };
@@ -132,6 +211,9 @@ export function coerceStoredChoices(choices: CharacterChoices): CharacterChoices
     backgroundFeatSpellIds: choices.backgroundFeatSpellIds ?? base.backgroundFeatSpellIds,
     originFeatCantripIds: choices.originFeatCantripIds ?? base.originFeatCantripIds,
     originFeatSpellIds: choices.originFeatSpellIds ?? base.originFeatSpellIds,
+    expertiseSkillIds: Array.isArray(choices.expertiseSkillIds)
+      ? choices.expertiseSkillIds
+      : base.expertiseSkillIds,
     weaponMasteryWeaponNames: Array.isArray(choices.weaponMasteryWeaponNames)
       ? choices.weaponMasteryWeaponNames
       : base.weaponMasteryWeaponNames,
@@ -242,6 +324,41 @@ export function sanitizeChoices(choices: CharacterChoices): CharacterChoices {
     const classSkillIds = next.classSkillIds.filter((id) => !backgroundSkills.has(id));
     if (classSkillIds.length !== next.classSkillIds.length) {
       next = { ...next, classSkillIds };
+    }
+  }
+
+  // Drop Expertise picks that are no longer proficient after skill/background changes.
+  if (next.expertiseSkillIds.length > 0) {
+    const proficient = new Set<string>([
+      ...next.classSkillIds,
+      ...(findBackground(next.backgroundId)?.skillIds ?? []),
+    ]);
+    const speciesRecordForSkills = findSpecies(next.speciesId);
+    if (speciesRecordForSkills !== null) {
+      for (const choice of speciesRecordForSkills.choices) {
+        if (choice.grantsSkillProficiency === true) {
+          const selected = next.speciesChoiceIds[choice.id];
+          if (selected !== undefined) {
+            proficient.add(selected);
+          }
+        }
+      }
+    }
+    const expertiseSkillIds = next.expertiseSkillIds.filter((id) => proficient.has(id));
+    if (expertiseSkillIds.length !== next.expertiseSkillIds.length) {
+      next = { ...next, expertiseSkillIds };
+    }
+  }
+
+  // Drop mastery picks the class is not proficient with.
+  const classForMastery = findClass(next.classId);
+  if (classForMastery !== null && next.weaponMasteryWeaponNames.length > 0) {
+    const allowed = new Set(masteryWeaponsForClass(classForMastery).map((entry) => entry.name));
+    const weaponMasteryWeaponNames = next.weaponMasteryWeaponNames.filter((name) =>
+      allowed.has(name),
+    );
+    if (weaponMasteryWeaponNames.length !== next.weaponMasteryWeaponNames.length) {
+      next = { ...next, weaponMasteryWeaponNames };
     }
   }
 
@@ -398,6 +515,96 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
           unresolved('features', 'CLASS_CHOICE_REQUIRED', `Choose ${choice.choose} for ${choice.label}.`),
         );
       }
+    }
+
+    const expertiseSlots = expertiseSlotCount(classRecord);
+    if (expertiseSlots > 0) {
+      const proficientSkills = new Set<string>([
+        ...choices.classSkillIds,
+        ...(backgroundRecord?.skillIds ?? []),
+      ]);
+      if (speciesRecord !== null) {
+        for (const choice of speciesRecord.choices) {
+          if (choice.grantsSkillProficiency === true) {
+            const selected = choices.speciesChoiceIds[choice.id];
+            if (selected !== undefined) {
+              proficientSkills.add(selected);
+            }
+          }
+        }
+      }
+      const expertisePicks = choices.expertiseSkillIds ?? [];
+      if (expertisePicks.length !== new Set(expertisePicks).size) {
+        problems.push(
+          unresolved('features', 'EXPERTISE_DUPLICATE', 'Each Expertise skill must be different.'),
+        );
+      }
+      const illegalExpertise = expertisePicks.filter((id) => !proficientSkills.has(id));
+      if (illegalExpertise.length > 0) {
+        problems.push(
+          unresolved(
+            'features',
+            'EXPERTISE_NOT_PROFICIENT',
+            'Expertise must be chosen from skills you are already proficient in.',
+          ),
+        );
+      }
+      if (expertisePicks.length !== expertiseSlots) {
+        problems.push(
+          unresolved(
+            'features',
+            'EXPERTISE_REQUIRED',
+            `Choose ${expertiseSlots} Expertise skills for ${classRecord.label}. ${expertisePicks.length} chosen.`,
+          ),
+        );
+      }
+    } else if ((choices.expertiseSkillIds ?? []).length > 0) {
+      problems.push(
+        unresolved(
+          'features',
+          'EXPERTISE_NOT_AVAILABLE',
+          'This Class does not gain Expertise at level 1.',
+        ),
+      );
+    }
+
+    const masterySlots = weaponMasterySlotCount(classRecord);
+    if (masterySlots > 0) {
+      const allowedMastery = masteryWeaponsForClass(classRecord);
+      const allowedNames = new Set(allowedMastery.map((entry) => entry.name));
+      const masteryPicks = choices.weaponMasteryWeaponNames ?? [];
+      if (masteryPicks.length !== new Set(masteryPicks).size) {
+        problems.push(
+          unresolved('features', 'WEAPON_MASTERY_DUPLICATE', 'Each mastery weapon must be different.'),
+        );
+      }
+      const illegalMastery = masteryPicks.filter((name) => !allowedNames.has(name));
+      if (illegalMastery.length > 0) {
+        problems.push(
+          unresolved(
+            'features',
+            'WEAPON_MASTERY_NOT_PROFICIENT',
+            `${classRecord.label} is not proficient with ${illegalMastery.join(', ')} for Weapon Mastery.`,
+          ),
+        );
+      }
+      if (masteryPicks.length !== masterySlots) {
+        problems.push(
+          unresolved(
+            'features',
+            'WEAPON_MASTERY_REQUIRED',
+            `Choose ${masterySlots} Weapon Mastery weapons for ${classRecord.label}. ${masteryPicks.length} chosen.`,
+          ),
+        );
+      }
+    } else if ((choices.weaponMasteryWeaponNames ?? []).length > 0) {
+      problems.push(
+        unresolved(
+          'features',
+          'WEAPON_MASTERY_NOT_AVAILABLE',
+          'This Class does not gain Weapon Mastery at level 1.',
+        ),
+      );
     }
   }
 
@@ -967,15 +1174,38 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
   for (const toolProficiency of classRecord.toolProficiencies) {
     proficiencies.push({ id: `tool.${toolProficiency}`, label: toolProficiency, sourceLabel: classRecord.label, ruleId: `class.${classRecord.id}.tools` });
   }
-  proficiencies.push({
-    id: `tool.${backgroundRecord.toolProficiency}`,
-    label: backgroundRecord.toolProficiency,
-    sourceLabel: backgroundRecord.label,
-    ruleId: `background.${backgroundRecord.id}.tool`,
-  });
+  const backgroundTool = backgroundRecord.toolProficiency;
+  const alreadyHasTool = proficiencies.some(
+    (entry) =>
+      entry.id === `tool.${backgroundTool}` ||
+      entry.label.toLowerCase() === backgroundTool.toLowerCase(),
+  );
+  if (!alreadyHasTool) {
+    proficiencies.push({
+      id: `tool.${backgroundTool}`,
+      label: backgroundTool,
+      sourceLabel: backgroundRecord.label,
+      ruleId: `background.${backgroundRecord.id}.tool`,
+    });
+  } else {
+    // Keep one row; note both sources in the existing class line when labels match.
+    const existing = proficiencies.find(
+      (entry) => entry.label.toLowerCase() === backgroundTool.toLowerCase(),
+    );
+    if (existing !== undefined && existing.sourceLabel !== backgroundRecord.label) {
+      const index = proficiencies.indexOf(existing);
+      proficiencies[index] = {
+        ...existing,
+        sourceLabel: `${existing.sourceLabel} + ${backgroundRecord.label}`,
+        ruleId: `${existing.ruleId}+background.${backgroundRecord.id}.tool`,
+      };
+    }
+  }
 
+  const expertiseSet = new Set(choices.expertiseSkillIds ?? []);
   const skills = SKILLS.map((skill) => {
     const proficient = skillSources.has(skill.id);
+    const hasExpertise = proficient && expertiseSet.has(skill.id);
     const components = [
       { label: ABILITY_LABELS[skill.ability], amount: modifiers[skill.ability], ruleId: `ability.${skill.ability}` },
     ];
@@ -986,7 +1216,21 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
         ruleId: 'proficiency-bonus',
       });
     }
-    return { id: skill.id, label: skill.label, ability: skill.ability, proficient, bonus: value(components) };
+    if (hasExpertise) {
+      components.push({
+        label: 'Expertise',
+        amount: proficiencyBonus.value,
+        ruleId: `class.${classRecord.id}.expertise`,
+      });
+    }
+    return {
+      id: skill.id,
+      label: skill.label,
+      ability: skill.ability,
+      proficient,
+      ...(hasExpertise ? { expertise: true as const } : {}),
+      bonus: value(components),
+    };
   });
 
   const savingThrows = {} as Record<Ability, DerivedValue>;
@@ -1015,7 +1259,35 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
   const features = [
     ...classRecord.features
       .filter((feature) => !classRecord.choices.some((choice) => choice.label === feature.name))
+      .filter((feature) => feature.name !== 'Expertise' || expertiseSlotCount(classRecord) === 0)
+      .filter((feature) => feature.name !== 'Weapon Mastery')
       .map((feature) => ({ name: feature.name, source: classRecord.label, summary: feature.summary })),
+    ...(expertiseSlotCount(classRecord) > 0
+      ? [
+          {
+            name:
+              (choices.expertiseSkillIds ?? []).length > 0
+                ? `Expertise: ${(choices.expertiseSkillIds ?? [])
+                    .map((id) => findSkill(id)?.label ?? id)
+                    .join(', ')}`
+                : 'Expertise: Unassigned',
+            source: classRecord.label,
+            summary: 'Double proficiency bonus on the chosen skills.',
+          },
+        ]
+      : []),
+    ...(weaponMasterySlotCount(classRecord) > 0
+      ? [
+          {
+            name:
+              (choices.weaponMasteryWeaponNames ?? []).length > 0
+                ? `Weapon Mastery: ${(choices.weaponMasteryWeaponNames ?? []).join(', ')}`
+                : 'Weapon Mastery: Unassigned',
+            source: classRecord.label,
+            summary: 'You know the mastery property of the chosen weapons.',
+          },
+        ]
+      : []),
     ...classRecord.choices.flatMap((choice) => {
       const selected = choices.classChoiceIds[choice.id] ?? [];
       return selected.flatMap((optionId) => {
@@ -1206,28 +1478,15 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       : classRecord.id === 'fighter'
         ? 'Subclass unlocks at level 3 (Champion is the Alpha default)'
         : null;
-  const masteryCount = classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
-    ? classRecord.id === 'fighter'
-      ? 3
-      : 2
-    : 0;
-  const masteryWeapons = [
-    ...new Set(
-      [
-        ...attacks.map((attack) => attack.name),
-        ...equipment.map((item) => item.name),
-      ].filter((name) => WEAPON_MASTERY_BY_NAME[name] !== undefined),
-    ),
-  ];
-  const explicitMasteryPicks = (choices.weaponMasteryWeaponNames ?? []).filter(
-    (name) => WEAPON_MASTERY_BY_NAME[name] !== undefined,
+  const masteryCount = weaponMasterySlotCount(classRecord);
+  const allowedMastery = masteryWeaponsForClass(classRecord);
+  const allowedMasteryNames = new Set(allowedMastery.map((entry) => entry.name));
+  const explicitMasteryPicks = (choices.weaponMasteryWeaponNames ?? []).filter((name) =>
+    allowedMasteryNames.has(name),
   );
-  // PQA-208: once the player has made explicit mastery picks, honor only
-  // those — do not backfill remaining slots from starting gear.
-  const assignedMasteryNames =
-    explicitMasteryPicks.length > 0
-      ? explicitMasteryPicks.slice(0, masteryCount)
-      : masteryWeapons.slice(0, masteryCount);
+  // Explicit picks only — auto-fill from gear is a draft convenience removed once
+  // create requires the exact slot count.
+  const assignedMasteryNames = explicitMasteryPicks.slice(0, masteryCount);
   const weaponMasteries =
     masteryCount === 0
       ? []
@@ -1243,7 +1502,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
             assigned: false as const,
           })),
         ];
-  const weaponMasterySlotCount = masteryCount;
+  const weaponMasterySlotCountValue = masteryCount;
   const classResources: Array<{
     id: string;
     label: string;
@@ -1290,7 +1549,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     spellcasting,
     subclassLabel,
     weaponMasteries,
-    weaponMasterySlotCount,
+    weaponMasterySlotCount: weaponMasterySlotCountValue,
     temporaryHitPoints: 0,
     classResources,
   };
@@ -1362,7 +1621,10 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
               label: option.label,
               gold: option.gold,
             })),
-            features: classRecord.features.map((feature) => ({ name: feature.name, summary: feature.summary })),
+            features: classRecord.features
+              .filter((feature) => feature.name !== 'Expertise' || expertiseSlotCount(classRecord) === 0)
+              .filter((feature) => feature.name !== 'Weapon Mastery' || weaponMasterySlotCount(classRecord) === 0)
+              .map((feature) => ({ name: feature.name, summary: feature.summary })),
             spellcasting:
               classRecord.spellcasting === null
                 ? null
@@ -1445,15 +1707,41 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
     backgroundFeatDetail: magicInitiateDetail(backgroundRecord?.originFeat ?? null),
     originFeatDetail: magicInitiateDetail(activeOriginFeat),
     weaponMastery:
-      classRecord === null || !classRecord.features.some((feature) => feature.name === 'Weapon Mastery')
+      classRecord === null || weaponMasterySlotCount(classRecord) === 0
         ? null
         : {
-            slotCount: classRecord.id === 'fighter' ? 3 : 2,
-            options: Object.entries(WEAPON_MASTERY_BY_NAME).map(([weaponName, property]) => ({
-              id: weaponName,
-              label: `${weaponName} (${property})`,
+            slotCount: weaponMasterySlotCount(classRecord),
+            options: masteryWeaponsForClass(classRecord).map((entry) => ({
+              id: entry.name,
+              label: `${entry.name} (${entry.property})`,
             })),
           },
+    expertise:
+      classRecord === null || expertiseSlotCount(classRecord) === 0
+        ? null
+        : (() => {
+            const proficient = new Set<string>([
+              ...choices.classSkillIds,
+              ...(backgroundRecord?.skillIds ?? []),
+            ]);
+            if (speciesRecord !== null) {
+              for (const choice of speciesRecord.choices) {
+                if (choice.grantsSkillProficiency === true) {
+                  const selected = choices.speciesChoiceIds[choice.id];
+                  if (selected !== undefined) {
+                    proficient.add(selected);
+                  }
+                }
+              }
+            }
+            return {
+              slotCount: expertiseSlotCount(classRecord),
+              options: SKILLS.filter((skill) => proficient.has(skill.id)).map((skill) => ({
+                id: skill.id,
+                label: skill.label,
+              })),
+            };
+          })(),
   };
 }
 

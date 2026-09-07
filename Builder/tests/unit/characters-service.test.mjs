@@ -38,6 +38,8 @@ function choicesFromTemplate(template) {
     backgroundFeatSpellIds: template.backgroundFeatSpellIds ?? [],
     originFeatCantripIds: template.originFeatCantripIds ?? [],
     originFeatSpellIds: template.originFeatSpellIds ?? [],
+    expertiseSkillIds: template.expertiseSkillIds ?? [],
+    weaponMasteryWeaponNames: template.weaponMasteryWeaponNames ?? [],
     identity: {
       name: `${template.label} Test`,
       pronouns: 'they/them',

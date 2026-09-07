@@ -161,7 +161,13 @@ export function renderCharacterSheet(
         <span>${escapeHtml(skill.label)}</span>
         <span class="has-breakdown" tabindex="0"
           aria-describedby="skill-${escapeHtml(skill.id)}-how">
-          ${escapeHtml(formatModifier(skill.bonus.value))}${skill.proficient ? ' · proficient' : ''}
+          ${escapeHtml(formatModifier(skill.bonus.value))}${
+            skill.expertise === true
+              ? ' · expertise'
+              : skill.proficient
+                ? ' · proficient'
+                : ''
+          }
           <span class="stat-tooltip" role="tooltip" id="skill-${escapeHtml(skill.id)}-how">
             <span class="stat-tooltip-title">How we got this</span>
             ${breakdownList(skill.bonus)}
