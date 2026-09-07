@@ -165,10 +165,13 @@ test.describe('Recheck 2 door + play layout', () => {
       await page.getByTestId('confirm-intent-intercept').click();
       await expect(intercept).toHaveCount(0, { timeout: 15_000 });
     }
-    await expect(page.getByTestId('dm-latest-reply')).toBeVisible({ timeout: 20_000 });
-    const reply = await page.getByTestId('dm-latest-reply').innerText();
-    expect(reply).not.toMatch(/lock is already open/i);
-    expect(reply).toMatch(/unlocked|locked|closed/i);
+    await expect
+      .poll(async () => page.locator('[data-testid="dm-play-thread"]').innerText(), {
+        timeout: 20_000,
+      })
+      .toMatch(/unlocked|locked|closed/i);
+    const threadText = await page.locator('[data-testid="dm-play-thread"]').innerText();
+    expect(threadText).not.toMatch(/lock is already open/i);
     await page.screenshot({
       path: '/opt/cursor/artifacts/recheck2_lock_query_reply.png',
       fullPage: false,
