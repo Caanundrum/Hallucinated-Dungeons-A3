@@ -249,6 +249,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return pendingChoices ?? inFlightChoices ?? current!.draft.choices;
   }
 
+  /** Optimistic UI selection while a save is in flight or queued. */
+  function displayChoices(): CharacterChoices {
+    return latestChoices();
+  }
+
   function tutorialDismissed(): boolean {
     return tutorialDismissedThisSession || isCreatorTutorialDismissed();
   }
@@ -312,7 +317,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
       if (firstIncomplete !== undefined) {
         const incompleteIndex = WIZARD_STEPS.indexOf(firstIncomplete);
         const activeIndex = WIZARD_STEPS.indexOf(activeStep);
-        if (incompleteIndex < activeIndex) {
+        // Only rewind when the user is past an incomplete earlier step and the
+        // active step is not itself already marked complete (avoids yanking back
+        // after Continue while a stale in-flight response lands).
+        if (
+          incompleteIndex < activeIndex &&
+          current?.draft.completedSteps.includes(activeStep) !== true
+        ) {
           activeStep = firstIncomplete;
         }
       }
@@ -563,7 +574,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         name: 'class',
         testId: 'class-options',
         entries: state.options.catalog.classes,
-        selected: state.draft.choices.classId,
+        selected: displayChoices().classId,
       })}
       ${
         detail === null
@@ -586,7 +597,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
             (skill) =>
               !(state.options.backgroundDetail?.skillIds ?? []).includes(skill.id),
           ),
-          selected: state.draft.choices.classSkillIds,
+          selected: displayChoices().classSkillIds,
           maxChoose: detail.skillChoiceCount,
         })}`
       }`;

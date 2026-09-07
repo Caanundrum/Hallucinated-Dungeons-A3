@@ -55,6 +55,9 @@ test.describe('Rogue Expertise and kit overlap', () => {
     }
     await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
+    await expect(page.getByTestId('active-step-heading')).toContainText(/Background/i, {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId('option-wayfarer')).toBeVisible({ timeout: 30_000 });
 
     await chooseOption(page, 'option-wayfarer');
