@@ -11,6 +11,11 @@ async function chooseOption(page: Page, testId: string): Promise<void> {
   await page.getByTestId(testId).click();
   await expect(page.getByTestId('create-heading')).toBeVisible();
   await expect(page.locator('[data-testid="create-error"]')).toHaveCount(0);
+  // Continue stays clickable while saving; wait until the step is complete when present.
+  const continueBtn = page.getByTestId('wizard-continue');
+  if (await continueBtn.count()) {
+    await expect(continueBtn).toHaveAttribute('aria-disabled', 'false', { timeout: 30_000 });
+  }
 }
 
 async function assignStandardArray(page: Page): Promise<void> {

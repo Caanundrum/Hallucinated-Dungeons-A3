@@ -188,6 +188,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let pendingChoices: CharacterChoices | null = null;
   /** Choices currently being saved — identity edits merge against this while busy. */
   let inFlightChoices: CharacterChoices | null = null;
+  /** Advance to next wizard step once the in-flight save finishes. */
+  let pendingAdvance = false;
   let openGeneration = 0;
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let legalGateBusy = false;
@@ -325,6 +327,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
         await commitChoices(queued);
         return;
       }
+      if (pendingAdvance) {
+        pendingAdvance = false;
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (
+          index >= 0 &&
+          index < WIZARD_STEPS.length - 1 &&
+          stepIsComplete(activeStep)
+        ) {
+          activeStep = WIZARD_STEPS[index + 1]!;
+        }
+      }
       render();
     }
   }
@@ -422,8 +435,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
         </button>`
       : `
         <button type="button" data-testid="wizard-continue"
-          aria-disabled="${!complete || busy}">
-          ${busy ? 'Saving…' : 'Continue'}
+          aria-disabled="${!complete}">
+          ${busy && complete ? 'Saving…' : 'Continue'}
         </button>`;
 
     return `
@@ -471,9 +484,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map(
             (entry) => `
-          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy ? ' disabled' : ''}"${busy ? ' aria-busy="true"' : ''}>
+          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy && options.selected === entry.id ? ' is-saving' : ''}"${busy && options.selected === entry.id ? ' aria-busy="true"' : ''}>
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
-              ${options.selected === entry.id ? 'checked' : ''} ${busy ? 'disabled' : ''}
+              ${options.selected === entry.id ? 'checked' : ''}
               data-testid="option-${escapeHtml(entry.id)}" />
             <span class="option-card-crest" aria-hidden="true">${escapeHtml(entry.label.slice(0, 1))}</span>
             <span class="option-label">${escapeHtml(entry.label)}${busy && options.selected === entry.id ? ' · Saving…' : ''}</span>
@@ -505,9 +518,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${options.entries
           .map((entry) => {
             const isSelected = visibleSelected.includes(entry.id);
-            const disabled = busy || (atCap && !isSelected);
+            // Cap still blocks over-select; busy must NOT disable — rapid picks queue via pendingChoices.
+            const disabled = atCap && !isSelected;
             return `
-          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''}>
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${busy && isSelected ? ' is-saving' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''}>
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
               data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
@@ -1390,7 +1404,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="wizard-continue"]')
       ?.addEventListener('click', () => {
         const index = WIZARD_STEPS.indexOf(activeStep);
-        if (index < 0 || index >= WIZARD_STEPS.length - 1 || busy || !stepIsComplete(activeStep)) {
+        if (index < 0 || index >= WIZARD_STEPS.length - 1 || !stepIsComplete(activeStep)) {
+          return;
+        }
+        if (busy) {
+          pendingAdvance = true;
           return;
         }
         activeStep = WIZARD_STEPS[index + 1]!;
