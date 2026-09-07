@@ -3669,7 +3669,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root.querySelectorAll<HTMLButtonElement>('[data-testid="open-rules-modal"]').forEach((button) => {
       button.addEventListener('click', () => {
         rulesModalOpen = true;
-        activeTab = 'rules_desk';
+        activeInfoTab = 'rules';
+        infoRailCollapsed = false;
         render();
       });
     });

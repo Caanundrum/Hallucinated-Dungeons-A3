@@ -574,7 +574,9 @@ export function parsePlayerDeclaration(
   const openDoorVerb =
     !negatesOpen &&
     /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(withoutOpenDoorNoun) &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun);
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun) &&
+    // "already open" / "is open" is state description, not an open action.
+    !/\b(?:already\s+open|is\s+open|says?\s+closed|still\s+closed)\b/i.test(trimmed);
   const wantsOpenDoor =
     !wantsUnlock &&
     !negatesOpen &&

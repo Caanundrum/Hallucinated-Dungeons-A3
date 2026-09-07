@@ -214,3 +214,30 @@ test('resolveBlankTableDoorBuild only applies to edgeless blank tables', () => {
   const chamber = chamberMap({ tokenColumn: 10, tokenRow: 6 });
   assert.equal(resolveBlankTableDoorBuild(chamber, { column: 10, row: 6 }, 'open the door ahead'), null);
 });
+
+function closedDoorMap(options) {
+  const map = chamberMap(options);
+  map.edges = map.edges.map((edge) =>
+    edge.kind === 'door' ? { ...edge, doorState: 'closed' } : edge,
+  );
+  return map;
+}
+
+test('move beside closed door paths to adjacency in one confirm', () => {
+  const map = closedDoorMap({ tokenColumn: 6, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 6, row: 6 },
+    'I move beside the doorway without opening it.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.ok(resolved.path && resolved.path.length >= 2);
+  const last = resolved.path[resolved.path.length - 1];
+  assert.ok(
+    (last.column === 9 && last.row === 6) || (last.column === 10 && last.row === 6),
+    `expected adjacent square, got ${JSON.stringify(last)} path=${JSON.stringify(resolved.path)}`,
+  );
+  assert.match(resolved.summary, /beside/i);
+  assert.doesNotMatch(resolved.summary, /closer only/i);
+});
