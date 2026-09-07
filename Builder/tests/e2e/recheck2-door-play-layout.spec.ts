@@ -31,8 +31,24 @@ async function seatQuietChamber(page: Page, name: string): Promise<void> {
   await page.getByTestId('create-campaign-submit').click();
   await expect(page.getByTestId('join-table-heading')).toBeVisible();
   await joinTableWithFirstCharacter(page);
-  await page.getByTestId('open-campaign-table').click();
-  await expect(page.getByTestId('action-composer')).toBeVisible();
+  // Join may already land on the table; otherwise open it from the campaign page.
+  if (!(await page.getByTestId('action-composer').isVisible().catch(() => false))) {
+    const openTable = page.getByTestId('open-campaign-table');
+    if (await openTable.isVisible().catch(() => false)) {
+      await openTable.click();
+    }
+  }
+  await expect(page.getByTestId('action-composer')).toBeVisible({ timeout: 30_000 });
+  const begin = page.getByTestId('begin-adventure');
+  if (await begin.isVisible().catch(() => false)) {
+    await begin.click();
+    // Begin posts an intent draft — confirm it when present.
+    const confirm = page.getByTestId('confirm-intent-intercept');
+    if (await confirm.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await confirm.click();
+    }
+    await expect(page.getByTestId('map-scene-banner')).toBeVisible({ timeout: 45_000 });
+  }
 }
 
 test.describe('Recheck 2 door + play layout', () => {
@@ -106,7 +122,7 @@ test.describe('Recheck 2 door + play layout', () => {
       break;
     }
 
-    await expect(page.getByTestId('map-route-summary')).toContainText(/open/i, { timeout: 15_000 });
+    await expect(page.getByTestId('map-terrain-summary')).toContainText(/open/i, { timeout: 15_000 });
 
     // Already beside the open doorway.
     await page.getByTestId('player-action-input').fill(
@@ -130,7 +146,7 @@ test.describe('Recheck 2 door + play layout', () => {
     );
     await page.getByTestId('confirm-intent-intercept').click();
     await expect(page.getByTestId('intent-intercept')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.getByTestId('map-route-summary')).toContainText(/closed/i, {
+    await expect(page.getByTestId('map-terrain-summary')).toContainText(/closed/i, {
       timeout: 15_000,
     });
     await page.screenshot({
