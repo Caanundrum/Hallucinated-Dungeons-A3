@@ -1214,8 +1214,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     return {
       tone: 'exploration',
-      title: 'Exploring freely',
-      detail: 'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
+      title:
+        intentDraft !== null &&
+        intentDraft.proposedCommandType === 'table.begin_adventure' &&
+        intentDraft.interceptState === 'awaiting_confirmation'
+          ? 'Confirm Begin the adventure'
+          : 'Exploring freely',
+      detail:
+        intentDraft !== null &&
+        intentDraft.proposedCommandType === 'table.begin_adventure' &&
+        intentDraft.interceptState === 'awaiting_confirmation'
+          ? 'Review the draft, then Confirm so the Game Director establishes the opening scene — or Cancel to keep waiting.'
+          : 'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
     };
   }
 
@@ -2575,7 +2585,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       !sessionIsSuspended() &&
       encounter !== null &&
       encounter.status !== 'ended';
-    const showBeginAdventure = seated && !sessionIsSuspended() && awaitingDirectorScene();
+    const showBeginAdventure =
+      seated &&
+      !sessionIsSuspended() &&
+      awaitingDirectorScene() &&
+      !(
+        intentDraft !== null &&
+        intentDraft.proposedCommandType === 'table.begin_adventure' &&
+        (intentDraft.interceptState === 'awaiting_confirmation' ||
+          intentDraft.interceptState === 'confirmed')
+      );
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
@@ -4969,6 +4988,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="cancel-intent-intercept"]')
       ?.addEventListener('click', () => {
         setIntentDraft(null);
+        error = null;
+        shell.announce('Draft cancelled.');
         render();
       });
 
@@ -5111,7 +5132,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             draft.proposedCommandType === 'table.open_door' &&
             declarationText.length > 0 &&
             /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
-          const resumeCompound = resumeAfterSceneBuild || resumeAfterOpenCross;
           // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
           const summaryForCommand =
             draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
@@ -5143,6 +5163,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             mapBundle = await fetchCampaignMap(campaignId);
             // Paint the committed token/door/scene state before slow Director narration.
             stageHandle?.renderMap(mapBundle);
+            const receipt = accepted.receipt ?? accepted.event.receipt ?? null;
+            const doorOpenAfterConfirm =
+              receipt !== null
+                ? receipt.namedDoorOpenAfter
+                : draft.edgeId !== undefined &&
+                  (mapBundle?.edges.some(
+                    (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
+                  ) ??
+                    false);
             const resolvedSummary = resolvedSummaryAfterTableConfirm({
               commandType: draft.proposedCommandType,
               draftSummary: draft.summary,
@@ -5150,8 +5179,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(accepted.event.summary !== undefined
                 ? { eventSummary: accepted.event.summary }
                 : {}),
-              openCross: resumeAfterOpenCross,
+              openCross: resumeAfterOpenCross && doorOpenAfterConfirm,
               sceneTitle: mapBundle?.title,
+              ...(receipt !== null ? { receipt } : {}),
+              namedDoorOpenAfter: doorOpenAfterConfirm,
+              ...(receipt?.target.label !== undefined
+                ? { targetLabel: receipt.target.label }
+                : {}),
             });
             if (declarationText.length > 0) {
               appendDmThread('player', 'You', declarationText, 'declaration');
@@ -5163,11 +5197,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             shell.announce('Action confirmed on the table.');
             render();
             patchDmPlayThread();
-            if (resumeCompound && declarationText.length > 0) {
+            const shouldResumeOpenCross = resumeAfterOpenCross && doorOpenAfterConfirm;
+            const resumeCompoundNow = resumeAfterSceneBuild || shouldResumeOpenCross;
+            if (resumeCompoundNow && declarationText.length > 0) {
               // Open/build first, then chain the through-step without double-narrating.
               await resumeCompoundDeclarationAfterBuild(declarationText, {
                 narrateSteps: false,
-                stopAfterFirstMove: resumeAfterOpenCross,
+                stopAfterFirstMove: shouldResumeOpenCross,
               });
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||

@@ -121,6 +121,8 @@ export interface TableEventProjection {
   readonly committedAt: string;
   readonly summary?: string;
   readonly rolls?: readonly number[];
+  /** Bound draft → mutation → post-state receipt (play authority spine). */
+  readonly receipt?: import('./resolved-action-receipt.js').ResolvedActionReceipt;
 }
 
 /** Server-authored table projection the page may render. */
@@ -143,6 +145,8 @@ export interface TableCommandAcceptResponse {
   readonly table: TableStateProjection;
   readonly encounter?: EncounterProjection;
   readonly progression?: CharacterProgressionProjection;
+  /** Canonical post-Confirm receipt — narration and UI must honor this. */
+  readonly receipt?: import('./resolved-action-receipt.js').ResolvedActionReceipt;
 }
 
 export const TABLE_EVENT_PAGE_SIZE = 20;

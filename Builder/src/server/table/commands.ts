@@ -20,6 +20,11 @@ import {
   type TableStateProjection,
 } from '../../shared/command-contract.js';
 import {
+  buildResolvedActionReceipt,
+  declarationIsDoorOpenOrPassage,
+  type ResolvedActionReceipt,
+} from '../../shared/resolved-action-receipt.js';
+import {
   DEFAULT_MOVEMENT_BUDGET_FEET,
   DEFAULT_VISION_RADIUS_SQUARES,
   type MovementPreviewProjection,
@@ -194,6 +199,7 @@ interface StoredEvent {
   readonly edgeId?: string;
   readonly summary?: string;
   readonly rolls?: readonly number[];
+  readonly receipt?: ResolvedActionReceipt;
 }
 
 interface StoredCommand {
@@ -243,6 +249,7 @@ function toEventProjection(stored: StoredEvent): TableEventProjection {
     committedAt: toIso(stored.committedAt) ?? new Date(0).toISOString(),
     ...(stored.summary === undefined ? {} : { summary: stored.summary }),
     ...(stored.rolls === undefined ? {} : { rolls: stored.rolls }),
+    ...(stored.receipt === undefined ? {} : { receipt: stored.receipt }),
   };
 }
 
@@ -660,6 +667,13 @@ export async function acceptTableCommand(options: {
   let unlockEdgeId: string | undefined;
   let nextSceneRuntime: StoredMapRuntime | undefined;
   let sceneChronicleBody: string | undefined;
+  let objectMutation: {
+    readonly objectId: string;
+    readonly baseLabel: string;
+    readonly priorState: string;
+    readonly nextState: string;
+  } | null = null;
+  let doorTargetLabel = 'the wooden doorway';
 
   if (commandType === 'table.begin_adventure') {
     const premise =
@@ -692,6 +706,14 @@ export async function acceptTableCommand(options: {
   }
 
   if (commandType === 'table.interact_object') {
+    const declarationForInteract = trimmedDeclaration ?? trimmedPlaySummary ?? '';
+    // Defense in depth: door open/passage must never mutate scene props.
+    if (declarationIsDoorOpenOrPassage(declarationForInteract)) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'That declaration targets a doorway, not a scene prop. Open or step through the door on the map instead.',
+      );
+    }
     const targetObjectId =
       typeof objectId === 'string' && objectId.length > 0
         ? objectId
@@ -706,11 +728,17 @@ export async function acceptTableCommand(options: {
       const result = interactObjectRuntime({
         runtime: mapContext.runtime,
         objectId: targetObjectId,
-        declaration: trimmedDeclaration ?? trimmedPlaySummary ?? '',
+        declaration: declarationForInteract,
       });
       nextSceneRuntime = result.runtime;
       sceneChronicleBody = result.chronicle;
       eventType = 'table.object_changed';
+      objectMutation = {
+        objectId: result.objectId,
+        baseLabel: result.baseLabel,
+        priorState: result.priorState,
+        nextState: result.nextState,
+      };
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
       if (code === 'NO_ACTIVE_SCENE') {
@@ -862,6 +890,7 @@ export async function acceptTableCommand(options: {
       );
     }
     openEdgeId = edgeId;
+    doorTargetLabel = `wooden doorway ${edge.orientation}`;
     eventType = 'table.door_opened';
   }
 
@@ -1090,6 +1119,70 @@ export async function acceptTableCommand(options: {
       }
     }
 
+    const openCrossDeclaration =
+      typeof trimmedDeclaration === 'string' &&
+      /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(trimmedDeclaration);
+    const receiptTargetKind =
+      commandType === 'table.open_door'
+        ? 'door'
+        : commandType === 'table.interact_object'
+          ? 'object'
+          : commandType === 'table.move'
+            ? 'token_path'
+            : commandType === 'table.begin_adventure' ||
+                commandType === 'table.travel_scene' ||
+                commandType === 'table.build_scene'
+              ? 'scene'
+              : 'none';
+    const receiptMutations =
+      objectMutation !== null
+        ? [
+            {
+              kind: 'object' as const,
+              id: objectMutation.objectId,
+              label: objectMutation.baseLabel,
+              from: objectMutation.priorState,
+              to: objectMutation.nextState,
+            },
+          ]
+        : commandType === 'table.open_door' && openEdgeId !== undefined
+          ? [
+              {
+                kind: 'door' as const,
+                id: openEdgeId,
+                label: doorTargetLabel,
+                from: 'closed',
+                to: 'open',
+              },
+            ]
+          : [];
+    const resolvedReceipt = buildResolvedActionReceipt({
+      commandType,
+      declaration: trimmedDeclaration ?? null,
+      ...(openEdgeId !== undefined ? { edgeId: openEdgeId } : {}),
+      ...(objectMutation !== null ? { objectId: objectMutation.objectId } : {}),
+      targetLabel:
+        objectMutation !== null
+          ? objectMutation.baseLabel
+          : commandType === 'table.open_door'
+            ? doorTargetLabel
+            : sceneTitle ?? 'the table',
+      targetKind: receiptTargetKind,
+      mutations: receiptMutations,
+      doorStatesAfter: doorStates,
+      openCross: openCrossDeclaration && commandType === 'table.open_door',
+      ...(sceneTitle !== null && sceneTitle !== undefined ? { sceneTitle } : {}),
+      ...(skillResolution !== null
+        ? { eventSummary: skillResolution.summary }
+        : sceneChronicleBody !== undefined
+          ? { eventSummary: sceneChronicleBody }
+          : trimmedPlaySummary !== undefined &&
+              !/^Ready to /i.test(trimmedPlaySummary) &&
+              !/\bConfirm to\b/i.test(trimmedPlaySummary)
+            ? { eventSummary: trimmedPlaySummary }
+            : {}),
+    });
+
     const command: StoredCommand = {
       commandId,
       campaignId,
@@ -1125,7 +1218,8 @@ export async function acceptTableCommand(options: {
           ? { summary: trimmedPlaySummary }
           : sceneChronicleBody !== undefined
             ? { summary: sceneChronicleBody }
-            : {}),
+            : { summary: resolvedReceipt.narrationSeed }),
+      receipt: resolvedReceipt,
     };
 
     const nextProjection: StoredProjection = {
@@ -1254,5 +1348,6 @@ export async function acceptTableCommand(options: {
     requestId: committed.command.requestId,
     event: eventProjection,
     table: toTableProjection(campaignId, committed.projection, withEvent),
+    ...(eventProjection.receipt !== undefined ? { receipt: eventProjection.receipt } : {}),
   };
 }

@@ -2,7 +2,13 @@
  * Past-tense play-beat copy after a confirmed table action.
  * Intent Intercept drafts say "Ready to… Confirm to…"; those must never land in
  * Story so far / Director narration after the action has already resolved.
+ *
+ * Prefer the resolved-action receipt narration seed when present — it is bound
+ * to post-resolution door/object state and must not invent crossings.
  */
+
+import type { ResolvedActionReceipt } from './resolved-action-receipt.js';
+import { buildNarrationSeedFromReceipt } from './resolved-action-receipt.js';
 
 export function isIntentDraftConfirmCopy(text: string): boolean {
   const trimmed = text.trim();
@@ -16,7 +22,45 @@ export function resolvedSummaryAfterTableConfirm(options: {
   readonly eventSummary?: string;
   readonly openCross?: boolean;
   readonly sceneTitle?: string;
+  readonly receipt?: ResolvedActionReceipt | null;
+  readonly namedDoorOpenAfter?: boolean;
+  readonly targetLabel?: string;
 }): string {
+  if (
+    options.receipt !== null &&
+    options.receipt !== undefined &&
+    options.receipt.narrationSeed.trim().length > 0
+  ) {
+    return options.receipt.narrationSeed.trim();
+  }
+
+  // When callers omit post-state, treat a successful open_door/openCross as open
+  // (legacy Confirm path). Explicit false blocks crossing claims.
+  const doorOpenKnown = options.namedDoorOpenAfter !== undefined;
+  const namedDoorOpenAfter = doorOpenKnown
+    ? options.namedDoorOpenAfter === true
+    : options.commandType === 'table.open_door' || options.openCross === true;
+  const targetLabel =
+    typeof options.targetLabel === 'string' && options.targetLabel.trim().length > 0
+      ? options.targetLabel.trim()
+      : 'the wooden doorway';
+
+  if (doorOpenKnown && (options.commandType === 'table.open_door' || options.openCross === true)) {
+    return buildNarrationSeedFromReceipt({
+      commandType: options.commandType,
+      targetLabel,
+      mutations: [],
+      namedDoorOpenAfter,
+      openCross: options.openCross === true && namedDoorOpenAfter,
+      ...(options.sceneTitle !== undefined ? { sceneTitle: options.sceneTitle } : {}),
+      ...(typeof options.eventSummary === 'string' &&
+      options.eventSummary.trim().length > 0 &&
+      !isIntentDraftConfirmCopy(options.eventSummary)
+        ? { eventSummary: options.eventSummary }
+        : {}),
+    });
+  }
+
   if (
     typeof options.eventSummary === 'string' &&
     options.eventSummary.trim().length > 0 &&
@@ -66,6 +110,9 @@ export function resolvedSummaryAfterTableConfirm(options: {
         draftAndDeclaration,
       )
     ) {
+      if (doorOpenKnown && !namedDoorOpenAfter) {
+        return `Moved on the table toward the doorway${inScene}. The doorway remains closed — no crossing.`;
+      }
       const reversing = /\bstep back through|back through\b/i.test(draftAndDeclaration);
       return reversing
         ? `Stepped back through the open doorway${inScene}.${sameSceneNote}`
