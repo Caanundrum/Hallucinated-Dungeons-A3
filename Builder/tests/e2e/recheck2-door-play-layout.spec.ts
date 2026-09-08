@@ -111,7 +111,7 @@ test.describe('Recheck 2 door + play layout', () => {
     expect(metrics.actionTop).toBeLessThan(metrics.viewportH);
     expect(metrics.actionBottom).toBeGreaterThan(0);
     // Recheck 3 / FQA-023: readable timeline inside the dock, not a ~22px clipped strip.
-    expect(metrics.readableH).toBeGreaterThanOrEqual(140);
+    expect(metrics.readableH).toBeGreaterThanOrEqual(160);
     expect(metrics.listBottom).toBeLessThanOrEqual(metrics.dockBottom + 4);
     expect(['hidden', 'clip']).toContain(metrics.dockOverflowY);
     expect(metrics.dockScrollTop).toBe(0);

@@ -839,6 +839,33 @@ function namedTargetFromMechanics(mechanicsSummary: string): string | null {
 }
 
 /**
+ * When the player declared a no-touch / without-touching inspect, strip contact prose (R4-03).
+ */
+export function scrubNoTouchConstraint(body: string, mechanicsSummary: string): string {
+  const noTouch =
+    /\bwithout touching\b|\bno[- ]touch\b|\bdo not touch\b|\bdon't touch\b|\bhands off\b|\bfrom a (?:safe )?distance\b|\blook(?:ing)? (?:only|closely) without\b/i.test(
+      mechanicsSummary,
+    );
+  if (!noTouch) {
+    return body;
+  }
+  let scrubbed = body
+    .replace(
+      /\b(?:you |she |he |they )?(?:run|runs|ran|running)\s+(?:your |their |his |her )?fingers?\b[^.!?\n]*/gi,
+      'You study it carefully without touching',
+    )
+    .replace(
+      /\b(?:feel|feels|felt|feeling|touch|touches|touched|touching|press|presses|pressed|probe|probes|probed|brush|brushes|brushed)\b[^.!?\n]{0,40}\b(?:frame|hinge|wood|door|surface|latch)\b[^.!?\n]*/gi,
+      'trace the outline by eye only',
+    )
+    .replace(/\balong the frame\b/gi, 'at a careful distance');
+  if (/\bfingers?\b|\brun .+ along\b/i.test(scrubbed)) {
+    return mechanicsSummary.trim() || scrubbed;
+  }
+  return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || body;
+}
+
+/**
  * Trap-search mechanics that report "no trap found" must not become omniscient safety.
  */
 export function scrubFalseTrapCertainty(body: string, mechanicsSummary: string): string {
@@ -1807,7 +1834,7 @@ export async function narrateVisibleBeat(options: {
   );
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection.`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.`,
   });
   const liveCandidate =
     liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;
@@ -1822,7 +1849,10 @@ export async function narrateVisibleBeat(options: {
       scrubFalseTrapCertainty(
         scrubFalseSceneDeparture(
           scrubStaleDoorCloseNarration(
-            preferSimulated ? simulated.body : liveCandidate,
+            scrubNoTouchConstraint(
+              preferSimulated ? simulated.body : liveCandidate,
+              options.mechanicsSummary,
+            ),
             options.mechanicsSummary,
           ),
           options.mechanicsSummary,

@@ -37,7 +37,9 @@ test('A2: successful unlock yields closed + unlocked, not open', () => {
 });
 
 test('FQA-017: player-facing door labels use one name with appended state', async () => {
-  const { formatDoorPlayerFacingLabel } = await import('../../dist/shared/play-authority-contract.js');
+  const { formatDoorPlayerFacingLabel, stripDoorStateLabelSuffix } = await import(
+    '../../dist/shared/play-authority-contract.js'
+  );
   assert.equal(
     formatDoorPlayerFacingLabel(doorAuthorityFromStored('closed'), 'east'),
     'Wooden doorway east — closed',
@@ -49,6 +51,14 @@ test('FQA-017: player-facing door labels use one name with appended state', asyn
   assert.equal(
     formatDoorPlayerFacingLabel(doorAuthorityFromStored('open'), 'west'),
     'Wooden doorway west — open',
+  );
+  assert.equal(
+    stripDoorStateLabelSuffix('Wooden doorway east — closed, unlocked'),
+    'Wooden doorway east',
+  );
+  assert.equal(
+    `${stripDoorStateLabelSuffix('Wooden doorway east — closed, unlocked')} — open`,
+    'Wooden doorway east — open',
   );
   const { canonicalDoorFeatureKey } = await import('../../dist/shared/play-authority-contract.js');
   assert.equal(

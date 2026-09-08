@@ -102,6 +102,8 @@ export interface ActionDraftSuggestion {
   readonly declaredFoes?: readonly { readonly name: string }[];
   readonly arcaneRecovery?: boolean;
   readonly projectionVersionAtIssue?: number;
+  /** Player declaration text shown on Intent Intercept; persisted across reload. */
+  readonly playerDeclaration?: string;
   readonly interceptState: IntentInterceptState;
   readonly createdAt: string;
 }

@@ -69,6 +69,7 @@ import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
 import {
   doorStateAfterUnlockSuccess,
   storedDoorStateFromAuthority,
+  stripDoorStateLabelSuffix,
 } from '../../shared/play-authority-contract.js';
 import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
 import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
@@ -1200,7 +1201,7 @@ export async function acceptTableCommand(options: {
           if (!near) {
             return feature;
           }
-          const base = feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked|closed, locked|closed, unlocked)\b/i, '').trim();
+          const base = stripDoorStateLabelSuffix(feature.label);
           return { ...feature, label: `${base} — open` };
         });
         sceneInstances = {
@@ -1236,9 +1237,7 @@ export async function acceptTableCommand(options: {
           if (!near) {
             return feature;
           }
-          const base = feature.label
-            .replace(/\s*[—-]\s*(open|closed|locked|unlocked|closed, locked|closed, unlocked)\b/i, '')
-            .trim();
+          const base = stripDoorStateLabelSuffix(feature.label);
           return { ...feature, label: `${base} — closed, unlocked` };
         });
         sceneInstances = {

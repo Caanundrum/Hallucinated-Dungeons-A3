@@ -11,6 +11,7 @@ import type {
 import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
+  stripDoorStateLabelSuffix,
 } from './play-authority-contract.js';
 
 export function edgeFacingLabel(orientation: MapEdgeRecord['orientation']): string {
@@ -160,7 +161,7 @@ export function formatMapRouteSummary(map: Pick<MapBundleProjection, 'edges' | '
         );
       }
       // Strip any baked open/closed suffix from legacy stored exit labels.
-      return feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked)\b/i, '').trim();
+      return stripDoorStateLabelSuffix(feature.label);
     });
     const usable = labels.filter((label) => label.length > 0);
     if (usable.length > 0) {

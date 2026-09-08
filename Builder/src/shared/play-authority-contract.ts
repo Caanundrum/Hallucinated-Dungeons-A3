@@ -98,6 +98,18 @@ export function formatDoorAuthorityStateSuffix(state: DoorAuthorityState): strin
   return 'closed';
 }
 
+/** Strip baked door-state suffixes from exit/door labels (longer forms first). */
+export function stripDoorStateLabelSuffix(label: string): string {
+  return label
+    .replace(
+      /\s*[—-]\s*(?:closed,\s*locked|closed,\s*unlocked|open|closed|locked|unlocked)\b/gi,
+      '',
+    )
+    .replace(/\s*,\s*(?:locked|unlocked)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /**
  * Player-facing door name used on map chips, a11y, and detail copy.
  * One canonical pattern: `Wooden doorway east — closed` (state appended, not renamed).

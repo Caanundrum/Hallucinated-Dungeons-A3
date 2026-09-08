@@ -605,7 +605,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       writeIntentDraftPreference(campaignId, null);
       return null;
     }
-    return restored.draft as unknown as ActionDraftSuggestion;
+    const draft = restored.draft as unknown as ActionDraftSuggestion;
+    if (
+      typeof draft.playerDeclaration === 'string' &&
+      draft.playerDeclaration.trim().length > 0
+    ) {
+      lastSubmittedDeclaration = draft.playerDeclaration.trim();
+    }
+    return draft;
   }
 
   let narrationChain: Promise<void> = Promise.resolve();
@@ -696,6 +703,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         : {}),
       ...(interpreted.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
       ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
+      ...(lastSubmittedDeclaration.trim().length > 0
+        ? { playerDeclaration: lastSubmittedDeclaration.trim() }
+        : {}),
       interceptState: interpreted.interceptState,
       createdAt: interpreted.createdAt,
     };
@@ -2760,8 +2770,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     : ''
                 }" data-testid="intent-intercept" data-intercept-state="${escapeHtml(intentDraft.interceptState)}">
                   ${
-                    lastSubmittedDeclaration.trim().length > 0
-                      ? `<p class="record-meta" data-testid="intent-intercept-declaration">You declared: ${escapeHtml(lastSubmittedDeclaration.trim())}</p>`
+                    (intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim().length > 0
+                      ? `<p class="record-meta" data-testid="intent-intercept-declaration">You declared: ${escapeHtml((intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim())}</p>`
                       : ''
                   }
                   <p data-testid="intent-intercept-summary">${escapeHtml(
@@ -5294,7 +5304,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           error = null;
           // FQA-R06: single resolving state — hide Confirm/Cancel immediately; clear on success.
           setIntentDraft({ ...draft, interceptState: 'confirmed' });
-          const declarationText = lastSubmittedDeclaration.trim();
+          const declarationText =
+            (intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim();
           const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
           const resumeAfterOpenCross =
             draft.proposedCommandType === 'table.open_door' &&

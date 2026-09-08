@@ -591,6 +591,16 @@ test('Recheck 3: scrubStaleDoorCloseNarration drops trap/open-way prose on close
   assert.equal(scrubStaleDoorCloseNarration(honestClose, mechanics), honestClose);
 });
 
+test('R4-03: scrubNoTouchConstraint removes fingers-on-frame contact prose', async () => {
+  const { scrubNoTouchConstraint } = await import('../../dist/server/ai/director-gateway.js');
+  const mechanics =
+    'Without touching it, I inspect the wooden doorway east for traps. Investigation +3: d20 7 +3 = 10 vs DC 13 — uncertain.';
+  const contact =
+    'You run your fingers along the frame of the open wooden doorway east and feel for hidden catches.';
+  const scrubbed = scrubNoTouchConstraint(contact, mechanics);
+  assert.doesNotMatch(scrubbed, /fingers|feel for|along the frame/i);
+});
+
 test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target', async () => {
   const { scrubExpandedInspectScope } = await import('../../dist/server/ai/director-gateway.js');
   const mechanics = 'Inspect doorway (Investigation +5): d20 12 +5 = 17 vs DC 13 — success.';
