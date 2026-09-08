@@ -111,10 +111,6 @@ test.describe('Recheck 2 door + play layout', () => {
       path: '/opt/cursor/artifacts/recheck3_fqa023_1081_timeline.png',
       fullPage: false,
     });
-    await page.evaluate((payload) => {
-      // no-op browser side; metrics logged from Node after evaluate returns
-      void payload;
-    }, metrics);
     const fs = await import('node:fs');
     fs.writeFileSync(
       '/opt/cursor/artifacts/recheck4_fqa023_1081_metrics.json',
