@@ -241,3 +241,41 @@ test('move beside closed door paths to adjacency in one confirm', () => {
   assert.match(resolved.summary, /beside/i);
   assert.doesNotMatch(resolved.summary, /closer only/i);
 });
+
+test('already beside open doorway answers without generic intent fallback', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I move beside the open wooden doorway east and stop there.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.match(resolved.summary, /already beside/i);
+  assert.doesNotMatch(resolved.summary, /heard your declaration|Confirm only commits/i);
+});
+
+test('close adjacent open doorway drafts table.close_door', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I close the wooden doorway east.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.close_door');
+  assert.equal(resolved.edgeId, 'e:9:6:east');
+  assert.match(resolved.summary, /close/i);
+});
+
+test('close when already closed does not invent interact_object', () => {
+  const map = closedDoorMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'I close the wooden doorway east.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.match(resolved.summary, /already closed/i);
+});

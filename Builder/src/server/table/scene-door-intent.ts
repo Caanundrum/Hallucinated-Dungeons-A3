@@ -14,7 +14,12 @@ import { isOnOpenDoorPassage, nextStepThroughOpenDoor } from './move-planner.js'
 import { proposeDoorSceneAhead } from './scene-builder.js';
 
 export interface SceneDoorIntentResolution {
-  readonly proposedCommandType: 'table.move' | 'table.sync' | 'table.open_door' | 'table.build_scene';
+  readonly proposedCommandType:
+    | 'table.move'
+    | 'table.sync'
+    | 'table.open_door'
+    | 'table.close_door'
+    | 'table.build_scene';
   readonly summary: string;
   readonly path?: readonly MapSquareCoordinate[];
   readonly edgeId?: string;
@@ -36,6 +41,13 @@ function wantsOpenDoorAction(text: string): boolean {
   const withoutOpenNoun = stripOpenDoorNounPhrases(text);
   return /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
     withoutOpenNoun,
+  );
+}
+
+function wantsCloseDoorAction(text: string): boolean {
+  return (
+    /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(text) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text)
   );
 }
 
@@ -251,8 +263,9 @@ export function resolveDoorIntentForMap(
   const adjacentClosed = closedDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const wantsUnlock = textRequestsLockPicking(text);
-  const wantsOpen = !wantsUnlock && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
-  const wantsCross = wantsDoorPassage(text);
+  const wantsClose = !wantsUnlock && wantsCloseDoorAction(text);
+  const wantsOpen = !wantsUnlock && !wantsClose && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
+  const wantsCross = !wantsClose && wantsDoorPassage(text);
   const wantsInspect =
     (/\b(?:inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|listen|locked)\b/.test(
       text,
@@ -261,11 +274,60 @@ export function resolveDoorIntentForMap(
       declarationNegatesDoorOpen(text)) &&
     !/\b(?:investigat|search\s+for|trap|disarm)\b/.test(text) &&
     !wantsOpen &&
+    !wantsClose &&
     !wantsUnlock;
 
   // Unlock attempts are skill-check drafts — do not open the door here.
   if (wantsUnlock) {
     return null;
+  }
+
+  // Already beside the requested doorway: answer clearly, do not fall back to generic intent.
+  if (wantsBesideDoorIntent(text)) {
+    if (adjacentOpen !== undefined) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: adjacentOpen.edgeId,
+        summary: `You are already beside the ${doorApproachLabel(adjacentOpen)} in ${sceneTitle}. Declare open, close, inspect, or step through from here.`,
+      };
+    }
+    if (adjacentClosed !== undefined) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: adjacentClosed.edgeId,
+        summary: `You are already beside the ${doorApproachLabel(adjacentClosed)} in ${sceneTitle}. Declare open, inspect, or a lock attempt from here.`,
+      };
+    }
+  }
+
+  // Close an adjacent open leaf — door authority owns this, never interact_object.
+  if (wantsClose) {
+    if (adjacentOpen !== undefined) {
+      return {
+        proposedCommandType: 'table.close_door',
+        edgeId: adjacentOpen.edgeId,
+        summary: `Ready to close the ${doorApproachLabel(adjacentOpen)} beside you. Confirm to shut the leaf on the map (lock stays unlocked).`,
+      };
+    }
+    if (adjacentClosed !== undefined) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: adjacentClosed.edgeId,
+        summary: `The ${doorApproachLabel(adjacentClosed)} beside you is already closed. Declare open or inspect if you need a different action.`,
+      };
+    }
+    const nearestOpen = openDoors[0] ?? null;
+    if (nearestOpen !== null) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: nearestOpen.edgeId,
+        summary: `There is an open doorway in ${sceneTitle}, but you are not next to it yet. Move adjacent, then declare closing it again.`,
+      };
+    }
+    return {
+      proposedCommandType: 'table.sync',
+      summary: `No open doorway is beside you in ${sceneTitle} to close.`,
+    };
   }
 
   // PQA-155: plain inspect/check/listen reads current door state; open is a separate confirm.
@@ -275,7 +337,7 @@ export function resolveDoorIntentForMap(
       authority.lock === 'locked'
         ? ' It is locked — declare a lock attempt to try the mechanism.'
         : authority.lock === 'unlocked'
-          ? ' The lock is already open; you can declare opening the door when ready.'
+          ? ' The lock is unlocked; the leaf is still closed — declare opening when ready.'
           : ' It looks solid and ordinary from a casual look — no trap signs without a careful search.';
     const listenNote = /\blisten\b/.test(text)
       ? ' You hear only the quiet of the chamber beyond the wood — nothing that forces a roll.'

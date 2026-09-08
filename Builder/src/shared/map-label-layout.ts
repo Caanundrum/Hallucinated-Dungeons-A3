@@ -111,7 +111,7 @@ export function layoutMapLabels(
   options: MapLabelLayoutOptions,
 ): readonly MapLabelPlacement[] {
   const zoom = options.zoomScale ?? 1;
-  const fontSize = Math.max(10, Math.min(14, Math.round(options.pixelsPerSquare * 0.28)));
+  const fontSize = Math.max(11, Math.min(15, Math.round(options.pixelsPerSquare * 0.32)));
   const gap = Math.max(8, Math.round(options.pixelsPerSquare * 0.22));
   const showLeaders = zoom >= 1.05;
 

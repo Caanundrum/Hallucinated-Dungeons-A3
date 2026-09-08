@@ -900,7 +900,7 @@ function equipmentOptionFor(
 
 /**
  * Combine class + background starting kits without silent double-grants.
- * Matching tools (and identical named kits/packs) take the larger quantity;
+ * Matching tools, packs, kits, and identical weapons take the larger quantity;
  * other shared items still stack, with an explicit source note for the sheet.
  */
 function combineStartingEquipment(
@@ -923,8 +923,12 @@ function combineStartingEquipment(
     const fromBackground = backgroundByName.get(name) ?? 0;
     const isToolOrPack =
       /\btools?\b/i.test(name) || /\bpack\b/i.test(name) || /\bkit\b/i.test(name);
+    const isWeapon =
+      /^(Club|Dagger|Greatclub|Handaxe|Javelin|Light Hammer|Mace|Quarterstaff|Sickle|Spear|Crossbow|Dart|Shortbow|Sling|Battleaxe|Flail|Glaive|Greataxe|Greatsword|Halberd|Lance|Longsword|Maul|Morningstar|Pike|Rapier|Scimitar|Shortsword|Trident|War Pick|Warhammer|Whip|Blowgun|Hand Crossbow|Heavy Crossbow|Longbow|Net)$/i.test(
+        name,
+      );
     if (fromClass > 0 && fromBackground > 0) {
-      if (isToolOrPack) {
+      if (isToolOrPack || isWeapon) {
         const quantity = Math.max(fromClass, fromBackground);
         equipment.push({
           name,

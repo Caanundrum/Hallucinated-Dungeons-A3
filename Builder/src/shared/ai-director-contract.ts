@@ -118,7 +118,7 @@ export interface IntentInterpretResponse {
 export function scrubPlayerFacingIntentCopy(text: string): string {
   return text
     .replace(
-      /\btable\.(?:open_door|move|sync|build_scene|begin_adventure|interact_object|travel_scene)\b/gi,
+      /\btable\.(?:open_door|close_door|move|sync|build_scene|begin_adventure|interact_object|travel_scene)\b/gi,
       'that action',
     )
     .replace(/\bcombat\.(?:attack|cast_spell|reaction|short_rest|long_rest)\b/gi, 'that action')

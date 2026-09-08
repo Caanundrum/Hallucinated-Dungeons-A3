@@ -382,3 +382,14 @@ test('map summary still says closed is map_state_correction narrate', () => {
   const resolved = resolveIntentAuthority(parsed);
   assert.equal(resolved.disposition, 'director_narrate_only');
 });
+
+test('close doorway parses as close_door, not open_door or inspect', () => {
+  const parsed = parsePlayerDeclaration('I close the wooden doorway east.');
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'close_door'));
+  assert.equal(
+    parsed.actionSequence.some((step) => step.kind === 'open_door'),
+    false,
+  );
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.proposedCommandType, 'table.close_door');
+});

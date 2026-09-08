@@ -56,6 +56,8 @@ function premiseCommittedFactsMarkup(premise: string): string {
     /\bMara Venn\b/i,
     /\bbroken silver lantern\b/i,
     /\bsilver lantern\b/i,
+    /\blocked red warehouse door\b/i,
+    /\bred warehouse door\b/i,
     /\blocked red door\b/i,
     /\bred door\b/i,
   ]) {
@@ -389,6 +391,23 @@ export function mountCampaignCreatePage(host: PageHost): void {
     );
     summaryInput?.addEventListener('input', () => {
       summary = summaryInput.value;
+      const factsHost =
+        summaryInput
+          .closest('label, .field, .form-field, section, .panel')
+          ?.querySelector<HTMLElement>(
+            '[data-testid="premise-committed-facts"], [data-testid="premise-committed-facts-empty"]',
+          ) ??
+        container.querySelector<HTMLElement>(
+          '[data-testid="premise-committed-facts"], [data-testid="premise-committed-facts-empty"]',
+        );
+      if (factsHost !== null) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = premiseCommittedFactsMarkup(summary);
+        const next = wrap.firstElementChild;
+        if (next !== null) {
+          factsHost.replaceWith(next);
+        }
+      }
     });
 
     container.querySelectorAll<HTMLInputElement>('input[name="director-identity"]').forEach((input) => {

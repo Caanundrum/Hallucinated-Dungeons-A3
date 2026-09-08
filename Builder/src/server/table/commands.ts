@@ -21,6 +21,7 @@ import {
 } from '../../shared/command-contract.js';
 import {
   buildResolvedActionReceipt,
+  declarationIsDoorClose,
   declarationIsDoorOpenOrPassage,
   type ResolvedActionReceipt,
 } from '../../shared/resolved-action-receipt.js';
@@ -320,7 +321,7 @@ export function classifyExplorationConflict(options: {
     actorSeatId,
     encounterActive,
   } = options;
-  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.build_scene' || commandType === 'table.begin_adventure' || commandType === 'table.interact_object' || commandType === 'table.travel_scene')) {
+  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.close_door' || commandType === 'table.build_scene' || commandType === 'table.begin_adventure' || commandType === 'table.interact_object' || commandType === 'table.travel_scene')) {
     return {
       reason: 'scene_lock',
       message:
@@ -340,6 +341,21 @@ export function classifyExplorationConflict(options: {
         'Someone else already opened that door. The latch is free — choose another beat or sync the table.',
       edgeId: openEdgeId,
       competingSummary: 'Door is already open.',
+      serverStateVersion: current.stateVersion,
+    };
+  }
+  if (
+    commandType === 'table.close_door' &&
+    typeof openEdgeId === 'string' &&
+    current.doorStates?.[openEdgeId] !== undefined &&
+    current.doorStates[openEdgeId] !== 'open'
+  ) {
+    return {
+      reason: 'same_door',
+      message:
+        'Someone else already closed that door. Sync the table or declare a different beat.',
+      edgeId: openEdgeId,
+      competingSummary: 'Door is already closed.',
       serverStateVersion: current.stateVersion,
     };
   }
@@ -565,6 +581,7 @@ export async function acceptTableCommand(options: {
     commandType !== 'table.sync' &&
     commandType !== 'table.move' &&
     commandType !== 'table.open_door' &&
+    commandType !== 'table.close_door' &&
     commandType !== 'table.build_scene' &&
     commandType !== 'table.begin_adventure' &&
     commandType !== 'table.interact_object' &&
@@ -712,11 +729,14 @@ export async function acceptTableCommand(options: {
 
   if (commandType === 'table.interact_object') {
     const declarationForInteract = trimmedDeclaration ?? trimmedPlaySummary ?? '';
-    // Defense in depth: door open/passage must never mutate scene props.
-    if (declarationIsDoorOpenOrPassage(declarationForInteract)) {
+    // Defense in depth: door open/passage/close must never mutate scene props.
+    if (
+      declarationIsDoorOpenOrPassage(declarationForInteract) ||
+      declarationIsDoorClose(declarationForInteract)
+    ) {
       throw new TableCommandError(
         ERROR_CODES.BAD_REQUEST,
-        'That declaration targets a doorway, not a scene prop. Open or step through the door on the map instead.',
+        'That declaration targets a doorway, not a scene prop. Open, close, or step through the door on the map instead.',
       );
     }
     const targetObjectId =
@@ -900,6 +920,56 @@ export async function acceptTableCommand(options: {
     eventType = 'table.door_opened';
   }
 
+  if (commandType === 'table.close_door') {
+    if (typeof edgeId !== 'string' || edgeId.length === 0) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'That door could not be identified on the map. Move next to an open door and declare closing it again.',
+      );
+    }
+    const map = buildAuthoritativeMapBundle({
+      campaignId,
+      seats: mapContext.seats,
+      runtime: mapContext.runtime,
+      adventureTemplateId: mapContext.adventureTemplateId,
+      currentChapterId: mapContext.currentChapterId,
+    });
+    const edge = map.edges.find((entry) => entry.edgeId === edgeId);
+    if (edge === undefined || edge.kind !== 'door') {
+      throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is not on this scene.');
+    }
+    if (edge.doorState !== 'open') {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'That door is already closed on the table.',
+      );
+    }
+    const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
+    if (token === undefined) {
+      throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
+    }
+    const anchor = token.footprint.anchor;
+    const doorNeighbor =
+      edge.orientation === 'north'
+        ? { column: edge.column, row: edge.row - 1 }
+        : { column: edge.column + 1, row: edge.row };
+    const nearDoor =
+      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1 ||
+      Math.max(
+        Math.abs(anchor.column - doorNeighbor.column),
+        Math.abs(anchor.row - doorNeighbor.row),
+      ) <= 1;
+    if (!nearDoor) {
+      throw new TableCommandError(
+        ERROR_CODES.ILLEGAL_PATH,
+        'Move adjacent to the door before closing it.',
+      );
+    }
+    openEdgeId = edgeId;
+    doorTargetLabel = `wooden doorway ${edge.orientation}`;
+    eventType = 'table.door_closed';
+  }
+
   if (commandType === 'table.build_scene') {
     const map = buildAuthoritativeMapBundle({
       campaignId,
@@ -1036,6 +1106,23 @@ export async function acceptTableCommand(options: {
       throw new TableCommandError(ERROR_CODES.STALE_STATE_VERSION, conflict.message, conflict);
     }
 
+    if (
+      commandType === 'table.close_door' &&
+      openEdgeId !== undefined &&
+      current.doorStates?.[openEdgeId] !== undefined &&
+      current.doorStates[openEdgeId] !== 'open'
+    ) {
+      const conflict = classifyExplorationConflict({
+        commandType,
+        current,
+        expectedStateVersion,
+        openEdgeId,
+        actorSeatId: seat.seatId,
+        encounterActive: false,
+      });
+      throw new TableCommandError(ERROR_CODES.STALE_STATE_VERSION, conflict.message, conflict);
+    }
+
     const commandId = randomUUID();
     const eventId = randomUUID();
     const committedAt = new Date();
@@ -1113,7 +1200,7 @@ export async function acceptTableCommand(options: {
           if (!near) {
             return feature;
           }
-          const base = feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked)\b/i, '').trim();
+          const base = feature.label.replace(/\s*[—-]\s*(open|closed|locked|unlocked|closed, locked|closed, unlocked)\b/i, '').trim();
           return { ...feature, label: `${base} — open` };
         });
         sceneInstances = {
@@ -1122,6 +1209,44 @@ export async function acceptTableCommand(options: {
             ...activeScene,
             features,
             doorStates: { ...activeScene.doorStates, [openEdgeId]: 'open' },
+          },
+        };
+      }
+    }
+
+    if (commandType === 'table.close_door' && openEdgeId !== undefined) {
+      // Closing an open leaf leaves the lock unlocked (it was open, so unlocked).
+      doorStates[openEdgeId] = 'unlocked';
+      if (activeSceneId && sceneInstances[activeSceneId]) {
+        const activeScene = sceneInstances[activeSceneId]!;
+        const closeEdge =
+          activeScene.edges.find((edge) => edge.edgeId === openEdgeId) ??
+          runtimeEdges.find((edge) => edge.edgeId === openEdgeId) ??
+          null;
+        const features = activeScene.features.map((feature) => {
+          const isExit =
+            feature.objectKind === 'exit' ||
+            feature.referenceKind === 'exit' ||
+            feature.objectId.includes(':exit');
+          if (!isExit || closeEdge === null) {
+            return feature;
+          }
+          const near =
+            Math.abs(feature.column - closeEdge.column) + Math.abs(feature.row - closeEdge.row) <= 1;
+          if (!near) {
+            return feature;
+          }
+          const base = feature.label
+            .replace(/\s*[—-]\s*(open|closed|locked|unlocked|closed, locked|closed, unlocked)\b/i, '')
+            .trim();
+          return { ...feature, label: `${base} — closed, unlocked` };
+        });
+        sceneInstances = {
+          ...sceneInstances,
+          [activeSceneId]: {
+            ...activeScene,
+            features,
+            doorStates: { ...activeScene.doorStates, [openEdgeId]: 'unlocked' },
           },
         };
       }
@@ -1151,7 +1276,7 @@ export async function acceptTableCommand(options: {
       typeof trimmedDeclaration === 'string' &&
       /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(trimmedDeclaration);
     const receiptTargetKind =
-      commandType === 'table.open_door'
+      commandType === 'table.open_door' || commandType === 'table.close_door'
         ? 'door'
         : commandType === 'table.interact_object'
           ? 'object'
@@ -1183,7 +1308,17 @@ export async function acceptTableCommand(options: {
                 to: 'open',
               },
             ]
-          : [];
+          : commandType === 'table.close_door' && openEdgeId !== undefined
+            ? [
+                {
+                  kind: 'door' as const,
+                  id: openEdgeId,
+                  label: doorTargetLabel,
+                  from: 'open',
+                  to: 'unlocked',
+                },
+              ]
+            : [];
     const resolvedReceipt = buildResolvedActionReceipt({
       commandType,
       declaration: trimmedDeclaration ?? null,
@@ -1192,7 +1327,7 @@ export async function acceptTableCommand(options: {
       targetLabel:
         objectMutation !== null
           ? objectMutation.baseLabel
-          : commandType === 'table.open_door'
+          : commandType === 'table.open_door' || commandType === 'table.close_door'
             ? doorTargetLabel
             : moveDestinationLabel ?? sceneTitle ?? 'the table',
       targetKind: receiptTargetKind,
@@ -1339,6 +1474,13 @@ export async function acceptTableCommand(options: {
         campaignId,
         kind: 'door_opened',
         body: `${seat.characterName || 'A player'} opened a door on the table.`,
+      });
+    } else if (eventType === 'table.door_closed' && openEdgeId !== undefined) {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_resolved',
+        body: `${seat.characterName || 'A player'} closed a door on the table.`,
       });
     } else if (eventType === 'table.token_moved' && movePath !== undefined && movePath.length > 0) {
       const mapForChronicle = buildAuthoritativeMapBundle({

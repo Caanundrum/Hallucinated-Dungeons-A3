@@ -323,23 +323,62 @@ export function extractPremiseContinuity(premise: string): PremiseContinuity {
     { pattern: /\bMara Venn\b/i, fallback: 'Mara Venn' },
     { pattern: /\bbroken silver lantern\b/i, fallback: 'broken silver lantern' },
     { pattern: /\bsilver lantern\b/i, fallback: 'silver lantern' },
+    { pattern: /\blocked red warehouse door\b/i, fallback: 'locked red warehouse door' },
+    { pattern: /\bred warehouse door\b/i, fallback: 'red warehouse door' },
     { pattern: /\blocked red door\b/i, fallback: 'locked red door' },
     { pattern: /\bred door\b/i, fallback: 'red door' },
   ];
   for (const entry of namedPatterns) {
     const match = premise.match(entry.pattern);
-    if (match !== null) {
-      pushUnique(match[0] ?? entry.fallback);
+    if (match === null) {
+      continue;
     }
+    const label = match[0] ?? entry.fallback;
+    // Skip shorter aliases when a more specific entity already matched (e.g. locked red warehouse door).
+    if (
+      namedEntities.some(
+        (existing) =>
+          existing.toLowerCase().includes(label.toLowerCase()) ||
+          label.toLowerCase().includes(existing.toLowerCase()),
+      )
+    ) {
+      // Prefer the longer / more specific label.
+      const idx = namedEntities.findIndex((existing) =>
+        label.toLowerCase().includes(existing.toLowerCase()),
+      );
+      if (idx >= 0 && label.length > namedEntities[idx]!.length) {
+        namedEntities[idx] = label;
+      }
+      continue;
+    }
+    pushUnique(label);
   }
 
   return { locationKind, locationPhrase, questHook, namedEntities };
 }
 
-function dressInteriorFamilyWithPremise(
-  family: ReturnType<typeof pickInteriorFamily>,
-  premise: string,
-): ReturnType<typeof pickInteriorFamily> {
+type InteriorFamily = {
+  templateId: string;
+  title: string;
+  environment: SceneEnvironment;
+  lighting: SceneLighting;
+  mood: string;
+  description: string;
+  lightLabel: string;
+  coverLabel: string;
+  poiLabel: string;
+  poiKind: SceneObjectKind;
+  poiRef: MapReferenceMarkerKind;
+  poiState: SceneObjectState;
+  /** Player-visible east exit label when premise names a specific door. */
+  exitLabel?: string;
+  /** Stored door state for the composed east exit (leaf/lock). */
+  exitDoorState?: DoorState;
+  /** Named person kept as an on-map NPC when present in the premise. */
+  npcLabel?: string | null;
+};
+
+function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string): InteriorFamily {
   const continuity = extractPremiseContinuity(premise);
   if (
     continuity.questHook === null &&
@@ -348,7 +387,10 @@ function dressInteriorFamilyWithPremise(
   ) {
     return family;
   }
-  let { title, mood, description, poiLabel, lightLabel } = family;
+  let { title, mood, description, poiLabel, lightLabel, coverLabel } = family;
+  let exitLabel = family.exitLabel;
+  let exitDoorState = family.exitDoorState;
+  let npcLabel = family.npcLabel ?? null;
   if (
     continuity.locationKind === 'canal_waterfront' &&
     !/\b(canal|dock|ferry|waterfront|harbor|harbour)\b/i.test(`${title} ${description}`)
@@ -371,45 +413,61 @@ function dressInteriorFamilyWithPremise(
     }
   }
   for (const entity of continuity.namedEntities) {
-    const escaped = entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(escaped, 'i').test(`${mood} ${description} ${poiLabel} ${lightLabel}`)) {
+    if (/mara\s+venn/i.test(entity)) {
+      npcLabel = 'Mara Venn';
+      if (!/mara\s+venn/i.test(`${mood} ${description}`)) {
+        mood = `${mood} Mara Venn waits for the hand-off.`;
+        description = `${description} Mara Venn is here expecting the courier.`;
+      }
       continue;
     }
-    if (/mara\s+venn/i.test(entity)) {
-      mood = `${mood} Mara Venn's name is on the courier slip.`;
-      description = `${description} A note names Mara Venn as the expected hand-off.`;
-    } else if (/blue\s+heron/i.test(entity)) {
-      mood = `${mood} The Blue Heron is the meeting mark people still use.`;
-      description = `${description} A faded Blue Heron mark is scratched into a crate.`;
-      if (!/blue\s+heron/i.test(poiLabel)) {
-        poiLabel = 'Blue Heron mark';
+    if (/blue\s+heron/i.test(entity)) {
+      // Keep courier/poi intact — Blue Heron lives on cover so both stay map-visible.
+      if (!/blue\s+heron/i.test(coverLabel)) {
+        coverLabel = 'Blue Heron crate mark';
       }
-    } else if (/silver\s+lantern/i.test(entity)) {
+      if (!/blue\s+heron/i.test(`${mood} ${description}`)) {
+        mood = `${mood} The Blue Heron is the meeting mark people still use.`;
+        description = `${description} A faded Blue Heron mark is scratched into a crate.`;
+      }
+      continue;
+    }
+    if (/silver\s+lantern/i.test(entity)) {
       lightLabel = /broken/i.test(entity) ? 'Broken silver lantern' : 'Silver lantern';
-      description = `${description} A ${entity} lies among the rope coils.`;
-    } else if (/red\s+door/i.test(entity)) {
-      description = `${description} Rumors point to a ${entity} beyond this loft.`;
-    } else {
+      if (!/silver\s+lantern/i.test(description)) {
+        description = `${description} A ${entity} lies among the rope coils.`;
+      }
+      continue;
+    }
+    if (/(?:red\s+(?:warehouse\s+)?door|warehouse\s+door)/i.test(entity)) {
+      const locked = /\blocked\b/i.test(entity);
+      exitLabel = locked ? 'Locked red warehouse door east' : 'Red warehouse door east';
+      exitDoorState = locked ? 'locked' : 'unlocked';
+      if (!/red\s+(?:warehouse\s+)?door/i.test(description)) {
+        description = `${description} The east exit is the ${entity}.`;
+      }
+      continue;
+    }
+    const escaped = entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!new RegExp(escaped, 'i').test(`${mood} ${description} ${poiLabel} ${lightLabel}`)) {
       description = `${description} Premise detail kept: ${entity}.`;
     }
   }
-  return { ...family, title, mood, description, poiLabel, lightLabel };
+  return {
+    ...family,
+    title,
+    mood,
+    description,
+    poiLabel,
+    lightLabel,
+    coverLabel,
+    ...(exitLabel !== undefined ? { exitLabel } : {}),
+    ...(exitDoorState !== undefined ? { exitDoorState } : {}),
+    ...(npcLabel !== null && npcLabel !== undefined ? { npcLabel } : {}),
+  };
 }
 
-function pickInteriorFamily(premise: string, seed: number): {
-  templateId: string;
-  title: string;
-  environment: SceneEnvironment;
-  lighting: SceneLighting;
-  mood: string;
-  description: string;
-  lightLabel: string;
-  coverLabel: string;
-  poiLabel: string;
-  poiKind: SceneObjectKind;
-  poiRef: MapReferenceMarkerKind;
-  poiState: SceneObjectState;
-} {
+function pickInteriorFamily(premise: string, seed: number): InteriorFamily {
   const text = premise.toLowerCase();
   const continuity = extractPremiseContinuity(premise);
   if (
@@ -833,7 +891,7 @@ function composeInterior(options: {
       label: family.lightLabel,
       referenceKind: 'lighting',
       objectKind: 'light',
-      state: 'lit',
+      state: /broken/i.test(family.lightLabel) ? 'unlit' : 'lit',
       interactable: true,
     },
     {
@@ -857,6 +915,22 @@ function composeInterior(options: {
       interactable: true,
     },
   ];
+  if (family.npcLabel !== null && family.npcLabel !== undefined && family.npcLabel.trim().length > 0) {
+    const npcPos = nearSpawn(spawn, columns, rows, -1, 1);
+    features.push({
+      objectId: `${options.sceneId}:npc-premise`,
+      column: npcPos.column,
+      row: npcPos.row,
+      label: family.npcLabel,
+      referenceKind: 'npc',
+      objectKind: 'npc',
+      state: 'present',
+      interactable: true,
+    });
+  }
+
+  const exitLabel = family.exitLabel ?? 'Wooden doorway east';
+  const exitDoorState: DoorState = family.exitDoorState ?? 'closed';
 
   return {
     sceneId: options.sceneId,
@@ -877,12 +951,15 @@ function composeInterior(options: {
     exits: [
       {
         exitId: `${options.sceneId}:exit-east`,
-        label: 'Wooden doorway east',
+        label: exitLabel,
         destinationHint: inferExteriorHint(options.premise, seed),
       },
     ],
-    doorStates: doorEdgeId ? { [doorEdgeId]: 'closed' } : {},
-    inhabitantObjectIds: [],
+    doorStates: doorEdgeId ? { [doorEdgeId]: exitDoorState } : {},
+    inhabitantObjectIds:
+      family.npcLabel !== null && family.npcLabel !== undefined && family.npcLabel.trim().length > 0
+        ? [`${options.sceneId}:npc-premise`]
+        : [],
   };
 }
 

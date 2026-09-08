@@ -323,20 +323,25 @@ async function resolveDirectorNarrateOutput(options: {
     if (map !== null) {
       const closed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
       const open = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
-      const door =
-        closed[0] ?? open[0] ?? null;
+      // Prefer an adjacent door when the party has one; otherwise closed before open.
+      const door = closed[0] ?? open[0] ?? null;
       if (door !== null) {
         const authority = doorAuthorityFromStored(door.doorState);
         const facing = door.orientation;
         const label = formatDoorPlayerFacingLabel(authority, facing);
         if (inspectHint === 'listen') {
-          return `You press an ear toward ${label}. Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
+          return authority.leaf === 'open'
+            ? `You listen toward ${label}. The leaf is already open; quiet air moves through the passage — nothing forces a roll.`
+            : `You press an ear toward ${label}. Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
+        }
+        if (authority.leaf === 'open') {
+          return `You check ${label} without forcing it. The leaf is already open on the table; there is no closed lock to test. The doorway stays open.`;
         }
         const lockLine =
           authority.lock === 'locked'
             ? 'The mechanism is locked.'
             : authority.lock === 'unlocked'
-              ? 'The lock is already open; the leaf is still closed.'
+              ? 'The lock is unlocked; the leaf is still closed.'
               : 'From a casual check it looks closed and ordinary.';
         return `You check ${label} without opening it. ${lockLine} The doorway stays shut on the table.`;
       }
@@ -550,10 +555,12 @@ function mentionsDoorIntent(text: string): boolean {
   // Adjectival "open wooden door" is door state, not an open-door verb.
   const withoutOpenNoun = stripAdjectivalOpenDoor(text);
   const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(withoutOpenNoun);
+  const closeVerb = /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(text);
   const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
   if (
     textReferencesUnlockedDoorState(text) &&
     !openVerb &&
+    !closeVerb &&
     !passageVerb &&
     !/\bbeyond\b/i.test(text)
   ) {
@@ -565,6 +572,7 @@ function mentionsDoorIntent(text: string): boolean {
   }
   return (
     mentionsDoorStateIntent(text) ||
+    closeVerb ||
     (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(withoutOpenNoun) &&
       !textRequestsLockPicking(text)) ||
     (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(withoutOpenNoun) &&
@@ -577,11 +585,10 @@ function mentionsDoorIntent(text: string): boolean {
     (/\bbeyond\b/.test(text) &&
       /\b(?:enter|room|chamber|door|doorway)\b/.test(text) &&
       !textRequestsLockPicking(text)) ||
-    // Catch-all for explicit door/gate nouns with no unlock / passage language.
-    (/\b(door|gate|entryway)\b/.test(text) &&
+    // Catch-all for explicit door/gate/doorway nouns with no unlock / passage language.
+    (/\b(door|doorway|gate|entryway)\b/.test(text) &&
       !textRequestsLockPicking(text) &&
       !textReferencesUnlockedDoorState(text) &&
-      !/\bdoorway\b/.test(text) &&
       !passageVerb)
   );
 }
@@ -1245,7 +1252,8 @@ export async function interpretNaturalLanguageIntent(options: {
     }
   } else if (
     (authority.disposition === 'propose_command' &&
-      authority.actionSequence[0]?.kind === 'open_door') ||
+      (authority.actionSequence[0]?.kind === 'open_door' ||
+        authority.actionSequence[0]?.kind === 'close_door')) ||
     (mentionsDoorIntent(text) &&
       !/(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative)/i.test(
         text,

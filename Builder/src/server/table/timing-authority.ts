@@ -25,6 +25,7 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 export const EXPLORATION_TABLE_COMMANDS = [
   'table.move',
   'table.open_door',
+  'table.close_door',
   'table.build_scene',
   'table.begin_adventure',
   'table.interact_object',

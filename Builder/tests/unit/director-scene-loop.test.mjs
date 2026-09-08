@@ -308,22 +308,30 @@ describe('Premise continuity into opening interiors (UX 67–70)', () => {
 describe('Premise named entities (UX 67–70 recheck)', () => {
   it('keeps Blue Heron, Mara Venn, silver lantern, and red door in opening dress', () => {
     const premise =
-      'At the Blue Heron, Mara Venn waits for a missing courier. A broken silver lantern and locked red door mark the canal loft.';
+      'At the Blue Heron, Mara Venn waits for a missing courier. A broken silver lantern and locked red warehouse door mark the canal loft.';
     const continuity = extractPremiseContinuity(premise);
     assert.ok(continuity.namedEntities.some((entry) => /Blue Heron/i.test(entry)));
     assert.ok(continuity.namedEntities.some((entry) => /Mara Venn/i.test(entry)));
     assert.ok(continuity.namedEntities.some((entry) => /silver lantern/i.test(entry)));
-    assert.ok(continuity.namedEntities.some((entry) => /red door/i.test(entry)));
+    assert.ok(continuity.namedEntities.some((entry) => /red (?:warehouse )?door/i.test(entry)));
     const scene = composeDirectorScene({
       kind: 'interior',
       sceneId: 'named-canal',
       premise,
       seedKey: 'camp-named:0',
     });
-    const hay = `${scene.mood} ${scene.description} ${scene.features.map((f) => f.label).join(' ')}`;
+    const hay = `${scene.mood} ${scene.description} ${scene.features.map((f) => f.label).join(' ')} ${scene.exits.map((e) => e.label).join(' ')}`;
     assert.match(hay, /Blue Heron/i);
     assert.match(hay, /Mara Venn/i);
     assert.match(hay, /silver lantern/i);
-    assert.match(hay, /red door/i);
+    assert.match(hay, /red warehouse door/i);
+    assert.ok(scene.features.some((f) => /Blue Heron/i.test(f.label)));
+    assert.ok(scene.features.some((f) => /Mara Venn/i.test(f.label) && f.objectKind === 'npc'));
+    assert.ok(scene.features.some((f) => /silver lantern/i.test(f.label)));
+    assert.ok(scene.exits.some((e) => /red warehouse door/i.test(e.label)));
+    assert.ok(
+      Object.values(scene.doorStates).some((state) => state === 'locked'),
+      'locked red warehouse door must store locked leaf/lock',
+    );
   });
 });

@@ -80,6 +80,8 @@ test.describe('Rogue Expertise and kit overlap', () => {
     await chooseOption(page, 'option-wayfarer-kit');
     await expect(page.getByTestId('equipment-overlap-note')).toContainText(/Thieves/i);
     await expect(page.getByTestId('equipment-overlap-note')).toContainText(/kept ×1/i);
+    await expect(page.getByTestId('equipment-overlap-note')).toContainText(/Dagger/i);
+    await expect(page.getByTestId('equipment-overlap-note')).toContainText(/kept ×2/i);
     await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
@@ -108,5 +110,11 @@ test.describe('Rogue Expertise and kit overlap', () => {
     await expect(page.getByTestId('sheet-equipment-list')).toContainText(/Thieves' Tools/);
     await expect(page.getByTestId('sheet-equipment-qty-thieves-tools')).toHaveCount(0);
     await expect(page.getByTestId('sheet-equipment-list')).toContainText(/kept ×1|Shared by Class/i);
+    await expect(page.getByTestId('sheet-equipment-list')).toContainText(/Dagger/);
+    await expect(page.getByTestId('sheet-equipment-qty-dagger')).toHaveText('2');
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/recheck2_dagger_qty_two.png',
+      fullPage: false,
+    });
   });
 });
