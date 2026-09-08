@@ -1201,13 +1201,13 @@ ol.record-list.dm-thread-list > li {
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 0 1 28dvh;
-    min-height: 8rem;
-    max-height: min(32dvh, 14rem);
+    flex: 0 1 24dvh;
+    min-height: 7rem;
+    max-height: min(28dvh, 12rem);
     aspect-ratio: auto;
   }
 
-  /* FQA-023: dock must not scroll; thread list shrinks instead of a hard 12rem floor. */
+  /* FQA-023: dock must not scroll; thread owns leftover height with a usable floor. */
   .table-action-bar {
     flex: 1 1 0;
     height: auto;
@@ -1222,18 +1222,41 @@ ol.record-list.dm-thread-list > li {
     max-height: none;
   }
 
-  .dm-play-thread {
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  .table-action-bar > [data-testid='table-action-slot'],
+  .table-action-bar-inner,
+  .table-action-bar-dm {
     min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Compact the exploration banner so beats remain readable. */
+  .table-action-bar-dm > .table-turn-banner {
+    flex: 0 1 auto;
+    max-height: 4.5rem;
+    overflow: auto;
+  }
+
+  .table-action-bar-dm > .table-turn-detail {
+    display: none;
+  }
+
+  .dm-play-thread {
+    flex: 1 1 auto;
+    min-height: 10rem;
+    max-height: none;
+    grid-template-rows: auto auto minmax(6.5rem, 1fr) auto;
+    overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
+    min-height: 12rem;
     grid-template-rows: auto auto minmax(8rem, 1fr) auto;
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
-    min-height: 7.5rem;
+    min-height: 6.5rem;
+    overflow-y: auto;
   }
 }
 

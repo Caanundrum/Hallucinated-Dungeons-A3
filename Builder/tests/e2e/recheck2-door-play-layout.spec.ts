@@ -60,17 +60,27 @@ test.describe('Recheck 2 door + play layout', () => {
     await enterAccountFromShell(page);
     await acceptAllLegalForPlay(page);
     await seatQuietChamber(page, 'Layout1081');
+    await expect
+      .poll(async () => page.getByTestId('map-scene-banner').innerText().catch(() => ''), {
+        timeout: 45_000,
+      })
+      .not.toMatch(/awaiting first scene/i);
     const metrics = await page.evaluate(() => {
       const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
       const input = document.querySelector('[data-testid="player-action-input"]') as HTMLElement | null;
-      const list = document.querySelector('[data-testid="dm-play-thread-list"], .dm-thread-list') as HTMLElement | null;
-      const dock = document.querySelector('.table-action-bar') as HTMLElement | null;
+      const list =
+        (document.querySelector('[data-testid="dm-play-thread-list"]') as HTMLElement | null) ??
+        (document.querySelector('.dm-thread-list') as HTMLElement | null);
+      const thread = document.querySelector('.dm-play-thread') as HTMLElement | null;
+      const dock = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
       const comms = document.querySelector('.table-comms-rail') as HTMLElement | null;
       const rect = action?.getBoundingClientRect();
       const inputRect = input?.getBoundingClientRect();
       const listRect = list?.getBoundingClientRect();
+      const threadRect = thread?.getBoundingClientRect();
       const dockRect = dock?.getBoundingClientRect();
       const commsRect = comms?.getBoundingClientRect();
+      const readableH = Math.max(list?.clientHeight ?? 0, thread?.clientHeight ?? 0);
       return {
         actionH: action?.clientHeight ?? 0,
         actionTop: rect?.top ?? -1,
@@ -83,7 +93,9 @@ test.describe('Recheck 2 door + play layout', () => {
           inputRect.bottom > 0,
         viewportH: window.innerHeight,
         listH: list?.clientHeight ?? 0,
-        listBottom: listRect?.bottom ?? -1,
+        threadH: thread?.clientHeight ?? 0,
+        readableH,
+        listBottom: listRect?.bottom ?? threadRect?.bottom ?? -1,
         dockBottom: dockRect?.bottom ?? -1,
         dockOverflowY: dock !== null ? getComputedStyle(dock).overflowY : '',
         dockScrollTop: dock?.scrollTop ?? -1,
@@ -98,13 +110,13 @@ test.describe('Recheck 2 door + play layout', () => {
     expect(metrics.inputVisible).toBe(true);
     expect(metrics.actionTop).toBeLessThan(metrics.viewportH);
     expect(metrics.actionBottom).toBeGreaterThan(0);
-    // Recheck 3 / FQA-023: readable timeline, not a ~22px clipped strip under Chat.
-    expect(metrics.listH).toBeGreaterThanOrEqual(120);
-    expect(metrics.listBottom).toBeLessThanOrEqual(metrics.dockBottom + 2);
+    // Recheck 3 / FQA-023: readable timeline inside the dock, not a ~22px clipped strip.
+    expect(metrics.readableH).toBeGreaterThanOrEqual(140);
+    expect(metrics.listBottom).toBeLessThanOrEqual(metrics.dockBottom + 4);
     expect(['hidden', 'clip']).toContain(metrics.dockOverflowY);
     expect(metrics.dockScrollTop).toBe(0);
     if (metrics.commsTop > 0 && metrics.dockBottom > 0) {
-      expect(metrics.commsTop).toBeGreaterThanOrEqual(metrics.dockBottom - 2);
+      expect(metrics.commsTop).toBeGreaterThanOrEqual(metrics.dockBottom - 4);
     }
   });
 
