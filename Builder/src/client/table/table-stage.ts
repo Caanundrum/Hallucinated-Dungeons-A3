@@ -876,13 +876,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     // Contain the full Director scene — never force horizontal overflow after Fit.
     // Compact path uses less label pad so Fit fills empty canvas (Recheck 3).
     const labelPad = compactFit
-      ? Math.min(28, Math.max(12, viewport.clientWidth * 0.04))
+      ? Math.min(16, Math.max(8, viewport.clientWidth * 0.02))
       : Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
-    const pad = compactFit ? 4 : 8;
+    const pad = compactFit ? 2 : 8;
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
-    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.35);
+    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.2);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const fitScale = compactFit ? 0.995 : 0.96;
+    const fitScale = compactFit ? 1 : 0.96;
     const fit = Math.min(contain * fitScale, contain);
     applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({
