@@ -1165,10 +1165,10 @@ ol.record-list.dm-thread-list > li {
 }
 
 @media (max-width: 1100px) and (min-width: 901px) {
-  /* Mid tablet: Map + readable Play timeline + composer; Chat/Info stay compact. */
+  /* Mid tablet: prioritize readable Play timeline; Chat/Info stay compact drawers. */
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 7.5rem) minmax(0, 6.5rem);
+    grid-template-rows: minmax(0, 1fr) minmax(5.5rem, 0.28fr) minmax(5rem, 0.24fr);
     grid-template-areas:
       'play'
       'comms'
@@ -1177,7 +1177,7 @@ ol.record-list.dm-thread-list > li {
 
   .table-info-rail {
     grid-area: info;
-    max-height: min(14dvh, 6.5rem);
+    max-height: min(12dvh, 5.5rem);
     order: 3;
     overflow: auto;
   }
@@ -1195,19 +1195,19 @@ ol.record-list.dm-thread-list > li {
   .table-comms-rail {
     grid-area: comms;
     order: 2;
-    max-height: min(14dvh, 7.5rem);
+    max-height: min(12dvh, 6rem);
     overflow: auto;
   }
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 0 1 24dvh;
-    min-height: 7rem;
-    max-height: min(28dvh, 12rem);
+    flex: 0 1 20dvh;
+    min-height: 6.5rem;
+    max-height: min(24dvh, 11rem);
     aspect-ratio: auto;
   }
 
-  /* FQA-023: dock must not scroll; thread owns leftover height with a usable floor. */
+  /* FQA-023 / R4-02: dock never scrolls; thread owns leftover height. */
   .table-action-bar {
     flex: 1 1 0;
     height: auto;
@@ -1217,7 +1217,7 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.2 1 0;
+    flex: 1.35 1 0;
     height: auto;
     max-height: none;
   }
@@ -1229,10 +1229,9 @@ ol.record-list.dm-thread-list > li {
     overflow: hidden;
   }
 
-  /* Compact the exploration banner so beats remain readable. */
   .table-action-bar-dm > .table-turn-banner {
     flex: 0 1 auto;
-    max-height: 4.5rem;
+    max-height: 3.25rem;
     overflow: auto;
   }
 
@@ -1242,22 +1241,45 @@ ol.record-list.dm-thread-list > li {
 
   .dm-play-thread {
     flex: 1 1 auto;
-    min-height: 10rem;
+    min-height: 14rem;
     max-height: none;
-    grid-template-rows: auto auto minmax(6.5rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
-    min-height: 12rem;
-    grid-template-rows: auto auto minmax(8rem, 1fr) auto;
+    min-height: 18rem;
+    grid-template-rows: auto auto minmax(14rem, 1fr) auto;
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
-    min-height: 6.5rem;
+    min-height: 10rem;
     overflow-y: auto;
   }
+}
+
+/* Desktop: keep a readable history band even when map is tall (R4-02 @ 1440). */
+@media (min-width: 1101px) {
+  .dm-play-thread {
+    grid-template-rows: auto auto minmax(14rem, 1fr) auto;
+  }
+
+  .dm-play-thread.is-expanded {
+    grid-template-rows: auto auto minmax(20rem, 1fr) auto;
+  }
+}
+
+/* Report control stays secondary so it does not dominate the timeline. */
+.dm-thread-report {
+  margin: 0.15rem 0 0;
+}
+
+.dm-thread-report [data-testid='report-wrong-resolution'] {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+  line-height: 1.2;
+  max-width: 100%;
 }
 
 .table-mobile-task-nav {

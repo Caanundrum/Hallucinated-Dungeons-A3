@@ -213,24 +213,35 @@ export function filterOptimisticDmDupes(
 }
 
 /**
- * Collapse duplicate DM speaker rows in a live play thread (optimistic+chronicle races).
- * Keeps the first occurrence of each equivalent body.
+ * Collapse adjacent duplicate DM speaker rows (optimistic+chronicle races).
+ * Does not drop a later identical ruling when a player declaration intervened —
+ * repeated leaf/lock inspect answers must remain in the play timeline (R4-01).
  */
 export function collapseDuplicateDmMessages(
   messages: readonly DmThreadMessage[],
 ): DmThreadMessage[] {
-  const seen: string[] = [];
   const collapsed: DmThreadMessage[] = [];
   for (const message of messages) {
     if (message.speaker !== 'dm') {
       collapsed.push(message);
       continue;
     }
-    const duplicate = seen.some((body) => storyBodiesEquivalent(body, message.body));
-    if (duplicate) {
+    // Only collapse against the most recent DM body with no player turn between.
+    let priorDmBody: string | null = null;
+    for (let index = collapsed.length - 1; index >= 0; index -= 1) {
+      const prior = collapsed[index]!;
+      if (prior.speaker === 'player') {
+        priorDmBody = null;
+        break;
+      }
+      if (prior.speaker === 'dm') {
+        priorDmBody = prior.body;
+        break;
+      }
+    }
+    if (priorDmBody !== null && storyBodiesEquivalent(priorDmBody, message.body)) {
       continue;
     }
-    seen.push(message.body);
     collapsed.push(message);
   }
   return collapsed;

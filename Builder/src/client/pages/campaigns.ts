@@ -16,6 +16,12 @@ import { getAccount, isAccountHydrated, subscribeAccount } from '../account-sess
 import { ApiFailure, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import {
+  clearHiddenTablesFromHubPreference,
+  hideTableFromHubPreference,
+  readHiddenTableIdsPreference,
+  unhideTableFromHubPreference,
+} from '../browser-preferences.js';
+import {
   bindDirectorAvatarFallback,
   directorIdentityFromLabelOrKey,
   directorPortraitChipMarkup,
@@ -34,30 +40,6 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-const HIDDEN_TABLES_KEY = 'hd.tables.hub.hidden';
-
-function readHiddenTableIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(HIDDEN_TABLES_KEY);
-    if (raw === null) {
-      return new Set();
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return new Set();
-    }
-    return new Set(parsed.filter((entry): entry is string => typeof entry === 'string'));
-  } catch {
-    return new Set();
-  }
-}
-
-function hideTableFromHub(campaignId: string): void {
-  const next = readHiddenTableIds();
-  next.add(campaignId);
-  localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
-}
-
 export function mountCampaignsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Tables');
@@ -73,6 +55,7 @@ export function mountCampaignsPage(host: PageHost): void {
   let sessionFilter: TablesSessionFilter = 'all';
   let seatsFilter: TablesSeatsFilter = 'all';
   let joinFilter: TablesJoinFilter = 'all';
+  let showHiddenTables = false;
   const mountToken = beginPageMount(container);
 
   function sortTables<T extends { name: string; updatedAt: string; activeSeatCount: number }>(
@@ -97,8 +80,12 @@ export function mountCampaignsPage(host: PageHost): void {
   function renderSignedIn(): void {
     const myTables = hub?.myTables ?? [];
     const openTables = hub?.openTables ?? [];
+    const hiddenIds = readHiddenTableIdsPreference();
+    const hubVisibleMine = showHiddenTables
+      ? myTables
+      : myTables.filter((table) => !hiddenIds.has(table.campaignId));
     const filteredMine = sortTables(
-      filterMyTables(myTables, {
+      filterMyTables(hubVisibleMine, {
         searchNeedle: searchQuery,
         visibility: visibilityFilter,
         session: sessionFilter,
@@ -112,8 +99,11 @@ export function mountCampaignsPage(host: PageHost): void {
         join: joinFilter,
       }),
     );
-    const sourceCount = tab === 'mine' ? myTables.length : openTables.length;
+    const sourceCount = tab === 'mine' ? hubVisibleMine.length : openTables.length;
     const filteredCount = tab === 'mine' ? filteredMine.length : filteredOpen.length;
+    const hiddenCount = [...hiddenIds].filter((id) =>
+      myTables.some((table) => table.campaignId === id),
+    ).length;
     const filtersActive =
       searchQuery.trim().length > 0 ||
       (tab === 'mine' && (visibilityFilter !== 'all' || sessionFilter !== 'all')) ||
@@ -205,9 +195,29 @@ export function mountCampaignsPage(host: PageHost): void {
         </div>
         <p class="record-meta" data-testid="tables-filter-summary">
           Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'tables in your hub' : 'open tables'}.
+          ${
+            tab === 'mine' && hiddenCount > 0
+              ? showHiddenTables
+                ? `${hiddenCount} hidden ${hiddenCount === 1 ? 'table is' : 'tables are'} included below.`
+                : `${hiddenCount} hidden ${hiddenCount === 1 ? 'table is' : 'tables are'} omitted from this list.`
+              : ''
+          }
           ${filtersActive ? 'Filters are applied client-side.' : 'Use filters to narrow the list.'}
           Owned and joined tables are grouped below. Hide is local to this browser until server archive ships.
         </p>
+        ${
+          tab === 'mine' && hiddenCount > 0
+            ? `<div class="actions" data-testid="tables-hidden-controls">
+                 <button type="button" class="button ghost" data-testid="tables-toggle-hidden"
+                   aria-pressed="${showHiddenTables ? 'true' : 'false'}">
+                   ${showHiddenTables ? 'Hide hidden tables again' : `Show ${hiddenCount} hidden`}
+                 </button>
+                 <button type="button" class="button ghost" data-testid="tables-clear-hidden">
+                   Restore all hidden
+                 </button>
+               </div>`
+            : ''
+        }
         <section class="panel" aria-labelledby="table-list-heading">
           <h2 id="table-list-heading">${tab === 'mine' ? 'My tables' : 'Open tables'}</h2>
           ${
@@ -219,20 +229,17 @@ export function mountCampaignsPage(host: PageHost): void {
                       : 'No tables match the current search and filters.'
                   }</p>`
                 : (() => {
-                    const hiddenIds = readHiddenTableIds();
-                    const visible = filteredMine.filter(
-                      (table) => !hiddenIds.has(table.campaignId),
-                    );
-                    const owned = visible.filter((table) => table.isCampaignOwner);
-                    const joined = visible.filter((table) => !table.isCampaignOwner);
+                    const owned = filteredMine.filter((table) => table.isCampaignOwner);
+                    const joined = filteredMine.filter((table) => !table.isCampaignOwner);
                     const renderRow = (table: (typeof filteredMine)[number]) => {
                       const seatedHere = hub?.activeSeat?.campaignId === table.campaignId;
+                      const isHidden = hiddenIds.has(table.campaignId);
                       const detailHref = `/campaigns/${escapeHtml(table.campaignId)}`;
                       const joinHref = `/campaigns/${escapeHtml(table.campaignId)}/join`;
                       const tableHref = `/campaigns/${escapeHtml(table.campaignId)}/table`;
                       const sessionLabel = table.sessionStatusLabel ?? 'Not started';
                       return `
-                      <li data-testid="campaign-item" class="table-lobby-row" data-ownership="${table.isCampaignOwner ? 'owned' : 'joined'}">
+                      <li data-testid="campaign-item" class="table-lobby-row" data-ownership="${table.isCampaignOwner ? 'owned' : 'joined'}" data-hidden="${isHidden ? 'true' : 'false'}">
                         ${(() => {
                           const identity = table.director.identity;
                           return directorPortraitChipMarkup({
@@ -244,7 +251,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         <div class="table-lobby-copy">
                           <a class="record-note" href="${seatedHere ? detailHref : joinHref}" data-link
                             data-testid="${seatedHere ? 'my-table-view-campaign' : 'my-table-join'}">
-                            ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}
+                            ${escapeHtml(table.name)}${seatedHere ? ' · Seated' : ''}${isHidden ? ' · Hidden' : ''}
                           </a>
                           <span class="record-meta">
                             ${escapeHtml(table.director.identityLabel)} · ${escapeHtml(table.director.personalityLabel)}
@@ -264,10 +271,17 @@ export function mountCampaignsPage(host: PageHost): void {
                                    </a>`
                                 : ''
                             }
-                            <button type="button" class="button ghost" data-testid="hide-table"
-                              data-campaign-id="${escapeHtml(table.campaignId)}">
-                              Hide from hub
-                            </button>
+                            ${
+                              isHidden
+                                ? `<button type="button" class="button ghost" data-testid="unhide-table"
+                                     data-campaign-id="${escapeHtml(table.campaignId)}">
+                                     Show in hub
+                                   </button>`
+                                : `<button type="button" class="button ghost" data-testid="hide-table"
+                                     data-campaign-id="${escapeHtml(table.campaignId)}">
+                                     Hide from hub
+                                   </button>`
+                            }
                           </div>
                         </div>
                       </li>`;
@@ -289,7 +303,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         : `<ul class="record-list" data-testid="campaign-list-joined">${joined.map(renderRow).join('')}</ul>`
                     }
                   </div>
-                  <ul class="visually-hidden" aria-hidden="true" data-testid="campaign-list">${visible
+                  <ul class="visually-hidden" aria-hidden="true" data-testid="campaign-list">${filteredMine
                     .map(
                       (table) =>
                         `<li data-testid="campaign-list-name">${escapeHtml(table.name)}</li>`,
@@ -410,11 +424,33 @@ export function mountCampaignsPage(host: PageHost): void {
       button.addEventListener('click', () => {
         const id = button.dataset.campaignId;
         if (typeof id === 'string' && id.length > 0) {
-          hideTableFromHub(id);
+          hideTableFromHubPreference(id);
           renderSignedIn();
         }
       });
     });
+    container.querySelectorAll<HTMLButtonElement>('[data-testid="unhide-table"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.campaignId;
+        if (typeof id === 'string' && id.length > 0) {
+          unhideTableFromHubPreference(id);
+          renderSignedIn();
+        }
+      });
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tables-toggle-hidden"]')
+      ?.addEventListener('click', () => {
+        showHiddenTables = !showHiddenTables;
+        renderSignedIn();
+      });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="tables-clear-hidden"]')
+      ?.addEventListener('click', () => {
+        clearHiddenTablesFromHubPreference();
+        showHiddenTables = false;
+        renderSignedIn();
+      });
     container.querySelector<HTMLButtonElement>('[data-testid="tables-tab-open"]')?.addEventListener('click', () => {
       tab = 'open';
       renderSignedIn();

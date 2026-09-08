@@ -60,6 +60,21 @@ test('parseRestorableIntentDraft restores open drafts as awaiting_confirmation',
   }
 });
 
+test('R4-05: parseRestorableIntentDraft keeps playerDeclaration across reload', () => {
+  const result = parseRestorableIntentDraft(
+    JSON.stringify({
+      ...OPEN_DRAFT,
+      playerDeclaration: 'I move beside the open wooden doorway east and stop there.',
+    }),
+    'camp-1',
+  );
+  assert.equal(result?.clearStored, false);
+  assert.equal(
+    result?.draft.playerDeclaration,
+    'I move beside the open wooden doorway east and stop there.',
+  );
+});
+
 test('parseRestorableIntentDraft rejects wrong campaign or corrupt payload', () => {
   assert.deepEqual(
     parseRestorableIntentDraft(JSON.stringify({ ...OPEN_DRAFT, interceptState: 'draft' }), 'other'),

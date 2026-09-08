@@ -128,6 +128,10 @@ export function parseRestorableIntentDraft(
       draft: {
         ...parsed,
         interceptState: 'awaiting_confirmation',
+        ...(typeof parsed.playerDeclaration === 'string' &&
+        parsed.playerDeclaration.trim().length > 0
+          ? { playerDeclaration: parsed.playerDeclaration.trim() }
+          : {}),
       },
       clearStored: false,
     };

@@ -94,6 +94,53 @@ export function writeAskDmThreadPreference(
   }
 }
 
+const HIDDEN_TABLES_KEY = 'hd.tables.hub.hidden';
+
+/** Browser-local hub Hide preference (not account archive). */
+export function readHiddenTableIdsPreference(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_TABLES_KEY);
+    if (raw === null) {
+      return new Set();
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+    return new Set(parsed.filter((entry): entry is string => typeof entry === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+export function hideTableFromHubPreference(campaignId: string): void {
+  try {
+    const next = readHiddenTableIdsPreference();
+    next.add(campaignId);
+    localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
+  } catch {
+    // Non-authoritative hub presentation — ignore storage failures.
+  }
+}
+
+export function unhideTableFromHubPreference(campaignId: string): void {
+  try {
+    const next = readHiddenTableIdsPreference();
+    next.delete(campaignId);
+    localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
+  } catch {
+    // Non-authoritative hub presentation — ignore storage failures.
+  }
+}
+
+export function clearHiddenTablesFromHubPreference(): void {
+  try {
+    localStorage.removeItem(HIDDEN_TABLES_KEY);
+  } catch {
+    // Non-authoritative hub presentation — ignore storage failures.
+  }
+}
+
 export {
   parseRestorableIntentDraft,
   shouldPersistIntentDraftState,

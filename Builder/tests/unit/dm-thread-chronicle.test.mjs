@@ -158,7 +158,7 @@ test('filterOptimisticDmDupes drops live DM beats already in chronicle', () => {
   assert.equal(storyBodiesEquivalent(fromChronicle[0].body, optimistic[0].body), true);
 });
 
-test('collapseDuplicateDmMessages keeps the first equivalent DM beat', () => {
+test('collapseDuplicateDmMessages collapses adjacent equivalent DM races', () => {
   const collapsed = collapseDuplicateDmMessages([
     {
       messageId: 'a',
@@ -188,4 +188,45 @@ test('collapseDuplicateDmMessages keeps the first equivalent DM beat', () => {
   assert.equal(collapsed.length, 2);
   assert.equal(collapsed[0].messageId, 'a');
   assert.equal(collapsed[1].messageId, 'b');
+});
+
+test('R4-01: repeated door-state rulings survive when a player declaration intervenes', () => {
+  const answer =
+    'You check Wooden doorway east — closed, unlocked without opening it. The lock is unlocked; the leaf is still closed. The doorway stays shut on the table.';
+  const collapsed = collapseDuplicateDmMessages([
+    {
+      messageId: 'hist-player',
+      speaker: 'player',
+      speakerLabel: 'You',
+      body: 'I inspect the wooden doorway east leaf and lock.',
+      createdAt: '2026-09-07T12:00:00.000Z',
+      kind: 'declaration',
+    },
+    {
+      messageId: 'hist-dm',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: answer,
+      createdAt: '2026-09-07T12:00:01.000Z',
+      kind: 'ruling_hint',
+    },
+    {
+      messageId: 'fresh-player',
+      speaker: 'player',
+      speakerLabel: 'You',
+      body: "I inspect the wooden doorway east's leaf and lock state without opening or closing it.",
+      createdAt: '2026-09-08T04:47:00.000Z',
+      kind: 'declaration',
+    },
+    {
+      messageId: 'fresh-dm',
+      speaker: 'dm',
+      speakerLabel: 'Garrick',
+      body: answer,
+      createdAt: '2026-09-08T04:47:01.000Z',
+      kind: 'ruling_hint',
+    },
+  ]);
+  assert.equal(collapsed.length, 4);
+  assert.equal(collapsed[3]?.messageId, 'fresh-dm');
 });
