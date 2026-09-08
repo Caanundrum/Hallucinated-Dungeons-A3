@@ -283,6 +283,7 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await page.getByTestId('tables-filter-visibility').selectOption('public');
     await expect(page.getByTestId('campaign-list')).toContainText(publicName);
     await expect(page.getByTestId('campaign-list')).not.toContainText(privateName);
+    await expect(page.getByTestId('campaign-list')).toHaveAttribute('aria-hidden', 'true');
 
     await page.getByTestId('tables-tab-open').click();
     await expect(page.getByTestId('tables-filter-join')).toBeVisible();

@@ -289,7 +289,7 @@ export function mountCampaignsPage(host: PageHost): void {
                         : `<ul class="record-list" data-testid="campaign-list-joined">${joined.map(renderRow).join('')}</ul>`
                     }
                   </div>
-                  <ul class="visually-hidden" data-testid="campaign-list">${visible.map(renderRow).join('')}</ul>`;
+                  <ul class="visually-hidden" aria-hidden="true" data-testid="campaign-list">${visible.map(renderRow).join('')}</ul>`;
                   })()
               : filteredOpen.length === 0
                 ? `<p class="empty-state" data-testid="open-tables-empty">${

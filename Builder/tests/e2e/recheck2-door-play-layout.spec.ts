@@ -63,8 +63,14 @@ test.describe('Recheck 2 door + play layout', () => {
     const metrics = await page.evaluate(() => {
       const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
       const input = document.querySelector('[data-testid="player-action-input"]') as HTMLElement | null;
+      const list = document.querySelector('[data-testid="dm-play-thread-list"], .dm-thread-list') as HTMLElement | null;
+      const dock = document.querySelector('.table-action-bar') as HTMLElement | null;
+      const comms = document.querySelector('.table-comms-rail') as HTMLElement | null;
       const rect = action?.getBoundingClientRect();
       const inputRect = input?.getBoundingClientRect();
+      const listRect = list?.getBoundingClientRect();
+      const dockRect = dock?.getBoundingClientRect();
+      const commsRect = comms?.getBoundingClientRect();
       return {
         actionH: action?.clientHeight ?? 0,
         actionTop: rect?.top ?? -1,
@@ -76,16 +82,30 @@ test.describe('Recheck 2 door + play layout', () => {
           inputRect.top < window.innerHeight &&
           inputRect.bottom > 0,
         viewportH: window.innerHeight,
+        listH: list?.clientHeight ?? 0,
+        listBottom: listRect?.bottom ?? -1,
+        dockBottom: dockRect?.bottom ?? -1,
+        dockOverflowY: dock !== null ? getComputedStyle(dock).overflowY : '',
+        dockScrollTop: dock?.scrollTop ?? -1,
+        commsTop: commsRect?.top ?? -1,
       };
     });
     await page.screenshot({
-      path: '/opt/cursor/artifacts/recheck2_layout_1081_play_visible.png',
+      path: '/opt/cursor/artifacts/recheck3_fqa023_1081_timeline.png',
       fullPage: false,
     });
     expect(metrics.actionH).toBeGreaterThan(120);
     expect(metrics.inputVisible).toBe(true);
     expect(metrics.actionTop).toBeLessThan(metrics.viewportH);
     expect(metrics.actionBottom).toBeGreaterThan(0);
+    // Recheck 3 / FQA-023: readable timeline, not a ~22px clipped strip under Chat.
+    expect(metrics.listH).toBeGreaterThanOrEqual(120);
+    expect(metrics.listBottom).toBeLessThanOrEqual(metrics.dockBottom + 2);
+    expect(['hidden', 'clip']).toContain(metrics.dockOverflowY);
+    expect(metrics.dockScrollTop).toBe(0);
+    if (metrics.commsTop > 0 && metrics.dockBottom > 0) {
+      expect(metrics.commsTop).toBeGreaterThanOrEqual(metrics.dockBottom - 2);
+    }
   });
 
   test('close open doorway updates map; already-beside is explicit', async ({ page }) => {

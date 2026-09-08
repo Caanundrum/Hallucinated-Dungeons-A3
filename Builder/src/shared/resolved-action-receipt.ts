@@ -117,7 +117,11 @@ export function buildNarrationSeedFromReceipt(options: {
     return options.blockedReason.trim();
   }
 
+  // Door open/close seeds must win over a stale eventSummary from a prior beat.
+  const doorBoundCommand =
+    options.commandType === 'table.open_door' || options.commandType === 'table.close_door';
   if (
+    !doorBoundCommand &&
     typeof options.eventSummary === 'string' &&
     options.eventSummary.trim().length > 0 &&
     !/^Ready to /i.test(options.eventSummary) &&
@@ -134,6 +138,20 @@ export function buildNarrationSeedFromReceipt(options: {
       return `Tried to open ${options.targetLabel}${inScene}, but the doorway is not open on the table.`;
     }
     return `Opened ${options.targetLabel}${inScene}. The doorway is now open.`;
+  }
+
+  if (options.commandType === 'table.close_door') {
+    const closeMutation = options.mutations.find(
+      (entry) => entry.kind === 'door' && /unlock|closed|close/i.test(`${entry.from} ${entry.to}`),
+    );
+    const leafClosed =
+      closeMutation !== undefined
+        ? /unlock/i.test(closeMutation.to) || closeMutation.to === 'closed'
+        : !options.namedDoorOpenAfter;
+    if (leafClosed) {
+      return `Closed ${options.targetLabel}${inScene}. The leaf is now closed; the lock stays unlocked.`;
+    }
+    return `Tried to close ${options.targetLabel}${inScene}, but the doorway did not close on the table.`;
   }
 
   if (options.commandType === 'table.move') {

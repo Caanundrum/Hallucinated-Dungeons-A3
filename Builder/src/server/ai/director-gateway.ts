@@ -778,6 +778,33 @@ function scrubFalseSceneDeparture(body: string, mechanicsSummary: string): strin
   return scrubbed.replace(/\s{2,}/g, ' ').replace(/\s+([.!?])/g, '$1').trim() || mechanics;
 }
 
+/**
+ * Close-door mechanics must not inherit prior trap/open-way prose from recent events.
+ * Recheck 3: successful close received trap-inspection narration that contradicted closed leaf.
+ */
+export function scrubStaleDoorCloseNarration(body: string, mechanicsSummary: string): string {
+  const mechanics = mechanicsSummary.trim();
+  const isClose =
+    /\bClosed\b/i.test(mechanics) &&
+    /\b(door|doorway|leaf)\b/i.test(mechanics) &&
+    !/\bOpened\b/i.test(mechanics);
+  if (!isClose) {
+    return body;
+  }
+  const trapOrInspectProse =
+    /\b(trap|hinge|mechanism|inspect(?:ing|ed)?|no mechanisms|spot(?:s|ted)? no)\b/i.test(body);
+  const openWayContradiction =
+    /\b(open way|passage ahead is clear|doorway (?:is |stands )?open|already open)\b/i.test(body);
+  if (!trapOrInspectProse && !openWayContradiction) {
+    // Still ensure closed-leaf vocabulary is present when the model drifted.
+    if (/\bclosed\b/i.test(body) && /\b(leaf|door|doorway|unlock)/i.test(body)) {
+      return body;
+    }
+  }
+  // Prefer the authoritative close seed when narration drifted to a prior beat.
+  return mechanics;
+}
+
 /** Extract the named inspect/trap target from mechanics prose (FQA-003). */
 function namedTargetFromMechanics(mechanicsSummary: string): string | null {
   const mechanics = mechanicsSummary.trim();
@@ -1780,7 +1807,7 @@ export async function narrateVisibleBeat(options: {
   );
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new.`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection.`,
   });
   const liveCandidate =
     liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;
@@ -1794,7 +1821,10 @@ export async function narrateVisibleBeat(options: {
     scrubExpandedInspectScope(
       scrubFalseTrapCertainty(
         scrubFalseSceneDeparture(
-          preferSimulated ? simulated.body : liveCandidate,
+          scrubStaleDoorCloseNarration(
+            preferSimulated ? simulated.body : liveCandidate,
+            options.mechanicsSummary,
+          ),
           options.mechanicsSummary,
         ),
         options.mechanicsSummary,
