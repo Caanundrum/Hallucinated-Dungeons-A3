@@ -103,6 +103,9 @@ export function resolvedSummaryAfterTableConfirm(options: {
   if (options.commandType === 'table.open_door') {
     return `Opened the door${inScene}.`;
   }
+  if (options.commandType === 'table.close_door') {
+    return `Closed the door${inScene}. The leaf is now closed; the lock stays unlocked.`;
+  }
   const draftAndDeclaration = `${options.draftSummary} ${options.declaration ?? ''}`;
   if (options.commandType === 'table.move') {
     if (

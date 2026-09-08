@@ -577,6 +577,20 @@ test('FQA-001: scrubFalseTrapCertainty blocks omniscient safety claims', async (
   assert.match(scrubbed, /no sign of a trap|wooden doorway east/i);
 });
 
+test('Recheck 3: scrubStaleDoorCloseNarration drops trap/open-way prose on close', async () => {
+  const { scrubStaleDoorCloseNarration } = await import('../../dist/server/ai/director-gateway.js');
+  const mechanics =
+    'Closed wooden doorway east in Quiet chamber. The leaf is now closed; the lock stays unlocked.';
+  const staleTrap =
+    'You inspect the hinges carefully and spot no mechanisms. The open way stands quiet and the passage ahead is clear.';
+  const scrubbed = scrubStaleDoorCloseNarration(staleTrap, mechanics);
+  assert.equal(scrubbed, mechanics);
+  assert.doesNotMatch(scrubbed, /hinge|mechanism|open way|passage ahead/i);
+  const honestClose =
+    'Pip shuts the wooden doorway. The leaf settles closed; the lock stays unlocked.';
+  assert.equal(scrubStaleDoorCloseNarration(honestClose, mechanics), honestClose);
+});
+
 test('FQA-003: scrubExpandedInspectScope keeps narration on the confirmed target', async () => {
   const { scrubExpandedInspectScope } = await import('../../dist/server/ai/director-gateway.js');
   const mechanics = 'Inspect doorway (Investigation +5): d20 12 +5 = 17 vs DC 13 — success.';

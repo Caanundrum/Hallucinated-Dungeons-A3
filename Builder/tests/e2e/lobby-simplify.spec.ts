@@ -250,9 +250,13 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     // Leave the zero-scroll table cockpit before using global Tables nav.
     await page.getByTestId('table-back').click();
     await page.getByTestId('nav-campaigns').click();
-    await expect(page.getByTestId('my-table-view-campaign')).toContainText(tableName);
-    await expect(page.getByTestId('my-table-open')).toHaveText('Open table');
-    await page.getByTestId('my-table-open').click();
+    await expect(page.getByTestId('campaign-list-owned').getByTestId('my-table-view-campaign')).toContainText(
+      tableName,
+    );
+    await expect(page.getByTestId('campaign-list-owned').getByTestId('my-table-open')).toHaveText(
+      'Open table',
+    );
+    await page.getByTestId('campaign-list-owned').getByTestId('my-table-open').click();
     await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('join-table-heading')).toHaveCount(0);
 
@@ -283,6 +287,7 @@ test.describe('Lobby simplification — tables hub, join, and seat rules', () =>
     await page.getByTestId('tables-filter-visibility').selectOption('public');
     await expect(page.getByTestId('campaign-list')).toContainText(publicName);
     await expect(page.getByTestId('campaign-list')).not.toContainText(privateName);
+    await expect(page.getByTestId('campaign-list')).toHaveAttribute('aria-hidden', 'true');
 
     await page.getByTestId('tables-tab-open').click();
     await expect(page.getByTestId('tables-filter-join')).toBeVisible();

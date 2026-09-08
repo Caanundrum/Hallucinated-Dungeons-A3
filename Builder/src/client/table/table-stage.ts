@@ -868,17 +868,21 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     }
     const dashboard = host.closest<HTMLElement>('.table-dashboard');
     const mobileMapTask = dashboard?.dataset.mobileTask === 'map';
+    // Compact Fit when Map task is active or the chrome is short / mid-band stacked.
+    const compactFit =
+      mobileMapTask ||
+      viewport.clientHeight < 320 ||
+      (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
     // Contain the full Director scene — never force horizontal overflow after Fit.
-    // Reserve space for outward label plates that extend past the grid bounds.
-    // Mobile Map task: smaller pad so Fit fills more of the canvas (Recheck 175).
-    const labelPad = mobileMapTask
-      ? Math.min(36, Math.max(16, viewport.clientWidth * 0.06))
+    // Compact path uses less label pad so Fit fills empty canvas (Recheck 3).
+    const labelPad = compactFit
+      ? Math.min(16, Math.max(8, viewport.clientWidth * 0.02))
       : Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
-    const pad = mobileMapTask ? 4 : 8;
+    const pad = compactFit ? 2 : 8;
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
-    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.5);
+    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.2);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const fitScale = mobileMapTask ? 0.99 : 0.96;
+    const fitScale = compactFit ? 1 : 0.96;
     const fit = Math.min(contain * fitScale, contain);
     applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({

@@ -1165,10 +1165,10 @@ ol.record-list.dm-thread-list > li {
 }
 
 @media (max-width: 1100px) and (min-width: 901px) {
-  /* Mid tablet: keep Map + Play composer co-visible; do not let map starve the action bar. */
+  /* Mid tablet: Map + readable Play timeline + composer; Chat/Info stay compact. */
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.45fr) minmax(0, 0.45fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 7.5rem) minmax(0, 6.5rem);
     grid-template-areas:
       'play'
       'comms'
@@ -1177,7 +1177,7 @@ ol.record-list.dm-thread-list > li {
 
   .table-info-rail {
     grid-area: info;
-    max-height: min(18dvh, 10rem);
+    max-height: min(14dvh, 6.5rem);
     order: 3;
     overflow: auto;
   }
@@ -1195,30 +1195,68 @@ ol.record-list.dm-thread-list > li {
   .table-comms-rail {
     grid-area: comms;
     order: 2;
-    max-height: min(18dvh, 10rem);
+    max-height: min(14dvh, 7.5rem);
     overflow: auto;
   }
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 0 1 36dvh;
-    min-height: 10rem;
-    max-height: 40dvh;
+    flex: 0 1 24dvh;
+    min-height: 7rem;
+    max-height: min(28dvh, 12rem);
     aspect-ratio: auto;
   }
 
+  /* FQA-023: dock must not scroll; thread owns leftover height with a usable floor. */
   .table-action-bar {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     height: auto;
     max-height: none;
-    min-height: min(42dvh, 16rem);
-    overflow: auto;
+    min-height: 0;
+    overflow: clip;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.2 1 auto;
+    flex: 1.2 1 0;
     height: auto;
     max-height: none;
+  }
+
+  .table-action-bar > [data-testid='table-action-slot'],
+  .table-action-bar-inner,
+  .table-action-bar-dm {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Compact the exploration banner so beats remain readable. */
+  .table-action-bar-dm > .table-turn-banner {
+    flex: 0 1 auto;
+    max-height: 4.5rem;
+    overflow: auto;
+  }
+
+  .table-action-bar-dm > .table-turn-detail {
+    display: none;
+  }
+
+  .dm-play-thread {
+    flex: 1 1 auto;
+    min-height: 10rem;
+    max-height: none;
+    grid-template-rows: auto auto minmax(6.5rem, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .dm-play-thread.is-expanded {
+    min-height: 12rem;
+    grid-template-rows: auto auto minmax(8rem, 1fr) auto;
+  }
+
+  .dm-thread-list,
+  ol.record-list.dm-thread-list {
+    min-height: 6.5rem;
+    overflow-y: auto;
   }
 }
 

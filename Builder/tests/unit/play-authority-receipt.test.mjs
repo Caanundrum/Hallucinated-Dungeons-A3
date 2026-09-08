@@ -122,6 +122,35 @@ test('receipt narration never claims crossing a closed door', () => {
   assert.equal(opened.namedDoorOpenAfter, true);
   assert.match(opened.narrationSeed, /Opened wooden doorway east.*stepped through/i);
 
+  const closeSeed = buildNarrationSeedFromReceipt({
+    commandType: 'table.close_door',
+    targetLabel: 'wooden doorway east',
+    mutations: [
+      { kind: 'door', id: 'edge-1', label: 'wooden doorway east', from: 'open', to: 'unlocked' },
+    ],
+    namedDoorOpenAfter: false,
+    openCross: false,
+    sceneTitle: 'Quiet chamber',
+  });
+  assert.match(closeSeed, /Closed wooden doorway east/i);
+  assert.match(closeSeed, /leaf is now closed/i);
+  assert.match(closeSeed, /lock stays unlocked/i);
+  assert.doesNotMatch(closeSeed, /Action committed|trap|hinge|open way/i);
+
+  // Stale trap eventSummary must not override close-bound seed.
+  const closeIgnoresStaleSummary = buildNarrationSeedFromReceipt({
+    commandType: 'table.close_door',
+    targetLabel: 'wooden doorway east',
+    mutations: [
+      { kind: 'door', id: 'edge-1', label: 'wooden doorway east', from: 'open', to: 'unlocked' },
+    ],
+    namedDoorOpenAfter: false,
+    openCross: false,
+    eventSummary: 'Trap search on the wooden doorway east — no trap found.',
+  });
+  assert.match(closeIgnoresStaleSummary, /Closed wooden doorway east/i);
+  assert.doesNotMatch(closeIgnoresStaleSummary, /Trap search|no trap found/i);
+
   const interact = buildNarrationSeedFromReceipt({
     commandType: 'table.interact_object',
     targetLabel: 'Wood pile',
