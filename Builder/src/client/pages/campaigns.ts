@@ -16,6 +16,12 @@ import { getAccount, isAccountHydrated, subscribeAccount } from '../account-sess
 import { ApiFailure, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import {
+  clearHiddenTablesFromHubPreference,
+  hideTableFromHubPreference,
+  readHiddenTableIdsPreference,
+  unhideTableFromHubPreference,
+} from '../browser-preferences.js';
+import {
   bindDirectorAvatarFallback,
   directorIdentityFromLabelOrKey,
   directorPortraitChipMarkup,
@@ -32,40 +38,6 @@ type TablesSort = 'updated-desc' | 'updated-asc' | 'name-asc' | 'seats-desc';
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}
-
-const HIDDEN_TABLES_KEY = 'hd.tables.hub.hidden';
-
-function readHiddenTableIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(HIDDEN_TABLES_KEY);
-    if (raw === null) {
-      return new Set();
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return new Set();
-    }
-    return new Set(parsed.filter((entry): entry is string => typeof entry === 'string'));
-  } catch {
-    return new Set();
-  }
-}
-
-function hideTableFromHub(campaignId: string): void {
-  const next = readHiddenTableIds();
-  next.add(campaignId);
-  localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
-}
-
-function unhideTableFromHub(campaignId: string): void {
-  const next = readHiddenTableIds();
-  next.delete(campaignId);
-  localStorage.setItem(HIDDEN_TABLES_KEY, JSON.stringify([...next]));
-}
-
-function clearHiddenTablesFromHub(): void {
-  localStorage.removeItem(HIDDEN_TABLES_KEY);
 }
 
 export function mountCampaignsPage(host: PageHost): void {
@@ -108,7 +80,7 @@ export function mountCampaignsPage(host: PageHost): void {
   function renderSignedIn(): void {
     const myTables = hub?.myTables ?? [];
     const openTables = hub?.openTables ?? [];
-    const hiddenIds = readHiddenTableIds();
+    const hiddenIds = readHiddenTableIdsPreference();
     const hubVisibleMine = showHiddenTables
       ? myTables
       : myTables.filter((table) => !hiddenIds.has(table.campaignId));
@@ -452,7 +424,7 @@ export function mountCampaignsPage(host: PageHost): void {
       button.addEventListener('click', () => {
         const id = button.dataset.campaignId;
         if (typeof id === 'string' && id.length > 0) {
-          hideTableFromHub(id);
+          hideTableFromHubPreference(id);
           renderSignedIn();
         }
       });
@@ -461,7 +433,7 @@ export function mountCampaignsPage(host: PageHost): void {
       button.addEventListener('click', () => {
         const id = button.dataset.campaignId;
         if (typeof id === 'string' && id.length > 0) {
-          unhideTableFromHub(id);
+          unhideTableFromHubPreference(id);
           renderSignedIn();
         }
       });
@@ -475,7 +447,7 @@ export function mountCampaignsPage(host: PageHost): void {
     container
       .querySelector<HTMLButtonElement>('[data-testid="tables-clear-hidden"]')
       ?.addEventListener('click', () => {
-        clearHiddenTablesFromHub();
+        clearHiddenTablesFromHubPreference();
         showHiddenTables = false;
         renderSignedIn();
       });
