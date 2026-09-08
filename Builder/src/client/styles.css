@@ -1272,6 +1272,19 @@ ol.record-list.dm-thread-list > li {
     min-height: 2.75rem;
     max-height: 4.5rem;
   }
+
+  /* Expand timeline: reclaim Chat/Reference tracks for history reading. */
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 2.5rem) minmax(0, 2.25rem);
+  }
+
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-comms-rail {
+    max-height: 2.5rem;
+  }
+
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-info-rail {
+    max-height: 2.25rem;
+  }
 }
 
 /* Desktop: readable history without letting map starve the dock (R4-02 @ 1440). */

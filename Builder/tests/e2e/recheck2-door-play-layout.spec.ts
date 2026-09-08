@@ -176,6 +176,54 @@ test.describe('Recheck 2 door + play layout', () => {
     if (metrics.commsTop > 0 && metrics.dockBottom > 0) {
       expect(metrics.commsTop).toBeGreaterThanOrEqual(metrics.dockBottom - 4);
     }
+
+    const expand = page.getByTestId('dm-thread-expand');
+    if (await expand.isVisible().catch(() => false)) {
+      const beforeThread = metrics.threadH;
+      await expand.click();
+      const expanded = await page.evaluate(() => {
+        const input = document.querySelector(
+          '[data-testid="player-action-input"]',
+        ) as HTMLElement | null;
+        const thread = document.querySelector('.dm-play-thread') as HTMLElement | null;
+        const dock = document.querySelector(
+          '[data-testid="action-composer"]',
+        ) as HTMLElement | null;
+        const inputRect = input?.getBoundingClientRect();
+        const dockRect = dock?.getBoundingClientRect();
+        const clipOverflow = new Set(['hidden', 'clip']);
+        const hardClips: Array<{ top: number; bottom: number }> = [];
+        let node: HTMLElement | null = input?.parentElement ?? null;
+        while (node !== null && node !== document.body) {
+          const style = getComputedStyle(node);
+          if (clipOverflow.has(style.overflowY) || clipOverflow.has(style.overflow)) {
+            const box = node.getBoundingClientRect();
+            if (box.height > 0) {
+              hardClips.push({ top: box.top, bottom: box.bottom });
+            }
+          }
+          node = node.parentElement;
+        }
+        const inside =
+          inputRect !== undefined &&
+          hardClips.length > 0 &&
+          hardClips.every(
+            (clip) => inputRect.top >= clip.top - 1 && inputRect.bottom <= clip.bottom + 1,
+          );
+        return {
+          threadH: thread?.clientHeight ?? 0,
+          inputInsideClip: inside,
+          dockH: dockRect?.height ?? 0,
+        };
+      });
+      await page.screenshot({
+        path: '/opt/cursor/artifacts/recheck5_fqa023_1081_expanded.png',
+        fullPage: false,
+      });
+      expect(expanded.inputInsideClip).toBe(true);
+      expect(expanded.threadH).toBeGreaterThanOrEqual(beforeThread);
+      expect(expanded.dockH).toBeGreaterThan(beforeThread);
+    }
   });
 
   test('close open doorway updates map; already-beside is explicit', async ({ page }) => {
