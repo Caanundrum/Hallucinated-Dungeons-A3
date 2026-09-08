@@ -103,9 +103,23 @@ test.describe('Recheck 2 door + play layout', () => {
       };
     });
     await page.screenshot({
+      path: '/opt/cursor/artifacts/recheck4_fqa023_1081_timeline.png',
+      fullPage: false,
+    });
+    // Keep Recheck 3 artifact path updated for prior PR continuity.
+    await page.screenshot({
       path: '/opt/cursor/artifacts/recheck3_fqa023_1081_timeline.png',
       fullPage: false,
     });
+    await page.evaluate((payload) => {
+      // no-op browser side; metrics logged from Node after evaluate returns
+      void payload;
+    }, metrics);
+    const fs = await import('node:fs');
+    fs.writeFileSync(
+      '/opt/cursor/artifacts/recheck4_fqa023_1081_metrics.json',
+      JSON.stringify(metrics, null, 2),
+    );
     expect(metrics.actionH).toBeGreaterThan(120);
     expect(metrics.inputVisible).toBe(true);
     expect(metrics.actionTop).toBeLessThan(metrics.viewportH);

@@ -78,6 +78,17 @@ test.describe('Recheck 4 hub hide recovery', () => {
     await page.getByTestId('tables-toggle-hidden').click();
     await expect(page.getByTestId('tables-filter-summary')).toContainText(/hidden.*included below/i);
     await expect(page.getByTestId('campaign-list-owned')).toContainText(tableName);
+    await expect(
+      page
+        .getByTestId('campaign-list-owned')
+        .locator('[data-testid="campaign-item"]')
+        .filter({ hasText: tableName })
+        .getByTestId('unhide-table'),
+    ).toBeVisible();
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/recheck4_hub_hide_recovery.png',
+      fullPage: false,
+    });
     await page
       .getByTestId('campaign-list-owned')
       .locator('[data-testid="campaign-item"]')
@@ -87,9 +98,5 @@ test.describe('Recheck 4 hub hide recovery', () => {
     await expect(page.getByTestId('campaign-list-owned')).toContainText(tableName);
     await expect(page.getByTestId('tables-filter-summary')).not.toContainText(/omitted from this list/i);
     await expect(page.getByTestId('tables-filter-summary')).not.toContainText(/hidden/i);
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/recheck4_hub_hide_recovery.png',
-      fullPage: false,
-    });
   });
 });
