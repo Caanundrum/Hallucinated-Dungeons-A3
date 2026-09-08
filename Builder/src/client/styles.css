@@ -1165,10 +1165,14 @@ ol.record-list.dm-thread-list > li {
 }
 
 @media (max-width: 1100px) and (min-width: 901px) {
-  /* Mid tablet: prioritize readable Play timeline; Chat/Info stay compact drawers. */
+  /*
+   * Mid tablet (R5 / FQA-023): play dock must keep the composer inside overflow:clip.
+   * Cap Chat/Reference tracks (do not steal with large fr fractions), shrink map,
+   * and never force a thread min-height that can push the textarea below the clip.
+   */
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(5.5rem, 0.28fr) minmax(5rem, 0.24fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 5.25rem) minmax(0, 4.75rem);
     grid-template-areas:
       'play'
       'comms'
@@ -1177,7 +1181,7 @@ ol.record-list.dm-thread-list > li {
 
   .table-info-rail {
     grid-area: info;
-    max-height: min(12dvh, 5.5rem);
+    max-height: 4.75rem;
     order: 3;
     overflow: auto;
   }
@@ -1195,19 +1199,19 @@ ol.record-list.dm-thread-list > li {
   .table-comms-rail {
     grid-area: comms;
     order: 2;
-    max-height: min(12dvh, 6rem);
+    max-height: 5.25rem;
     overflow: auto;
   }
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 0 1 20dvh;
-    min-height: 6.5rem;
-    max-height: min(24dvh, 11rem);
+    flex: 0 0 auto;
+    min-height: 5.5rem;
+    max-height: min(16dvh, 7.5rem);
     aspect-ratio: auto;
   }
 
-  /* FQA-023 / R4-02: dock never scrolls; thread owns leftover height. */
+  /* Dock fills leftover play column; clip must include thread + reserved composer. */
   .table-action-bar {
     flex: 1 1 0;
     height: auto;
@@ -1217,7 +1221,7 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.35 1 0;
+    flex: 1.4 1 0;
     height: auto;
     max-height: none;
   }
@@ -1230,8 +1234,8 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar-dm > .table-turn-banner {
-    flex: 0 1 auto;
-    max-height: 3.25rem;
+    flex: 0 0 auto;
+    max-height: 2.75rem;
     overflow: auto;
   }
 
@@ -1239,34 +1243,69 @@ ol.record-list.dm-thread-list > li {
     display: none;
   }
 
+  /* Composer is non-negotiable; thread consumes only leftover height. */
+  .table-action-bar-dm > .table-player-turn-composer {
+    flex: 0 0 auto;
+  }
+
   .dm-play-thread {
-    flex: 1 1 auto;
-    min-height: 14rem;
+    flex: 1 1 0;
+    min-height: 0;
     max-height: none;
-    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
-    min-height: 18rem;
-    grid-template-rows: auto auto minmax(14rem, 1fr) auto;
+    flex: 1.25 1 0;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
-    min-height: 10rem;
+    min-height: 0;
     overflow-y: auto;
+  }
+
+  .table-action-bar .table-action-field textarea {
+    min-height: 2.75rem;
+    max-height: 4.5rem;
+  }
+
+  /* Expand timeline: reclaim Chat/Reference tracks for history reading. */
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 2.5rem) minmax(0, 2.25rem);
+  }
+
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-comms-rail {
+    max-height: 2.5rem;
+  }
+
+  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-info-rail {
+    max-height: 2.25rem;
   }
 }
 
-/* Desktop: keep a readable history band even when map is tall (R4-02 @ 1440). */
+/* Desktop: readable history without letting map starve the dock (R4-02 @ 1440). */
 @media (min-width: 1101px) {
+  .table-map-chrome {
+    flex: 0.7 1 10rem;
+    min-height: 9rem;
+    max-height: min(42vh, 22rem);
+  }
+
+  .table-action-bar {
+    flex: 1.55 1 24rem;
+    min-height: min(46vh, 26rem);
+  }
+
   .dm-play-thread {
-    grid-template-rows: auto auto minmax(14rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(12rem, 1fr) auto;
   }
 
   .dm-play-thread.is-expanded {
-    grid-template-rows: auto auto minmax(20rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(16rem, 1fr) auto;
   }
 }
 
@@ -1464,14 +1503,22 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(4.5rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(6rem, 1fr) auto;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(7rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded .dm-play-thread-chrome > .record-meta {
+    display: none;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .table-action-bar:has(.dm-play-thread.is-expanded) .table-turn-banner {
+    max-height: 2.25rem;
   }
 
 

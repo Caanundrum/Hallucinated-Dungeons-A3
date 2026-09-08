@@ -65,6 +65,8 @@ test.describe('Recheck 2 door + play layout', () => {
         timeout: 45_000,
       })
       .not.toMatch(/awaiting first scene/i);
+    // Recheck 5: do not focus the composer — visibility must hold on initial layout.
+    await page.locator('body').click({ position: { x: 8, y: 8 } }).catch(() => undefined);
     const metrics = await page.evaluate(() => {
       const action = document.querySelector('[data-testid="action-composer"]') as HTMLElement | null;
       const input = document.querySelector('[data-testid="player-action-input"]') as HTMLElement | null;
@@ -81,16 +83,60 @@ test.describe('Recheck 2 door + play layout', () => {
       const dockRect = dock?.getBoundingClientRect();
       const commsRect = comms?.getBoundingClientRect();
       const readableH = Math.max(list?.clientHeight ?? 0, thread?.clientHeight ?? 0);
+
+      const clipOverflow = new Set(['hidden', 'clip', 'scroll', 'auto']);
+      const clipAncestors: Array<{
+        top: number;
+        bottom: number;
+        height: number;
+        overflowY: string;
+        testId: string | null;
+        className: string;
+      }> = [];
+      let node: HTMLElement | null = input?.parentElement ?? null;
+      while (node !== null && node !== document.body) {
+        const style = getComputedStyle(node);
+        if (clipOverflow.has(style.overflowY) || clipOverflow.has(style.overflow)) {
+          const box = node.getBoundingClientRect();
+          if (box.height > 0) {
+            clipAncestors.push({
+              top: box.top,
+              bottom: box.bottom,
+              height: box.height,
+              overflowY: style.overflowY,
+              testId: node.getAttribute('data-testid'),
+              className: typeof node.className === 'string' ? node.className.slice(0, 80) : '',
+            });
+          }
+        }
+        node = node.parentElement;
+      }
+
+      const hardClips = clipAncestors.filter((a) => a.overflowY === 'hidden' || a.overflowY === 'clip');
+      const inputInsideAllHardClips =
+        inputRect !== undefined &&
+        hardClips.length > 0 &&
+        hardClips.every(
+          (clip) => inputRect.top >= clip.top - 1 && inputRect.bottom <= clip.bottom + 1,
+        );
+      const dockClip =
+        hardClips.find((a) => a.testId === 'action-composer') ?? hardClips[0] ?? null;
+
       return {
         actionH: action?.clientHeight ?? 0,
         actionTop: rect?.top ?? -1,
         actionBottom: rect?.bottom ?? -1,
         inputH: input?.clientHeight ?? 0,
-        inputVisible:
+        inputTop: inputRect?.top ?? -1,
+        inputBottom: inputRect?.bottom ?? -1,
+        inputInViewport:
           inputRect !== undefined &&
           inputRect.height > 0 &&
-          inputRect.top < window.innerHeight &&
-          inputRect.bottom > 0,
+          inputRect.top >= 0 &&
+          inputRect.bottom <= window.innerHeight + 1,
+        inputInsideClip: inputInsideAllHardClips,
+        clipAncestor: dockClip,
+        hardClipCount: hardClips.length,
         viewportH: window.innerHeight,
         listH: list?.clientHeight ?? 0,
         threadH: thread?.clientHeight ?? 0,
@@ -100,33 +146,83 @@ test.describe('Recheck 2 door + play layout', () => {
         dockOverflowY: dock !== null ? getComputedStyle(dock).overflowY : '',
         dockScrollTop: dock?.scrollTop ?? -1,
         commsTop: commsRect?.top ?? -1,
+        commsH: comms?.clientHeight ?? 0,
       };
+    });
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/recheck5_fqa023_1081_composer_visible.png',
+      fullPage: false,
     });
     await page.screenshot({
       path: '/opt/cursor/artifacts/recheck4_fqa023_1081_timeline.png',
       fullPage: false,
     });
-    // Keep Recheck 3 artifact path updated for prior PR continuity.
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/recheck3_fqa023_1081_timeline.png',
-      fullPage: false,
-    });
     const fs = await import('node:fs');
     fs.writeFileSync(
-      '/opt/cursor/artifacts/recheck4_fqa023_1081_metrics.json',
+      '/opt/cursor/artifacts/recheck5_fqa023_1081_metrics.json',
       JSON.stringify(metrics, null, 2),
     );
     expect(metrics.actionH).toBeGreaterThan(120);
-    expect(metrics.inputVisible).toBe(true);
+    expect(metrics.inputInViewport).toBe(true);
+    expect(metrics.inputInsideClip).toBe(true);
+    expect(metrics.inputTop).toBeLessThan(metrics.clipAncestor?.bottom ?? -1);
     expect(metrics.actionTop).toBeLessThan(metrics.viewportH);
     expect(metrics.actionBottom).toBeGreaterThan(0);
-    // Recheck 3 / FQA-023: readable timeline inside the dock, not a ~22px clipped strip.
-    expect(metrics.readableH).toBeGreaterThanOrEqual(160);
-    expect(metrics.listBottom).toBeLessThanOrEqual(metrics.dockBottom + 4);
+    // Readable timeline without clipping the composer (Recheck 5).
+    expect(metrics.readableH).toBeGreaterThanOrEqual(120);
+    expect(metrics.listBottom).toBeLessThanOrEqual(metrics.inputTop + 2);
     expect(['hidden', 'clip']).toContain(metrics.dockOverflowY);
     expect(metrics.dockScrollTop).toBe(0);
     if (metrics.commsTop > 0 && metrics.dockBottom > 0) {
       expect(metrics.commsTop).toBeGreaterThanOrEqual(metrics.dockBottom - 4);
+    }
+
+    const expand = page.getByTestId('dm-thread-expand');
+    if (await expand.isVisible().catch(() => false)) {
+      const beforeThread = metrics.threadH;
+      await expand.click();
+      const expanded = await page.evaluate(() => {
+        const input = document.querySelector(
+          '[data-testid="player-action-input"]',
+        ) as HTMLElement | null;
+        const thread = document.querySelector('.dm-play-thread') as HTMLElement | null;
+        const dock = document.querySelector(
+          '[data-testid="action-composer"]',
+        ) as HTMLElement | null;
+        const inputRect = input?.getBoundingClientRect();
+        const dockRect = dock?.getBoundingClientRect();
+        const clipOverflow = new Set(['hidden', 'clip']);
+        const hardClips: Array<{ top: number; bottom: number }> = [];
+        let node: HTMLElement | null = input?.parentElement ?? null;
+        while (node !== null && node !== document.body) {
+          const style = getComputedStyle(node);
+          if (clipOverflow.has(style.overflowY) || clipOverflow.has(style.overflow)) {
+            const box = node.getBoundingClientRect();
+            if (box.height > 0) {
+              hardClips.push({ top: box.top, bottom: box.bottom });
+            }
+          }
+          node = node.parentElement;
+        }
+        const inside =
+          inputRect !== undefined &&
+          hardClips.length > 0 &&
+          hardClips.every(
+            (clip) => inputRect.top >= clip.top - 1 && inputRect.bottom <= clip.bottom + 1,
+          );
+        return {
+          threadH: thread?.clientHeight ?? 0,
+          inputInsideClip: inside,
+          dockH: dockRect?.height ?? 0,
+        };
+      });
+      await page.screenshot({
+        path: '/opt/cursor/artifacts/recheck5_fqa023_1081_expanded.png',
+        fullPage: false,
+      });
+      expect(expanded.inputInsideClip).toBe(true);
+      expect(expanded.threadH).toBeGreaterThanOrEqual(beforeThread);
+      expect(expanded.dockH).toBeGreaterThan(beforeThread);
     }
   });
 
