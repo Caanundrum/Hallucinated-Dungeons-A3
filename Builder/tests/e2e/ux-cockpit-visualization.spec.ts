@@ -116,10 +116,14 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
       ['map-stage-toolbar', '/opt/cursor/artifacts/ux-polish-zoom-pill.png'],
       ['table-player-actions', '/opt/cursor/artifacts/ux-polish-action-hud.png'],
     ] as const) {
-      const target = page.getByTestId(testId);
-      if (await target.isVisible().catch(() => false)) {
-        await target.scrollIntoViewIfNeeded();
-        await target.screenshot({ path });
+      try {
+        const target = page.getByTestId(testId);
+        if (await target.isVisible().catch(() => false)) {
+          await target.scrollIntoViewIfNeeded();
+          await target.screenshot({ path });
+        }
+      } catch {
+        // Soft evidence only — detached nodes during re-render are fine.
       }
     }
   });
