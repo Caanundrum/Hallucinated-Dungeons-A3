@@ -4729,9 +4729,15 @@ html.hd-low-effects .table-stage-svg-viewport,
 .table-stage-atmosphere {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: none !important;
   z-index: 2;
   overflow: hidden;
+}
+
+.table-stage-atmosphere *,
+.table-stage-atmosphere svg,
+.table-stage-atmosphere path {
+  pointer-events: none !important;
 }
 
 .scene-atmosphere-wash {

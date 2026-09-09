@@ -71,6 +71,7 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await expect(page.getByTestId('table-sheet-modal')).toHaveCount(0);
 
     // UX-3: rules spotlight from left reference rail
+    await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
     await page.getByTestId('table-info-tab-rules').click();
     await page.getByTestId('open-rules-modal').click();
     await expect(page.getByTestId('rules-search-modal')).toBeVisible();

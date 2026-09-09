@@ -60,13 +60,13 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await createQuickCharacter(page, 'Settings Scout');
     const campaignId = await createCampaign(page, 'Dock and Settings Table');
 
-    await expect(page.getByTestId('session-zero-summary')).toContainText('not recorded yet');
+    // Campaign create records a default Session Zero; refine it on settings.
+    await expect(page.getByTestId('session-zero-summary')).toContainText(/Session Zero/i);
     await page.getByTestId('open-campaign-settings').click();
     await expect(page.getByTestId('campaign-settings-heading')).toBeVisible();
     await expect(page.getByTestId('settings-config-notice')).toContainText(
       /Game Director may enforce tone|durable campaign configuration/i,
     );
-    await expect(page.getByTestId('session-zero-status')).toContainText('Not completed yet');
 
     await page.getByTestId('content-profile-tense').click();
     await page.getByTestId('safety-boundaries').fill('No spiders. Lines and veils apply.');
@@ -95,6 +95,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
     await expect(page.getByTestId('dm-play-thread')).toBeVisible();
 
+    await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
     await page.getByTestId('table-info-tab-rules').click();
     await expect(page.getByTestId('rules-desk-notice')).toContainText(
       /Browse the SRD|does not make rulings|never changes the table/i,
@@ -149,6 +150,8 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('account-tts')).not.toBeChecked();
     await expect(page.getByTestId('account-stt')).not.toBeChecked();
     await page.getByTestId('account-reduced-motion').check();
+    await page.getByTestId('save-presentation').click();
+    await expect(page.getByTestId('presentation-settings-saved')).toBeVisible();
     await expect(page.locator('html')).toHaveClass(/hd-reduced-motion/);
     await page.reload();
     await dismissIntroIfPresent(page);

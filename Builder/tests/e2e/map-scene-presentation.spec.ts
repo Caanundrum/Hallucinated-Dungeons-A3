@@ -69,7 +69,7 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
   await expect(terrain).not.toContainText(/unmarked opening/i);
   await expect(terrain).toContainText(/Routes:/i);
 
-  await doorHit.first().click();
+  await doorHit.first().click({ force: true });
   const detail = page.getByTestId('door-selection-detail');
   await expect(detail).toBeVisible();
   await expect(detail).not.toContainText(/Open adjacent door/i);

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { recordDefaultSessionZero,  enterAccountFromShell } from './arena-page.js';
+import { recordDefaultSessionZero, enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -57,14 +57,16 @@ test.describe('PQA residual regressions', () => {
     await page.getByTestId('identity-veyra').click();
     await page.getByTestId('personality-seasoned_host').click();
     await page.getByTestId('create-campaign-submit').click();
-    const seatSelect = page.getByTestId('seat-character-select');
-    const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-    await recordDefaultSessionZero(page);
-    await seatSelect.selectOption(characterId!);
-    await page.getByTestId('create-seat').click();
+    await expect(page.getByTestId('join-table-heading')).toBeVisible();
+    const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+    expect(match).toBeTruthy();
+    await joinTableWithFirstCharacter(page);
+    await page.goto(`/campaigns/${match![1]}`);
+    await expect(page.getByTestId('own-seat')).toBeVisible();
     await page.getByTestId('open-campaign-table').click();
     await page.getByTestId('dock-tab-director_address').click();
     await expect(page.getByTestId('dock-tab-director_address')).toContainText('Ask the Director');
+    await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
     await page.getByTestId('table-info-tab-rules').click();
     await expect(page.getByTestId('rules-catalog-meta')).toHaveText('SRD 5.2.1 reference');
     await expect(page.getByTestId('rules-catalog-meta')).not.toContainText('srd-5.2.1');
