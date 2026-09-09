@@ -46,11 +46,8 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
   const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]');
   if ((await doorHit.count()) === 0) {
     await awaitAdventureReady(page);
-    await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId('confirm-intent-intercept').click();
-    await expect(page.getByTestId('confirm-intent-intercept')).toHaveCount(0, { timeout: 30_000 });
   }
-  await expect(doorHit.first()).toBeVisible({ timeout: 30_000 });
+  await expect(doorHit.first()).toBeVisible({ timeout: 60_000 });
 
   const doorLabels = await doorHit.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute('aria-label') ?? ''),

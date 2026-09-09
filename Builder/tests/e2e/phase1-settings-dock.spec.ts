@@ -43,8 +43,13 @@ async function createCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  const campaignId = match![1];
+  await page.goto(`/campaigns/${campaignId}`);
   await expect(page.getByTestId('campaign-detail-heading')).toHaveText(name);
-  return page.url().split('/').pop()!;
+  return campaignId;
 }
 
 test.describe('Phase 1 settings and Communication Dock structure', () => {
