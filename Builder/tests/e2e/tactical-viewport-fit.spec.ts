@@ -111,7 +111,6 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       fullPage: true,
     });
 
-    await page.getByTestId('map-zoom-help').locator('summary').click();
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', /motion|static/);
     await page.screenshot({

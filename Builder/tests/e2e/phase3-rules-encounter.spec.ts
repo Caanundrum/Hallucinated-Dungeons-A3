@@ -139,7 +139,7 @@ test.describe('Phase 3 deterministic rules encounter', () => {
     await page.getByTestId('rules-level-up').click();
     await expect(page.getByTestId('progression-meta')).toContainText('Level 2');
 
-    await page.getByTestId('dock-tab-rules_desk').click();
+    await page.getByTestId('table-info-tab-rules').click();
     await page.getByTestId('open-rules-modal').click();
     await page.getByTestId('rules-catalog-category').selectOption('core_mechanics');
     await page.getByTestId('rules-catalog-entry').filter({ hasText: 'XP-only Progression' }).click();

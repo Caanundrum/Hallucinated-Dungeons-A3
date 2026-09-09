@@ -1720,7 +1720,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ${
                 rulesCatalog === null
                   ? 'Loading SRD reference…'
-                  : 'SRD 5.2.1 character reference'
+                  : 'SRD 5.2.1 reference'
               }
             </p>
             <label class="field">
@@ -1936,25 +1936,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       activeTab = 'party_chat';
     }
 
+    // Rules live in the left reference rail — never duplicate them in chat.
     if (activeTab === 'rules_desk') {
-      return `
-        <div class="dock-pane" data-testid="rules-desk-pane">
-          <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
-          <p class="record-meta" data-testid="rules-catalog-meta">
-            ${
-              rulesCatalog === null
-                ? 'Loading SRD reference…'
-                : 'SRD 5.2.1 reference'
-            }
-          </p>
-          <label class="field">
-            <span>Quick search</span>
-            <input type="search" data-testid="rules-catalog-search" placeholder="Filter by title or summary"
-              value="${escapeHtml(rulesSearchQuery)}" />
-          </label>
-          <p class="record-meta">Open the catalog for categories and full entry text. Enter in search jumps there.</p>
-          <button type="button" class="table-primary-action" data-testid="open-rules-modal">Open full rules catalog</button>
-        </div>`;
+      activeTab = 'party_chat';
     }
 
     if (activeTab === 'director_address') {
@@ -2298,6 +2282,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
 
   function floatingCombatBarHtml(): string {
+    // Desktop: Attack / End turn live in the play composer only.
+    // Mobile keeps this bar so map/chat task modes still have combat actions.
     if (!seated || sessionIsSuspended()) {
       return '';
     }
@@ -2616,6 +2602,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     seedDmThreadIfNeeded();
     const banner = turnBanner();
     const showEndTurn = isOwnCombatTurn() && !sessionIsSuspended();
+    const showAttack = seated && !sessionIsSuspended();
     const canDescribeTurn =
       seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
     // NEW-PQA-02: hosted has no Tools tab — End encounter must stay on the play bar.
@@ -2628,7 +2615,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
-          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+          <p class="table-turn-detail visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
           ${
             sessionIsSuspended()
               ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
@@ -2638,9 +2625,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
           ${
             movePreviewNote === null
-              ? seated && !sessionIsSuspended()
-                ? `<p class="table-move-status" data-testid="move-preview-hint">Click an adjacent map square to preview a move, then Confirm or Cancel. Drag the map to pan when zoomed in.</p>`
-                : ''
+              ? ''
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
           ${
@@ -2658,18 +2643,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   openControlVisible: affordance?.canOpen === true,
                 }),
               )}</p>`;
-            })()
-          }
-          ${
-            (() => {
-              const affordance = selectedDoorOpenAffordance();
-              if (affordance === null || !affordance.canOpen) {
-                return '';
-              }
-              return `<div class="table-player-actions" data-testid="selected-door-actions">
-                   <button type="button" class="table-primary-action" data-testid="open-selected-door"
-                     aria-disabled="${busy}">Open doorway</button>
-                 </div>`;
             })()
           }
           ${
@@ -2693,18 +2666,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </section>
         <div class="dm-play-thread${dmThreadExpanded ? ' is-expanded' : ''}" data-testid="dm-play-thread">
           <div class="dm-play-thread-chrome">
-            <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
+            <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
             <div class="dm-play-thread-chrome-actions">
               <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
                 aria-pressed="${dmThreadExpanded}">
-                ${dmThreadExpanded ? 'Compact timeline' : 'Expand timeline'}
+                ${dmThreadExpanded ? 'Compact' : 'Expand'}
               </button>
               <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
                 Jump to latest
               </button>
             </div>
           </div>
-          <p class="record-meta" data-testid="dm-beat-queue-hint">
+          <p class="record-meta visually-hidden" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
           </p>
           ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
@@ -2770,7 +2743,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
                 <p class="record-meta" data-testid="action-channel-hint">
-                  This is the play channel — declarations can change the table. Chat stays social; Ask the Director is advice only.
+                  Declarations change the table.
                 </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
@@ -2782,6 +2755,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
                     ${busy ? 'Sending…' : `Tell ${escapeHtml(directorIdentityLabel)}`}
                   </button>
+                  ${
+                    showAttack
+                      ? `<button type="button" class="table-secondary-action" data-testid="play-attack"
+                          data-rules-command="combat.attack"
+                          aria-disabled="${busy || explorationMode()}">Attack</button>`
+                      : ''
+                  }
                   ${
                     showEndTurn
                       ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
@@ -3647,6 +3627,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     root
       .querySelector<HTMLButtonElement>('[data-testid="fab-attack"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('combat.attack');
+      });
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="play-attack"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('combat.attack');
       });

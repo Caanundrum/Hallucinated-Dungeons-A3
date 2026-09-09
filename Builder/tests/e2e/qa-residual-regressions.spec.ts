@@ -65,7 +65,7 @@ test.describe('PQA residual regressions', () => {
     await page.getByTestId('open-campaign-table').click();
     await page.getByTestId('dock-tab-director_address').click();
     await expect(page.getByTestId('dock-tab-director_address')).toContainText('Ask the Director');
-    await page.getByTestId('dock-tab-rules_desk').click();
+    await page.getByTestId('table-info-tab-rules').click();
     await expect(page.getByTestId('rules-catalog-meta')).toHaveText('SRD 5.2.1 reference');
     await expect(page.getByTestId('rules-catalog-meta')).not.toContainText('srd-5.2.1');
     await page.getByTestId('open-rules-modal').click();

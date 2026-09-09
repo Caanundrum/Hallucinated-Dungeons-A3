@@ -86,11 +86,11 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('communication-dock')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
-    await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
+    await expect(page.getByTestId('dock-tab-rules_desk')).toHaveCount(0);
     await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
     await expect(page.getByTestId('dm-play-thread')).toBeVisible();
 
-    await page.getByTestId('dock-tab-rules_desk').click();
+    await page.getByTestId('table-info-tab-rules').click();
     await expect(page.getByTestId('rules-desk-notice')).toContainText(
       /Browse the SRD|does not make rulings|never changes the table/i,
     );
