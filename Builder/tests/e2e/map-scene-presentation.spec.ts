@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter, awaitAdventureReady } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -45,7 +45,7 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
 
   const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]');
   if ((await doorHit.count()) === 0) {
-    await page.getByTestId('begin-adventure').click();
+    await awaitAdventureReady(page);
     await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible({ timeout: 15_000 });
     await page.getByTestId('confirm-intent-intercept').click();
     await expect(page.getByTestId('confirm-intent-intercept')).toHaveCount(0, { timeout: 30_000 });

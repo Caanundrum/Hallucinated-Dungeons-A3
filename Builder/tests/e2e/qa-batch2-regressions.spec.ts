@@ -1,6 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-
 import {
+  awaitAdventureReady,
   enterAccountFromShell,
   joinTableWithFirstCharacter,
   openTableAdvancedControls,
@@ -147,7 +146,7 @@ test.describe('PQA batch 2 regressions', () => {
     await seatFreshCampaign(page, 'QuietChamber');
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('map-scene-banner')).toContainText(/first scene|Game Director/i);
-    await expect(page.getByTestId('begin-adventure')).toBeVisible();
+    await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('Local starter chamber');
     await expect(page.locator('body')).not.toContainText(/empty table/i);
     const terrain = page.getByTestId('map-terrain-summary');
@@ -162,7 +161,7 @@ test.describe('PQA batch 2 regressions', () => {
     await enterAccountFromShell(page);
     await seatFreshCampaign(page, 'MapMarkers');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('begin-adventure')).toBeVisible();
+    await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
     // Markers are scene-owned; blank await state has none until Begin the adventure confirms.
     await expect(page.locator('[data-notable-feature*="lighting reference"]')).toHaveCount(0);
   });

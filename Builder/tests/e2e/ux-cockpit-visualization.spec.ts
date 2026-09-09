@@ -43,15 +43,13 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await enterAccountFromShell(page);
     await openSeatedTable(page, 'UxCockpit');
 
-    // UX-4: Story pinned above interactive comms
-    await expect(page.getByTestId('comms-story-tier')).toBeVisible();
+    // Chat rail is social only — live chronology stays in the center play timeline.
+    await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
     await expect(page.getByTestId('comms-interactive-tier')).toBeVisible();
-    await expect(page.getByTestId('chronicle-pane')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
     await expect(page.getByTestId('dock-tab-director_address')).toBeVisible();
     await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
-    await page.getByTestId('dock-tab-chronicle').click();
-    await expect(page.getByTestId('chronicle-pane')).toBeVisible();
+    await expect(page.getByTestId('party-chat-pane')).toBeVisible();
 
     // UX-5: mini-sheet HP bar
     await expect(page.getByTestId('table-character-compact')).toBeVisible();

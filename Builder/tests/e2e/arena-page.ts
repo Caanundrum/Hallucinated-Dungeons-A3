@@ -222,3 +222,17 @@ export async function readCandidate(page: Page): Promise<{
     environmentClass: string;
   };
 }
+
+/**
+ * Wait for auto-begin (or an already-started scene) after seating at a table.
+ * Begin-the-adventure Confirm UI is removed — entering the table starts the scene.
+ */
+export async function awaitAdventureReady(page: Page, timeout = 60_000): Promise<void> {
+  await expect(page.getByTestId('action-composer')).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(async () => page.getByTestId('map-scene-banner').innerText().catch(() => ''), {
+      timeout,
+    })
+    .not.toMatch(/awaiting first scene|establishing scene/i);
+  await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
+}

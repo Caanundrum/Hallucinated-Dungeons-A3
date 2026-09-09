@@ -2,8 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import {
   enterAccountFromShell,
-  joinTableWithFirstCharacter,
-} from './arena-page.js';
+  joinTableWithFirstCharacter, awaitAdventureReady } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -58,11 +57,12 @@ test('FQA evidence screenshots', async ({ page }) => {
   }
 
   await seatAndOpenTable(page, 'FQAEvidence');
-  await expect(page.getByTestId('begin-adventure')).toBeVisible();
+  await awaitAdventureReady(page);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-awaiting-first-scene.png', fullPage: true });
 
-  const storyFilter = page.getByTestId('chronicle-kind-filter');
-  await expect(storyFilter).toHaveValue('recap');
+  // Story-so-far duplicate rail removed; chronology lives in the play timeline.
+  await expect(page.getByTestId('chronicle-kind-filter')).toHaveCount(0);
+  await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-story-filter.png' });
 
   await expect(page.getByTestId('table-character-sheet-link')).toHaveCount(0);
@@ -283,8 +283,7 @@ test('FQA-R06 confirm clears draft UI before slow narration', async ({ page }) =
   await dismissIntroIfPresent(page);
   await enterAccountFromShell(page);
   await seatAndOpenTable(page, 'FQAR06');
-  await expect(page.getByTestId('begin-adventure')).toBeVisible();
-  await page.getByTestId('begin-adventure').click();
+  await awaitAdventureReady(page);
   await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible();
   await expect(page.getByTestId('cancel-intent-intercept')).toBeVisible();
   await page.screenshot({ path: '/opt/cursor/artifacts/fqa-batch3-r06-before-confirm.png' });

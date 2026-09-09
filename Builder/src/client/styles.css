@@ -722,9 +722,9 @@ a.account-chip-label:focus-visible {
 
 .table-map-chrome {
   position: relative;
-  /* Desktop: give the play dock more than half the column so the timeline is usable. */
-  flex: 0.85 1 12rem;
-  min-height: 10rem;
+  /* Map-first shell: the tactical stage is the primary visual plane. */
+  flex: 1.85 1 18rem;
+  min-height: 14rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -752,15 +752,14 @@ a.account-chip-label:focus-visible {
 
 .table-action-bar {
   /*
-   * FQA-023 / dock height remediation:
-   * Dock must outgrow the map on desktop so the thread list is hundreds of px,
-   * not pinned at the 4.5rem floor.
+   * Play dock stays compact under a map-first stage: timeline + composer remain
+   * usable without stealing most of the viewport from the tactical map.
    */
-  flex: 1.35 1 22rem;
+  flex: 0.85 1 14rem;
   margin: 0;
   height: 0;
   max-height: none;
-  min-height: min(42vh, 24rem);
+  min-height: min(28vh, 16rem);
   overflow: clip;
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
@@ -776,7 +775,7 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  flex: 1.35 1 22rem;
+  flex: 1.1 1 16rem;
   height: 0;
   max-height: none;
 }
@@ -1205,23 +1204,23 @@ ol.record-list.dm-thread-list > li {
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 0 0 auto;
-    min-height: 5.5rem;
-    max-height: min(16dvh, 7.5rem);
+    flex: 1.45 1 0;
+    min-height: 12rem;
+    max-height: min(52dvh, 24rem);
     aspect-ratio: auto;
   }
 
-  /* Dock fills leftover play column; clip must include thread + reserved composer. */
+  /* Compact dock under a larger map; composer stays reserved inside clip. */
   .table-action-bar {
-    flex: 1 1 0;
+    flex: 0.8 1 0;
     height: auto;
     max-height: none;
-    min-height: 0;
+    min-height: 11rem;
     overflow: clip;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.4 1 0;
+    flex: 1.05 1 0;
     height: auto;
     max-height: none;
   }
@@ -1287,25 +1286,25 @@ ol.record-list.dm-thread-list > li {
   }
 }
 
-/* Desktop: readable history without letting map starve the dock (R4-02 @ 1440). */
+/* Desktop: map-first stage; dock remains readable without dominating. */
 @media (min-width: 1101px) {
   .table-map-chrome {
-    flex: 0.7 1 10rem;
-    min-height: 9rem;
-    max-height: min(42vh, 22rem);
+    flex: 1.9 1 18rem;
+    min-height: 16rem;
+    max-height: none;
   }
 
   .table-action-bar {
-    flex: 1.55 1 24rem;
-    min-height: min(46vh, 26rem);
+    flex: 0.8 1 14rem;
+    min-height: min(30vh, 17rem);
   }
 
   .dm-play-thread {
-    grid-template-rows: auto auto minmax(12rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(6rem, 1fr) auto;
   }
 
   .dm-play-thread.is-expanded {
-    grid-template-rows: auto auto minmax(16rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
   }
 }
 
