@@ -1613,9 +1613,7 @@ ol.record-list.dm-thread-list > li {
   .table-dashboard[data-mobile-task='sheet'] .floating-combat-host,
   .table-dashboard[data-mobile-task='sheet'] .dice-fab-host,
   .table-dashboard[data-mobile-task='chat'] .floating-combat-host,
-  .table-dashboard[data-mobile-task='chat'] .dice-fab-host,
-  .table-dashboard[data-mobile-task='map'] .floating-combat-host,
-  .table-dashboard[data-mobile-task='map'] .dice-fab-host {
+  .table-dashboard[data-mobile-task='chat'] .dice-fab-host {
     display: none;
   }
 

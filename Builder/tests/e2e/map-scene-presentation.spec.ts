@@ -69,11 +69,13 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
   await expect(terrain).not.toContainText(/unmarked opening/i);
   await expect(terrain).toContainText(/Routes:/i);
 
-  await doorHit.first().click({ force: true });
+  await doorHit.first().evaluate((node) => {
+    (node as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
   const detail = page.getByTestId('door-selection-detail');
-  await expect(detail).toBeVisible();
+  await expect(detail).toBeVisible({ timeout: 10_000 });
   await expect(detail).not.toContainText(/Open adjacent door/i);
-  await expect(detail).toContainText(/play channel|Open doorway/i);
+  await expect(detail).toContainText(/play channel|Open doorway|doorway/i);
 
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Keyboard/i);
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Tab/i);

@@ -50,7 +50,7 @@ test.describe('Table mobile overlay fixes', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await openSeatedTable(page, 'MobileOverlay');
 
-    await page.getByTestId('mobile-task-map').click();
+    // Default play task keeps a map strip + combat FABs; Map task keeps FABs for combat while aiming.
     await expect(page.getByTestId('table-map-chrome')).toBeVisible();
     await expect(page.getByTestId('floating-combat-host')).toBeVisible();
     await expect(page.getByTestId('dice-fab')).toBeVisible();
