@@ -54,6 +54,11 @@ test('broad examine/search/investigate room is scene survey, not which-feature',
     'I search the chamber for anything unusual.',
     'I investigate the area carefully.',
     'Loophole surveys the current chamber, looking and listening carefully.',
+    'What do I see around me?',
+    'What can I see nearby?',
+    'I look around.',
+    'I see around me.',
+    "What's around here?",
   ]) {
     const parsed = parsePlayerDeclaration(text);
     assert.ok(
@@ -65,6 +70,7 @@ test('broad examine/search/investigate room is scene survey, not which-feature',
     const authority = resolveIntentAuthority(parsed);
     assert.equal(authority.disposition, 'director_narrate_only', text);
     assert.doesNotMatch(authority.summary, /Which feature/i, text);
+    assert.doesNotMatch(authority.clarificationPrompt ?? '', /attempting to do/i, text);
   }
   const clarify = buildSkillCheckDraftSummary(null, 'I examine the room.', {
     candidateLabels: ['Wood pile', 'Camp lamp', 'Wooden doorway east'],

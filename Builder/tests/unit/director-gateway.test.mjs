@@ -657,6 +657,21 @@ test('A1: unlocked-door state reference is not a lockpick draft', async () => {
   assert.doesNotMatch(interpreted.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
 });
 
+test('look-around questions narrate the scene instead of clarifying the action', async () => {
+  for (const text of ['What do I see around me?', 'I look around.', "What's nearby?"]) {
+    const interpreted = await interpretNaturalLanguageIntent({
+      firestore: fakeFirestore(),
+      campaignId: 'camp-1',
+      accountId: 'acc-1',
+      text,
+      environmentClass: 'local',
+    });
+    assert.equal(interpreted.proposedCommandType, 'table.sync', text);
+    assert.doesNotMatch(interpreted.summary, /attempting to do|Say the action you want/i, text);
+    assert.match(interpreted.summary, /look and listen|visible scene|chamber|route|door|notice/i, text);
+  }
+});
+
 test('A1: opens unlocked doorway and steps through is open, not lockpick', async () => {
   const interpreted = await interpretNaturalLanguageIntent({
     firestore: fakeFirestore(),

@@ -561,14 +561,20 @@ export function parsePlayerDeclaration(
     );
 
   const observingScene =
-    /\b(?:survey(?:s|ing)?|look(?:s|ing)?\s+and\s+listen|listen(?:s|ing)?\s+carefully|look(?:s|ing)?\s+carefully|peer(?:s|ing)?\s+around|take(?:s|ing)?\s+(?:a\s+)?look\s+around|describe\s+only\s+what)\b/i.test(
+    /\b(?:survey(?:s|ing)?|look(?:s|ing)?\s+and\s+listen|listen(?:s|ing)?\s+carefully|look(?:s|ing)?\s+carefully|peer(?:s|ing)?\s+around|look(?:s|ing)?\s+around(?:\s+(?:me|here))?|take(?:s|ing)?\s+(?:a\s+)?look\s+around|see(?:s|ing)?\s+around(?:\s+(?:me|here))?|describe\s+only\s+what)\b/i.test(
       trimmed,
     ) ||
-    // Broad examine/search/investigate of the scene — not a targeted prop roll.
-    (/\b(?:examin(?:e|es|ing)|search(?:es|ing)?|investigat(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?)\b/i.test(
+    // Ordinary sensory questions about the current place ("What do I see around me?").
+    (/\bwhat\s+(?:do|can)\s+i\s+(?:see|notice|observe|perceive|hear)\b/i.test(trimmed) &&
+      !/\b(?:door|doorway|gate|lock|trap)\b/i.test(trimmed)) ||
+    /\bwhat(?:'s|s|\s+is)\s+(?:around\s+(?:me|here)|nearby|in\s+(?:this\s+)?(?:room|chamber|area|scene)|here)\b/i.test(
+      trimmed,
+    ) ||
+    // Broad examine/search/investigate/see of the scene — not a targeted prop roll.
+    (/\b(?:examin(?:e|es|ing)|search(?:es|ing)?|investigat(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|see(?:s|ing)?|notice(?:s|ing)?|observe(?:s|ing)?)\b/i.test(
       trimmed,
     ) &&
-      /\b(?:chamber|room|scene|surroundings|area|here)\b/i.test(trimmed) &&
+      /\b(?:chamber|room|scene|surroundings|area|here|around|nearby)\b/i.test(trimmed) &&
       !/\b(?:door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(trimmed) &&
       !/\b(?:unlock|attack|strike|cast|open|opens|opening)\b/i.test(trimmed));
 
