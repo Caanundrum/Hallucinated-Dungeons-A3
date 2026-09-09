@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
+import {
+  enterAccountFromShell,
+  joinTableWithFirstCharacter,
+  readCandidate,
+} from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -9,10 +13,12 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 
 async function seedPublicNpc(page: Page, campaignId: string): Promise<void> {
   const origin = new URL(page.url()).origin;
+  const candidate = await readCandidate(page);
   const response = await page.request.post(`/api/campaigns/${campaignId}/director/npc`, {
     headers: {
       origin,
       'content-type': 'application/json',
+      'x-hd-candidate': candidate.candidateId,
     },
     data: {
       schemaVersion: 'play-authority-npc-v1',
