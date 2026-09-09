@@ -261,7 +261,8 @@ async function resolveDirectorNarrateOutput(options: {
   readonly accountId: string;
   readonly authority: ReturnType<typeof resolveIntentAuthority>;
   readonly structured: ReturnType<typeof parsePlayerDeclaration>;
-}): Promise<string> {
+  readonly playerText?: string;
+} & DirectorLiveOptions): Promise<string> {
   const inspectHint = options.authority.actionSequence[0]?.kind === 'inspect'
     ? options.authority.actionSequence[0]?.outcomeHint
     : null;
@@ -314,7 +315,27 @@ async function resolveDirectorNarrateOutput(options: {
       } catch {
         // Scene chronicle is best-effort; narration still returns.
       }
-      return buildSceneSurveyNarration(map);
+      const deterministic = buildSceneSurveyNarration(map);
+      // Prefer live Director prose grounded in the visible-state pack; never invent unseen places.
+      try {
+        const director = await loadDirectorConfig(options.firestore, options.campaignId);
+        const context = await assembleDirectorVisibleContext({
+          firestore: options.firestore,
+          campaignId: options.campaignId,
+          accountId: options.accountId,
+        });
+        const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+        const liveBody = await tryLiveProse(options, {
+          systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is surveying what they can perceive right now. Answer in 2–4 vivid sentences using ONLY the Visible state pack and the deterministic survey seed. Name doors, props, and atmosphere already established. Do not invent rooms, NPCs, loot, traps, or routes that are not listed. Do not ask what they are trying to do. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
+          userPrompt: `${context.text}\n\nDeterministic survey seed (must stay consistent):\n${deterministic}\n\nPlayer declaration:\n${playerAsk || 'I look around.'}`,
+        });
+        if (liveBody !== null && liveBody.trim().length > 0) {
+          return scrubEngineCoordinates(liveBody.trim());
+        }
+      } catch {
+        // Fall through to deterministic survey.
+      }
+      return deterministic;
     }
     return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
   }
@@ -1617,6 +1638,14 @@ export async function interpretNaturalLanguageIntent(options: {
         accountId: options.accountId,
         authority,
         structured,
+        playerText: rawText,
+        ...(options.environmentClass !== undefined
+          ? { environmentClass: options.environmentClass }
+          : {}),
+        ...(options.firebaseProjectId !== undefined
+          ? { firebaseProjectId: options.firebaseProjectId }
+          : {}),
+        ...(options.llm !== undefined ? { llm: options.llm } : {}),
       }),
     );
   }
