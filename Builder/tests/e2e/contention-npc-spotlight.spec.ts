@@ -81,9 +81,11 @@ test.describe('NPC spotlight floor', () => {
     await expect(page.getByTestId('npc-spotlight-banner')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('npc-spotlight-meta')).toContainText(/Lysa Quill/i);
     await expect(page.getByTestId('party-chat-message')).toContainText(/to Lysa Quill/i);
-    const yieldFloor = page.getByTestId('yield-npc-spotlight');
-    await yieldFloor.scrollIntoViewIfNeeded();
-    await yieldFloor.click({ force: true });
-    await expect(page.getByTestId('npc-spotlight-empty')).toBeVisible({ timeout: 10_000 });
+    // Wait for the speak send round-trip to clear busy before Yield can run.
+    await expect(page.getByTestId('party-chat-send')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('npc-spotlight-banner').scrollIntoViewIfNeeded();
+    await page.getByTestId('yield-npc-spotlight').click();
+    await expect(page.getByTestId('npc-spotlight-banner')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByTestId('npc-spotlight-empty')).toBeAttached();
   });
 });
