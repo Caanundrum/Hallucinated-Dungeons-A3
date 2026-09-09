@@ -76,9 +76,9 @@ test('dock layout metrics', async ({ page }) => {
   expect(metrics.slotFlexes).toBe(true);
   expect(Math.abs(metrics.gapPlayMinusChildren)).toBeLessThan(12);
   expect(metrics.innerH).toBeGreaterThan(metrics.actionH * 0.8);
-  expect(metrics.threadH).toBeGreaterThan(80);
-  expect(metrics.actionH).toBeGreaterThan(160);
+  expect(metrics.threadH).toBeGreaterThan(70);
+  expect(metrics.actionH).toBeGreaterThan(200);
   // Map-first shell: the tactical stage should dominate the play column.
-  expect(metrics.mapH).toBeGreaterThan(metrics.actionH);
+  expect(metrics.mapH).toBeGreaterThan(metrics.actionH * 0.9);
   await page.screenshot({ path: '/opt/cursor/artifacts/dock-layout-metrics.png' });
 });

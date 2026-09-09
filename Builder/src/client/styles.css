@@ -752,14 +752,14 @@ a.account-chip-label:focus-visible {
 
 .table-action-bar {
   /*
-   * Play dock stays compact under a map-first stage: timeline + composer remain
-   * usable without stealing most of the viewport from the tactical map.
+   * Play dock stays usable under a map-first stage: enough height for timeline
+   * + composer without reclaiming the whole column from the tactical map.
    */
-  flex: 0.85 1 14rem;
+  flex: 0.95 1 16rem;
   margin: 0;
   height: 0;
   max-height: none;
-  min-height: min(28vh, 16rem);
+  min-height: min(34vh, 20rem);
   overflow: clip;
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
@@ -1289,22 +1289,31 @@ ol.record-list.dm-thread-list > li {
 /* Desktop: map-first stage; dock remains readable without dominating. */
 @media (min-width: 1101px) {
   .table-map-chrome {
-    flex: 1.9 1 18rem;
-    min-height: 16rem;
+    flex: 1.6 1 16rem;
+    min-height: 14rem;
     max-height: none;
   }
 
   .table-action-bar {
-    flex: 0.8 1 14rem;
-    min-height: min(30vh, 17rem);
+    flex: 1 1 18rem;
+    min-height: min(36vh, 22rem);
+  }
+
+  .table-action-bar-dm > .table-turn-banner {
+    max-height: 3.5rem;
+  }
+
+  .table-action-bar-dm > .table-turn-detail,
+  .table-action-bar [data-testid='move-preview-hint'] {
+    display: none;
   }
 
   .dm-play-thread {
-    grid-template-rows: auto auto minmax(6rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(8rem, 1fr) auto;
   }
 
   .dm-play-thread.is-expanded {
-    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+    grid-template-rows: auto auto minmax(12rem, 1fr) auto;
   }
 }
 

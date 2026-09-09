@@ -137,20 +137,16 @@ test.describe('PQA batch 2 regressions', () => {
     await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
   });
 
-  test('FQA-010 / PQA-187: blank table awaits Director first scene', async ({ page }) => {
+  test('FQA-010 / PQA-187: blank table auto-begins the opening scene', async ({ page }) => {
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
     await seatFreshCampaign(page, 'QuietChamber');
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-scene-banner')).toContainText(/first scene|Game Director/i);
+    await awaitAdventureReady(page);
     await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('Local starter chamber');
     await expect(page.locator('body')).not.toContainText(/empty table/i);
-    const terrain = page.getByTestId('map-terrain-summary');
-    if (await terrain.isVisible().catch(() => false)) {
-      await expect(terrain).not.toHaveText(/^49 floor, 47 unexplored$/);
-    }
   });
 
   test('PQA-177: reference markers appear after Director establishes a scene', async ({ page }) => {
@@ -159,8 +155,7 @@ test.describe('PQA batch 2 regressions', () => {
     await enterAccountFromShell(page);
     await seatFreshCampaign(page, 'MapMarkers');
     await page.getByTestId('open-campaign-table').click();
+    await awaitAdventureReady(page);
     await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
-    // Markers are scene-owned; blank await state has none until Begin the adventure confirms.
-    await expect(page.locator('[data-notable-feature*="lighting reference"]')).toHaveCount(0);
   });
 });
