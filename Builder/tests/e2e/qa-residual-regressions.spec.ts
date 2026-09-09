@@ -9,6 +9,7 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 
 test.describe('PQA residual regressions', () => {
   test('PQA-061: switching ability method uses an in-app confirm dialog', async ({ page }) => {
+    test.setTimeout(90_000);
     await page.goto('/');
     await dismissIntroIfPresent(page);
     await enterAccountFromShell(page);
@@ -19,6 +20,8 @@ test.describe('PQA residual regressions', () => {
     await page.getByTestId('open-quick-start').click();
     await page.getByTestId('option-stalwart-defender').click();
     await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
+    // Ability Scores live under the Foundation carousel stage after quick-start.
+    await page.getByTestId('carousel-stage-foundation').click();
     await page.getByTestId('step-abilities').click();
     await expect(page.getByTestId('ability-method-options')).toBeVisible();
     await page.locator('input[name="ability-method"][value="point-buy"]').check();

@@ -1479,8 +1479,7 @@ ol.record-list.dm-thread-list > li {
     height: 100%;
   }
 
-  /* Play prioritizes timeline + composer; Map owns map chrome and zoom. */
-  .table-dashboard[data-mobile-task='play'] .table-map-chrome,
+  /* Play prioritizes timeline + composer; keep a slim map strip for FABs. Zoom chrome stays on Map task. */
   .table-dashboard[data-mobile-task='play'] .table-stage-toolbar,
   .table-dashboard[data-mobile-task='play'] .map-stage-help-floating,
   .table-dashboard[data-mobile-task='play'] .table-map-actions {

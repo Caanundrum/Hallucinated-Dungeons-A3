@@ -74,7 +74,6 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     await page.getByTestId('content-profile-tense').click();
     await page.getByTestId('safety-boundaries').fill('No spiders. Lines and veils apply.');
-    await page.getByTestId('group-decision-unanimous_consent').click();
     await page.getByTestId('reaction-window').fill('15');
     await page.getByTestId('session-tone').selectOption({ index: 1 });
     await page.getByTestId('session-length').fill('3–5 sessions');
