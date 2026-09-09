@@ -1574,7 +1574,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function visibleInfoTabs(): InfoTab[] {
-    const tabs: InfoTab[] = ['character', 'notes', 'people', 'rules'];
+    const tabs: InfoTab[] = ['character', 'rules', 'notes', 'people'];
     if (trainingToolsVisible()) {
       tabs.push('tools');
     }

@@ -115,7 +115,7 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
     await expect(page.getByTestId('action-composer')).toBeVisible();
     await expect(page.getByTestId('action-composer-notice')).toContainText('initiative');
     await openTableAdvancedControls(page);
-    await expect(page.getByTestId('table-state-meta')).toContainText('Table state version');
+    await expect(page.getByTestId('table-state-meta')).toHaveAttribute('data-state-version', /\d+/);
     await expect(page.getByTestId('commit-table-sync')).toBeVisible();
     await expect(page.getByTestId('player-action-input')).toBeVisible();
     await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'false');
