@@ -626,7 +626,7 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <button type="button" data-map-zoom="preset" data-zoom-preset="1" aria-label="Reset zoom to 100%">Reset to 100%</button>
+      <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
       <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
@@ -744,16 +744,10 @@ function paintSemanticSvg(
       <span class="cavern-dust cavern-dust-b"></span>
       <span class="cavern-dust cavern-dust-c"></span>
     </div>
-    <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
-      <summary>Map help</summary>
+    <div class="map-stage-help visually-hidden" data-testid="map-zoom-help">
       <p class="record-meta">Drag the map to pan. Fit frames the whole scene; Zoom in for a closer look. Center focuses the party token.</p>
-      <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Use Zoom in / Zoom out / Fit in the toolbar. On Map task, Open doorway appears under the map when a door is selected and you are beside it.</p>
-      <p class="table-player-actions">
-        <button type="button" data-testid="preview-scene-discovery-cue" data-map-zoom="preview-cue">
-          Preview discovery cue
-        </button>
-      </p>
-    </details>
+      <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Use Zoom in / Zoom out / Fit in the toolbar. Open doorway appears under the map when a door is selected and you are beside it.</p>
+    </div>
     <details class="map-fog-legend visually-hidden" data-testid="map-fog-legend" aria-label="Map legend">
       <summary>Map legend</summary>
       <div class="map-legend-groups">

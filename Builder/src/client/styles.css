@@ -1003,7 +1003,7 @@ ol.record-list.dm-thread-list > li {
   border-radius: var(--radius-control);
   flex: 0 1 auto;
   min-height: 0;
-  max-height: 5.25rem;
+  max-height: 3.75rem;
   overflow-y: auto;
 }
 
@@ -1479,8 +1479,7 @@ ol.record-list.dm-thread-list > li {
     height: 100%;
   }
 
-  /* Play prioritizes timeline + composer; Map owns map chrome and zoom. */
-  .table-dashboard[data-mobile-task='play'] .table-map-chrome,
+  /* Play prioritizes timeline + composer; keep a slim map strip for FABs. Zoom chrome stays on Map task. */
   .table-dashboard[data-mobile-task='play'] .table-stage-toolbar,
   .table-dashboard[data-mobile-task='play'] .map-stage-help-floating,
   .table-dashboard[data-mobile-task='play'] .table-map-actions {
@@ -1613,9 +1612,7 @@ ol.record-list.dm-thread-list > li {
   .table-dashboard[data-mobile-task='sheet'] .floating-combat-host,
   .table-dashboard[data-mobile-task='sheet'] .dice-fab-host,
   .table-dashboard[data-mobile-task='chat'] .floating-combat-host,
-  .table-dashboard[data-mobile-task='chat'] .dice-fab-host,
-  .table-dashboard[data-mobile-task='map'] .floating-combat-host,
-  .table-dashboard[data-mobile-task='map'] .dice-fab-host {
+  .table-dashboard[data-mobile-task='chat'] .dice-fab-host {
     display: none;
   }
 
@@ -3433,6 +3430,35 @@ html.hd-low-effects .map-square-fog,
   padding: 0;
 }
 
+.chat-speak-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chat-speak-toggle.selected {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--panel-surface) 88%, #000);
+}
+
+.chat-speak-toggle.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chat-speak-toggle input {
+  margin: 0;
+}
+
 .action-composer-controls {
   display: flex;
   flex-wrap: wrap;
@@ -4225,6 +4251,13 @@ html.hd-low-effects .table-stage-svg-viewport,
   pointer-events: none;
 }
 
+/* Desktop: combat actions live in the play composer — no floating Attack/Pass bar. */
+@media (min-width: 901px) {
+  .floating-combat-host {
+    display: none !important;
+  }
+}
+
 .floating-combat-bar {
   pointer-events: auto;
   display: flex;
@@ -4722,9 +4755,15 @@ html.hd-low-effects .table-stage-svg-viewport,
 .table-stage-atmosphere {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: none !important;
   z-index: 2;
   overflow: hidden;
+}
+
+.table-stage-atmosphere *,
+.table-stage-atmosphere svg,
+.table-stage-atmosphere path {
+  pointer-events: none !important;
 }
 
 .scene-atmosphere-wash {

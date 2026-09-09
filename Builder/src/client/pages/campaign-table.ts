@@ -14,8 +14,6 @@ import {
   DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
   PLAYER_COMMS_TAB_ORDER,
-  PARTY_CHAT_MODE_LABELS,
-  PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
@@ -155,18 +153,11 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-function doorDetailCopy(
-  edge: MapEdgeRecord,
-  mapTitle: string,
-  options?: { readonly openControlVisible?: boolean },
-): string {
+function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
   const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
-  if (options?.openControlVisible === true) {
-    return `Selected ${label} in ${scene} (${stateLabel}). Use Open doorway beside the play channel, or declare open / step through.`;
-  }
-  return `Selected ${label} in ${scene} (${stateLabel}). Declare open / step through in the play channel when you are beside it.`;
+  return `Selected ${label} in ${scene} (${stateLabel}).`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -1574,7 +1565,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   function visibleInfoTabs(): InfoTab[] {
-    const tabs: InfoTab[] = ['character', 'notes', 'people', 'rules'];
+    const tabs: InfoTab[] = ['character', 'rules', 'notes', 'people'];
     if (trainingToolsVisible()) {
       tabs.push('tools');
     }
@@ -1599,10 +1590,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (busy || candidate === null) {
       return true;
     }
+    // Speak mode may address an NPC via the optional picker or by naming them in free text.
     if (chatMode === 'speak_as_character') {
-      if (speakAsNpcName.trim().length === 0) {
-        return true;
-      }
       return partyChatMessageBody().length === 0;
     }
     return draft.trim().length === 0;
@@ -1720,7 +1709,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ${
                 rulesCatalog === null
                   ? 'Loading SRD reference…'
-                  : 'SRD 5.2.1 character reference'
+                  : 'SRD 5.2.1 reference'
               }
             </p>
             <label class="field">
@@ -1936,25 +1925,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       activeTab = 'party_chat';
     }
 
+    // Rules live in the left reference rail — never duplicate them in chat.
     if (activeTab === 'rules_desk') {
-      return `
-        <div class="dock-pane" data-testid="rules-desk-pane">
-          <p data-testid="rules-desk-notice">${escapeHtml(rulesCatalog?.notice ?? RULES_DESK_NOTICE)}</p>
-          <p class="record-meta" data-testid="rules-catalog-meta">
-            ${
-              rulesCatalog === null
-                ? 'Loading SRD reference…'
-                : 'SRD 5.2.1 reference'
-            }
-          </p>
-          <label class="field">
-            <span>Quick search</span>
-            <input type="search" data-testid="rules-catalog-search" placeholder="Filter by title or summary"
-              value="${escapeHtml(rulesSearchQuery)}" />
-          </label>
-          <p class="record-meta">Open the catalog for categories and full entry text. Enter in search jumps there.</p>
-          <button type="button" class="table-primary-action" data-testid="open-rules-modal">Open full rules catalog</button>
-        </div>`;
+      activeTab = 'party_chat';
     }
 
     if (activeTab === 'director_address') {
@@ -1991,7 +1964,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dock-pane" data-testid="party-chat-pane">
         ${
           spotlight === null
-            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is for in-character roleplay. Messages here are player-authored, not Director canon — Speak as Character and address an NPC by the name already established at your table.</p>'
+            ? chatMode === 'speak_as_character'
+              ? '<p class="record-meta" data-testid="npc-spotlight-empty">No NPC holds the floor. Address someone by name already known at this table.</p>'
+              : '<p class="visually-hidden" data-testid="npc-spotlight-empty">NPC floor is clear.</p>'
             : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
                 <p data-testid="npc-spotlight-meta">
                   Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
@@ -2012,7 +1987,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
         ${
           messages.length === 0
-            ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet. Say hello to your party.</p>'
+            ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet.</p>'
             : `<ul class="record-list" data-testid="party-chat-list">
                 ${messages
                   .map(
@@ -2020,7 +1995,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   <li data-testid="party-chat-message">
                     <span class="record-note">
                       <strong>${escapeHtml(message.senderDisplayLabel)}</strong>
-                      · ${escapeHtml(PARTY_CHAT_MODE_LABELS[message.mode])}
                       ${
                         message.addressedNpcName
                           ? ` · to ${escapeHtml(message.addressedNpcName)}`
@@ -2035,35 +2009,29 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </ul>`
         }
         <form class="dock-composer" data-testid="party-chat-composer">
-          <fieldset class="option-list compact chat-mode-fieldset">
-            <legend class="visually-hidden">Chat mode</legend>
-            ${PARTY_CHAT_MODES.map(
-              (mode) => `
-              <label class="option${chatMode === mode ? ' selected' : ''}${mode === 'speak_as_character' && !seated ? ' disabled' : ''}">
-                <input type="radio" name="chat-mode" value="${mode}"
-                  ${chatMode === mode ? 'checked' : ''}
-                  ${mode === 'speak_as_character' && !seated ? 'disabled' : ''}
-                  data-testid="chat-mode-${mode}" />
-                <span class="option-label">${escapeHtml(PARTY_CHAT_MODE_LABELS[mode])}</span>
-              </label>`,
-            ).join('')}
-          </fieldset>
+          <label class="chat-speak-toggle${chatMode === 'speak_as_character' ? ' selected' : ''}${!seated ? ' disabled' : ''}">
+            <input type="checkbox" name="chat-mode-speak"
+              ${chatMode === 'speak_as_character' ? 'checked' : ''}
+              ${!seated ? 'disabled' : ''}
+              data-testid="chat-mode-speak_as_character" />
+            <span>Speak as Character</span>
+          </label>
           ${
-            !seated
-              ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to use Speak as Character.</p>'
-              : chatMode === 'speak_as_character'
+            !seated && chatMode === 'speak_as_character'
+              ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to speak in character.</p>'
+              : chatMode === 'speak_as_character' && seated
                 ? (() => {
                     const known = memory?.npcs.filter(
                       (npc) => npc.audience === 'public' || npc.audience === 'private',
                     ) ?? [];
                     if (known.length === 0) {
-                      return '<p class="record-meta" data-testid="speak-as-npc-empty">No established NPCs yet — the Game Director introduces people first.</p>';
+                      return '<p class="record-meta" data-testid="speak-as-npc-empty">No one is listed yet — name someone already known at this table.</p>';
                     }
                     return `
                       <label class="field" data-testid="speak-as-npc-picker">
-                        <span>Address NPC</span>
+                        <span>Address NPC (optional)</span>
                         <select data-testid="speak-as-npc-select">
-                          <option value="">Choose who you speak to…</option>
+                          <option value="">Name them in your line, or pick…</option>
                           ${known
                             .map(
                               (npc) => `
@@ -2078,10 +2046,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : ''
           }
           <label class="field">
-            <span>Message</span>
+            <span class="visually-hidden">Message</span>
             <textarea data-testid="party-chat-input" rows="3" placeholder="${
               chatMode === 'speak_as_character'
-                ? 'Speak in character to an established NPC…'
+                ? 'Speak in character…'
                 : 'Talk with your party…'
             }">${escapeHtml(draft)}</textarea>
           </label>
@@ -2298,6 +2266,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
 
   function floatingCombatBarHtml(): string {
+    // Desktop: Attack / End turn live in the play composer only.
+    // Mobile keeps this bar so map/chat task modes still have combat actions.
     if (!seated || sessionIsSuspended()) {
       return '';
     }
@@ -2616,19 +2586,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     seedDmThreadIfNeeded();
     const banner = turnBanner();
     const showEndTurn = isOwnCombatTurn() && !sessionIsSuspended();
+    const showAttack = seated && !sessionIsSuspended();
     const canDescribeTurn =
       seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
-    // NEW-PQA-02: hosted has no Tools tab — End encounter must stay on the play bar.
+    // NEW-PQA-02: hosted has no Tools tab — End encounter stays on the play bar there only.
     const showEndEncounter =
       seated &&
       !sessionIsSuspended() &&
       encounter !== null &&
-      encounter.status !== 'ended';
+      encounter.status !== 'ended' &&
+      !trainingToolsVisible();
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
-          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+          <p class="table-turn-detail visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
           ${
             sessionIsSuspended()
               ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
@@ -2638,9 +2610,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
           ${
             movePreviewNote === null
-              ? seated && !sessionIsSuspended()
-                ? `<p class="table-move-status" data-testid="move-preview-hint">Click an adjacent map square to preview a move, then Confirm or Cancel. Drag the map to pan when zoomed in.</p>`
-                : ''
+              ? ''
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
           ${
@@ -2652,24 +2622,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               if (edge === undefined || edge.kind !== 'door') {
                 return '';
               }
-              const affordance = selectedDoorOpenAffordance();
               return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-                doorDetailCopy(edge, mapBundle?.title ?? '', {
-                  openControlVisible: affordance?.canOpen === true,
-                }),
+                doorDetailCopy(edge, mapBundle?.title ?? ''),
               )}</p>`;
-            })()
-          }
-          ${
-            (() => {
-              const affordance = selectedDoorOpenAffordance();
-              if (affordance === null || !affordance.canOpen) {
-                return '';
-              }
-              return `<div class="table-player-actions" data-testid="selected-door-actions">
-                   <button type="button" class="table-primary-action" data-testid="open-selected-door"
-                     aria-disabled="${busy}">Open doorway</button>
-                 </div>`;
             })()
           }
           ${
@@ -2693,18 +2648,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         </section>
         <div class="dm-play-thread${dmThreadExpanded ? ' is-expanded' : ''}" data-testid="dm-play-thread">
           <div class="dm-play-thread-chrome">
-            <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)} · table beats</p>
+            <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
             <div class="dm-play-thread-chrome-actions">
               <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
                 aria-pressed="${dmThreadExpanded}">
-                ${dmThreadExpanded ? 'Compact timeline' : 'Expand timeline'}
+                ${dmThreadExpanded ? 'Compact' : 'Expand'}
               </button>
               <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
                 Jump to latest
               </button>
             </div>
           </div>
-          <p class="record-meta" data-testid="dm-beat-queue-hint">
+          <p class="record-meta visually-hidden" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
           </p>
           ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
@@ -2770,7 +2725,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
                 <p class="record-meta" data-testid="action-channel-hint">
-                  This is the play channel — declarations can change the table. Chat stays social; Ask the Director is advice only.
+                  Declarations change the table.
                 </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
@@ -2782,6 +2737,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
                     ${busy ? 'Sending…' : `Tell ${escapeHtml(directorIdentityLabel)}`}
                   </button>
+                  ${
+                    showAttack
+                      ? `<button type="button" class="table-secondary-action" data-testid="play-attack"
+                          data-rules-command="combat.attack"
+                          aria-disabled="${busy || explorationMode()}">Attack</button>`
+                      : ''
+                  }
                   ${
                     showEndTurn
                       ? `<button type="button" class="table-secondary-action" data-testid="end-combat-turn"
@@ -2960,12 +2922,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
-      const affordance = selectedDoorOpenAffordance();
-      shell.announce(
-        doorDetailCopy(edge, mapBundle?.title ?? '', {
-          openControlVisible: affordance?.canOpen === true,
-        }),
-      );
+      shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
     } else {
       movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
@@ -3651,6 +3608,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         void submitRulesAction('combat.attack');
       });
     root
+      .querySelector<HTMLButtonElement>('[data-testid="play-attack"]')
+      ?.addEventListener('click', () => {
+        void submitRulesAction('combat.attack');
+      });
+    root
       .querySelector<HTMLButtonElement>('[data-testid="dice-fab"]')
       ?.addEventListener('click', () => {
         diceTrayOpen = !diceTrayOpen;
@@ -3756,6 +3718,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const select = event.currentTarget as HTMLSelectElement;
         const previous = speakAsNpcName;
         speakAsNpcName = select.value;
+        if (speakAsNpcName.length > 0 && seated) {
+          chatMode = 'speak_as_character';
+        }
         // Address lives in the picker — do not enable Send on "Nib," alone.
         if (previous.length > 0) {
           const escaped = previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4067,25 +4032,43 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
-    root.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        if (input.value === 'speak_as_character' && !seated) {
-          chatMode = 'table_talk';
+    root
+      .querySelector<HTMLInputElement>('[data-testid="chat-mode-speak_as_character"]')
+      ?.addEventListener('change', (event) => {
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        if (event.target.checked) {
+          if (!seated) {
+            chatMode = 'table_talk';
+            render();
+            return;
+          }
+          chatMode = 'speak_as_character';
+          if (speakAsNpcName.trim().length === 0) {
+            const known =
+              memory?.npcs.filter(
+                (npc) => npc.audience === 'public' || npc.audience === 'private',
+              ) ?? [];
+            if (known.length === 1) {
+              speakAsNpcName = known[0]!.name;
+              const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              if (!new RegExp(`^@?${escaped}\\b`, 'i').test(draft.trim())) {
+                draft = `${speakAsNpcName}, ${draft}`.trim();
+              }
+            }
+          }
           render();
           return;
         }
-        const nextMode = input.value as PartyChatMode;
-        if (nextMode === 'table_talk' && chatMode === 'speak_as_character') {
-          if (speakAsNpcName.length > 0) {
-            const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
-          }
-          speakAsNpcName = '';
+        if (speakAsNpcName.length > 0) {
+          const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
         }
-        chatMode = nextMode;
+        speakAsNpcName = '';
+        chatMode = 'table_talk';
         render();
       });
-    });
 
     root
       .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')

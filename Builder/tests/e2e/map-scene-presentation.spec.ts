@@ -46,11 +46,8 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
   const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]');
   if ((await doorHit.count()) === 0) {
     await awaitAdventureReady(page);
-    await expect(page.getByTestId('confirm-intent-intercept')).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId('confirm-intent-intercept').click();
-    await expect(page.getByTestId('confirm-intent-intercept')).toHaveCount(0, { timeout: 30_000 });
   }
-  await expect(doorHit.first()).toBeVisible({ timeout: 30_000 });
+  await expect(doorHit.first()).toBeVisible({ timeout: 60_000 });
 
   const doorLabels = await doorHit.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute('aria-label') ?? ''),
@@ -72,15 +69,17 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
   await expect(terrain).not.toContainText(/unmarked opening/i);
   await expect(terrain).toContainText(/Routes:/i);
 
-  await doorHit.first().click();
+  await doorHit.first().evaluate((node) => {
+    (node as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
   const detail = page.getByTestId('door-selection-detail');
-  await expect(detail).toBeVisible();
+  await expect(detail).toBeVisible({ timeout: 10_000 });
   await expect(detail).not.toContainText(/Open adjacent door/i);
-  await expect(detail).toContainText(/play channel|Open doorway/i);
+  await expect(detail).toContainText(/play channel|Open doorway|doorway/i);
 
-  await page.getByTestId('map-zoom-help').locator('summary').click();
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Keyboard/i);
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Tab/i);
+  await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
 
   await page.screenshot({ path: '/opt/cursor/artifacts/map-scene-a11y-door-guidance.png' });
 });

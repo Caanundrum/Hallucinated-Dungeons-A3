@@ -27,13 +27,13 @@ export const PLAYER_DOCK_TAB_ORDER: readonly DockTab[] = [
 ];
 
 /**
- * Interactive comms tabs for the cockpit bottom tier.
- * Story so far (chronicle) is pinned above these tabs in the table UX.
+ * Interactive comms tabs for the right conversation rail.
+ * Rules live in the left reference rail only — no duplicate Rules tab here.
+ * Live chronology stays in the center play timeline (not in this rail).
  */
 export const PLAYER_COMMS_TAB_ORDER: readonly DockTab[] = [
   'party_chat',
   'director_address',
-  'rules_desk',
 ];
 
 export const PARTY_CHAT_MODES = ['table_talk', 'speak_as_character'] as const;

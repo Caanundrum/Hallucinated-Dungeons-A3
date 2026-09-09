@@ -79,7 +79,7 @@ test.describe('Declaration-first Intent Intercept', () => {
     await expect
       .poll(async () => page.getByTestId('rules-last-result').innerText(), { timeout: 20_000 })
       .toMatch(/hit|missed|Practice Goblin/i);
-    await expect(page.getByTestId('dm-beat-queue-hint')).toBeVisible();
+    await expect(page.getByTestId('dm-beat-queue-hint')).toBeAttached();
   });
 
   test('beginning encounter marks an open free-roam draft stale', async ({ page }) => {

@@ -44,11 +44,12 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await openSeatedTable(page, 'UxCockpit');
 
     // Chat rail is social only — live chronology stays in the center play timeline.
+    // Rules live in the left reference rail (no duplicate Rules tab here).
     await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
     await expect(page.getByTestId('comms-interactive-tier')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
     await expect(page.getByTestId('dock-tab-director_address')).toBeVisible();
-    await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
+    await expect(page.getByTestId('dock-tab-rules_desk')).toHaveCount(0);
     await expect(page.getByTestId('party-chat-pane')).toBeVisible();
 
     // UX-5: mini-sheet HP bar
@@ -69,21 +70,23 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('table-sheet-modal')).toHaveCount(0);
 
-    // UX-3: rules spotlight
-    await page.getByTestId('dock-tab-rules_desk').click();
+    // UX-3: rules spotlight from left reference rail
+    await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
+    await page.getByTestId('table-info-tab-rules').click();
     await page.getByTestId('open-rules-modal').click();
     await expect(page.getByTestId('rules-search-modal')).toBeVisible();
     await page.getByTestId('close-rules-modal').click();
     await expect(page.getByTestId('rules-search-modal')).toHaveCount(0);
 
-    // Polish Batch 1: floating zoom pill on full-bleed map
+    // Slim map zoom pill (no Reset; Cue lives in the toolbar)
     await expect(page.getByTestId('map-stage-toolbar')).toBeVisible();
     await expect(page.getByTestId('map-zoom-indicator')).toBeVisible();
+    await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reset zoom to 100%' })).toHaveCount(0);
 
-    // Polish Batch 2: persistent floating action HUD while seated
-    await expect(page.getByTestId('floating-combat-bar')).toBeVisible();
-    await expect(page.getByTestId('fab-attack')).toBeVisible();
-    await expect(page.getByTestId('fab-end-turn')).toBeVisible();
+    // Desktop: combat actions in the play composer (no floating Attack/Pass bar)
+    await expect(page.getByTestId('floating-combat-bar')).toBeHidden();
+    await expect(page.getByTestId('play-attack')).toBeVisible();
 
     // Polish Batch 3: dice tray FAB (single dice entry — no duplicate Roll d20 on combat bar)
     await expect(page.getByTestId('dice-fab')).toBeVisible();
@@ -111,12 +114,16 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     for (const [testId, path] of [
       ['table-character-compact', '/opt/cursor/artifacts/ux-hero-mini-sheet.png'],
       ['map-stage-toolbar', '/opt/cursor/artifacts/ux-polish-zoom-pill.png'],
-      ['floating-combat-bar', '/opt/cursor/artifacts/ux-polish-action-hud.png'],
+      ['table-player-actions', '/opt/cursor/artifacts/ux-polish-action-hud.png'],
     ] as const) {
-      const target = page.getByTestId(testId);
-      if (await target.isVisible().catch(() => false)) {
-        await target.scrollIntoViewIfNeeded();
-        await target.screenshot({ path });
+      try {
+        const target = page.getByTestId(testId);
+        if (await target.isVisible().catch(() => false)) {
+          await target.scrollIntoViewIfNeeded();
+          await target.screenshot({ path });
+        }
+      } catch {
+        // Soft evidence only — detached nodes during re-render are fine.
       }
     }
   });
