@@ -77,9 +77,7 @@ test.describe('PQA residual regressions', () => {
     const explanationText = await page.getByTestId('rules-explanation').innerText();
     expect(explanationText).not.toMatch(/XP\.Each|slots\.Single/);
     await page.getByTestId('close-rules-modal').click();
-    await page.getByTestId('chronicle-kind-filter').selectOption('all');
-    await page.getByTestId('dock-tab-chronicle').click();
-    await expect(page.getByTestId('chronicle-entry').first()).toContainText('Campaign created');
-    await expect(page.getByTestId('chronicle-entry').first()).not.toContainText('campaign_created');
+    await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
+    await expect(page.getByTestId('dm-play-thread')).toBeVisible();
   });
 });

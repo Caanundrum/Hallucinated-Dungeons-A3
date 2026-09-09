@@ -130,11 +130,9 @@ test.describe('PQA batch 2 regressions', () => {
     await page.getByTestId('open-campaign-table').click();
     await expect(page.getByTestId('table-suspended-notice')).toBeVisible();
     await expect(page.getByTestId('table-turn-title')).toContainText(/suspended/i);
-    await page.getByTestId('dock-tab-chronicle').click();
-    await page.getByTestId('chronicle-kind-filter').selectOption('all');
-    await expect(page.getByTestId('chronicle-entry').filter({ hasText: /session was suspended/i })).toBeVisible();
-    await expect(page.getByTestId('chronicle-pane')).not.toContainText('checkpoint 0');
-    await expect(page.getByTestId('chronicle-pane')).not.toContainText(/Table checkpoint/i);
+    // Live chronology is the center play timeline (Story rail removed).
+    await expect(page.getByTestId('dm-play-thread')).toContainText(/session was suspended|suspended/i);
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText('checkpoint 0');
     await openTableAdvancedControls(page);
     await expect(page.getByTestId('nl-intent-input')).toBeDisabled();
   });

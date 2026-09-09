@@ -1308,16 +1308,9 @@ ol.record-list.dm-thread-list > li {
   }
 }
 
-/* Report control stays secondary so it does not dominate the timeline. */
+/* Report wrong resolution control removed — play trust lives in the Director timeline. */
 .dm-thread-report {
-  margin: 0.15rem 0 0;
-}
-
-.dm-thread-report [data-testid='report-wrong-resolution'] {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.45rem;
-  line-height: 1.2;
-  max-width: 100%;
+  display: none;
 }
 
 .table-mobile-task-nav {
