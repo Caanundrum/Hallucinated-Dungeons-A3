@@ -164,9 +164,9 @@ function doorDetailCopy(
   const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
   if (options?.openControlVisible === true) {
-    return `Selected ${label} in ${scene} (${stateLabel}). Use Open doorway beside the play channel, or declare open / step through.`;
+    return `Selected ${label} in ${scene} (${stateLabel}).`;
   }
-  return `Selected ${label} in ${scene} (${stateLabel}). Declare open / step through in the play channel when you are beside it.`;
+  return `Selected ${label} in ${scene} (${stateLabel}).`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -1975,7 +1975,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="dock-pane" data-testid="party-chat-pane">
         ${
           spotlight === null
-            ? '<p class="record-meta" data-testid="npc-spotlight-empty">NPC floor is for in-character roleplay. Messages here are player-authored, not Director canon — Speak as Character and address an NPC by the name already established at your table.</p>'
+            ? chatMode === 'speak_as_character'
+              ? '<p class="record-meta" data-testid="npc-spotlight-empty">No NPC holds the floor. Address someone by name already known at this table.</p>'
+              : '<p class="visually-hidden" data-testid="npc-spotlight-empty">NPC floor is clear.</p>'
             : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
                 <p data-testid="npc-spotlight-meta">
                   Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
@@ -1996,7 +1998,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
         ${
           messages.length === 0
-            ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet. Say hello to your party.</p>'
+            ? '<p class="empty-state" data-testid="party-chat-empty">No messages yet.</p>'
             : `<ul class="record-list" data-testid="party-chat-list">
                 ${messages
                   .map(
@@ -2004,7 +2006,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   <li data-testid="party-chat-message">
                     <span class="record-note">
                       <strong>${escapeHtml(message.senderDisplayLabel)}</strong>
-                      · ${escapeHtml(PARTY_CHAT_MODE_LABELS[message.mode])}
                       ${
                         message.addressedNpcName
                           ? ` · to ${escapeHtml(message.addressedNpcName)}`
@@ -2019,23 +2020,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               </ul>`
         }
         <form class="dock-composer" data-testid="party-chat-composer">
-          <fieldset class="option-list compact chat-mode-fieldset">
-            <legend class="visually-hidden">Chat mode</legend>
-            ${PARTY_CHAT_MODES.map(
-              (mode) => `
-              <label class="option${chatMode === mode ? ' selected' : ''}${mode === 'speak_as_character' && !seated ? ' disabled' : ''}">
-                <input type="radio" name="chat-mode" value="${mode}"
-                  ${chatMode === mode ? 'checked' : ''}
-                  ${mode === 'speak_as_character' && !seated ? 'disabled' : ''}
-                  data-testid="chat-mode-${mode}" />
-                <span class="option-label">${escapeHtml(PARTY_CHAT_MODE_LABELS[mode])}</span>
-              </label>`,
-            ).join('')}
-          </fieldset>
+          <label class="chat-speak-toggle${chatMode === 'speak_as_character' ? ' selected' : ''}${!seated ? ' disabled' : ''}">
+            <input type="checkbox" name="chat-mode-speak"
+              ${chatMode === 'speak_as_character' ? 'checked' : ''}
+              ${!seated ? 'disabled' : ''}
+              data-testid="chat-mode-speak_as_character" />
+            <span>Speak as Character</span>
+          </label>
           ${
-            !seated
-              ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to use Speak as Character.</p>'
-              : chatMode === 'speak_as_character'
+            !seated && chatMode === 'speak_as_character'
+              ? '<p class="record-meta" data-testid="speak-as-character-gate">Seat a character to speak in character.</p>'
+              : chatMode === 'speak_as_character' && seated
                 ? (() => {
                     const known = memory?.npcs.filter(
                       (npc) => npc.audience === 'public' || npc.audience === 'private',
@@ -2062,10 +2057,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : ''
           }
           <label class="field">
-            <span>Message</span>
+            <span class="visually-hidden">Message</span>
             <textarea data-testid="party-chat-input" rows="3" placeholder="${
               chatMode === 'speak_as_character'
-                ? 'Speak in character to an established NPC…'
+                ? 'Speak in character…'
                 : 'Talk with your party…'
             }">${escapeHtml(draft)}</textarea>
           </label>
@@ -2605,12 +2600,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const showAttack = seated && !sessionIsSuspended();
     const canDescribeTurn =
       seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
-    // NEW-PQA-02: hosted has no Tools tab — End encounter must stay on the play bar.
+    // NEW-PQA-02: hosted has no Tools tab — End encounter stays on the play bar there only.
     const showEndEncounter =
       seated &&
       !sessionIsSuspended() &&
       encounter !== null &&
-      encounter.status !== 'ended';
+      encounter.status !== 'ended' &&
+      !trainingToolsVisible();
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
@@ -3741,6 +3737,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const select = event.currentTarget as HTMLSelectElement;
         const previous = speakAsNpcName;
         speakAsNpcName = select.value;
+        if (speakAsNpcName.length > 0 && seated) {
+          chatMode = 'speak_as_character';
+        }
         // Address lives in the picker — do not enable Send on "Nib," alone.
         if (previous.length > 0) {
           const escaped = previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4052,25 +4051,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
     });
 
-    root.querySelectorAll<HTMLInputElement>('input[name="chat-mode"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        if (input.value === 'speak_as_character' && !seated) {
-          chatMode = 'table_talk';
+    root
+      .querySelector<HTMLInputElement>('[data-testid="chat-mode-speak_as_character"]')
+      ?.addEventListener('change', (event) => {
+        if (!(event.target instanceof HTMLInputElement)) {
+          return;
+        }
+        if (event.target.checked) {
+          if (!seated) {
+            chatMode = 'table_talk';
+            render();
+            return;
+          }
+          chatMode = 'speak_as_character';
           render();
           return;
         }
-        const nextMode = input.value as PartyChatMode;
-        if (nextMode === 'table_talk' && chatMode === 'speak_as_character') {
-          if (speakAsNpcName.length > 0) {
-            const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
-          }
-          speakAsNpcName = '';
+        if (speakAsNpcName.length > 0) {
+          const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
         }
-        chatMode = nextMode;
+        speakAsNpcName = '';
+        chatMode = 'table_talk';
         render();
       });
-    });
 
     root
       .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')

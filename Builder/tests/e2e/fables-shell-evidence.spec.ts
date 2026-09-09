@@ -42,13 +42,17 @@ test('fables-inspired shell evidence screenshots', async ({ page }) => {
   await expect(page.getByTestId('floating-combat-bar')).toBeHidden();
   await expect(page.getByTestId('dock-tab-rules_desk')).toHaveCount(0);
   await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
+  await expect(page.getByTestId('chat-mode-table_talk')).toHaveCount(0);
+  await expect(page.getByTestId('chat-mode-speak_as_character')).toBeVisible();
+  await expect(page.getByTestId('chat-mode-speak_as_character')).not.toBeChecked();
 
   await page.screenshot({ path: '/opt/cursor/artifacts/fables-shell-desktop-1440.png', fullPage: false });
   await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
   await page.getByTestId('table-info-tab-rules').click();
   await page.screenshot({ path: '/opt/cursor/artifacts/fables-shell-rules-left-rail.png', fullPage: false });
+  await page.getByTestId('dock-tab-party_chat').click();
   await page.getByTestId('communication-dock').screenshot({
-    path: '/opt/cursor/artifacts/fables-shell-chat-tabs-only.png',
+    path: '/opt/cursor/artifacts/fables-shell-chat-speak-toggle.png',
   });
   await page.getByTestId('table-player-actions').screenshot({
     path: '/opt/cursor/artifacts/fables-shell-composer-attack.png',

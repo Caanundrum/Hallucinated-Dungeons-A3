@@ -3430,6 +3430,35 @@ html.hd-low-effects .map-square-fog,
   padding: 0;
 }
 
+.chat-speak-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chat-speak-toggle.selected {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--panel-surface) 88%, #000);
+}
+
+.chat-speak-toggle.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chat-speak-toggle input {
+  margin: 0;
+}
+
 .action-composer-controls {
   display: flex;
   flex-wrap: wrap;
