@@ -8,7 +8,12 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 }
 
 async function seedPublicNpc(page: Page, campaignId: string): Promise<void> {
+  const origin = new URL(page.url()).origin;
   const response = await page.request.post(`/api/campaigns/${campaignId}/director/npc`, {
+    headers: {
+      origin,
+      'content-type': 'application/json',
+    },
     data: {
       schemaVersion: 'play-authority-npc-v1',
       npcId: 'lysa-quill',
