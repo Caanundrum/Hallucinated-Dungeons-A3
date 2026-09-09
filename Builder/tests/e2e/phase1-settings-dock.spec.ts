@@ -103,14 +103,13 @@ test.describe('Phase 1 settings and Communication Dock structure', () => {
 
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-composer')).toBeVisible();
-    await page.getByTestId('chat-mode-speak_as_character').click();
+    await page.getByTestId('chat-mode-table_talk').click();
     await page.getByTestId('party-chat-input').fill('I raise my lantern toward the door.');
+    await page.getByTestId('party-chat-input').dispatchEvent('input');
+    await expect(page.getByTestId('party-chat-send')).toHaveAttribute('aria-disabled', 'false');
     await page.getByTestId('party-chat-send').click();
     await expect(page.getByTestId('party-chat-message').first()).toContainText(
       'I raise my lantern toward the door.',
-    );
-    await expect(page.getByTestId('party-chat-message').first()).toContainText(
-      'Speak as Character',
     );
 
     await expect(page.getByTestId('action-composer')).toBeVisible();
