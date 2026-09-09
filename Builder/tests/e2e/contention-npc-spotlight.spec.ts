@@ -7,7 +7,25 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
   if (await skip.isVisible().catch(() => false)) await skip.click();
 }
 
-async function seedSeatedTable(page: Page, label: string): Promise<void> {
+async function seedPublicNpc(page: Page, campaignId: string): Promise<void> {
+  const response = await page.request.post(`/api/campaigns/${campaignId}/director/npc`, {
+    data: {
+      schemaVersion: 'play-authority-npc-v1',
+      npcId: 'lysa-quill',
+      name: 'Lysa Quill',
+      publicDescription: 'Harbor Warden watching the barges.',
+      disposition: 'wary',
+      location: null,
+      placeToken: false,
+      firstDialogue: null,
+      audience: 'public',
+      causeActionId: null,
+    },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+}
+
+async function seedSeatedTable(page: Page, label: string): Promise<string> {
   await page.goto('/');
   await dismissIntroIfPresent(page);
   await enterAccountFromShell(page);
@@ -29,14 +47,25 @@ async function seedSeatedTable(page: Page, label: string): Promise<void> {
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
   await joinTableWithFirstCharacter(page);
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)(?:\/table)?/);
+  expect(match).toBeTruthy();
+  return match![1]!;
 }
 
 test.describe('NPC spotlight floor', () => {
   test('Speak as Character claims Lysa Quill floor and can yield it', async ({ page }) => {
-    await seedSeatedTable(page, 'Spotlight Mage');
+    test.setTimeout(90_000);
+    const campaignId = await seedSeatedTable(page, 'Spotlight Mage');
+    await seedPublicNpc(page, campaignId);
+    await page.reload();
+    await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('chat-mode-speak_as_character').check();
+    await expect(page.getByTestId('speak-as-npc-select')).toBeVisible();
+    await page.getByTestId('speak-as-npc-select').selectOption({ label: 'Lysa Quill' });
     await page.getByTestId('party-chat-input').fill('Hey Lysa Quill, what happened to the barges?');
+    await page.getByTestId('party-chat-input').dispatchEvent('input');
+    await expect(page.getByTestId('party-chat-send')).toHaveAttribute('aria-disabled', 'false');
     await page.getByTestId('party-chat-send').click();
     await expect(page.getByTestId('npc-spotlight-banner')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('npc-spotlight-meta')).toContainText(/Lysa Quill/i);

@@ -1590,10 +1590,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (busy || candidate === null) {
       return true;
     }
+    // Speak mode may address an NPC via the optional picker or by naming them in free text.
     if (chatMode === 'speak_as_character') {
-      if (speakAsNpcName.trim().length === 0) {
-        return true;
-      }
       return partyChatMessageBody().length === 0;
     }
     return draft.trim().length === 0;
@@ -2027,13 +2025,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                       (npc) => npc.audience === 'public' || npc.audience === 'private',
                     ) ?? [];
                     if (known.length === 0) {
-                      return '<p class="record-meta" data-testid="speak-as-npc-empty">No established NPCs yet — the Game Director introduces people first.</p>';
+                      return '<p class="record-meta" data-testid="speak-as-npc-empty">No one is listed yet — name someone already known at this table.</p>';
                     }
                     return `
                       <label class="field" data-testid="speak-as-npc-picker">
-                        <span>Address NPC</span>
+                        <span>Address NPC (optional)</span>
                         <select data-testid="speak-as-npc-select">
-                          <option value="">Choose who you speak to…</option>
+                          <option value="">Name them in your line, or pick…</option>
                           ${known
                             .map(
                               (npc) => `
@@ -4047,6 +4045,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             return;
           }
           chatMode = 'speak_as_character';
+          if (speakAsNpcName.trim().length === 0) {
+            const known =
+              memory?.npcs.filter(
+                (npc) => npc.audience === 'public' || npc.audience === 'private',
+              ) ?? [];
+            if (known.length === 1) {
+              speakAsNpcName = known[0]!.name;
+              const escaped = speakAsNpcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              if (!new RegExp(`^@?${escaped}\\b`, 'i').test(draft.trim())) {
+                draft = `${speakAsNpcName}, ${draft}`.trim();
+              }
+            }
+          }
           render();
           return;
         }
