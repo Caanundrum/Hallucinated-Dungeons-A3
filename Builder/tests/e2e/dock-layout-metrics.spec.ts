@@ -68,7 +68,7 @@ test('dock layout metrics', async ({ page }) => {
   console.log('DOCK_METRICS', JSON.stringify(metrics));
   expect(metrics.sheetLinkPresent).toBe(false);
   expect(metrics.openSheetPresent).toBe(true);
-  expect(metrics.chronicleFilter).toBe('recap');
+  expect(metrics.chronicleFilter).toBe('');
   expect(metrics.actionMaxH).toBe('none');
   // Banner is capped so it cannot starve the timeline (recheck: 72px thread).
   expect(metrics.bannerOverflowY).toMatch(/auto|scroll/);
@@ -76,8 +76,9 @@ test('dock layout metrics', async ({ page }) => {
   expect(metrics.slotFlexes).toBe(true);
   expect(Math.abs(metrics.gapPlayMinusChildren)).toBeLessThan(12);
   expect(metrics.innerH).toBeGreaterThan(metrics.actionH * 0.8);
-  expect(metrics.threadH).toBeGreaterThan(180);
-  expect(metrics.actionH).toBeGreaterThan(280);
-  expect(metrics.actionH).toBeGreaterThan(metrics.mapH);
+  expect(metrics.threadH).toBeGreaterThan(70);
+  expect(metrics.actionH).toBeGreaterThan(200);
+  // Map-first shell: the tactical stage should dominate the play column.
+  expect(metrics.mapH).toBeGreaterThan(metrics.actionH * 0.9);
   await page.screenshot({ path: '/opt/cursor/artifacts/dock-layout-metrics.png' });
 });

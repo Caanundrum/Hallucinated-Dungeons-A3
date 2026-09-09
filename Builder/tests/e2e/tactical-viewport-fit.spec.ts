@@ -1,6 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-
 import {
+  awaitAdventureReady,
   enterAccountFromShell,
   joinTableWithFirstCharacter,
   openTableAdvancedControls,
@@ -47,8 +46,7 @@ async function confirmDraft(page: Page): Promise<void> {
 }
 
 async function beginAdventure(page: Page): Promise<void> {
-  await expect(page.getByTestId('begin-adventure')).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId('begin-adventure').click();
+  await awaitAdventureReady(page);
   await confirmDraft(page);
   await expect(page.getByTestId('map-scene-banner')).not.toContainText(
     /Awaiting first scene|Game Director is ready to establish/i,

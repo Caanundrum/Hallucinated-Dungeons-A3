@@ -746,7 +746,7 @@ function paintSemanticSvg(
     </div>
     <details class="map-stage-help map-stage-help-floating" data-testid="map-zoom-help">
       <summary>Map help</summary>
-      <p class="record-meta">Fit shows the whole scene without sideways scrolling. Drag to pan when zoomed. Center focuses the party token.</p>
+      <p class="record-meta">Drag the map to pan. Fit frames the whole scene; Zoom in for a closer look. Center focuses the party token.</p>
       <p class="record-meta">Keyboard: Tab moves between walls, doors, and tokens. Enter or Space selects the focused wall or door. Use Zoom in / Zoom out / Fit in the toolbar. On Map task, Open doorway appears under the map when a door is selected and you are beside it.</p>
       <p class="table-player-actions">
         <button type="button" data-testid="preview-scene-discovery-cue" data-map-zoom="preview-cue">
@@ -977,7 +977,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       if (dragging) {
         return;
       }
-      if ('button' in event && event.button !== 0) {
+      if ('button' in event && event.button !== 0 && event.button !== 1) {
         return;
       }
       const target = event.target as Element | null;
@@ -995,6 +995,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       scrollTop = viewport.scrollTop;
       activePointerId = 'pointerId' in event ? event.pointerId : null;
       viewport.classList.add('is-panning');
+      if ('pointerId' in event && typeof viewport.setPointerCapture === 'function') {
+        try {
+          viewport.setPointerCapture(event.pointerId);
+        } catch {
+          // Capture is best-effort on synthetic events.
+        }
+      }
       window.addEventListener('pointermove', onMove, { passive: false });
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
@@ -1319,6 +1326,17 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       requestAnimationFrame(() => {
         ensureViewportHeight();
         fitMapToViewport();
+        // Slight overzoom so drag-to-pan works immediately on a map-first stage.
+        applyZoom(zoomScale * 1.12);
+        const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
+        const size = mapPixelSize();
+        if (viewport !== null && size !== null) {
+          viewport.scrollTo({
+            left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
+            top: Math.max(0, (size.height * zoomScale - viewport.clientHeight) / 2),
+            behavior: 'auto',
+          });
+        }
       });
     } else {
       applyZoom(zoomScale);

@@ -43,15 +43,13 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await enterAccountFromShell(page);
     await openSeatedTable(page, 'UxCockpit');
 
-    // UX-4: Story pinned above interactive comms
-    await expect(page.getByTestId('comms-story-tier')).toBeVisible();
+    // Chat rail is social only — live chronology stays in the center play timeline.
+    await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);
     await expect(page.getByTestId('comms-interactive-tier')).toBeVisible();
-    await expect(page.getByTestId('chronicle-pane')).toBeVisible();
     await expect(page.getByTestId('dock-tab-party_chat')).toBeVisible();
     await expect(page.getByTestId('dock-tab-director_address')).toBeVisible();
     await expect(page.getByTestId('dock-tab-rules_desk')).toBeVisible();
-    await page.getByTestId('dock-tab-chronicle').click();
-    await expect(page.getByTestId('chronicle-pane')).toBeVisible();
+    await expect(page.getByTestId('party-chat-pane')).toBeVisible();
 
     // UX-5: mini-sheet HP bar
     await expect(page.getByTestId('table-character-compact')).toBeVisible();
@@ -101,19 +99,26 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     // NL action composer still present (not replaced by FAB-only controls)
     await expect(page.getByTestId('player-action-input')).toBeVisible();
 
-    await page.screenshot({ path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png' });
-    await page.getByTestId('comms-cockpit').screenshot({
-      path: '/opt/cursor/artifacts/ux-story-comms-split.png',
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png',
+      fullPage: false,
     });
-    await page.getByTestId('table-character-compact').screenshot({
-      path: '/opt/cursor/artifacts/ux-hero-mini-sheet.png',
-    });
-    await page.getByTestId('map-stage-toolbar').screenshot({
-      path: '/opt/cursor/artifacts/ux-polish-zoom-pill.png',
-    });
-    await page.getByTestId('floating-combat-bar').screenshot({
-      path: '/opt/cursor/artifacts/ux-polish-action-hud.png',
-    });
+    const comms = page.getByTestId('comms-cockpit');
+    if (await comms.isVisible().catch(() => false)) {
+      await comms.scrollIntoViewIfNeeded();
+      await comms.screenshot({ path: '/opt/cursor/artifacts/ux-story-comms-split.png' });
+    }
+    for (const [testId, path] of [
+      ['table-character-compact', '/opt/cursor/artifacts/ux-hero-mini-sheet.png'],
+      ['map-stage-toolbar', '/opt/cursor/artifacts/ux-polish-zoom-pill.png'],
+      ['floating-combat-bar', '/opt/cursor/artifacts/ux-polish-action-hud.png'],
+    ] as const) {
+      const target = page.getByTestId(testId);
+      if (await target.isVisible().catch(() => false)) {
+        await target.scrollIntoViewIfNeeded();
+        await target.screenshot({ path });
+      }
+    }
   });
 });
 

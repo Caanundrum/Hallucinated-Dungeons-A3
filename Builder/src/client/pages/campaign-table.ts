@@ -17,22 +17,13 @@ import {
   PARTY_CHAT_MODE_LABELS,
   PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
-  CHRONICLE_ENTRY_KINDS,
-  CHRONICLE_ENTRY_KIND_LABELS,
-  CHRONICLE_FILTER_ALL,
-  CHRONICLE_FILTER_RECAP,
-  CHRONICLE_FILTER_STORY,
-  PLAY_CHRONICLE_KINDS,
-  RECAP_CHRONICLE_KINDS,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
   filterOptimisticDmDupes,
   formatDirectorProse,
   formatPlayerFacingTimestamp,
   PLAY_CHANNEL_LABEL,
-  scrubChronicleCheckpointZero,
   storyBodiesEquivalent,
-  type ChronicleEntryKind,
   type DockTab,
   type PartyChatMode,
 } from '../../shared/communication-contract.js';
@@ -120,7 +111,6 @@ import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import { bindModalChrome } from '../modal-engine.js';
-import { promptWrongResolutionReport } from '../confirm-dialog.js';
 import type { PageHost } from './home.js';
 
 function formatTimestamp(iso: string): string {
@@ -238,7 +228,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let selectedRulesCategory: RulesCatalogCategory = 'core_mechanics';
   let selectedRulesEntryId: string | null = 'core:progression.xp';
   let rulesSearchQuery = '';
-  let chronicleKindFilter: string = CHRONICLE_FILTER_RECAP;
   let intentDraft: ActionDraftSuggestion | null = restoreIntentDraft();
   let reducedMotion = false;
   let lowEffects = false;
@@ -253,7 +242,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let movePreviewPath: { column: number; row: number }[] | null = null;
   let movePreviewNote: string | null = null;
   let pendingMoveConfirm = false;
-  let undoMoveAnchor: { column: number; row: number } | null = null;
   let selectedEdgeId: string | null = null;
   let draft = '';
   let directorDraft = '';
@@ -515,19 +503,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
             <p>${escapeHtml(formatDirectorProse(message.body))}</p>
             <span class="record-meta" data-testid="dm-thread-timestamp">${escapeHtml(stamped)}</span>
-            ${
-              message.speaker === 'dm' &&
-              (message.kind === 'mechanics' ||
-                message.kind === 'narration' ||
-                message.kind === 'ruling_hint')
-                ? `<p class="dm-thread-report">
-                     <button type="button" class="button ghost" data-testid="report-wrong-resolution"
-                       data-message-id="${escapeHtml(message.messageId)}">
-                       Report wrong resolution
-                     </button>
-                   </p>`
-                : ''
-            }
           </li>`;
         })
         .join('')}
@@ -606,6 +581,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return null;
     }
     const draft = restored.draft as unknown as ActionDraftSuggestion;
+    // Entering the table auto-begins the adventure — never restore a Begin Confirm draft.
+    if (draft.proposedCommandType === 'table.begin_adventure') {
+      writeIntentDraftPreference(campaignId, null);
+      return null;
+    }
     if (
       typeof draft.playerDeclaration === 'string' &&
       draft.playerDeclaration.trim().length > 0
@@ -1250,18 +1230,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     return {
       tone: 'exploration',
-      title:
-        intentDraft !== null &&
-        intentDraft.proposedCommandType === 'table.begin_adventure' &&
-        intentDraft.interceptState === 'awaiting_confirmation'
-          ? 'Confirm Begin the adventure'
-          : 'Exploring freely',
+      title: 'Exploring freely',
       detail:
-        intentDraft !== null &&
-        intentDraft.proposedCommandType === 'table.begin_adventure' &&
-        intentDraft.interceptState === 'awaiting_confirmation'
-          ? 'Review the draft, then Confirm so the Game Director establishes the opening scene — or Cancel to keep waiting.'
-          : 'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
+        'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
     };
   }
 
@@ -1812,9 +1783,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         commsRailCollapsed
           ? `<button type="button" class="table-rail-restore" data-testid="expand-comms-rail-inline">Show chat</button>`
           : `<div class="comms-cockpit" data-testid="comms-cockpit">
-        <section class="comms-story-tier" data-testid="comms-story-tier" aria-label="Story so far">
-          ${storyFeedBody()}
-        </section>
         <section class="comms-interactive-tier" data-testid="comms-interactive-tier" aria-label="Table conversations">
           <div class="dock-tabs" role="tablist" aria-label="Table conversations">
             ${PLAYER_COMMS_TAB_ORDER.map(
@@ -1962,77 +1930,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
 
-  function storyFeedBody(): string {
-    const allEntries = chronicle?.entries ?? [];
-    const entries =
-      chronicleKindFilter === CHRONICLE_FILTER_ALL
-        ? allEntries
-        : chronicleKindFilter === CHRONICLE_FILTER_RECAP
-          ? allEntries.filter((entry) => RECAP_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
-          : chronicleKindFilter === CHRONICLE_FILTER_STORY
-            ? allEntries.filter((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind))
-            : allEntries.filter((entry) => entry.kind === chronicleKindFilter);
-    return `
-      <div class="dock-pane story-feed-pane" data-testid="chronicle-pane">
-        <div class="story-feed-chrome">
-          <button type="button" class="story-feed-heading-btn" data-testid="dock-tab-chronicle"
-            aria-pressed="true" title="Story so far">
-            <h3 data-testid="session-record-heading">Story so far</h3>
-          </button>
-          <label class="field story-feed-filter">
-            <span class="visually-hidden">Filter by kind</span>
-            <select data-testid="chronicle-kind-filter" aria-label="Filter Story so far by kind">
-              <option value="${CHRONICLE_FILTER_RECAP}" ${chronicleKindFilter === CHRONICLE_FILTER_RECAP ? 'selected' : ''}>Session recap</option>
-              <option value="${CHRONICLE_FILTER_STORY}" ${chronicleKindFilter === CHRONICLE_FILTER_STORY ? 'selected' : ''}>Full play log</option>
-              <option value="${CHRONICLE_FILTER_ALL}" ${chronicleKindFilter === CHRONICLE_FILTER_ALL ? 'selected' : ''}>All activity</option>
-              ${CHRONICLE_ENTRY_KINDS.map(
-                (kind) =>
-                  `<option value="${escapeHtml(kind)}" ${
-                    chronicleKindFilter === kind ? 'selected' : ''
-                  }>${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[kind])}</option>`,
-              ).join('')}
-            </select>
-          </label>
-        </div>
-        <p class="record-meta visually-hidden" data-testid="session-record-privacy-note">
-          Session recap defaults to Director narration and scene events. Live play chronology stays
-          in the center Action Composer timeline. Private Ask the Game Director advice stays in Ask
-          DM and is never merged into this public session record.
-        </p>
-        ${
-          entries.length === 0
-            ? '<p class="empty-state" data-testid="chronicle-empty">No Chronicle entries yet.</p>'
-            : `<ol class="record-list chronicle-list story-feed-list" data-testid="chronicle-list">
-                ${entries
-                  .map((entry, index) => {
-                    const isLatestDirectorNarration =
-                      entry.kind === 'director_ruling' &&
-                      !entries
-                        .slice(index + 1)
-                        .some((later) => later.kind === 'director_ruling');
-                    const body = formatDirectorProse(scrubChronicleCheckpointZero(entry.body));
-                    const narrationClass = isLatestDirectorNarration
-                      ? ' record-note-narration illuminated-dropcap'
-                      : entry.kind === 'director_ruling'
-                        ? ' illuminated-dropcap'
-                        : '';
-                    return `
-                  <li data-testid="chronicle-entry"${isLatestDirectorNarration ? ' class="chronicle-entry-latest"' : ''}>
-                    <span class="record-note${narrationClass}"${
-                      isLatestDirectorNarration ? ' data-testid="director-narration"' : ''
-                    }>${escapeHtml(body)}</span>
-                    <span class="record-meta">${escapeHtml(CHRONICLE_ENTRY_KIND_LABELS[entry.kind] ?? entry.kind)} · ${escapeHtml(formatTimestamp(entry.createdAt))}</span>
-                  </li>`;
-                  })
-                  .join('')}
-              </ol>`
-        }
-      </div>`;
-  }
-
   function dockBody(): string {
     if (activeTab === 'chronicle') {
-      // Story feed is pinned above; keep interactive tab on Chat.
+      // Live chronology lives in the center play timeline — Chat/Ask stay social.
       activeTab = 'party_chat';
     }
 
@@ -2632,6 +2532,86 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     );
   }
 
+  /** Entering a seated blank table starts the opening scene without a Confirm draft. */
+  let autoBeginAttempted = false;
+  async function maybeAutoBeginAdventure(options?: {
+    readonly force?: boolean;
+    readonly announce?: boolean;
+  }): Promise<boolean> {
+    if (
+      (!options?.force && autoBeginAttempted) ||
+      !seated ||
+      sessionIsSuspended() ||
+      candidate === null ||
+      tableState === null ||
+      busy
+    ) {
+      return false;
+    }
+    if (!awaitingDirectorScene()) {
+      autoBeginAttempted = true;
+      return false;
+    }
+    if (
+      intentDraft !== null &&
+      intentDraft.proposedCommandType === 'table.begin_adventure'
+    ) {
+      setIntentDraft(null);
+    }
+    autoBeginAttempted = true;
+    busy = true;
+    error = null;
+    render();
+    try {
+      const accepted = await submitTableCommand({
+        candidateId: candidate.candidateId,
+        campaignId,
+        requestId: crypto.randomUUID(),
+        commandType: 'table.begin_adventure',
+        expectedStateVersion: tableState.stateVersion,
+        ...(explorationMode() || timingAuthority === null
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+        declaration: 'Begin the adventure.',
+      });
+      tableState = accepted.table;
+      mapBundle = await fetchCampaignMap(campaignId);
+      stageHandle?.renderMap(mapBundle);
+      const summary =
+        accepted.event.summary?.trim() ||
+        'The Game Director establishes the opening scene from your premise.';
+      appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
+      if (options?.announce !== false) {
+        shell.announce('The adventure begins.');
+      }
+      if (shouldAutoNarrateRulesCommand('table.begin_adventure')) {
+        enqueueNarration(summary, accepted.event.rolls ?? []);
+      } else {
+        patchDmPlayThread();
+      }
+      return true;
+    } catch (failure) {
+      const message =
+        failure instanceof ApiFailure ? failure.message : 'The adventure could not begin.';
+      if (/already started|ADVENTURE_ALREADY_STARTED/i.test(message)) {
+        try {
+          mapBundle = await fetchCampaignMap(campaignId);
+          tableState = await fetchTableState(campaignId);
+        } catch {
+          // Best-effort refresh after already-started.
+        }
+        return true;
+      }
+      error = playerFacingMechanicsCopy(message);
+      // Allow a later retry if the first attempt failed for a transient reason.
+      autoBeginAttempted = false;
+      return false;
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function playerActionBar(): string {
     seedDmThreadIfNeeded();
     const banner = turnBanner();
@@ -2644,39 +2624,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       !sessionIsSuspended() &&
       encounter !== null &&
       encounter.status !== 'ended';
-    const showBeginAdventure =
-      seated &&
-      !sessionIsSuspended() &&
-      awaitingDirectorScene() &&
-      !(
-        intentDraft !== null &&
-        intentDraft.proposedCommandType === 'table.begin_adventure' &&
-        (intentDraft.interceptState === 'awaiting_confirmation' ||
-          intentDraft.interceptState === 'confirmed')
-      );
     return `
       <div class="table-action-bar-inner table-action-bar-dm">
         <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
-          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(
-            showBeginAdventure
-              ? chronicle !== null &&
-                chronicle.entries.some((entry) =>
-                  PLAY_CHRONICLE_KINDS.has(entry.kind as ChronicleEntryKind),
-                )
-                ? 'Prior play remains in Story so far as archived history. Confirm Begin the adventure only when you want the Director to establish a new opening scene — the map will not restore the old chamber automatically.'
-                : 'The Game Director is ready to establish your opening scene from the campaign premise.'
-              : banner.detail,
-          )}</p>
-          ${
-            showBeginAdventure
-              ? `<p class="table-turn-actions">
-                   <button type="button" class="table-primary-action" data-testid="begin-adventure" ${busy ? 'aria-disabled="true"' : ''}>
-                     Begin the adventure
-                   </button>
-                 </p>`
-              : ''
-          }
+          <p class="table-turn-detail" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
           ${
             sessionIsSuspended()
               ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
@@ -2687,7 +2639,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ${
             movePreviewNote === null
               ? seated && !sessionIsSuspended()
-                ? `<p class="table-move-status" data-testid="move-preview-hint">Click an adjacent map square to preview a move, then Confirm or Cancel. After a committed move, Undo last move appears here.</p>`
+                ? `<p class="table-move-status" data-testid="move-preview-hint">Click an adjacent map square to preview a move, then Confirm or Cancel. Drag the map to pan when zoomed in.</p>`
                 : ''
               : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
           }
@@ -2728,12 +2680,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                    <button type="button" class="table-secondary-action" data-testid="cancel-pending-move"
                      aria-disabled="${busy}">Cancel move</button>
                  </div>`
-              : undoMoveAnchor !== null && seated && !sessionIsSuspended()
-                ? `<div class="table-player-actions" data-testid="undo-move-actions">
-                     <button type="button" class="table-secondary-action" data-testid="undo-last-move-play"
-                       aria-disabled="${busy}">Undo last move</button>
-                   </div>`
-                : ''
+              : ''
           }
           ${
             showEndEncounter
@@ -2828,7 +2775,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="2"
-                    placeholder="Examples: open the door · step through · follow the passage · return to the courtyard">${escapeHtml(playerActionDraft)}</textarea>
+                    placeholder="What do you do?">${escapeHtml(playerActionDraft)}</textarea>
                 </label>
                 <div class="table-player-actions" data-testid="table-player-actions">
                   <button type="button" class="table-primary-action" data-testid="submit-player-action"
@@ -2969,15 +2916,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-describedby="composer-gate-hint">
           ${busy ? 'Moving…' : 'Commit move'}
         </button>
-        ${
-          undoMoveAnchor === null
-            ? ''
-            : `<button type="button" data-testid="undo-last-move"
-          aria-disabled="${syncDisabled}"
-          aria-describedby="composer-gate-hint">
-          Undo last move
-        </button>`
-        }
         <button type="button" data-testid="open-adjacent-door"
           aria-disabled="${syncDisabled || !hasClosedDoor}"
           aria-describedby="composer-gate-hint">
@@ -2995,7 +2933,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </div>
       <label class="field">
         <span>Describe your action</span>
-        <textarea data-testid="nl-intent-input" rows="2" placeholder="Examples: open the door · step through · follow the passage · return to the courtyard" ${sessionIsSuspended() ? 'disabled' : ''}>${escapeHtml(nlIntentText)}</textarea>
+        <textarea data-testid="nl-intent-input" rows="2" placeholder="What do you do?" ${sessionIsSuspended() ? 'disabled' : ''}>${escapeHtml(nlIntentText)}</textarea>
       </label>
       <button type="button" data-testid="interpret-nl-intent"
         aria-disabled="${interpretDisabled}"
@@ -3351,7 +3289,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableState = accepted.table;
       mapBundle = await fetchCampaignMap(campaignId);
       stageHandle?.renderMap(mapBundle);
-      undoMoveAnchor = start;
       moveTarget = null;
       movePreviewPath = null;
       pendingMoveConfirm = false;
@@ -3384,21 +3321,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } finally {
       busy = false;
       render();
-    }
-  }
-
-  async function undoLastMove(): Promise<void> {
-    if (undoMoveAnchor === null || mapBundle === null || ownSeatId === null) {
-      return;
-    }
-    const target = undoMoveAnchor;
-    undoMoveAnchor = null;
-    moveTarget = target;
-    pendingMoveConfirm = false;
-    movePreviewPath = null;
-    await onSquareSelected(target);
-    if (pendingMoveConfirm) {
-      await confirmPendingMove();
     }
   }
 
@@ -3554,42 +3476,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         scrollDmPlayThreadToLatest('smooth');
         shell.announce('Jumped to the latest table beat.');
       });
-    root.querySelectorAll<HTMLButtonElement>('[data-testid="report-wrong-resolution"]').forEach((button) => {
-      button.addEventListener('click', () => {
-        void (async () => {
-          const messageId = button.dataset.messageId ?? '';
-          const target = dmThread.find((message) => message.messageId === messageId);
-          const preview =
-            target === undefined
-              ? 'Selected table beat'
-              : target.body.length > 280
-                ? `${target.body.slice(0, 280)}…`
-                : target.body;
-          const report = await promptWrongResolutionReport({
-            targetPreview: preview,
-            testId: 'wrong-resolution-report',
-          });
-          if (report === null) {
-            return;
-          }
-          const targetLine =
-            target === undefined
-              ? 'an earlier table beat'
-              : `“${target.body.length > 280 ? `${target.body.slice(0, 280)}…` : target.body}”`;
-          const body = `Wrong-resolution report for ${targetLine}. Player note: ${report.reason}`;
-          if (report.audience === 'private') {
-            appendAskDmThread('player', 'You', body, 'declaration');
-            activeTab = 'director_address';
-            shell.announce('Wrong-resolution report sent privately to the Director.');
-          } else {
-            appendDmThread('system', 'Table', body, 'system');
-            shell.announce('Wrong-resolution report recorded in the play thread.');
-            patchDmPlayThread();
-          }
-          render();
-        })();
-      });
-    });
     root
       .querySelector<HTMLButtonElement>('[data-testid="dm-thread-expand"]')
       ?.addEventListener('click', () => {
@@ -4119,21 +4005,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
-      .querySelector<HTMLButtonElement>('[data-testid="undo-last-move-play"]')
-      ?.addEventListener('click', () => {
-        void undoLastMove();
-      });
-
-    root
       .querySelector<HTMLButtonElement>('[data-testid="end-encounter-play"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('encounter.end');
-      });
-
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="undo-last-move"]')
-      ?.addEventListener('click', () => {
-        void undoLastMove();
       });
 
     root
@@ -4212,15 +4086,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
       });
     });
-
-    root
-      .querySelector<HTMLSelectElement>('[data-testid="chronicle-kind-filter"]')
-      ?.addEventListener('change', (event) => {
-        if (event.target instanceof HTMLSelectElement) {
-          chronicleKindFilter = event.target.value;
-          render();
-        }
-      });
 
     root
       .querySelector<HTMLInputElement>('[data-testid="rules-catalog-search"]')
@@ -4841,6 +4706,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 appendDmThread('dm', directorIdentityLabel, scrubbedSummary, 'ruling_hint');
               }
               shell.announce(`${directorIdentityLabel} replied in the play thread.`);
+            } else if (interpreted.proposedCommandType === 'table.begin_adventure') {
+              setIntentDraft(null);
+              await maybeAutoBeginAdventure({ force: true });
             } else {
               setIntentDraft(draftFromInterpret({
                 ...interpreted,
@@ -4864,29 +4732,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="end-combat-turn"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('encounter.next_turn');
-      });
-
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="begin-adventure"]')
-      ?.addEventListener('click', () => {
-        if (candidate === null || busy || !seated || tableState === null) {
-          return;
-        }
-        // Confirmable Intent Intercept — does not commit until Confirm.
-        lastSubmittedDeclaration = 'Begin the adventure.';
-        setIntentDraft({
-          draftId: crypto.randomUUID(),
-          source: 'action_composer_interpret',
-          campaignId,
-          proposedCommandType: 'table.begin_adventure',
-          summary:
-            'Ready to begin the adventure. Confirm so the Game Director establishes the opening scene from your premise.',
-          projectionVersionAtIssue: tableState.stateVersion,
-          interceptState: 'awaiting_confirmation',
-          createdAt: new Date().toISOString(),
-        });
-        shell.announce('Review the Begin the adventure draft, then Confirm or Cancel.');
-        render();
       });
 
     root
@@ -5675,7 +5520,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               (mapBundle.edges.length ?? 0) === 0 &&
               mapBundle.title !== 'Quiet chamber')
               ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                   Ready to begin — use <strong>Begin the adventure</strong> in the play column so the Game Director establishes the first scene from your premise.
+                   Establishing the opening scene from your premise…
                  </p>`
               : mapBundle?.title === 'Quiet chamber'
                 ? `<p class="record-meta" data-testid="blank-table-start-hint">
@@ -5687,7 +5532,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                      </p>`
                   : mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
                     ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                         This blank table starts unexplored. Begin the adventure so the Director can establish the first scene.
+                         Establishing the opening scene…
                        </p>`
                     : ''
           }
@@ -6083,6 +5928,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       tableBootstrapped = true;
     }
     render();
+    if (seated && error === null) {
+      void maybeAutoBeginAdventure();
+    }
   }
 
   document.addEventListener('visibilitychange', onVisibilityRefresh);

@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import {
   acceptAllLegalForPlay,
+  awaitAdventureReady,
   enterAccountFromShell,
   joinTableWithFirstCharacter,
 } from './arena-page.js';
@@ -38,17 +39,7 @@ async function seatQuietChamber(page: Page, name: string): Promise<void> {
       await openTable.click();
     }
   }
-  await expect(page.getByTestId('action-composer')).toBeVisible({ timeout: 30_000 });
-  const begin = page.getByTestId('begin-adventure');
-  if (await begin.isVisible().catch(() => false)) {
-    await begin.click();
-    // Begin posts an intent draft — confirm it when present.
-    const confirm = page.getByTestId('confirm-intent-intercept');
-    if (await confirm.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await confirm.click();
-    }
-    await expect(page.getByTestId('map-scene-banner')).toBeVisible({ timeout: 45_000 });
-  }
+  await awaitAdventureReady(page);
 }
 
 test.describe('Recheck 2 door + play layout', () => {
@@ -356,12 +347,7 @@ test.describe('Recheck 2 door + play layout', () => {
       if (await openTable.isVisible().catch(() => false)) await openTable.click();
     }
     await expect(page.getByTestId('action-composer')).toBeVisible({ timeout: 30_000 });
-    const begin = page.getByTestId('begin-adventure');
-    if (await begin.isVisible().catch(() => false)) {
-      await begin.click();
-      const confirm = page.getByTestId('confirm-intent-intercept');
-      if (await confirm.isVisible({ timeout: 5_000 }).catch(() => false)) await confirm.click();
-    }
+    await awaitAdventureReady(page);
     await expect
       .poll(async () => page.getByTestId('map-scene-banner').innerText().catch(() => ''), {
         timeout: 60_000,
@@ -397,18 +383,7 @@ test.describe('Recheck 2 door + play layout', () => {
       fullPage: false,
     });
 
-    // Report wrong resolution requires confirm + reason (no instant public beat).
-    const reportBtn = page.getByTestId('report-wrong-resolution').first();
-    if (await reportBtn.isVisible().catch(() => false)) {
-      await reportBtn.click();
-      await expect(page.getByTestId('wrong-resolution-report')).toBeVisible();
-      await page.getByTestId('wrong-resolution-report-reason').fill('Premise entities were missing before this fix.');
-      await page.screenshot({
-        path: '/opt/cursor/artifacts/recheck2_report_confirm_modal.png',
-        fullPage: false,
-      });
-      await page.getByTestId('wrong-resolution-report-cancel').click();
-      await expect(page.getByTestId('wrong-resolution-report')).toHaveCount(0);
-    }
+    // Report wrong resolution was removed — play trust lives in the Director timeline only.
+    await expect(page.getByTestId('report-wrong-resolution')).toHaveCount(0);
   });
 });
