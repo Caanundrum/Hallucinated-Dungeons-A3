@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { recordDefaultSessionZero,  enterAccountFromShell } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -28,12 +28,7 @@ async function seedSeatedTable(page: Page, label: string): Promise<void> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  const seatSelect = page.getByTestId('seat-character-select');
-  const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-    await recordDefaultSessionZero(page);
-    await seatSelect.selectOption(characterId!);
-  await page.getByTestId('create-seat').click();
-  await page.getByTestId('open-campaign-table').click();
+  await joinTableWithFirstCharacter(page);
 }
 
 test.describe('NPC spotlight floor', () => {

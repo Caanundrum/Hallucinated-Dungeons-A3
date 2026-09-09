@@ -14,8 +14,6 @@ import {
   DIRECTOR_ADDRESS_NOTICE,
   DOCK_TAB_LABELS,
   PLAYER_COMMS_TAB_ORDER,
-  PARTY_CHAT_MODE_LABELS,
-  PARTY_CHAT_MODES,
   RULES_DESK_NOTICE,
   collapseDuplicateDmMessages,
   dmThreadFromChronicleEntries,
@@ -155,17 +153,10 @@ const CUE_TONE_FREQUENCY_HZ: Record<PresentationCueKind, number> = {
   token_moved: 200,
 };
 
-function doorDetailCopy(
-  edge: MapEdgeRecord,
-  mapTitle: string,
-  options?: { readonly openControlVisible?: boolean },
-): string {
+function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
   const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
-  if (options?.openControlVisible === true) {
-    return `Selected ${label} in ${scene} (${stateLabel}).`;
-  }
   return `Selected ${label} in ${scene} (${stateLabel}).`;
 }
 
@@ -2633,11 +2624,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               if (edge === undefined || edge.kind !== 'door') {
                 return '';
               }
-              const affordance = selectedDoorOpenAffordance();
               return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-                doorDetailCopy(edge, mapBundle?.title ?? '', {
-                  openControlVisible: affordance?.canOpen === true,
-                }),
+                doorDetailCopy(edge, mapBundle?.title ?? ''),
               )}</p>`;
             })()
           }
@@ -2936,12 +2924,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
-      const affordance = selectedDoorOpenAffordance();
-      shell.announce(
-        doorDetailCopy(edge, mapBundle?.title ?? '', {
-          openControlVisible: affordance?.canOpen === true,
-        }),
-      );
+      shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
     } else {
       movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
