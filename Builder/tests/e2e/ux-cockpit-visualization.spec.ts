@@ -99,26 +99,26 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     // NL action composer still present (not replaced by FAB-only controls)
     await expect(page.getByTestId('player-action-input')).toBeVisible();
 
-    await page.screenshot({ path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png' });
-    await page.getByTestId('comms-cockpit').scrollIntoViewIfNeeded();
-    await page.getByTestId('comms-cockpit').screenshot({
-      path: '/opt/cursor/artifacts/ux-story-comms-split.png',
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png',
+      fullPage: false,
     });
-    const mini = page.getByTestId('table-character-compact');
-    if (await mini.isVisible().catch(() => false)) {
-      await mini.scrollIntoViewIfNeeded();
-      await mini.screenshot({
-        path: '/opt/cursor/artifacts/ux-hero-mini-sheet.png',
-      });
+    const comms = page.getByTestId('comms-cockpit');
+    if (await comms.isVisible().catch(() => false)) {
+      await comms.scrollIntoViewIfNeeded();
+      await comms.screenshot({ path: '/opt/cursor/artifacts/ux-story-comms-split.png' });
     }
-    await page.getByTestId('map-stage-toolbar').scrollIntoViewIfNeeded();
-    await page.getByTestId('map-stage-toolbar').screenshot({
-      path: '/opt/cursor/artifacts/ux-polish-zoom-pill.png',
-    });
-    await page.getByTestId('floating-combat-bar').scrollIntoViewIfNeeded();
-    await page.getByTestId('floating-combat-bar').screenshot({
-      path: '/opt/cursor/artifacts/ux-polish-action-hud.png',
-    });
+    for (const [testId, path] of [
+      ['table-character-compact', '/opt/cursor/artifacts/ux-hero-mini-sheet.png'],
+      ['map-stage-toolbar', '/opt/cursor/artifacts/ux-polish-zoom-pill.png'],
+      ['floating-combat-bar', '/opt/cursor/artifacts/ux-polish-action-hud.png'],
+    ] as const) {
+      const target = page.getByTestId(testId);
+      if (await target.isVisible().catch(() => false)) {
+        await target.scrollIntoViewIfNeeded();
+        await target.screenshot({ path });
+      }
+    }
   });
 });
 
