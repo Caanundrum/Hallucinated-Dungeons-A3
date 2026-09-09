@@ -100,15 +100,22 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     await expect(page.getByTestId('player-action-input')).toBeVisible();
 
     await page.screenshot({ path: '/opt/cursor/artifacts/ux-cockpit-full-1440.png' });
+    await page.getByTestId('comms-cockpit').scrollIntoViewIfNeeded();
     await page.getByTestId('comms-cockpit').screenshot({
       path: '/opt/cursor/artifacts/ux-story-comms-split.png',
     });
-    await page.getByTestId('table-character-compact').screenshot({
-      path: '/opt/cursor/artifacts/ux-hero-mini-sheet.png',
-    });
+    const mini = page.getByTestId('table-character-compact');
+    if (await mini.isVisible().catch(() => false)) {
+      await mini.scrollIntoViewIfNeeded();
+      await mini.screenshot({
+        path: '/opt/cursor/artifacts/ux-hero-mini-sheet.png',
+      });
+    }
+    await page.getByTestId('map-stage-toolbar').scrollIntoViewIfNeeded();
     await page.getByTestId('map-stage-toolbar').screenshot({
       path: '/opt/cursor/artifacts/ux-polish-zoom-pill.png',
     });
+    await page.getByTestId('floating-combat-bar').scrollIntoViewIfNeeded();
     await page.getByTestId('floating-combat-bar').screenshot({
       path: '/opt/cursor/artifacts/ux-polish-action-hud.png',
     });
