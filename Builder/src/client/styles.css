@@ -613,7 +613,7 @@ a.account-chip-label:focus-visible {
   left: var(--space-2);
   top: var(--space-2);
   width: min(240px, 34vw);
-  height: auto;
+  height: fit-content;
   max-height: calc(100% - (var(--space-2) * 2));
   overflow: auto;
   z-index: 6;
@@ -622,6 +622,17 @@ a.account-chip-label:focus-visible {
   box-shadow: var(--shadow-card);
   background: color-mix(in srgb, var(--panel-surface) 96%, #000);
   scrollbar-width: thin;
+}
+
+.table-info-rail:not(.is-collapsed) > [data-testid='table-info-slot'],
+.table-info-rail:not(.is-collapsed) .info-rail-viewport {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.table-info-rail:not(.is-collapsed) .table-info-pane {
+  gap: var(--space-2);
 }
 
 .table-info-rail.is-collapsed {
@@ -897,14 +908,13 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread {
-  /* Hug timeline + chrome; scroll inside the list instead of stretching empty space. */
+  /* Hug chrome + beats + intercept; scroll the list instead of stretching empty space. */
   flex: 0 1 auto;
   min-height: 0;
   max-height: min(28vh, 16rem);
   overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
@@ -916,11 +926,9 @@ a.account-chip-label:focus-visible {
   flex: 1 1 auto;
   min-height: 0;
   max-height: min(44vh, 24rem);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .dm-play-thread-chrome {
-  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -954,31 +962,36 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread > [data-testid='dm-beat-queue-hint'] {
-  grid-row: 2;
+  flex: 0 0 auto;
   margin: 0;
 }
 
 ol.record-list.dm-thread-list,
 .dm-thread-list,
 .dm-play-thread > [data-testid='dm-play-thread-list-empty'] {
-  grid-row: 3;
   margin: 0;
   padding: 0;
   list-style: none;
-  /* Beat .record-list { display: grid } so the scroller owns this row. */
+  /* Beat .record-list { display: grid } so the scroller owns this region. */
   display: flex !important;
   flex-direction: column;
   gap: var(--space-2);
+  flex: 0 1 auto;
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
+  height: auto;
+  max-height: min(14vh, 10rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+.dm-play-thread.is-expanded ol.record-list.dm-thread-list,
+.dm-play-thread.is-expanded .dm-thread-list {
+  max-height: min(28vh, 18rem);
+}
+
 .dm-play-thread > .intent-intercept {
-  grid-row: 4;
+  flex: 0 0 auto;
 }
 
 ol.record-list.dm-thread-list > li {
@@ -1384,12 +1397,10 @@ ol.record-list.dm-thread-list > li {
 
   .dm-play-thread {
     max-height: min(26vh, 15rem);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .dm-play-thread.is-expanded {
     max-height: min(42vh, 22rem);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 }
 
