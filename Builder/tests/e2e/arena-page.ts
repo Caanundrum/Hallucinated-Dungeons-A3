@@ -236,3 +236,14 @@ export async function awaitAdventureReady(page: Page, timeout = 60_000): Promise
     .not.toMatch(/awaiting first scene|establishing scene/i);
   await expect(page.getByTestId('begin-adventure')).toHaveCount(0);
 }
+
+/** Opens the map More menu without toggling it closed when already expanded. */
+export async function openMapToolbarMore(page: Page): Promise<void> {
+  const more = page.getByTestId('map-toolbar-more');
+  await expect(more).toBeVisible();
+  const alreadyOpen = await more.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!alreadyOpen) {
+    await more.locator('summary').click();
+  }
+  await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
+}

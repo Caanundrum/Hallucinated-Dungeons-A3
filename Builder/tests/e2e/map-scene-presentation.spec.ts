@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, joinTableWithFirstCharacter, awaitAdventureReady } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter, awaitAdventureReady, openMapToolbarMore } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');

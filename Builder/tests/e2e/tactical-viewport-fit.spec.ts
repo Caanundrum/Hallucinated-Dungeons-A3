@@ -4,6 +4,7 @@ import {
   awaitAdventureReady,
   enterAccountFromShell,
   joinTableWithFirstCharacter,
+  openMapToolbarMore,
   openTableAdvancedControls,
 } from './arena-page.js';
 
@@ -119,7 +120,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       fullPage: true,
     });
 
-    await page.getByTestId('map-toolbar-more').locator('summary').click();
+    await openMapToolbarMore(page);
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', /motion|static/);
     await page.screenshot({
@@ -128,7 +129,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
     });
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.getByTestId('map-toolbar-more').locator('summary').click();
+    await openMapToolbarMore(page);
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', 'static');
     await expect(page.getByTestId('table-stage-slot')).toHaveClass(/map-scene-transition-static/);
