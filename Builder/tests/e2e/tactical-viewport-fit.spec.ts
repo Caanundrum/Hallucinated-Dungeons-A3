@@ -59,6 +59,7 @@ async function beginAdventure(page: Page): Promise<void> {
     /Awaiting first scene|Game Director is ready to establish/i,
     { timeout: 30_000 },
   );
+  await expect(page.getByTestId('map-stage-toolbar')).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('Tactical viewport fit and canopy terrain', () => {
