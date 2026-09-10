@@ -1,3 +1,5 @@
+import { expect, test, type Page } from '@playwright/test';
+
 import {
   awaitAdventureReady,
   enterAccountFromShell,
@@ -41,8 +43,13 @@ async function seatAndOpenTable(page: Page, name: string, premise: string): Prom
 
 async function confirmDraft(page: Page): Promise<void> {
   const confirm = page.getByTestId('confirm-intent-intercept');
-  await expect(confirm).toBeVisible({ timeout: 20_000 });
-  await confirm.click();
+  // Auto-begin tables may never show a Confirm draft.
+  try {
+    await expect(confirm).toBeVisible({ timeout: 8_000 });
+    await confirm.click();
+  } catch {
+    // Adventure already underway.
+  }
 }
 
 async function beginAdventure(page: Page): Promise<void> {

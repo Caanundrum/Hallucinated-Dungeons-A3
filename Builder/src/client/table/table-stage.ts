@@ -626,7 +626,7 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <details class="map-toolbar-more" data-testid="map-toolbar-more">
+      <details class="map-toolbar-more" data-testid="map-toolbar-more"${mapToolbarMoreOpen ? ' open' : ''}>
         <summary aria-label="More map tools">More</summary>
         <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
       </details>
@@ -825,6 +825,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
   /** Absolute display scale: map pixel → CSS pixel (Fit sets this to fill the frame). */
   let zoomScale = 1;
+  let mapToolbarMoreOpen = false;
   let hasFittedOnce = false;
 
   function mapPixelSize(): { width: number; height: number } | null {
@@ -1021,6 +1022,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function bindToolbar(): void {
+    const more = host.querySelector<HTMLDetailsElement>('[data-testid="map-toolbar-more"]');
+    if (more !== null) {
+      more.open = mapToolbarMoreOpen;
+      more.ontoggle = () => {
+        mapToolbarMoreOpen = more.open;
+      };
+    }
     host.querySelectorAll<HTMLButtonElement>('[data-map-zoom]').forEach((button) => {
       button.onclick = () => {
         const mode = button.getAttribute('data-map-zoom');
