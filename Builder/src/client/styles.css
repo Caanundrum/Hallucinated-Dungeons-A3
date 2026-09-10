@@ -566,13 +566,15 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-body {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  /* Map-first: character card overlays the stage; chat keeps a dedicated column. */
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   gap: 0;
   flex: 1;
   min-height: 0;
   align-items: stretch;
   padding: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .table-dashboard-body.table-focus-mode {
@@ -605,9 +607,75 @@ a.account-chip-label:focus-visible {
   border-radius: 0;
 }
 
+/* Compact character card over the map — no empty full-height left column. */
+.table-info-rail:not(.is-collapsed) {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  width: min(240px, 34vw);
+  height: fit-content;
+  max-height: calc(100% - (var(--space-2) * 2));
+  overflow: auto;
+  z-index: 6;
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+  background: color-mix(in srgb, var(--panel-surface) 96%, #000);
+  scrollbar-width: thin;
+}
+
+.table-info-rail:not(.is-collapsed) > [data-testid='table-info-slot'],
+.table-info-rail:not(.is-collapsed) .info-rail-viewport {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.table-info-rail:not(.is-collapsed) .table-info-pane {
+  gap: var(--space-2);
+}
+
+.table-info-rail.is-collapsed {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  width: auto;
+  height: auto;
+  z-index: 6;
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--panel-surface) 96%, #000);
+}
+
 .table-comms-rail {
   border-right: none;
   border-left: var(--border-weight) solid var(--panel-border);
+  grid-column: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.table-comms-rail > [data-testid='table-comms-slot'],
+.table-comms-rail .comms-cockpit,
+.table-comms-rail .comms-interactive-tier,
+.table-comms-rail .dock-viewport,
+.table-comms-rail .dock-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.table-comms-rail .dock-composer {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.table-play-column {
+  grid-column: 1;
+  min-width: 0;
 }
 
 .table-info-rail.is-collapsed,
@@ -722,8 +790,8 @@ a.account-chip-label:focus-visible {
 
 .table-map-chrome {
   position: relative;
-  /* Map-first shell: the tactical stage is the primary visual plane. */
-  flex: 1.85 1 18rem;
+  /* Map-first shell: the tactical stage claims leftover height after a compact dock. */
+  flex: 1 1 auto;
   min-height: 14rem;
   display: flex;
   flex-direction: column;
@@ -752,14 +820,14 @@ a.account-chip-label:focus-visible {
 
 .table-action-bar {
   /*
-   * Play dock stays usable under a map-first stage: enough height for timeline
-   * + composer without reclaiming the whole column from the tactical map.
+   * Map-first dock: size to chrome + timeline + composer. Do not stretch a tall
+   * empty thread band when only one or two beats are present.
    */
-  flex: 0.95 1 16rem;
+  flex: 0 1 auto;
   margin: 0;
-  height: 0;
-  max-height: none;
-  min-height: min(34vh, 20rem);
+  height: auto;
+  max-height: min(40vh, 22rem);
+  min-height: 0;
   overflow: clip;
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
@@ -775,14 +843,14 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  flex: 1.1 1 16rem;
-  height: 0;
-  max-height: none;
+  flex: 1 1 auto;
+  height: auto;
+  max-height: min(56vh, 30rem);
 }
 
-/* Slot host must participate in the dock flex column or the timeline cannot grow. */
+/* Slot host must participate in the dock column without forcing empty stretch. */
 .table-action-bar > [data-testid='table-action-slot'] {
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -792,10 +860,10 @@ a.account-chip-label:focus-visible {
 .table-action-bar-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: start;
   min-height: 0;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   width: 100%;
   height: auto;
   max-height: none;
@@ -814,7 +882,7 @@ a.account-chip-label:focus-visible {
   gap: var(--space-2);
   align-items: stretch;
   min-height: 0;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   height: auto;
   max-height: none;
   overflow: hidden;
@@ -840,16 +908,14 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread {
-  /* Fill leftover dock space ONLY — never force a min that clips the composer. */
-  flex: 1 1 0;
+  /* Hug chrome + beats + intercept; scroll the list instead of stretching empty space. */
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: none;
+  max-height: min(28vh, 16rem);
   overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  /* Desktop floor: usable timeline (≥12rem), not the old 4.5rem/72px trap. */
-  grid-template-rows: auto auto minmax(12rem, 1fr) auto;
-  gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
   border-radius: var(--radius-control);
@@ -857,14 +923,12 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread.is-expanded {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: none;
-  grid-template-rows: auto auto minmax(16rem, 1fr) auto;
+  max-height: min(44vh, 24rem);
 }
 
 .dm-play-thread-chrome {
-  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -898,31 +962,36 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread > [data-testid='dm-beat-queue-hint'] {
-  grid-row: 2;
+  flex: 0 0 auto;
   margin: 0;
 }
 
 ol.record-list.dm-thread-list,
 .dm-thread-list,
 .dm-play-thread > [data-testid='dm-play-thread-list-empty'] {
-  grid-row: 3;
   margin: 0;
   padding: 0;
   list-style: none;
-  /* Beat .record-list { display: grid } so the scroller owns this row. */
+  /* Beat .record-list { display: grid } so the scroller owns this region. */
   display: flex !important;
   flex-direction: column;
   gap: var(--space-2);
+  flex: 0 1 auto;
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
+  height: auto;
+  max-height: min(14vh, 10rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+.dm-play-thread.is-expanded ol.record-list.dm-thread-list,
+.dm-play-thread.is-expanded .dm-thread-list {
+  max-height: min(28vh, 18rem);
+}
+
 .dm-play-thread > .intent-intercept {
-  grid-row: 4;
+  flex: 0 0 auto;
 }
 
 ol.record-list.dm-thread-list > li {
@@ -1183,10 +1252,20 @@ ol.record-list.dm-thread-list > li {
     max-height: 4.75rem;
     order: 3;
     overflow: auto;
+    position: relative;
+    left: auto;
+    top: auto;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+    border-top: var(--border-weight) solid var(--panel-border);
   }
 
   .table-play-column {
     grid-area: play;
+    grid-column: auto;
     order: 1;
     min-height: 0;
     height: 100%;
@@ -1197,6 +1276,7 @@ ol.record-list.dm-thread-list > li {
 
   .table-comms-rail {
     grid-area: comms;
+    grid-column: auto;
     order: 2;
     max-height: 5.25rem;
     overflow: auto;
@@ -1251,19 +1331,19 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: none;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
     flex: 1.25 1 0;
     min-height: 0;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
     min-height: 0;
+    max-height: none;
+    flex: 1 1 0;
     overflow-y: auto;
   }
 
@@ -1286,17 +1366,24 @@ ol.record-list.dm-thread-list > li {
   }
 }
 
-/* Desktop: map-first stage; dock remains readable without dominating. */
+/* Desktop: map-first stage; dock stays compact so the map keeps the viewport. */
 @media (min-width: 1101px) {
   .table-map-chrome {
-    flex: 1.6 1 16rem;
-    min-height: 14rem;
+    flex: 1 1 auto;
+    min-height: 16rem;
     max-height: none;
   }
 
   .table-action-bar {
-    flex: 1 1 18rem;
-    min-height: min(36vh, 22rem);
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: min(38vh, 20rem);
+    height: auto;
+  }
+
+  .table-action-bar:has(.dm-play-thread.is-expanded) {
+    flex: 1 1 auto;
+    max-height: min(52vh, 28rem);
   }
 
   .table-action-bar-dm > .table-turn-banner {
@@ -1309,11 +1396,11 @@ ol.record-list.dm-thread-list > li {
   }
 
   .dm-play-thread {
-    grid-template-rows: auto auto minmax(8rem, 1fr) auto;
+    max-height: min(26vh, 15rem);
   }
 
   .dm-play-thread.is-expanded {
-    grid-template-rows: auto auto minmax(12rem, 1fr) auto;
+    max-height: min(42vh, 22rem);
   }
 }
 
@@ -1503,14 +1590,18 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(6rem, 1fr) auto;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .dm-thread-list,
+  .table-dashboard[data-mobile-task='play'] ol.record-list.dm-thread-list {
+    flex: 1 1 0;
+    max-height: none;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded .dm-play-thread-chrome > .record-meta {
@@ -4117,11 +4208,17 @@ html.hd-low-effects .table-stage-svg-viewport,
 }
 
 .comms-interactive-tier {
-  flex: 0 0 65%;
+  /* Fill the chat rail when the story tier is absent (quieter shell). */
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding-top: var(--space-2);
+}
+
+.comms-cockpit:has(.comms-story-tier) .comms-interactive-tier {
+  flex: 0 0 65%;
   padding-top: var(--space-2);
 }
 
