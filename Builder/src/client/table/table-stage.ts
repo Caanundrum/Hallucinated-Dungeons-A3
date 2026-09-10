@@ -220,6 +220,7 @@ function paintSemanticSvg(
   selectedEdgeId: string | null,
   priorTokenBoxes: Map<string, { x: number; y: number }>,
   zoomScale: number,
+  mapToolbarMoreOpen: boolean,
 ): Map<string, { x: number; y: number }> {
   const lowEffects =
     document.documentElement.classList.contains('hd-low-effects') ||
@@ -1318,7 +1319,15 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       priorViewport === null
         ? null
         : { left: priorViewport.scrollLeft, top: priorViewport.scrollTop };
-    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, selectedEdgeId, priorTokenBoxes, zoomScale);
+    priorTokenBoxes = paintSemanticSvg(
+      host,
+      map,
+      moveTarget,
+      selectedEdgeId,
+      priorTokenBoxes,
+      zoomScale,
+      mapToolbarMoreOpen,
+    );
     paintPixi(map);
     bindSquareClicks();
     bindEdgeClicks();
