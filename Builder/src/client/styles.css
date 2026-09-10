@@ -1331,19 +1331,19 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: none;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
     flex: 1.25 1 0;
     min-height: 0;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
     min-height: 0;
+    max-height: none;
+    flex: 1 1 0;
     overflow-y: auto;
   }
 
@@ -1590,14 +1590,18 @@ ol.record-list.dm-thread-list > li {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(6rem, 1fr) auto;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
     flex: 1 1 0;
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .dm-thread-list,
+  .table-dashboard[data-mobile-task='play'] ol.record-list.dm-thread-list {
+    flex: 1 1 0;
+    max-height: none;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded .dm-play-thread-chrome > .record-meta {
