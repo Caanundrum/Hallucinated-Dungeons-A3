@@ -706,12 +706,15 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
         if (candidate === null || character === null || identityBusy) {
           return;
         }
+        const characterName = character.identity.name.trim() || 'this character';
         const accepted = await confirmInApp({
           title: 'Delete character permanently?',
-          body: `Delete ${character.identity.name || 'this character'} permanently? Archive is post-Alpha — this cannot be undone.`,
+          body: `This permanently deletes ${characterName} from your vault. Type the character name to unlock Delete. This cannot be undone.`,
           confirmLabel: 'Delete permanently',
           cancelLabel: 'Keep character',
           testId: 'confirm-delete-character',
+          requireTypedPhrase: characterName,
+          typedPhraseLabel: `Type ${characterName} to confirm`,
         });
         if (!accepted) {
           return;

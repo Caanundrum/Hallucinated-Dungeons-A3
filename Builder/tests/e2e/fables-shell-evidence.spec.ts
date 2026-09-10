@@ -38,7 +38,8 @@ test('fables-inspired shell evidence screenshots', async ({ page }) => {
   await expect(page.getByTestId('own-seat')).toBeVisible();
   await page.getByTestId('open-campaign-table').click();
   await expect(page.getByTestId('table-ambient-hud')).toBeVisible();
-  await expect(page.getByTestId('play-attack')).toBeVisible();
+  await expect(page.getByTestId('submit-player-action')).toBeVisible();
+  await expect(page.getByTestId('play-attack')).toHaveCount(0);
   await expect(page.getByTestId('floating-combat-bar')).toBeHidden();
   await expect(page.getByTestId('dock-tab-rules_desk')).toHaveCount(0);
   await expect(page.getByTestId('comms-story-tier')).toHaveCount(0);

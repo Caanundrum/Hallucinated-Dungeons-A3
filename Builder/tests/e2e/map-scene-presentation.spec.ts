@@ -79,7 +79,8 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
 
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Keyboard/i);
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Tab/i);
-  await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
+  await page.getByTestId('map-toolbar-more').locator('summary').click();
+    await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
 
   await page.screenshot({ path: '/opt/cursor/artifacts/map-scene-a11y-door-guidance.png' });
 });

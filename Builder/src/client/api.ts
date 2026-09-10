@@ -382,6 +382,16 @@ export async function fetchCampaignDetail(campaignId: string): Promise<CampaignD
   )) as CampaignDetailProjection;
 }
 
+export async function deleteCampaign(options: {
+  readonly candidateId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  await request<null>(`/api/campaigns/${options.campaignId}`, {
+    method: 'DELETE',
+    candidateId: options.candidateId,
+  });
+}
+
 export async function updateCampaign(options: {
   readonly candidateId: string;
   readonly campaignId: string;

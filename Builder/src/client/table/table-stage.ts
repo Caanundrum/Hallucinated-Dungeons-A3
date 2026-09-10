@@ -626,7 +626,10 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
+      <details class="map-toolbar-more" data-testid="map-toolbar-more">
+        <summary aria-label="More map tools">More</summary>
+        <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
+      </details>
       <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>

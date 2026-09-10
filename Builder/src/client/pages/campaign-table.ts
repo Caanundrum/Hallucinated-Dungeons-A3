@@ -1198,7 +1198,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         return {
           tone: 'yours',
           title: `It's your turn, ${ownCombatant()?.name ?? 'adventurer'}`,
-          detail: 'Describe what you do, move on the map if you need to, then end your turn.',
+          detail: 'Declare your action, then end your turn.',
         };
       }
       if (active !== null) {
@@ -1207,8 +1207,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           title: `${active.name}'s turn`,
           detail:
             active.side === 'foe'
-              ? 'Hostile turns resolve automatically. If the fight stalls, use End encounter on this play bar.'
-              : 'The Game Director is running the scene. Review your sheet, chat, or ask the Game Director while you wait.',
+              ? 'Hostile turn resolving.'
+              : 'Waiting on the active combatant.',
         };
       }
     }
@@ -1216,14 +1216,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return {
         tone: 'waiting',
         title: 'Combat is forming',
-        detail: 'The Game Director will call for initiative when the fight begins.',
+        detail: 'Initiative pending.',
       };
     }
     return {
       tone: 'exploration',
       title: 'Exploring freely',
-      detail:
-        'Move where you like until the Game Director calls for initiative. Chat and ask the Game Director anytime.',
+      detail: 'Declare what you do.',
     };
   }
 
@@ -2267,18 +2266,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
   function floatingCombatBarHtml(): string {
     // Desktop: Attack / End turn live in the play composer only.
-    // Mobile keeps this bar so map/chat task modes still have combat actions.
+    // Mobile keeps End turn on your combat turn; Attack stays NL-first in the composer.
     if (!seated || sessionIsSuspended()) {
       return '';
     }
     const ownTurn = isOwnCombatTurn();
-    const pulseClass = ownTurn ? ' active-turn-hud' : '';
+    if (!ownTurn) {
+      return '';
+    }
     return `
-      <div class="floating-combat-bar${pulseClass}" data-testid="floating-combat-bar" role="toolbar" aria-label="Table actions">
-        <button type="button" class="table-primary-action" data-testid="fab-attack"
-          data-rules-command="combat.attack" aria-disabled="${busy || explorationMode()}">Attack</button>
+      <div class="floating-combat-bar active-turn-hud" data-testid="floating-combat-bar" role="toolbar" aria-label="Table actions">
         <button type="button" class="table-secondary-action" data-testid="fab-end-turn"
-          aria-disabled="${busy || !ownTurn}">${ownTurn ? 'End turn' : 'Pass'}</button>
+          aria-disabled="${busy}">End turn</button>
       </div>`;
   }
 
@@ -2586,7 +2585,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     seedDmThreadIfNeeded();
     const banner = turnBanner();
     const showEndTurn = isOwnCombatTurn() && !sessionIsSuspended();
-    const showAttack = seated && !sessionIsSuspended();
+    // NL declare is the default play path; Attack shortcut only on your combat turn.
+    const showAttack = showEndTurn;
     const canDescribeTurn =
       seated && !sessionIsSuspended() && (explorationMode() || isOwnCombatTurn());
     // NEW-PQA-02: hosted has no Tools tab — End encounter stays on the play bar there only.
@@ -2714,7 +2714,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ${
           doorRecoveryVisible
             ? `<div class="door-recovery-panel" data-testid="door-recovery-panel">
-                <p class="record-meta">No door is ready on this scene yet. Place one ahead, or ask the Director what you can interact with.</p>
+                <p class="record-meta">No doorway is ready here yet.</p>
                 <div class="door-recovery-actions">
                   <button type="button" class="table-secondary-action" data-testid="place-door-ahead">Place door ahead</button>
                 </div>
@@ -2725,7 +2725,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
                 <p class="record-meta" data-testid="action-channel-hint">
-                  Declarations change the table.
+                  One declaration at a time.
                 </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
@@ -3601,11 +3601,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="fab-end-turn"]')
       ?.addEventListener('click', () => {
         void submitRulesAction('encounter.next_turn');
-      });
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="fab-attack"]')
-      ?.addEventListener('click', () => {
-        void submitRulesAction('combat.attack');
       });
     root
       .querySelector<HTMLButtonElement>('[data-testid="play-attack"]')
@@ -5507,11 +5502,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                  </p>`
               : mapBundle?.title === 'Quiet chamber'
                 ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                     Quiet chamber is ready — inspect or open the wooden doorway, or declare what you do next.
+                     Quiet chamber — a wooden doorway waits.
                    </p>`
                 : mapBundle !== null && mapBundle.mapBundleId.startsWith('director:')
                   ? `<p class="record-meta" data-testid="director-scene-hint">
-                       Declare object changes (lamp, crate, shutter), leave through an exit, travel onward, or return the way you came. Confirm before the table commits.
+                       Declare what you change or where you go. Confirm before it commits.
                      </p>`
                   : mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
                     ? `<p class="record-meta" data-testid="blank-table-start-hint">
