@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, joinTableWithFirstCharacter } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter, openMapToolbarMore } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -81,7 +81,7 @@ test.describe('Gemini cockpit UX-2 through UX-5', () => {
     // Slim map zoom pill (no Reset; Cue lives in the toolbar)
     await expect(page.getByTestId('map-stage-toolbar')).toBeVisible();
     await expect(page.getByTestId('map-zoom-indicator')).toBeVisible();
-    await page.getByTestId('map-toolbar-more').locator('summary').click();
+    await openMapToolbarMore(page);
     await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Reset zoom to 100%' })).toHaveCount(0);
 
