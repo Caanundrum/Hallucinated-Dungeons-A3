@@ -113,6 +113,7 @@ import {
   WrongTablePasswordError,
   acceptInvitation,
   createCampaign,
+  deleteCampaign,
   createInvitation,
   createSeat,
   joinTable,
@@ -1978,6 +1979,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const campaignId = campaignMatch[1]!;
         if (method === 'GET') {
           sendJson(response, 200, await readCampaignDetail({ firestore, accountId, campaignId }));
+          return;
+        }
+        if (method === 'DELETE') {
+          await deleteCampaign({ firestore, accountId, campaignId });
+          response.writeHead(204);
+          response.end();
           return;
         }
         if (method === 'PATCH') {

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { enterAccountFromShell, joinTableWithFirstCharacter, awaitAdventureReady } from './arena-page.js';
+import { enterAccountFromShell, joinTableWithFirstCharacter, awaitAdventureReady, openMapToolbarMore } from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -79,6 +79,7 @@ test('map a11y names are unique; door guidance omits Tools control', async ({ pa
 
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Keyboard/i);
   await expect(page.getByTestId('map-zoom-help')).toContainText(/Tab/i);
+  await openMapToolbarMore(page);
   await expect(page.getByTestId('preview-scene-discovery-cue')).toBeVisible();
 
   await page.screenshot({ path: '/opt/cursor/artifacts/map-scene-a11y-door-guidance.png' });

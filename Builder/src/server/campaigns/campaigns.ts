@@ -1213,3 +1213,77 @@ export async function leaveSeat(options: {
     body: `${seat.characterName} left their seat at the table.`,
   });
 }
+
+
+async function deleteQueryDocs(
+  firestore: Firestore,
+  collectionName: string,
+  campaignId: string,
+): Promise<void> {
+  // Emulator-safe chunked delete by campaignId field.
+  for (;;) {
+    const snapshot = await firestore
+      .collection(collectionName)
+      .where('campaignId', '==', campaignId)
+      .limit(250)
+      .get();
+    if (snapshot.empty) {
+      return;
+    }
+    const batch = firestore.batch();
+    for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    if (snapshot.size < 250) {
+      return;
+    }
+  }
+}
+
+/** Owner-only hard delete of a campaign and its table-scoped records. */
+export async function deleteCampaign(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+}): Promise<void> {
+  const { firestore, accountId, campaignId } = options;
+  const membership = await requireMembership(firestore, campaignId, accountId);
+  if (membership.role !== 'owner') {
+    throw new CampaignValidationError('Only the campaign owner can delete this campaign.');
+  }
+  const campaign = await loadCampaign(firestore, campaignId);
+
+  const queryCollections = [
+    COLLECTIONS.campaignMemberships,
+    COLLECTIONS.campaignInvitations,
+    COLLECTIONS.campaignSeats,
+    COLLECTIONS.partyChatMessages,
+    COLLECTIONS.chronicleEntries,
+    COLLECTIONS.campaignCommands,
+    COLLECTIONS.campaignEvents,
+    COLLECTIONS.campaignEncounters,
+    COLLECTIONS.campaignPresence,
+  ] as const;
+  for (const collectionName of queryCollections) {
+    await deleteQueryDocs(firestore, collectionName, campaignId);
+  }
+
+  const keyedDocs = [
+    COLLECTIONS.campaignSettings,
+    COLLECTIONS.campaignSessions,
+    COLLECTIONS.campaignTableProjections,
+    COLLECTIONS.campaignMemory,
+    COLLECTIONS.campaignPresenceMeta,
+    COLLECTIONS.timingAuthorities,
+    COLLECTIONS.campaigns,
+  ] as const;
+  const batch = firestore.batch();
+  for (const collectionName of keyedDocs) {
+    batch.delete(firestore.collection(collectionName).doc(campaignId));
+  }
+  await batch.commit();
+
+  // Best-effort chronicle note is skipped — campaign docs are gone.
+  void campaign;
+}

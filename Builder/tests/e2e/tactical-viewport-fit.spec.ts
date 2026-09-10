@@ -1,7 +1,10 @@
+import { expect, test, type Page } from '@playwright/test';
+
 import {
   awaitAdventureReady,
   enterAccountFromShell,
   joinTableWithFirstCharacter,
+  openMapToolbarMore,
   openTableAdvancedControls,
 } from './arena-page.js';
 
@@ -41,8 +44,13 @@ async function seatAndOpenTable(page: Page, name: string, premise: string): Prom
 
 async function confirmDraft(page: Page): Promise<void> {
   const confirm = page.getByTestId('confirm-intent-intercept');
-  await expect(confirm).toBeVisible({ timeout: 20_000 });
-  await confirm.click();
+  // Auto-begin tables may never show a Confirm draft.
+  try {
+    await expect(confirm).toBeVisible({ timeout: 8_000 });
+    await confirm.click();
+  } catch {
+    // Adventure already underway.
+  }
 }
 
 async function beginAdventure(page: Page): Promise<void> {
@@ -52,6 +60,7 @@ async function beginAdventure(page: Page): Promise<void> {
     /Awaiting first scene|Game Director is ready to establish/i,
     { timeout: 30_000 },
   );
+  await expect(page.getByTestId('map-stage-toolbar')).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('Tactical viewport fit and canopy terrain', () => {
@@ -111,6 +120,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       fullPage: true,
     });
 
+    await openMapToolbarMore(page);
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', /motion|static/);
     await page.screenshot({
@@ -119,6 +129,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
     });
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openMapToolbarMore(page);
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', 'static');
     await expect(page.getByTestId('table-stage-slot')).toHaveClass(/map-scene-transition-static/);

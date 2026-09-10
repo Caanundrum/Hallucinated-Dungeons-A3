@@ -2987,6 +2987,23 @@ a.record-note:focus-visible {
   justify-content: flex-end;
 }
 
+.modal-dialog input[data-testid$="-typed-phrase"] {
+  display: block;
+  width: 100%;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: 0.55rem 0.7rem;
+  border: var(--border-weight) solid var(--structural-border);
+  border-radius: var(--radius-control, 6px);
+  background: color-mix(in srgb, var(--obsidian-surface) 88%, #000);
+  color: inherit;
+  font: inherit;
+}
+
+.modal-dialog .modal-actions [data-testid$="-confirm"][aria-disabled='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .sheet-modal-dialog {
   width: min(52rem, 100%);
   max-height: min(90vh, 56rem);
@@ -3608,6 +3625,43 @@ html.hd-low-effects .map-square-fog,
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow-card);
   pointer-events: auto;
+}
+
+.map-toolbar-more {
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+
+.map-toolbar-more > summary {
+  list-style: none;
+  cursor: pointer;
+  min-width: 2.25rem;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.map-toolbar-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.map-toolbar-more[open] > summary {
+  color: var(--text-primary);
+}
+
+.map-toolbar-more[open] {
+  position: relative;
+}
+
+.map-toolbar-more > button {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 6;
+  min-width: 3.5rem;
 }
 
 .table-stage-toolbar button {

@@ -220,6 +220,7 @@ function paintSemanticSvg(
   selectedEdgeId: string | null,
   priorTokenBoxes: Map<string, { x: number; y: number }>,
   zoomScale: number,
+  mapToolbarMoreOpen: boolean,
 ): Map<string, { x: number; y: number }> {
   const lowEffects =
     document.documentElement.classList.contains('hd-low-effects') ||
@@ -626,7 +627,10 @@ function paintSemanticSvg(
       <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
       <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
       <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
-      <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
+      <details class="map-toolbar-more" data-testid="map-toolbar-more"${mapToolbarMoreOpen ? ' open' : ''}>
+        <summary aria-label="More map tools">More</summary>
+        <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
+      </details>
       <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
@@ -822,6 +826,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
   /** Absolute display scale: map pixel → CSS pixel (Fit sets this to fill the frame). */
   let zoomScale = 1;
+  let mapToolbarMoreOpen = false;
   let hasFittedOnce = false;
 
   function mapPixelSize(): { width: number; height: number } | null {
@@ -1018,6 +1023,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function bindToolbar(): void {
+    const more = host.querySelector<HTMLDetailsElement>('[data-testid="map-toolbar-more"]');
+    if (more !== null) {
+      more.open = mapToolbarMoreOpen;
+      more.ontoggle = () => {
+        mapToolbarMoreOpen = more.open;
+      };
+    }
     host.querySelectorAll<HTMLButtonElement>('[data-map-zoom]').forEach((button) => {
       button.onclick = () => {
         const mode = button.getAttribute('data-map-zoom');
@@ -1307,7 +1319,15 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       priorViewport === null
         ? null
         : { left: priorViewport.scrollLeft, top: priorViewport.scrollTop };
-    priorTokenBoxes = paintSemanticSvg(host, map, moveTarget, selectedEdgeId, priorTokenBoxes, zoomScale);
+    priorTokenBoxes = paintSemanticSvg(
+      host,
+      map,
+      moveTarget,
+      selectedEdgeId,
+      priorTokenBoxes,
+      zoomScale,
+      mapToolbarMoreOpen,
+    );
     paintPixi(map);
     bindSquareClicks();
     bindEdgeClicks();

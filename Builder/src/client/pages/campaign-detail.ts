@@ -17,6 +17,7 @@ import {
   ApiFailure,
   createCampaignInvitation,
   createCampaignSeat,
+  deleteCampaign,
   leaveCampaignSeat,
   fetchCampaignDetail,
   fetchCampaignMemory,
@@ -522,6 +523,15 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                    </p>`
                        : ''
                    }
+                   <div class="actions danger-zone" data-testid="campaign-delete-zone">
+                     <button type="button" class="danger" data-testid="delete-campaign"
+                       aria-disabled="${busy || sessionBusy ? 'true' : 'false'}">
+                       Delete campaign permanently
+                     </button>
+                     <p class="record-meta">
+                       Permanently removes this campaign and its table records for every member. Type the campaign name to confirm.
+                     </p>
+                   </div>
                  </section>`
           }
           ${recap === null ? '' : renderRecapPanel(recap)}
@@ -882,6 +892,48 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
           } finally {
             sessionBusy = false;
             render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="delete-campaign"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || sessionBusy || campaign === null) {
+            return;
+          }
+          const campaignName = campaign.name.trim();
+          const accepted = await confirmInApp({
+            title: 'Delete campaign permanently?',
+            body: `This permanently deletes ${campaignName} and its table records for every member. Type the campaign name to unlock Delete. This cannot be undone.`,
+            confirmLabel: 'Delete permanently',
+            cancelLabel: 'Keep campaign',
+            testId: 'confirm-delete-campaign',
+            requireTypedPhrase: campaignName,
+            typedPhraseLabel: `Type ${campaignName} to confirm`,
+          });
+          if (!accepted) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await deleteCampaign({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            shell.announce('Campaign deleted.');
+            navigate('/campaigns');
+          } catch (failure) {
+            busy = false;
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'That campaign could not be deleted.';
+            render();
+            shell.announce(error);
           }
         })();
       });
