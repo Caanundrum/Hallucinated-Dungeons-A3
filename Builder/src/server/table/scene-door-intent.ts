@@ -11,6 +11,11 @@ import {
 import { declarationNegatesDoorOpen } from '../../shared/resolved-action-receipt.js';
 
 import { isOnOpenDoorPassage, nextStepThroughOpenDoor } from './move-planner.js';
+import {
+  describeDoorPosition,
+  relationToDoor,
+  resolveCrossingAgainstTopology,
+} from '../../shared/door-topology.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 
 export interface SceneDoorIntentResolution {
@@ -372,14 +377,34 @@ export function resolveDoorIntentForMap(
     };
   }
 
-  // Standing beyond an open doorway: "enter the room beyond" is already done;
-  // "through / west / back" is a confirmable reverse cross.
+  // Topology-backed "already through" / reverse cross — map and copy must agree.
   if (isOnOpenDoorPassage(tokenAnchor, map)) {
+    const passageDoor =
+      openDoors.find((edge) => relationToDoor(tokenAnchor, edge) === 'far') ?? openDoors[0] ?? null;
     const wantsReverseCross =
       /\bthrough\b/i.test(text) ||
       /\b(?:go|walk|move|step)s?\s+(?:west|east|north|south|back)\b/i.test(text) ||
       /\b(?:back|return)\b/i.test(text);
-    if (!wantsReverseCross && /(enter|room beyond|beyond)/.test(text)) {
+    if (passageDoor !== null) {
+      const crossing = resolveCrossingAgainstTopology({
+        relation: 'far',
+        leaf: 'open',
+        wantsCross: wantsCross || /(enter|room beyond|beyond)/.test(text),
+        wantsReverse: wantsReverseCross,
+      });
+      if (crossing.kind === 'already_through') {
+        return {
+          proposedCommandType: 'table.sync',
+          edgeId: passageDoor.edgeId,
+          summary: `${describeDoorPosition({
+            relation: 'far',
+            doorLabel: doorApproachLabel(passageDoor),
+            leaf: 'open',
+            sceneTitle,
+          })} ${crossing.summary}`,
+        };
+      }
+    } else if (!wantsReverseCross && /(enter|room beyond|beyond)/.test(text)) {
       return {
         proposedCommandType: 'table.sync',
         summary: `You are already through the doorway in ${sceneTitle}. Declare what you do next from your current position.`,

@@ -379,6 +379,40 @@ export function resolveIntentAuthority(
     };
   }
 
+  
+  // Approved sensory compounds resolve as one Director-narrated beat.
+  const sensoryOnly = actionable.every(
+    (step) =>
+      step.kind === 'inspect' &&
+      (step.outcomeHint === 'listen' ||
+        step.outcomeHint === 'door_state' ||
+        step.outcomeHint === 'scene_perception' ||
+        step.outcomeHint === 'sensory_sequence' ||
+        step.outcomeHint === 'stay_put'),
+  );
+  const hasSensorySequence = actionable.some(
+    (step) =>
+      step.kind === 'inspect' &&
+      (step.outcomeHint === 'sensory_sequence' || step.outcomeHint === 'listen'),
+  );
+  if (actionable.length > 1 && sensoryOnly && hasSensorySequence) {
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [
+        {
+          kind: 'inspect',
+          targetRef: null,
+          outcomeHint: 'sensory_sequence',
+        },
+      ],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary:
+        'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
+      proposedCommandType: 'table.sync',
+    };
+  }
+
   if (actionable.length > 1) {
     const labels = actionable.map((step) => step.kind.replace(/_/g, ' '));
     const primary = labels[0]!;
@@ -416,7 +450,7 @@ export function resolveIntentAuthority(
     }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
-      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen';
+      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence';
     const mapCorrection = only.outcomeHint === 'map_state_correction';
     return {
       disposition: 'director_narrate_only',
@@ -429,7 +463,9 @@ export function resolveIntentAuthority(
           : mapCorrection
             ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
-            ? only.outcomeHint === 'listen'
+            ? only.outcomeHint === 'sensory_sequence'
+              ? 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
+              : only.outcomeHint === 'listen'
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
               : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
             : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
@@ -727,6 +763,28 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   } else if (wantsCloseDoor) {
     actionSequence.push({ kind: 'close_door', targetRef: null, outcomeHint: null });
+  }
+
+  // Compound sensory staging: hide/wait + listen is one narratable perception beat.
+  const wantsHide = /\b(?:hide|conceal(?:\s+myself)?|duck\s+behind|take\s+cover)\b/i.test(trimmed);
+  const wantsWait = /\b(?:wait|hold\s+(?:still|position)|pause)\b/i.test(trimmed);
+  const wantsListen = /\blisten\b/i.test(trimmed);
+  if ((wantsHide || wantsWait) && wantsListen) {
+    const withoutMove = actionSequence.filter((step) => step.kind !== 'move');
+    actionSequence.length = 0;
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: 'sensory_sequence',
+    });
+    for (const step of withoutMove) {
+      if (step.kind === 'inspect' && (step.outcomeHint === 'listen' || step.outcomeHint === 'door_state')) {
+        continue;
+      }
+      if (step.kind !== 'inspect' || step.outcomeHint !== 'sensory_sequence') {
+        actionSequence.push(step);
+      }
+    }
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
   // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).
