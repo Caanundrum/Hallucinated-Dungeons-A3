@@ -56,7 +56,11 @@ test.describe('PQA layout and playability batch 3', () => {
     expect(composerBox).toBeTruthy();
     expect(composerBox!.width).toBeGreaterThan(200);
     expect(composerBox!.height).toBeGreaterThan(40);
-    await expect(page.getByTestId('action-channel-hint')).toBeVisible();
+    await expect(page.getByTestId('player-action-input')).toBeVisible();
+    await expect(page.getByTestId('action-channel-hint')).toHaveCount(0);
+    // Exploration strip stays out of the visible dock; expand is the default.
+    await expect(page.getByTestId('dm-play-thread')).toHaveClass(/is-expanded/);
+    await expect(page.getByTestId('table-turn-banner')).toHaveClass(/visually-hidden/);
 
     await page.getByTestId('mobile-task-sheet').click();
     await expect(page.getByTestId('table-info-rail')).toBeVisible();
