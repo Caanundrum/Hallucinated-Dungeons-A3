@@ -2637,7 +2637,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const quietExplorationBanner =
       banner.tone === 'exploration' && bannerExtras.trim().length === 0;
     const turnBannerHtml = quietExplorationBanner
-      ? `<p class="visually-hidden" data-testid="table-turn-banner" aria-live="polite">${escapeHtml(banner.title)}. ${escapeHtml(banner.detail)}</p>
+      ? `<p class="visually-hidden" data-testid="table-turn-banner" aria-live="polite">Exploration. ${escapeHtml(banner.detail)}</p>
          <p class="visually-hidden" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
          <p class="visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
          <p class="visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>`
