@@ -2653,15 +2653,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <div class="dm-play-thread${dmThreadExpanded ? ' is-expanded' : ''}" data-testid="dm-play-thread">
           <div class="dm-play-thread-chrome">
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
-            <div class="dm-play-thread-chrome-actions">
-              <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
-                aria-pressed="${dmThreadExpanded}">
-                ${dmThreadExpanded ? 'Compact' : 'Expand'}
-              </button>
-              <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
-                Jump to latest
-              </button>
-            </div>
           </div>
           <p class="record-meta visually-hidden" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
@@ -2738,6 +2729,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     aria-disabled="${busy || candidate === null || playerActionDraft.trim().length === 0}">
                     ${busy ? 'Sending…' : `Tell ${escapeHtml(directorIdentityLabel)}`}
                   </button>
+                  <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
+                    aria-pressed="${dmThreadExpanded}">
+                    ${dmThreadExpanded ? 'Compact' : 'Expand'}
+                  </button>
+                  <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
+                    Jump to latest
+                  </button>
                   ${
                     showAttack
                       ? `<button type="button" class="table-secondary-action" data-testid="play-attack"
@@ -2755,12 +2753,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   }
                 </div>
               </div>`
-            : `<div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
-                <p class="record-meta">${
-                  seated
-                    ? 'Watch the scene or use chat while others act.'
-                    : 'Seat a character to play in this Game Director thread.'
-                }</p>
+            : `<div class="table-player-turn-composer table-player-turn-composer-spectate" data-testid="table-player-turn-composer">
+                <div class="table-player-actions table-player-actions-compact" data-testid="table-player-actions">
+                  <p class="record-meta">${
+                    seated
+                      ? 'Watch the scene or use chat while others act.'
+                      : 'Seat a character to play in this Game Director thread.'
+                  }</p>
+                  <button type="button" class="table-secondary-action dm-thread-expand" data-testid="dm-thread-expand"
+                    aria-pressed="${dmThreadExpanded}">
+                    ${dmThreadExpanded ? 'Compact' : 'Expand'}
+                  </button>
+                  <button type="button" class="table-secondary-action dm-thread-jump-latest" data-testid="dm-thread-jump-latest" hidden>
+                    Jump to latest
+                  </button>
+                </div>
               </div>`
         }
       </div>`;
