@@ -176,8 +176,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let lastSubmittedDeclaration = '';
   /** When true, the play timeline sticks to the newest beat (A3). */
   let dmThreadFollowLatest = true;
-  /** Taller play timeline for reading long narration (TQA-074). */
-  let dmThreadExpanded = false;
+  /** Taller play timeline for reading long narration (TQA-074). Default expanded — quieter map-first shell. */
+  let dmThreadExpanded = true;
   /** Table character sheet overlay (TQA-061–066). */
   let sheetModalOpen = false;
   let sheetModalTab: SheetModalSection = 'overview';
@@ -2596,56 +2596,60 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       encounter !== null &&
       encounter.status !== 'ended' &&
       !trainingToolsVisible();
-    return `
-      <div class="table-action-bar-inner table-action-bar-dm">
-        <section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
+    const doorSelectionDetail = (() => {
+      const edge =
+        selectedEdgeId === null || mapBundle === null
+          ? undefined
+          : mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
+      if (edge === undefined || edge.kind !== 'door') {
+        return '';
+      }
+      return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
+        doorDetailCopy(edge, mapBundle?.title ?? ''),
+      )}</p>`;
+    })();
+    const initiativeHtml = initiativeStrip();
+    const bannerExtras = [
+      sessionIsSuspended()
+        ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
+        : '',
+      initiativeHtml,
+      movePreviewNote === null
+        ? ''
+        : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`,
+      doorSelectionDetail,
+      pendingMoveConfirm
+        ? `<div class="table-player-actions" data-testid="pending-move-actions">
+             <button type="button" class="table-primary-action" data-testid="confirm-pending-move"
+               aria-disabled="${busy}">Confirm move</button>
+             <button type="button" class="table-secondary-action" data-testid="cancel-pending-move"
+               aria-disabled="${busy}">Cancel move</button>
+           </div>`
+        : '',
+      showEndEncounter
+        ? `<div class="table-player-actions" data-testid="end-encounter-play-actions">
+             <button type="button" class="table-secondary-action" data-testid="end-encounter-play"
+               aria-disabled="${busy}">End encounter</button>
+           </div>`
+        : '',
+    ].join('');
+    // Quieter exploration: omit the "Exploring freely" strip when it carries no actionable chrome.
+    const quietExplorationBanner =
+      banner.tone === 'exploration' && bannerExtras.trim().length === 0;
+    const turnBannerHtml = quietExplorationBanner
+      ? `<p class="visually-hidden" data-testid="table-turn-banner" aria-live="polite">${escapeHtml(banner.title)}. ${escapeHtml(banner.detail)}</p>
+         <p class="visually-hidden" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
+         <p class="visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
+         <p class="visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>`
+      : `<section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
           <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
-          ${
-            sessionIsSuspended()
-              ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
-              : ''
-          }
-          ${initiativeStrip()}
+          ${bannerExtras}
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
-          ${
-            movePreviewNote === null
-              ? ''
-              : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`
-          }
-          ${
-            (() => {
-              const edge =
-                selectedEdgeId === null || mapBundle === null
-                  ? undefined
-                  : mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
-              if (edge === undefined || edge.kind !== 'door') {
-                return '';
-              }
-              return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-                doorDetailCopy(edge, mapBundle?.title ?? ''),
-              )}</p>`;
-            })()
-          }
-          ${
-            pendingMoveConfirm
-              ? `<div class="table-player-actions" data-testid="pending-move-actions">
-                   <button type="button" class="table-primary-action" data-testid="confirm-pending-move"
-                     aria-disabled="${busy}">Confirm move</button>
-                   <button type="button" class="table-secondary-action" data-testid="cancel-pending-move"
-                     aria-disabled="${busy}">Cancel move</button>
-                 </div>`
-              : ''
-          }
-          ${
-            showEndEncounter
-              ? `<div class="table-player-actions" data-testid="end-encounter-play-actions">
-                   <button type="button" class="table-secondary-action" data-testid="end-encounter-play"
-                     aria-disabled="${busy}">End encounter</button>
-                 </div>`
-              : ''
-          }
-        </section>
+        </section>`;
+    return `
+      <div class="table-action-bar-inner table-action-bar-dm">
+        ${turnBannerHtml}
         <div class="dm-play-thread${dmThreadExpanded ? ' is-expanded' : ''}" data-testid="dm-play-thread">
           <div class="dm-play-thread-chrome">
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
@@ -2724,9 +2728,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ${
           canDescribeTurn
             ? `<div class="table-player-turn-composer" data-testid="table-player-turn-composer">
-                <p class="record-meta" data-testid="action-channel-hint">
-                  One declaration at a time.
-                </p>
                 <label class="field table-action-field">
                   <span class="visually-hidden">What do you do?</span>
                   <textarea data-testid="player-action-input" rows="2"

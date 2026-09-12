@@ -44,16 +44,22 @@ test('dock layout metrics', async ({ page }) => {
       '[data-testid="chronicle-kind-filter"]',
     ) as HTMLSelectElement | null;
     const as = getComputedStyle(action!);
-    const bs = getComputedStyle(banner!);
+    const bannerHidden =
+      banner === null ||
+      banner.classList.contains('visually-hidden') ||
+      getComputedStyle(banner).position === 'absolute';
+    const bs = banner && !banner.classList.contains('visually-hidden') ? getComputedStyle(banner) : null;
     return {
       playH: play?.clientHeight ?? 0,
       mapH: map?.clientHeight ?? 0,
       actionH: action?.clientHeight ?? 0,
       innerH: inner?.clientHeight ?? 0,
       threadH: thread?.clientHeight ?? 0,
+      threadExpanded: thread?.classList.contains('is-expanded') ?? false,
       actionMaxH: as.maxHeight,
-      bannerOverflowY: bs.overflowY,
-      bannerMaxH: bs.maxHeight,
+      bannerQuiet: bannerHidden,
+      bannerOverflowY: bs?.overflowY ?? 'hidden',
+      bannerMaxH: bs?.maxHeight ?? '0px',
       gapPlayMinusChildren:
         play && map && action ? play.clientHeight - map.clientHeight - action.clientHeight : 99,
       sheetLinkPresent: !!sheetLink,
@@ -70,9 +76,12 @@ test('dock layout metrics', async ({ page }) => {
   expect(metrics.openSheetPresent).toBe(true);
   expect(metrics.chronicleFilter).toBe('');
   expect(metrics.actionMaxH).toBe('none');
-  // Banner is capped so it cannot starve the timeline (recheck: 72px thread).
-  expect(metrics.bannerOverflowY).toMatch(/auto|scroll/);
-  expect(metrics.bannerMaxH).not.toBe('none');
+  // Exploration chrome is quiet; combat banners still cap height when shown.
+  expect(metrics.bannerQuiet || /^(auto|scroll)$/.test(metrics.bannerOverflowY)).toBe(true);
+  if (!metrics.bannerQuiet) {
+    expect(metrics.bannerMaxH).not.toBe('none');
+  }
+  expect(metrics.threadExpanded).toBe(true);
   expect(metrics.slotFlexes).toBe(true);
   expect(Math.abs(metrics.gapPlayMinusChildren)).toBeLessThan(12);
   expect(metrics.innerH).toBeGreaterThan(metrics.actionH * 0.8);
