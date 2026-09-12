@@ -843,9 +843,9 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  flex: 1 1 auto;
+  flex: 1.15 1 auto;
   height: auto;
-  max-height: min(56vh, 30rem);
+  max-height: min(62vh, 34rem);
 }
 
 /* Slot host must participate in the dock column without forcing empty stretch. */
@@ -1382,8 +1382,8 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1 1 auto;
-    max-height: min(52vh, 28rem);
+    flex: 1.2 1 auto;
+    max-height: min(64vh, 36rem);
   }
 
   .table-action-bar-dm > .table-turn-banner {
@@ -1400,7 +1400,7 @@ ol.record-list.dm-thread-list > li {
   }
 
   .dm-play-thread.is-expanded {
-    max-height: min(42vh, 22rem);
+    max-height: min(50vh, 28rem);
   }
 }
 
