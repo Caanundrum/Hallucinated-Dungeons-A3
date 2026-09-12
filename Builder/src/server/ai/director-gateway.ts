@@ -70,6 +70,11 @@ import {
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
 import {
+  actionableDirectorFallback,
+  evaluateCharacterCapability,
+  understandUtterance,
+} from '../../shared/utterance-understanding.js';
+import {
   declarationIsDoorOpenOrPassage,
   declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
@@ -1170,14 +1175,17 @@ export async function interpretNaturalLanguageIntent(options: {
 
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
+  const utterance = understandUtterance(rawText);
+  // Clarify / narrate-only must never fall into the keyword combat/travel cascade.
   const authorityShortCircuit =
     authority.disposition === 'director_narrate_only' ||
     authority.disposition === 'reject_world_authorship' ||
-    (authority.disposition === 'clarify' &&
-      (structured.isInterrogative ||
-        authority.actionSequence.length > 1 ||
-        structured.playerAssertedWorldFacts.length > 0 ||
-        structured.addressee !== null)) ||
+    authority.disposition === 'clarify' ||
+    utterance.speechAct === 'question' ||
+    utterance.speechAct === 'rules_query' ||
+    utterance.wantsKnowledgeRecap ||
+    utterance.constraints.prepareWithoutAttack ||
+    utterance.constraints.forbidCombat ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door') ||
     (authority.disposition === 'propose_command' &&
@@ -1540,6 +1548,15 @@ export async function interpretNaturalLanguageIntent(options: {
     }
   } else if (/(cast|spell|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
     const matchedSpell = matchSpellFromText(text);
+    const capability = evaluateCharacterCapability(seatedSheet, {
+      wantsCast: true,
+      spellId: matchedSpell?.spellId ?? null,
+      spellLabel: matchedSpell?.label ?? null,
+    });
+    if (!capability.allowed) {
+      proposedCommandType = 'table.sync';
+      summary = [capability.reason, capability.suggestion].filter(Boolean).join(' ');
+    } else {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
@@ -1580,9 +1597,14 @@ export async function interpretNaturalLanguageIntent(options: {
       targetCombatantId = target.combatantId;
       summary = `Ready to cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine.`;
     }
+  }
   } else if (
     /\b(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)\b/.test(text)
   ) {
+    if (utterance.constraints.prepareWithoutAttack || utterance.constraints.forbidCombat) {
+      proposedCommandType = 'table.sync';
+      summary = actionableDirectorFallback(utterance);
+    } else {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
@@ -1607,6 +1629,7 @@ export async function interpretNaturalLanguageIntent(options: {
       proposedCommandType = 'combat.attack';
       targetCombatantId = target.combatantId;
       summary = `Ready to attack ${target.name} with your weapon. Confirm to let the engine roll to hit and damage.`;
+    }
     }
   }
 
