@@ -17,6 +17,12 @@
 import type { DoorState } from './map-contract.js';
 import type { IntentDraftCommandType } from './intent-draft-contract.js';
 import { declarationNegatesDoorOpen } from './resolved-action-receipt.js';
+import {
+  actionableDirectorFallback,
+  filterActionsByConstraints,
+  understandUtterance,
+  utteranceLooksLikeQuestion,
+} from './utterance-understanding.js';
 
 /** Who may author which kind of fact. */
 export const PLAY_AUTHORITY_ROLES = ['player', 'director', 'mechanics'] as const;
@@ -226,7 +232,11 @@ export function resolveIntentAuthority(
   parsed: StructuredDeclarationParse,
 ): IntentAuthorityResolution {
   const ignoredWorldFacts = [...parsed.playerAssertedWorldFacts];
-  const sequence = [...parsed.actionSequence];
+  const understanding = understandUtterance(parsed.rawText);
+  const sequence = filterActionsByConstraints(
+    [...parsed.actionSequence],
+    understanding.constraints,
+  );
 
   // Directly addressing a known NPC makes dialogue the primary intent.
   const addresseeIsNpc =
@@ -257,6 +267,63 @@ export function resolveIntentAuthority(
       ignoredWorldFacts,
       clarificationPrompt: `${parsed.addressee} is not an established NPC at this table yet. Only the Game Director can introduce someone new — declare what your character does, or ask the Director who is present.`,
       summary: `${parsed.addressee} is not established here — the Game Director introduces NPCs.`,
+      proposedCommandType: 'table.sync',
+    };
+  }
+
+  // Knowledge/recap/rules questions with no concrete dialogue/door-sense step.
+  // Do not steal NPC dialogue or ordinary door-state / scene surveys.
+  const hasConcreteSense = sequence.some(
+    (step) =>
+      step.kind === 'dialogue' ||
+      (step.kind === 'inspect' &&
+        (step.outcomeHint === 'door_state' ||
+          step.outcomeHint === 'listen' ||
+          step.outcomeHint === 'scene_perception' ||
+          step.outcomeHint === 'who_is_present' ||
+          step.outcomeHint === 'map_state_correction' ||
+          step.outcomeHint === 'trap_search')),
+  );
+  if (
+    !hasConcreteSense &&
+    (understanding.wantsKnowledgeRecap ||
+      understanding.wantsContentsQuery ||
+      understanding.speechAct === 'rules_query' ||
+      (understanding.speechAct === 'question' &&
+        !sequence.some((step) => step.kind === 'open_door' || step.kind === 'unlock_door')))
+  ) {
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [
+        {
+          kind: 'inspect',
+          targetRef: null,
+          outcomeHint: understanding.wantsContentsQuery
+            ? 'contents_query'
+            : understanding.wantsKnowledgeRecap
+              ? 'knowledge_recap'
+              : understanding.speechAct === 'rules_query'
+                ? 'rules_query'
+                : 'scene_perception',
+        },
+      ],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary: actionableDirectorFallback(understanding),
+      proposedCommandType: 'table.sync',
+    };
+  }
+
+  if (
+    understanding.constraints.prepareWithoutAttack &&
+    !sequence.some((step) => step.kind === 'attack' || step.kind === 'cast')
+  ) {
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [{ kind: 'other', targetRef: null, outcomeHint: 'prepare_weapon' }],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary: actionableDirectorFallback(understanding),
       proposedCommandType: 'table.sync',
     };
   }
@@ -301,24 +368,61 @@ export function resolveIntentAuthority(
   }
 
   if (actionable.length === 0) {
+    const fallback = actionableDirectorFallback(understanding);
     return {
       disposition: 'clarify',
       actionSequence: [],
       ignoredWorldFacts,
-      clarificationPrompt: 'What is your character attempting to do?',
-      summary: 'I heard your declaration. Say the action you want to resolve.',
+      clarificationPrompt: fallback,
+      summary: fallback,
       proposedCommandType: null,
     };
   }
 
+  
+  // Approved sensory compounds resolve as one Director-narrated beat.
+  const sensoryOnly = actionable.every(
+    (step) =>
+      step.kind === 'inspect' &&
+      (step.outcomeHint === 'listen' ||
+        step.outcomeHint === 'door_state' ||
+        step.outcomeHint === 'scene_perception' ||
+        step.outcomeHint === 'sensory_sequence' ||
+        step.outcomeHint === 'stay_put'),
+  );
+  const hasSensorySequence = actionable.some(
+    (step) =>
+      step.kind === 'inspect' &&
+      (step.outcomeHint === 'sensory_sequence' || step.outcomeHint === 'listen'),
+  );
+  if (actionable.length > 1 && sensoryOnly && hasSensorySequence) {
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [
+        {
+          kind: 'inspect',
+          targetRef: null,
+          outcomeHint: 'sensory_sequence',
+        },
+      ],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary:
+        'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
+      proposedCommandType: 'table.sync',
+    };
+  }
+
   if (actionable.length > 1) {
-    const labels = actionable.map((step) => step.kind.replace(/_/g, ' ')).join(', then ');
+    const labels = actionable.map((step) => step.kind.replace(/_/g, ' '));
+    const primary = labels[0]!;
+    const rest = labels.slice(1).join(', then ');
     return {
       disposition: 'clarify',
       actionSequence: actionable,
       ignoredWorldFacts,
-      clarificationPrompt: `I see more than one action (${labels}). Confirm the order, or take them one at a time.`,
-      summary: `Multiple actions: ${labels}. Confirm the sequence to continue.`,
+      clarificationPrompt: `Primary intent is ${primary}${rest ? `, then ${rest}` : ''}. Confirm that order, or declare one action at a time.`,
+      summary: `Primary: ${primary}. Next: ${rest || 'none'}. Confirm the sequence or take them one at a time.`,
       proposedCommandType: null,
     };
   }
@@ -346,7 +450,7 @@ export function resolveIntentAuthority(
     }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
-      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen';
+      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence';
     const mapCorrection = only.outcomeHint === 'map_state_correction';
     return {
       disposition: 'director_narrate_only',
@@ -359,7 +463,9 @@ export function resolveIntentAuthority(
           : mapCorrection
             ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
-            ? only.outcomeHint === 'listen'
+            ? only.outcomeHint === 'sensory_sequence'
+              ? 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
+              : only.outcomeHint === 'listen'
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
               : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
             : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
@@ -457,13 +563,7 @@ export function textRequestsLockPicking(text: string): boolean {
 }
 
 export function textIsInterrogative(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    /\?/.test(trimmed) ||
-    /^(?:who|what|which|where|when|why|how|can|could|would|will|do|does|did|is|are)\b/i.test(
-      trimmed,
-    )
-  );
+  return utteranceLooksLikeQuestion(text);
 }
 
 export interface ParsePlayerDeclarationOptions {
@@ -664,6 +764,28 @@ export function parsePlayerDeclaration(
   } else if (wantsCloseDoor) {
     actionSequence.push({ kind: 'close_door', targetRef: null, outcomeHint: null });
   }
+
+  // Compound sensory staging: hide/wait + listen is one narratable perception beat.
+  const wantsHide = /\b(?:hide|conceal(?:\s+myself)?|duck\s+behind|take\s+cover)\b/i.test(trimmed);
+  const wantsWait = /\b(?:wait|hold\s+(?:still|position)|pause)\b/i.test(trimmed);
+  const wantsListen = /\blisten\b/i.test(trimmed);
+  if ((wantsHide || wantsWait) && wantsListen) {
+    const withoutMove = actionSequence.filter((step) => step.kind !== 'move');
+    actionSequence.length = 0;
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: 'sensory_sequence',
+    });
+    for (const step of withoutMove) {
+      if (step.kind === 'inspect' && (step.outcomeHint === 'listen' || step.outcomeHint === 'door_state')) {
+        continue;
+      }
+      if (step.kind !== 'inspect' || step.outcomeHint !== 'sensory_sequence') {
+        actionSequence.push(step);
+      }
+    }
+  }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
   // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).
   if (
@@ -744,6 +866,57 @@ export function parsePlayerDeclaration(
     actionSequence.push(...collapsed);
   }
 
+  // Core understanding: binding constraints and speech-act routing beat verb guesses.
+  const understanding = understandUtterance(trimmed);
+  const constraints = understanding.constraints;
+  let bounded = filterActionsByConstraints(actionSequence, constraints);
+
+  // Knowledge / recap / contents questions are perception — never movement drafts.
+  if (
+    (understanding.wantsKnowledgeRecap ||
+      understanding.wantsContentsQuery ||
+      understanding.speechAct === 'question' ||
+      understanding.speechAct === 'rules_query') &&
+    !bounded.some((step) => step.kind === 'inspect' || step.kind === 'dialogue')
+  ) {
+    bounded = [
+      {
+        kind: 'inspect',
+        targetRef: null,
+        outcomeHint: understanding.wantsContentsQuery
+          ? 'contents_query'
+          : understanding.wantsKnowledgeRecap
+            ? 'knowledge_recap'
+            : understanding.speechAct === 'rules_query'
+              ? 'rules_query'
+              : 'scene_perception',
+      },
+      ...bounded.filter((step) => step.kind !== 'move' && step.kind !== 'open_door'),
+    ];
+  }
+
+  // Prepare weapon without attacking is inspect/other staging — not combat.
+  if (constraints.prepareWithoutAttack) {
+    bounded = bounded.filter((step) => step.kind !== 'attack' && step.kind !== 'cast');
+    if (!bounded.some((step) => step.kind === 'inspect' || step.kind === 'other')) {
+      bounded = [
+        { kind: 'other', targetRef: null, outcomeHint: 'prepare_weapon' },
+        ...bounded,
+      ];
+    }
+  }
+
+  // OOC / stay-put instructions with no remaining action become a stay-put inspect.
+  if (
+    bounded.length === 0 &&
+    (constraints.forbidMove || understanding.speechAct === 'ooc_instruction')
+  ) {
+    bounded = [{ kind: 'inspect', targetRef: null, outcomeHint: 'stay_put' }];
+  }
+
+  actionSequence.length = 0;
+  actionSequence.push(...bounded);
+
   return {
     rawText: trimmed,
     speaker: 'player_character',
@@ -754,7 +927,7 @@ export function parsePlayerDeclaration(
     actionSequence,
     playerAssertedWorldFacts,
     knownCanonicalReferences,
-    isInterrogative,
+    isInterrogative: isInterrogative || understanding.speechAct === 'question',
   };
 }
 

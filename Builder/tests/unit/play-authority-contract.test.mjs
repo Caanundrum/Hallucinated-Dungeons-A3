@@ -403,3 +403,23 @@ test('close doorway parses as close_door, not open_door or inspect', () => {
   const authority = resolveIntentAuthority(parsed);
   assert.equal(authority.proposedCommandType, 'table.close_door');
 });
+
+
+test('hide and listen collapses to sensory director narration', () => {
+  const parsed = parsePlayerDeclaration('I hide behind the crates and listen');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.actionSequence.some((step) => step.kind === 'move'), false);
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'sensory_sequence',
+    ),
+  );
+});
+
+test('wait and listen is narrate-only, not a move draft', () => {
+  const parsed = parsePlayerDeclaration('I wait one minute and listen');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.actionSequence.some((step) => step.kind === 'move'), false);
+});

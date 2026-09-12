@@ -70,6 +70,11 @@ import {
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
 import {
+  actionableDirectorFallback,
+  evaluateCharacterCapability,
+  understandUtterance,
+} from '../../shared/utterance-understanding.js';
+import {
   declarationIsDoorOpenOrPassage,
   declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
@@ -77,6 +82,14 @@ import { assembleDirectorVisibleContext } from './director-context.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import { formatMapRouteSummary } from '../../shared/map-presentation.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
+import {
+  answerFromCampaignFacts,
+  extractCampaignFactsFromPremise,
+} from '../../shared/campaign-facts.js';
+import {
+  answerContainerContentsQuery,
+  containerLabelHintFromText,
+} from '../../shared/container-contents.js';
 
 function shortFeatureLabel(label: string): string {
   return label.replace(/\s+[—-]\s+.*$/u, '').trim();
@@ -255,6 +268,68 @@ export function buildNpcDialogueReply(options: {
   return `${name}: "Ask plainly about what we can see here. I answer from this chamber — not from places that aren't established yet."`;
 }
 
+
+function buildPremiseFactCorpus(memory: CampaignMemoryProjection | null): ReturnType<typeof extractCampaignFactsFromPremise> {
+  const premiseParts: string[] = [];
+  if (memory !== null) {
+    for (const chapter of memory.chapters) {
+      if (chapter.planSummary.trim().length > 0) {
+        premiseParts.push(chapter.planSummary.trim());
+      }
+      if (chapter.recordedSummary !== null && chapter.recordedSummary.trim().length > 0) {
+        premiseParts.push(chapter.recordedSummary.trim());
+      }
+    }
+    for (const quest of memory.quests) {
+      if (quest.summary.trim().length > 0) {
+        premiseParts.push(`${quest.title}: ${quest.summary}`);
+      }
+    }
+  }
+  const premise = premiseParts.join(' ');
+  return extractCampaignFactsFromPremise(premise);
+}
+
+function answerKnowledgeRecapNarration(
+  memory: CampaignMemoryProjection | null,
+  playerText: string,
+): string {
+  const facts = buildPremiseFactCorpus(memory);
+  const answered = answerFromCampaignFacts({ facts, queryText: playerText });
+  return answered.playerFacingBody;
+}
+
+function answerContentsQueryNarration(
+  map: MapBundleProjection | null,
+  playerText: string,
+): string {
+  const hint = containerLabelHintFromText(playerText) ?? 'the container';
+  let open = /\bopen\b/i.test(playerText) || /\binside\b/i.test(playerText);
+  let label = hint;
+  if (map !== null) {
+    const match = map.notableFeatures.find((feature) => {
+      const featureLabel = feature.label.toLowerCase();
+      return hint.split(/\s+/).every((part) => featureLabel.includes(part));
+    });
+    if (match !== undefined) {
+      label = match.label;
+      if (match.objectState === 'open') {
+        open = true;
+      }
+      if (match.objectState === 'closed') {
+        open = false;
+      }
+    }
+  }
+  // Unauthored contents — honest limitation rather than invented loot.
+  const answered = answerContainerContentsQuery({
+    containerLabel: label,
+    view: { contents: null, discovery: open ? 'visible' : 'hidden', open },
+    wantsTake: /\b(?:take|grab|pocket|stow)\b/i.test(playerText),
+  });
+  return answered.body;
+}
+
 async function resolveDirectorNarrateOutput(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
@@ -289,6 +364,16 @@ async function resolveDirectorNarrateOutput(options: {
     );
   } catch {
     memory = null;
+  }
+
+  if (inspectHint === 'knowledge_recap' || inspectHint === 'rules_query') {
+    const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+    return answerKnowledgeRecapNarration(memory, playerAsk || options.authority.summary);
+  }
+
+  if (inspectHint === 'contents_query') {
+    const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+    return answerContentsQueryNarration(map, playerAsk);
   }
 
   if (inspectHint === 'scene_perception' || inspectHint === 'unlocked door') {
@@ -340,7 +425,7 @@ async function resolveDirectorNarrateOutput(options: {
     return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
   }
 
-  if (inspectHint === 'door_state' || inspectHint === 'listen') {
+  if (inspectHint === 'door_state' || inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
     if (map !== null) {
       const closed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
       const open = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
@@ -350,7 +435,7 @@ async function resolveDirectorNarrateOutput(options: {
         const authority = doorAuthorityFromStored(door.doorState);
         const facing = door.orientation;
         const label = formatDoorPlayerFacingLabel(authority, facing);
-        if (inspectHint === 'listen') {
+        if (inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
           return authority.leaf === 'open'
             ? `You listen toward ${label}. The leaf is already open; quiet air moves through the passage — nothing forces a roll.`
             : `You press an ear toward ${label}. Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
@@ -1170,14 +1255,17 @@ export async function interpretNaturalLanguageIntent(options: {
 
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
+  const utterance = understandUtterance(rawText);
+  // Clarify / narrate-only must never fall into the keyword combat/travel cascade.
   const authorityShortCircuit =
     authority.disposition === 'director_narrate_only' ||
     authority.disposition === 'reject_world_authorship' ||
-    (authority.disposition === 'clarify' &&
-      (structured.isInterrogative ||
-        authority.actionSequence.length > 1 ||
-        structured.playerAssertedWorldFacts.length > 0 ||
-        structured.addressee !== null)) ||
+    authority.disposition === 'clarify' ||
+    utterance.speechAct === 'question' ||
+    utterance.speechAct === 'rules_query' ||
+    utterance.wantsKnowledgeRecap ||
+    utterance.constraints.prepareWithoutAttack ||
+    utterance.constraints.forbidCombat ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'unlock_door') ||
     (authority.disposition === 'propose_command' &&
@@ -1540,6 +1628,15 @@ export async function interpretNaturalLanguageIntent(options: {
     }
   } else if (/(cast|spell|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
     const matchedSpell = matchSpellFromText(text);
+    const capability = evaluateCharacterCapability(seatedSheet, {
+      wantsCast: true,
+      spellId: matchedSpell?.spellId ?? null,
+      spellLabel: matchedSpell?.label ?? null,
+    });
+    if (!capability.allowed) {
+      proposedCommandType = 'table.sync';
+      summary = [capability.reason, capability.suggestion].filter(Boolean).join(' ');
+    } else {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
@@ -1580,9 +1677,14 @@ export async function interpretNaturalLanguageIntent(options: {
       targetCombatantId = target.combatantId;
       summary = `Ready to cast ${matchedSpell.label} at ${target.name}. Confirm to resolve the spell with the engine.`;
     }
+  }
   } else if (
     /\b(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)\b/.test(text)
   ) {
+    if (utterance.constraints.prepareWithoutAttack || utterance.constraints.forbidCombat) {
+      proposedCommandType = 'table.sync';
+      summary = actionableDirectorFallback(utterance);
+    } else {
     const target = matchCombatantFromText(text, foes) ?? (foes.length === 1 ? foes[0]! : null);
     if (!combatActive) {
       proposedCommandType = 'encounter.begin';
@@ -1607,6 +1709,7 @@ export async function interpretNaturalLanguageIntent(options: {
       proposedCommandType = 'combat.attack';
       targetCombatantId = target.combatantId;
       summary = `Ready to attack ${target.name} with your weapon. Confirm to let the engine roll to hit and damage.`;
+    }
     }
   }
 
@@ -1806,16 +1909,69 @@ export async function answerDirectorAddress(options: {
     userPrompt: `${context.text}\n\nPlayer ask-the-DM message:\n${text}`,
   });
 
+  // Shared fact corpus with Play — Ask must not invent beyond established/inferred facts.
+  let askMemory: CampaignMemoryProjection | null = null;
+  try {
+    askMemory = await loadCampaignMemory(
+      options.firestore,
+      options.campaignId,
+      options.accountId,
+    );
+  } catch {
+    askMemory = null;
+  }
+  const understanding = understandUtterance(text);
+  let body = scrubEngineCoordinates(liveBody ?? simulatorBody);
+  if (understanding.wantsKnowledgeRecap || understanding.speechAct === 'rules_query') {
+    body = answerKnowledgeRecapNarration(askMemory, text);
+  } else if (understanding.wantsContentsQuery) {
+    let askMap: MapBundleProjection | null = null;
+    try {
+      askMap = await fetchCampaignMap({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      });
+    } catch {
+      askMap = null;
+    }
+    body = answerContentsQueryNarration(askMap, text);
+  }
+
+  // Only suggest a Play draft when the same interpreter would propose a real command.
+  let actionDraftSuggestion: DirectorAddressResponse['actionDraftSuggestion'] = null;
+  if (
+    !understanding.wantsKnowledgeRecap &&
+    !understanding.wantsContentsQuery &&
+    understanding.speechAct !== 'question' &&
+    understanding.speechAct !== 'rules_query' &&
+    understanding.speechAct !== 'ooc_instruction'
+  ) {
+    const structured = parsePlayerDeclaration(text);
+    const authority = resolveIntentAuthority(structured);
+    if (
+      authority.disposition === 'propose_command' &&
+      authority.proposedCommandType !== null &&
+      authority.proposedCommandType !== 'table.sync'
+    ) {
+      actionDraftSuggestion = {
+        draftId: randomUUID(),
+        summary: authority.summary,
+        proposedCommandType: authority.proposedCommandType,
+      };
+    }
+  }
+
   return {
     responseId: randomUUID(),
     campaignId: options.campaignId,
-    body: scrubEngineCoordinates(liveBody ?? simulatorBody),
+    body,
     mutatesState: false,
     directorIdentityLabel: name,
     directorIdentity: director.identity,
     directorPersonality: director.personality,
     consultMode,
-    actionDraftSuggestion: null,
+    actionDraftSuggestion,
     manifest,
     createdAt,
   };
