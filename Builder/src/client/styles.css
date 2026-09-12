@@ -843,7 +843,8 @@ a.account-chip-label:focus-visible {
 }
 
 .table-action-bar:has(.dm-play-thread.is-expanded) {
-  flex: 1.15 1 auto;
+  /* Grow only with timeline content — never leave an empty band under the composer. */
+  flex: 0 1 auto;
   height: auto;
   max-height: min(62vh, 34rem);
 }
@@ -923,35 +924,35 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread.is-expanded {
-  flex: 1 1 auto;
+  /* Content-sized with a taller scroll cap; parent no longer flex-grows empty space. */
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: min(44vh, 24rem);
+  max-height: min(50vh, 28rem);
 }
 
 .dm-play-thread-chrome {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
   margin: 0;
-  padding: 0 0 var(--space-2);
+  padding: 0 0 var(--space-1);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-  background: color-mix(in srgb, var(--color-surface) 98%, var(--color-ink) 2%);
+  background: transparent;
+}
+
+/* Compact / Expand + Jump to latest live beside Tell Veyra, not in thread chrome. */
+.dm-play-thread-chrome-actions {
+  display: none;
 }
 
 .dm-play-thread-chrome > .record-meta {
   margin: 0;
   flex: 0 0 auto;
-}
-
-.dm-play-thread-chrome-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  align-items: center;
 }
 
 .dm-thread-jump-latest,
@@ -1108,12 +1109,16 @@ ol.record-list.dm-thread-list > li {
 
 .table-action-bar .table-player-turn-composer {
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) auto;
+  grid-template-columns: minmax(8rem, 1fr) auto;
   gap: var(--space-2);
   align-items: end;
   margin-top: 0;
   width: 100%;
   flex: 0 0 auto;
+}
+
+.table-action-bar .table-player-turn-composer-spectate {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .table-action-bar .table-player-turn-composer [data-testid='action-channel-hint'] {
@@ -1129,8 +1134,8 @@ ol.record-list.dm-thread-list > li {
 .table-action-bar .table-action-field textarea {
   width: 100%;
   min-width: 0;
-  min-height: 3.25rem;
-  max-height: 8.5rem;
+  min-height: 2.75rem;
+  max-height: 6.5rem;
   resize: vertical;
   field-sizing: content;
   padding: var(--space-2) var(--space-3);
@@ -1144,11 +1149,16 @@ ol.record-list.dm-thread-list > li {
   padding: var(--space-2) var(--space-3);
   font-size: 0.84rem;
   white-space: nowrap;
-  max-width: 11rem;
+  max-width: none;
 }
 
 .table-action-bar .table-player-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+  max-width: min(28rem, 52vw);
 }
 
 .table-action-bar .table-player-actions-compact p {
@@ -1290,24 +1300,25 @@ ol.record-list.dm-thread-list > li {
     aspect-ratio: auto;
   }
 
-  /* Compact dock under a larger map; composer stays reserved inside clip. */
+  /* Content-sized dock — do not flex-grow an empty band under the composer. */
   .table-action-bar {
-    flex: 0.8 1 0;
+    flex: 0 1 auto;
     height: auto;
-    max-height: none;
-    min-height: 11rem;
+    max-height: min(48vh, 26rem);
+    min-height: 0;
     overflow: clip;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.05 1 0;
+    flex: 0 1 auto;
     height: auto;
-    max-height: none;
+    max-height: min(58vh, 32rem);
   }
 
   .table-action-bar > [data-testid='table-action-slot'],
   .table-action-bar-inner,
   .table-action-bar-dm {
+    flex: 0 1 auto;
     min-height: 0;
     overflow: hidden;
   }
@@ -1322,29 +1333,34 @@ ol.record-list.dm-thread-list > li {
     display: none;
   }
 
-  /* Composer is non-negotiable; thread consumes only leftover height. */
   .table-action-bar-dm > .table-player-turn-composer {
     flex: 0 0 auto;
   }
 
   .dm-play-thread {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-height: 0;
-    max-height: none;
+    max-height: min(28vh, 14rem);
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
-    flex: 1.25 1 0;
+    flex: 0 1 auto;
     min-height: 0;
+    max-height: min(42vh, 22rem);
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
     min-height: 0;
-    max-height: none;
-    flex: 1 1 0;
+    max-height: min(16vh, 10rem);
+    flex: 0 1 auto;
     overflow-y: auto;
+  }
+
+  .dm-play-thread.is-expanded .dm-thread-list,
+  .dm-play-thread.is-expanded ol.record-list.dm-thread-list {
+    max-height: min(28vh, 16rem);
   }
 
   .table-action-bar .table-action-field textarea {
@@ -1382,7 +1398,7 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 1.2 1 auto;
+    flex: 0 1 auto;
     max-height: min(64vh, 36rem);
   }
 
@@ -1400,6 +1416,7 @@ ol.record-list.dm-thread-list > li {
   }
 
   .dm-play-thread.is-expanded {
+    flex: 0 1 auto;
     max-height: min(50vh, 28rem);
   }
 }
