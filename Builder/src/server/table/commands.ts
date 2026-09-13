@@ -32,6 +32,7 @@ import {
 } from '../../shared/movement-contract.js';
 import {
   describeMoveDestination,
+  doorNearSquare,
   formatMoveTravelSummary,
 } from '../../shared/map-presentation.js';
 import { ERROR_CODES } from '../../shared/contract.js';
@@ -865,6 +866,19 @@ export async function acceptTableCommand(options: {
     }
     movePath = path;
     moveDestinationLabel = describeMoveDestination(map, path[path.length - 1]!);
+    // Bind the doorway this through-step crosses so receipt/narration match the live open leaf.
+    if (typeof edgeId === 'string' && edgeId.length > 0) {
+      const bound = map.edges.find((entry) => entry.edgeId === edgeId && entry.kind === 'door');
+      if (bound !== undefined) {
+        openEdgeId = bound.edgeId;
+      }
+    }
+    if (openEdgeId === undefined) {
+      const nearDoor = doorNearSquare(map, path[path.length - 1]!);
+      if (nearDoor !== null) {
+        openEdgeId = nearDoor.edgeId;
+      }
+    }
     eventType = 'table.token_moved';
   }
 
@@ -1332,7 +1346,12 @@ export async function acceptTableCommand(options: {
       targetKind: receiptTargetKind,
       mutations: receiptMutations,
       doorStatesAfter: doorStates,
-      openCross: openCrossDeclaration && commandType === 'table.open_door',
+      openCross:
+        openCrossDeclaration &&
+        (commandType === 'table.open_door' ||
+          (commandType === 'table.move' &&
+            openEdgeId !== undefined &&
+            doorStates[openEdgeId] === 'open')),
       ...(sceneTitle !== null && sceneTitle !== undefined ? { sceneTitle } : {}),
       ...(skillResolution !== null
         ? { eventSummary: skillResolution.summary }

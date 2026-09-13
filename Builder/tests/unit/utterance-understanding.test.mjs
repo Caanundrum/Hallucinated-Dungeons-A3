@@ -1,11 +1,11 @@
-import assert from 'node:assert/strict';
 import { test } from 'node:test';
-
+import assert from 'node:assert/strict';
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
   extractUtteranceConstraints,
   filterActionsByConstraints,
+  resolveConditionalDoorIntent,
   understandUtterance,
   utteranceLooksLikeQuestion,
 } from '../../dist/shared/utterance-understanding.js';
@@ -113,4 +113,32 @@ test('multi-intent clarification names a primary action', () => {
   );
   assert.equal(listen.actionSequence.some((step) => step.kind === 'move'), false);
   assert.ok(parsed.rawText.length > 0);
+});
+
+
+test('conditional open-if-closed matches east doorway phrasing', () => {
+  const understanding = understandUtterance(
+    'If the east doorway is closed, open it; otherwise leave it exactly as it is',
+  );
+  assert.equal(understanding.constraints.openOnlyIfClosed, true);
+  assert.equal(
+    resolveConditionalDoorIntent({
+      constraints: understanding.constraints,
+      doorLeaf: 'open',
+    }),
+    'noop',
+  );
+});
+
+test('Fireball refusal names class and spell when sheet has no spellcasting', () => {
+  const verdict = evaluateCharacterCapability(
+    {
+      level: 1,
+      spellcasting: null,
+    },
+    { wantsCast: true, spellLabel: 'Fireball', classLabel: 'Rogue' },
+  );
+  assert.equal(verdict.allowed, false);
+  assert.match(verdict.reason ?? '', /Rogue/i);
+  assert.match(verdict.reason ?? '', /Fireball/i);
 });

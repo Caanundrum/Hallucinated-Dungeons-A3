@@ -50,6 +50,7 @@ import { appendChronicleEntry } from '../communication/chronicle.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { fetchRulesState } from '../rules/engine/rules-commands.js';
 import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
+import { findClass } from '../rules/srd-manifest.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
@@ -72,6 +73,7 @@ import {
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
+  resolveConditionalDoorIntent,
   understandUtterance,
 } from '../../shared/utterance-understanding.js';
 import {
@@ -85,6 +87,7 @@ import type { CampaignMemoryProjection } from '../../shared/campaign-memory-cont
 import {
   answerFromCampaignFacts,
   extractCampaignFactsFromPremise,
+  rejectUnsupportedPremiseClaim,
 } from '../../shared/campaign-facts.js';
 import {
   answerContainerContentsQuery,
@@ -269,7 +272,10 @@ export function buildNpcDialogueReply(options: {
 }
 
 
-function buildPremiseFactCorpus(memory: CampaignMemoryProjection | null): ReturnType<typeof extractCampaignFactsFromPremise> {
+function buildPremiseFactCorpus(
+  memory: CampaignMemoryProjection | null,
+  extras: readonly string[] = [],
+): ReturnType<typeof extractCampaignFactsFromPremise> {
   const premiseParts: string[] = [];
   if (memory !== null) {
     for (const chapter of memory.chapters) {
@@ -286,15 +292,54 @@ function buildPremiseFactCorpus(memory: CampaignMemoryProjection | null): Return
       }
     }
   }
+  for (const extra of extras) {
+    if (extra.trim().length > 0) {
+      premiseParts.push(extra.trim());
+    }
+  }
   const premise = premiseParts.join(' ');
   return extractCampaignFactsFromPremise(premise);
+}
+
+async function loadScenePremiseExtras(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+}): Promise<readonly string[]> {
+  const extras: string[] = [];
+  try {
+    const map = await fetchCampaignMap({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      campaignId: options.campaignId,
+    });
+    if (map.sceneBanner.trim().length > 0) {
+      extras.push(map.sceneBanner.trim());
+    }
+    if (map.title.trim().length > 0) {
+      extras.push(map.title.trim());
+    }
+  } catch {
+    // Map extras are best-effort.
+  }
+  try {
+    const { loadMapRuntime } = await import('../table/map-runtime.js');
+    const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+    if (typeof runtime.premiseKey === 'string' && runtime.premiseKey.trim().length > 0) {
+      extras.push(runtime.premiseKey.trim());
+    }
+  } catch {
+    // Runtime premise is best-effort.
+  }
+  return extras;
 }
 
 function answerKnowledgeRecapNarration(
   memory: CampaignMemoryProjection | null,
   playerText: string,
+  extras: readonly string[] = [],
 ): string {
-  const facts = buildPremiseFactCorpus(memory);
+  const facts = buildPremiseFactCorpus(memory, extras);
   const answered = answerFromCampaignFacts({ facts, queryText: playerText });
   return answered.playerFacingBody;
 }
@@ -368,7 +413,12 @@ async function resolveDirectorNarrateOutput(options: {
 
   if (inspectHint === 'knowledge_recap' || inspectHint === 'rules_query') {
     const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
-    return answerKnowledgeRecapNarration(memory, playerAsk || options.authority.summary);
+    const extras = await loadScenePremiseExtras({
+      firestore: options.firestore,
+      campaignId: options.campaignId,
+      accountId: options.accountId,
+    });
+    return answerKnowledgeRecapNarration(memory, playerAsk || options.authority.summary, extras);
   }
 
   if (inspectHint === 'contents_query') {
@@ -1182,6 +1232,76 @@ export function extractDeclaredFoesFromText(
   return [];
 }
 
+
+async function gateDoorDeclarationAgainstLiveTruth(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+  readonly text: string;
+  readonly seatedSheet: import('../../shared/character-contract.js').DerivedCharacterSheet | null;
+  readonly map: MapBundleProjection;
+}): Promise<{
+  readonly proposedCommandType: 'table.sync';
+  readonly summary: string;
+  readonly edgeId?: string;
+} | null> {
+  const understanding = understandUtterance(options.text);
+  const extras = await loadScenePremiseExtras({
+    firestore: options.firestore,
+    campaignId: options.campaignId,
+    accountId: options.accountId,
+  });
+  let memory: CampaignMemoryProjection | null = null;
+  try {
+    memory = await loadCampaignMemory(
+      options.firestore,
+      options.campaignId,
+      options.accountId,
+    );
+  } catch {
+    memory = null;
+  }
+  const facts = buildPremiseFactCorpus(memory, extras);
+  const premiseReject = rejectUnsupportedPremiseClaim({
+    claimText: options.text,
+    knownNpcNames: memory?.npcs.map((npc) => npc.name) ?? [],
+    inventoryNames: options.seatedSheet?.equipment.map((item) => item.name) ?? [],
+    facts,
+  });
+  if (premiseReject !== null) {
+    return { proposedCommandType: 'table.sync', summary: premiseReject };
+  }
+
+  const doors = options.map.edges.filter((edge) => edge.kind === 'door');
+  const mentioned =
+    doors.find((edge) => (/\beast\b/i.test(options.text) ? edge.orientation === 'east' : false)) ??
+    doors.find((edge) => (/\bwest\b/i.test(options.text) ? edge.orientation === 'west' : false)) ??
+    doors[0];
+  let doorLeaf: 'open' | 'closed' | 'unknown' = 'unknown';
+  if (mentioned !== undefined) {
+    doorLeaf = mentioned.doorState === 'open' ? 'open' : 'closed';
+  }
+  const conditional = resolveConditionalDoorIntent({
+    constraints: understanding.constraints,
+    doorLeaf,
+  });
+  if (conditional === 'noop') {
+    const label =
+      mentioned !== undefined
+        ? formatDoorPlayerFacingLabel(
+            doorAuthorityFromStored(mentioned.doorState),
+            mentioned.orientation,
+          )
+        : 'the doorway';
+    return {
+      proposedCommandType: 'table.sync',
+      summary: `${label} is already open. Leaving it exactly as it is — no open or step-through is prepared.`,
+      ...(mentioned !== undefined ? { edgeId: mentioned.edgeId } : {}),
+    };
+  }
+  return null;
+}
+
 export async function interpretNaturalLanguageIntent(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
@@ -1212,6 +1332,7 @@ export async function interpretNaturalLanguageIntent(options: {
 
   let encounter: EncounterProjection | null = null;
   let seatedSheet: import('../../shared/character-contract.js').DerivedCharacterSheet | null = null;
+  let rulesProgressionClassLabel: string | null = null;
   try {
     const [rules, table] = await Promise.all([
       fetchRulesState({
@@ -1227,10 +1348,14 @@ export async function interpretNaturalLanguageIntent(options: {
     ]);
     encounter = rules.encounter;
     seatedSheet = rules.progression?.sheet ?? null;
+    if (typeof rules.progression?.classId === 'string') {
+      rulesProgressionClassLabel = findClass(rules.progression.classId)?.label ?? null;
+    }
     projectionVersionAtIssue = table.stateVersion;
   } catch {
     encounter = null;
     seatedSheet = null;
+    rulesProgressionClassLabel = null;
   }
 
   const combatActive = encounter !== null && encounter.status === 'active';
@@ -1350,8 +1475,34 @@ export async function interpretNaturalLanguageIntent(options: {
         (authority.actionSequence[0]?.kind === 'inspect' &&
           authority.actionSequence[0]?.outcomeHint === 'trap_search'))
     ) {
-      proposedCommandType = 'table.sync';
-      summary = buildSkillCheckDraftSummary(seatedSheet, text);
+      const extras = await loadScenePremiseExtras({
+        firestore: options.firestore,
+        campaignId: options.campaignId,
+        accountId: options.accountId,
+      });
+      let memoryForPremise: CampaignMemoryProjection | null = null;
+      try {
+        memoryForPremise = await loadCampaignMemory(
+          options.firestore,
+          options.campaignId,
+          options.accountId,
+        );
+      } catch {
+        memoryForPremise = null;
+      }
+      const premiseReject = rejectUnsupportedPremiseClaim({
+        claimText: text,
+        knownNpcNames: memoryForPremise?.npcs.map((npc) => npc.name) ?? [],
+        inventoryNames: seatedSheet?.equipment.map((item) => item.name) ?? [],
+        facts: buildPremiseFactCorpus(memoryForPremise, extras),
+      });
+      if (premiseReject !== null) {
+        proposedCommandType = 'table.sync';
+        summary = premiseReject;
+      } else {
+        proposedCommandType = 'table.sync';
+        summary = buildSkillCheckDraftSummary(seatedSheet, text);
+      }
     } else if (
       authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'move'
@@ -1381,17 +1532,34 @@ export async function interpretNaturalLanguageIntent(options: {
               ? map.tokens[0]
               : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
           if (ownToken !== undefined && map.edges.length > 0) {
-            const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
-            if (persisted !== null) {
-              proposedCommandType = persisted.proposedCommandType;
-              summary = persisted.summary;
-              if (persisted.path !== undefined) {
-                path = [...persisted.path];
-              }
-              if (persisted.edgeId !== undefined) {
-                edgeId = persisted.edgeId;
+            const gated = await gateDoorDeclarationAgainstLiveTruth({
+              firestore: options.firestore,
+              campaignId: options.campaignId,
+              accountId: options.accountId,
+              text,
+              seatedSheet,
+              map,
+            });
+            if (gated !== null) {
+              proposedCommandType = gated.proposedCommandType;
+              summary = gated.summary;
+              if (gated.edgeId !== undefined) {
+                edgeId = gated.edgeId;
               }
               doorResolved = true;
+            } else {
+              const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
+              if (persisted !== null) {
+                proposedCommandType = persisted.proposedCommandType;
+                summary = persisted.summary;
+                if (persisted.path !== undefined) {
+                  path = [...persisted.path];
+                }
+                if (persisted.edgeId !== undefined) {
+                  edgeId = persisted.edgeId;
+                }
+                doorResolved = true;
+              }
             }
           }
         } catch {
@@ -1434,28 +1602,44 @@ export async function interpretNaturalLanguageIntent(options: {
           ? map.tokens[0]
           : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
       if (ownToken !== undefined) {
-        const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
-        if (persisted !== null) {
-          proposedCommandType = persisted.proposedCommandType;
-          summary = persisted.summary;
-          if (persisted.path !== undefined) {
-            path = [...persisted.path];
-          }
-          if (persisted.edgeId !== undefined) {
-            edgeId = persisted.edgeId;
+        const gated = await gateDoorDeclarationAgainstLiveTruth({
+          firestore: options.firestore,
+          campaignId: options.campaignId,
+          accountId: options.accountId,
+          text,
+          seatedSheet,
+          map,
+        });
+        if (gated !== null) {
+          proposedCommandType = gated.proposedCommandType;
+          summary = gated.summary;
+          if (gated.edgeId !== undefined) {
+            edgeId = gated.edgeId;
           }
         } else {
-          const blankBuild = resolveBlankTableDoorBuild(map, ownToken.footprint.anchor, text);
-          if (blankBuild !== null) {
-            proposedCommandType = blankBuild.proposedCommandType;
-            summary = blankBuild.summary;
-            if (blankBuild.edgeId !== undefined) {
-              edgeId = blankBuild.edgeId;
+          const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
+          if (persisted !== null) {
+            proposedCommandType = persisted.proposedCommandType;
+            summary = persisted.summary;
+            if (persisted.path !== undefined) {
+              path = [...persisted.path];
+            }
+            if (persisted.edgeId !== undefined) {
+              edgeId = persisted.edgeId;
             }
           } else {
-            proposedCommandType = 'table.sync';
-            summary =
-              'This scene has no door to open yet. Ask the Director what you can interact with here, or declare how you explore the chamber.';
+            const blankBuild = resolveBlankTableDoorBuild(map, ownToken.footprint.anchor, text);
+            if (blankBuild !== null) {
+              proposedCommandType = blankBuild.proposedCommandType;
+              summary = blankBuild.summary;
+              if (blankBuild.edgeId !== undefined) {
+                edgeId = blankBuild.edgeId;
+              }
+            } else {
+              proposedCommandType = 'table.sync';
+              summary =
+                'This scene has no door to open yet. Ask the Director what you can interact with here, or declare how you explore the chamber.';
+            }
           }
         }
       }
@@ -1626,12 +1810,21 @@ export async function interpretNaturalLanguageIntent(options: {
       targetCombatantId = self.combatantId;
       summary = `Ready to use a Potion of Healing on ${self.name}. Confirm to let the engine resolve the heal.`;
     }
-  } else if (/(cast|spell|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
+  } else if (/(cast|spell|fireball|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
     const matchedSpell = matchSpellFromText(text);
+    const classLabel =
+      rulesProgressionClassLabel !== null
+        ? rulesProgressionClassLabel
+        : null;
+    const spellLabelFromText =
+      matchedSpell?.label ??
+      (text.match(/\b(fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds)\b/i)?.[1] ??
+        null);
     const capability = evaluateCharacterCapability(seatedSheet, {
       wantsCast: true,
       spellId: matchedSpell?.spellId ?? null,
-      spellLabel: matchedSpell?.label ?? null,
+      spellLabel: spellLabelFromText,
+      classLabel,
     });
     if (!capability.allowed) {
       proposedCommandType = 'table.sync';
@@ -1923,7 +2116,12 @@ export async function answerDirectorAddress(options: {
   const understanding = understandUtterance(text);
   let body = scrubEngineCoordinates(liveBody ?? simulatorBody);
   if (understanding.wantsKnowledgeRecap || understanding.speechAct === 'rules_query') {
-    body = answerKnowledgeRecapNarration(askMemory, text);
+    const extras = await loadScenePremiseExtras({
+      firestore: options.firestore,
+      campaignId: options.campaignId,
+      accountId: options.accountId,
+    });
+    body = answerKnowledgeRecapNarration(askMemory, text, extras);
   } else if (understanding.wantsContentsQuery) {
     let askMap: MapBundleProjection | null = null;
     try {

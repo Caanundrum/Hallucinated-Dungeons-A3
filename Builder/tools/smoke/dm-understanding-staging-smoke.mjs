@@ -1,5 +1,5 @@
 /**
- * Staging-checklist smoke for DM understanding core (PR #131).
+ * Staging-checklist smoke for DM understanding core + QA recheck remediation.
  * Exercises Play interpreter + Ask draft validation without a live browser.
  */
 import assert from 'node:assert/strict';
@@ -11,13 +11,19 @@ import {
 import {
   answerFromCampaignFacts,
   extractCampaignFactsFromPremise,
+  rejectUnsupportedPremiseClaim,
 } from '../../dist/shared/campaign-facts.js';
 import { answerContainerContentsQuery } from '../../dist/shared/container-contents.js';
 import {
   relationToDoor,
   resolveCrossingAgainstTopology,
 } from '../../dist/shared/door-topology.js';
-import { understandUtterance } from '../../dist/shared/utterance-understanding.js';
+import { buildResolvedActionReceipt } from '../../dist/shared/resolved-action-receipt.js';
+import {
+  evaluateCharacterCapability,
+  resolveConditionalDoorIntent,
+  understandUtterance,
+} from '../../dist/shared/utterance-understanding.js';
 
 function section(title) {
   console.log(`\n== ${title} ==`);
@@ -138,6 +144,84 @@ section('7. Ask draft suggestion only when Play would propose a real command');
     'ask-open-door-may-draft',
   );
   assert.equal(open.understanding.speechAct !== 'question', true);
+}
+
+section('8. QA R05 — crouch + listen is sensory narrate-only');
+{
+  const authority = expectNarrate(
+    'I crouch behind the broken crate stack and listen without attacking',
+    'crouch-and-listen',
+  );
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'sensory_sequence',
+    ),
+  );
+}
+
+section('9. QA R06 — open-only-if-closed is a no-op on an already-open leaf');
+{
+  const understanding = understandUtterance(
+    'If the east doorway is closed, open it; otherwise leave it exactly as it is',
+  );
+  assert.equal(understanding.constraints.openOnlyIfClosed, true);
+  assert.equal(
+    resolveConditionalDoorIntent({
+      constraints: understanding.constraints,
+      doorLeaf: 'open',
+    }),
+    'noop',
+  );
+  console.log('PASS  conditional-open-noop-when-open');
+}
+
+section('10. QA R08 — Fireball refusal names Rogue + Fireball');
+{
+  const verdict = evaluateCharacterCapability(
+    { level: 1, spellcasting: null },
+    { wantsCast: true, spellLabel: 'Fireball', classLabel: 'Rogue' },
+  );
+  assert.equal(verdict.allowed, false);
+  assert.match(verdict.reason ?? '', /Rogue/i);
+  assert.match(verdict.reason ?? '', /Fireball/i);
+  console.log('PASS  fireball-capability-refusal');
+  console.log(`      ${verdict.reason}`);
+}
+
+section('11. QA R10 — invented Mara handoff / silver key is rejected');
+{
+  const reject = rejectUnsupportedPremiseClaim({
+    claimText:
+      'Mara Venn handed me a silver key earlier; I use it on the already-open east doorway',
+    knownNpcNames: [],
+    inventoryNames: [],
+    facts: extractCampaignFactsFromPremise('Find the missing courier.'),
+  });
+  assert.ok(reject !== null);
+  assert.match(reject ?? '', /key|Mara|not established|handoff|invent/i);
+  assert.doesNotMatch(reject ?? '', /thieves.?tools|DC\s*15/i);
+  console.log('PASS  premise-reject-mara-key');
+  console.log(`      ${reject}`);
+}
+
+section('12. QA R11 — open doorway table.move receipt narrates stepped through');
+{
+  const receipt = buildResolvedActionReceipt({
+    commandType: 'table.move',
+    declaration: 'I step through the open wooden doorway east',
+    edgeId: 'door-e',
+    targetLabel: 'Wooden doorway east — open',
+    targetKind: 'token_path',
+    mutations: [],
+    doorStatesAfter: { 'door-e': 'open' },
+    openCross: true,
+    sceneTitle: 'Canal warehouse loft',
+  });
+  assert.equal(receipt.namedDoorOpenAfter, true);
+  assert.match(receipt.narrationSeed, /stepped through/i);
+  assert.doesNotMatch(receipt.narrationSeed, /remains closed/i);
+  console.log('PASS  open-door-move-receipt');
+  console.log(`      ${receipt.narrationSeed}`);
 }
 
 console.log('\nAll DM-understanding staging smoke checks passed.');

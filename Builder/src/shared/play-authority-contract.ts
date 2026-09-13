@@ -766,7 +766,7 @@ export function parsePlayerDeclaration(
   }
 
   // Compound sensory staging: hide/wait + listen is one narratable perception beat.
-  const wantsHide = /\b(?:hide|conceal(?:\s+myself)?|duck\s+behind|take\s+cover)\b/i.test(trimmed);
+  const wantsHide = /\b(?:hide|conceal(?:\s+myself)?|crouch(?:\s+behind)?|kneel(?:\s+behind)?|hunker(?:\s+down)?|duck\s+behind|take\s+cover(?:\s+behind)?)\b/i.test(trimmed);
   const wantsWait = /\b(?:wait|hold\s+(?:still|position)|pause)\b/i.test(trimmed);
   const wantsListen = /\blisten\b/i.test(trimmed);
   if ((wantsHide || wantsWait) && wantsListen) {

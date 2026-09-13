@@ -86,7 +86,7 @@ export function utteranceLooksLikeQuestion(text: string): boolean {
 }
 
 export function utteranceWantsKnowledgeRecap(text: string): boolean {
-  return /\b(?:remind\s+me|recap|what\s+do\s+i\s+know|what\s+have\s+i\s+(?:learned|discovered|found)|catch\s+me\s+up|why\s+(?:am|are)\s+i\s+here|why\s+we(?:'re|\s+are)\s+here|missing\s+courier|established\s+facts)\b/i.test(
+  return /\b(?:remind\s+me|recap|what\s+do\s+i\s+know|what\s+have\s+i\s+(?:learned|discovered|found)|catch\s+me\s+up|why\s+(?:am|are)\s+i\s+here|why\s+(?:is|are)\s+\w+\s+here|ask\s+why\s+.{0,40}\bhere\b|why\s+we(?:'re|\s+are)\s+here|missing\s+courier|what\s+remains\s+unproven|established\s+facts)\b/i.test(
     text,
   );
 }
@@ -149,9 +149,11 @@ export function extractUtteranceConstraints(text: string): UtteranceConstraints 
       /\bfrom\s+where\s+i\s+stand\b/i.test(t));
 
   const openOnlyIfClosed =
-    /\bif\s+(?:(?:it|the\s+door(?:way)?)\s+is\s+)?closed\b/i.test(t) &&
+    /\bif\s+(?:(?:it|the(?:\s+\w+){0,3}\s+door(?:way)?)\s+is\s+)?closed\b/i.test(t) &&
     /\bopen\b/i.test(t) &&
-    /\b(?:otherwise|else|if\s+(?:already\s+)?open)\b/i.test(t);
+    (/\b(?:otherwise|else|if\s+(?:already\s+)?open)\b/i.test(t) ||
+      /\bleave\s+it\b/i.test(t) ||
+      /\bexactly\s+as\s+it\s+is\b/i.test(t));
 
   const prepareWithoutAttack =
     /\b(?:draw|unsheathe|ready|prepare|hold)\b/i.test(t) &&
@@ -317,6 +319,7 @@ export function evaluateCharacterCapability(
     readonly wantsCast: boolean;
     readonly spellId?: string | null;
     readonly spellLabel?: string | null;
+    readonly classLabel?: string | null;
     readonly prepareWithoutAttack?: boolean;
   },
 ): CharacterCapabilityVerdict {
@@ -342,9 +345,17 @@ export function evaluateCharacterCapability(
   }
 
   if (sheet.spellcasting === null) {
+    const classBit =
+      typeof options.classLabel === 'string' && options.classLabel.trim().length > 0
+        ? `Your level-${sheet.level} ${options.classLabel.trim()}`
+        : 'This character';
+    const spellBit =
+      typeof options.spellLabel === 'string' && options.spellLabel.trim().length > 0
+        ? options.spellLabel.trim()
+        : 'that spell';
     return {
       allowed: false,
-      reason: 'This character has no spellcasting at this level, so that spell cannot be cast.',
+      reason: `${classBit} cannot cast ${spellBit} (no spellcasting).`,
       suggestion:
         'Use a weapon, skill, or feature from your sheet — or ask the Director what options you have right now.',
     };

@@ -181,3 +181,21 @@ test('resolvedSummaryAfterTableConfirm prefers receipt seed over draft openCross
   assert.equal(summary, receipt.narrationSeed);
   assert.doesNotMatch(summary, /stepped through|Ready to|Confirm to/i);
 });
+
+
+test('open doorway table.move receipt narrates stepped through, not remains closed', () => {
+  const receipt = buildResolvedActionReceipt({
+    commandType: 'table.move',
+    declaration: 'I step through the open wooden doorway east',
+    edgeId: 'door-e',
+    targetLabel: 'Wooden doorway east — open',
+    targetKind: 'token_path',
+    mutations: [],
+    doorStatesAfter: { 'door-e': 'open' },
+    openCross: true,
+    sceneTitle: 'Canal warehouse loft',
+  });
+  assert.equal(receipt.namedDoorOpenAfter, true);
+  assert.match(receipt.narrationSeed, /stepped through/i);
+  assert.doesNotMatch(receipt.narrationSeed, /remains closed/i);
+});

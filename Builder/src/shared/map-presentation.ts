@@ -105,16 +105,17 @@ export function describeMoveDestination(
   map: Pick<MapBundleProjection, 'edges' | 'notableFeatures' | 'title'>,
   destination: MapSquareCoordinate,
 ): string {
-  const exit = exitLabelNearSquare(map, destination);
-  if (exit !== null) {
-    return exit;
-  }
   const door = doorNearSquare(map, destination);
+  // Live door leaf beats baked exit labels so an open doorway cannot narrate as closed.
   if (door !== null) {
     return formatDoorPlayerFacingLabel(
       doorAuthorityFromStored(door.doorState),
       edgeFacingLabel(door.orientation),
     );
+  }
+  const exit = exitLabelNearSquare(map, destination);
+  if (exit !== null) {
+    return exit;
   }
   return `column ${destination.column}, row ${destination.row}`;
 }
