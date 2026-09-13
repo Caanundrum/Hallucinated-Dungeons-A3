@@ -448,6 +448,18 @@ export function resolveIntentAuthority(
         proposedCommandType: 'table.sync',
       };
     }
+    if (only.outcomeHint === 'take_item') {
+      return {
+        disposition: 'director_narrate_only',
+        actionSequence: [only],
+        ignoredWorldFacts,
+        clarificationPrompt: null,
+        summary:
+          'You try to take that prop — the Game Director answers from authored contents and inventory rules. No invented loot is prepared.' +
+          inventIgnoredNote,
+        proposedCommandType: 'table.sync',
+      };
+    }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
       only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence';
@@ -464,7 +476,13 @@ export function resolveIntentAuthority(
             ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
             ? only.outcomeHint === 'sensory_sequence'
-              ? 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
+              ? /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(
+                  parsed.rawText,
+                )
+                ? 'You listen from cover — the Game Director narrates what you perceive. Crouching does not establish a Hide on the table; no move or attack is prepared.'
+                : /\b(?:wait|hold\s+(?:still|position)|pause|minute)\b/i.test(parsed.rawText)
+                  ? 'You wait a beat and listen — the Game Director narrates what you perceive after that short pause. No move or attack is prepared.'
+                  : 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
               : only.outcomeHint === 'listen'
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
               : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
@@ -825,6 +843,25 @@ export function parsePlayerDeclaration(
 
   if (actionSequence.length === 0 && observingScene) {
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
+  }
+
+  // Take / grab an established prop — not a generic one-action clarify.
+  if (
+    actionSequence.length === 0 &&
+    /\b(?:take|grab|pocket|stow)\b/i.test(trimmed) &&
+    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|item|object)\b/i.test(trimmed)
+  ) {
+    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'take_item' });
+  }
+
+  // Named spell cast — capability check owns refusal (not empty clarify).
+  if (
+    actionSequence.length === 0 &&
+    /\b(?:cast|spell|fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds)\b/i.test(
+      trimmed,
+    )
+  ) {
+    actionSequence.push({ kind: 'cast', targetRef: null, outcomeHint: null });
   }
 
   // "Map still says closed" / summary corrections — Director narrates live edge truth.

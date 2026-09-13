@@ -13,6 +13,7 @@ import {
   formatDoorPlayerFacingLabel,
   stripDoorStateLabelSuffix,
 } from './play-authority-contract.js';
+import { relationToDoor } from './door-topology.js';
 
 export function edgeFacingLabel(orientation: MapEdgeRecord['orientation']): string {
   return orientation;
@@ -202,7 +203,17 @@ export function formatPartyDoorAdjacency(
       continue;
     }
     const facing = edgeFacingLabel(door.orientation);
-    parts.push(`${token.label} is beside the ${facing} door`);
+    const side = relationToDoor(anchor, door);
+    const leaf = door.doorState === 'open' ? 'open ' : '';
+    if (side === 'far') {
+      parts.push(
+        `${token.label} is just past the ${leaf}${facing} doorway (same scene — no authored destination beyond)`,
+      );
+    } else if (side === 'threshold') {
+      parts.push(`${token.label} is on the threshold of the ${leaf}${facing} doorway`);
+    } else {
+      parts.push(`${token.label} is beside the ${leaf}${facing} door`);
+    }
   }
   if (parts.length === 0) {
     return null;

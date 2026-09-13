@@ -82,11 +82,12 @@ import {
 } from '../../shared/resolved-action-receipt.js';
 import { assembleDirectorVisibleContext } from './director-context.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
-import { formatMapRouteSummary } from '../../shared/map-presentation.js';
+import { formatMapRouteSummary, isAdjacentToDoorEdge } from '../../shared/map-presentation.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
 import {
   answerFromCampaignFacts,
   extractCampaignFactsFromPremise,
+  mergeCampaignFacts,
   rejectUnsupportedPremiseClaim,
 } from '../../shared/campaign-facts.js';
 import {
@@ -275,6 +276,7 @@ export function buildNpcDialogueReply(options: {
 function buildPremiseFactCorpus(
   memory: CampaignMemoryProjection | null,
   extras: readonly string[] = [],
+  premiseKey: string | null = null,
 ): ReturnType<typeof extractCampaignFactsFromPremise> {
   const premiseParts: string[] = [];
   if (memory !== null) {
@@ -297,16 +299,23 @@ function buildPremiseFactCorpus(
       premiseParts.push(extra.trim());
     }
   }
-  const premise = premiseParts.join(' ');
-  return extractCampaignFactsFromPremise(premise);
+  // Banners / chapter echo must not promote player-asserted names into premise NPCs.
+  const fromContext = extractCampaignFactsFromPremise(premiseParts.join(' '), {
+    allowNamedNpcs: false,
+  });
+  const fromPremiseKey = extractCampaignFactsFromPremise(premiseKey ?? '', {
+    allowNamedNpcs: true,
+  });
+  return mergeCampaignFacts(fromContext, fromPremiseKey);
 }
 
 async function loadScenePremiseExtras(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
   readonly accountId: string;
-}): Promise<readonly string[]> {
-  const extras: string[] = [];
+}): Promise<{ readonly banners: readonly string[]; readonly premiseKey: string | null }> {
+  const banners: string[] = [];
+  let premiseKey: string | null = null;
   try {
     const map = await fetchCampaignMap({
       firestore: options.firestore,
@@ -314,10 +323,10 @@ async function loadScenePremiseExtras(options: {
       campaignId: options.campaignId,
     });
     if (map.sceneBanner.trim().length > 0) {
-      extras.push(map.sceneBanner.trim());
+      banners.push(map.sceneBanner.trim());
     }
     if (map.title.trim().length > 0) {
-      extras.push(map.title.trim());
+      banners.push(map.title.trim());
     }
   } catch {
     // Map extras are best-effort.
@@ -326,20 +335,27 @@ async function loadScenePremiseExtras(options: {
     const { loadMapRuntime } = await import('../table/map-runtime.js');
     const runtime = await loadMapRuntime(options.firestore, options.campaignId);
     if (typeof runtime.premiseKey === 'string' && runtime.premiseKey.trim().length > 0) {
-      extras.push(runtime.premiseKey.trim());
+      premiseKey = runtime.premiseKey.trim();
     }
   } catch {
     // Runtime premise is best-effort.
   }
-  return extras;
+  return { banners, premiseKey };
 }
 
 function answerKnowledgeRecapNarration(
   memory: CampaignMemoryProjection | null,
   playerText: string,
-  extras: readonly string[] = [],
+  extras: {
+    readonly banners?: readonly string[];
+    readonly premiseKey?: string | null;
+  } = {},
 ): string {
-  const facts = buildPremiseFactCorpus(memory, extras);
+  const facts = buildPremiseFactCorpus(
+    memory,
+    extras.banners ?? [],
+    extras.premiseKey ?? null,
+  );
   const answered = answerFromCampaignFacts({ facts, queryText: playerText });
   return answered.playerFacingBody;
 }
@@ -475,6 +491,10 @@ async function resolveDirectorNarrateOutput(options: {
     return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
   }
 
+  if (inspectHint === 'take_item') {
+    return answerContentsQueryNarration(map, options.playerText ?? options.structured.rawText);
+  }
+
   if (inspectHint === 'door_state' || inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
     if (map !== null) {
       const closed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
@@ -486,9 +506,19 @@ async function resolveDirectorNarrateOutput(options: {
         const facing = door.orientation;
         const label = formatDoorPlayerFacingLabel(authority, facing);
         if (inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
+          const hideClause = /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(
+            options.playerText ?? options.structured.rawText,
+          )
+            ? ' Crouching here does not establish a Hide on the table.'
+            : '';
+          const waitClause = /\b(?:wait|minute|hold\s+(?:still|position)|pause)\b/i.test(
+            options.playerText ?? options.structured.rawText,
+          )
+            ? ' A short wait passes in the fiction before you catch the sound.'
+            : '';
           return authority.leaf === 'open'
-            ? `You listen toward ${label}. The leaf is already open; quiet air moves through the passage — nothing forces a roll.`
-            : `You press an ear toward ${label}. Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
+            ? `You listen toward ${label}.${waitClause}${hideClause} The leaf is already open; quiet air moves through the passage — nothing forces a roll.`
+            : `You press an ear toward ${label}.${waitClause}${hideClause} Beyond the wood you hear only the quiet of the established chamber — nothing that opens the door for you.`;
         }
         if (authority.leaf === 'open') {
           return `You check ${label} without forcing it. The leaf is already open on the table; there is no closed lock to test. The doorway stays open.`;
@@ -1261,7 +1291,7 @@ async function gateDoorDeclarationAgainstLiveTruth(options: {
   } catch {
     memory = null;
   }
-  const facts = buildPremiseFactCorpus(memory, extras);
+  const facts = buildPremiseFactCorpus(memory, extras.banners, extras.premiseKey);
   const premiseReject = rejectUnsupportedPremiseClaim({
     claimText: options.text,
     knownNpcNames: memory?.npcs.map((npc) => npc.name) ?? [],
@@ -1273,12 +1303,27 @@ async function gateDoorDeclarationAgainstLiveTruth(options: {
   }
 
   const doors = options.map.edges.filter((edge) => edge.kind === 'door');
+  const openDoors = doors.filter((edge) => edge.doorState === 'open');
+  const ownToken =
+    options.map.viewerSeatId === null
+      ? options.map.tokens[0]
+      : (options.map.tokens.find((token) => token.seatId === options.map.viewerSeatId) ??
+        options.map.tokens[0]);
+  const anchor = ownToken?.footprint.anchor ?? null;
+  const adjacentOpen =
+    anchor === null
+      ? undefined
+      : openDoors.find((edge) => isAdjacentToDoorEdge(anchor, edge));
   const mentioned =
     doors.find((edge) => (/\beast\b/i.test(options.text) ? edge.orientation === 'east' : false)) ??
     doors.find((edge) => (/\bwest\b/i.test(options.text) ? edge.orientation === 'west' : false)) ??
+    adjacentOpen ??
+    openDoors[0] ??
     doors[0];
   let doorLeaf: 'open' | 'closed' | 'unknown' = 'unknown';
-  if (mentioned !== undefined) {
+  if (adjacentOpen !== undefined) {
+    doorLeaf = 'open';
+  } else if (mentioned !== undefined) {
     doorLeaf = mentioned.doorState === 'open' ? 'open' : 'closed';
   }
   const conditional = resolveConditionalDoorIntent({
@@ -1469,7 +1514,40 @@ export async function interpretNaturalLanguageIntent(options: {
   if (sceneLoopResolved) {
     // Skip combat/door branches — scene loop owns this declaration.
   } else if (authorityShortCircuit) {
-    if (
+    // Cast / take must not die in the generic clarify short-circuit — capability and
+    // authored-contents answers are table truth, not optional keyword branches.
+    if (/(cast|spell|fireball|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
+      const matchedSpell = matchSpellFromText(text);
+      const spellLabelFromText =
+        matchedSpell?.label ??
+        (text.match(/\b(fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds)\b/i)?.[1] ??
+          null);
+      const capability = evaluateCharacterCapability(seatedSheet, {
+        wantsCast: true,
+        spellId: matchedSpell?.spellId ?? null,
+        spellLabel: spellLabelFromText,
+        classLabel: rulesProgressionClassLabel,
+      });
+      proposedCommandType = 'table.sync';
+      summary = !capability.allowed
+        ? [capability.reason, capability.suggestion].filter(Boolean).join(' ')
+        : authority.clarificationPrompt ?? authority.summary;
+    } else if (
+      /\b(?:take|grab|pocket|stow)\b/i.test(text) &&
+      containerLabelHintFromText(text) !== null
+    ) {
+      try {
+        const map = await fetchCampaignMap({
+          firestore: options.firestore,
+          accountId: options.accountId,
+          campaignId: options.campaignId,
+        });
+        summary = answerContentsQueryNarration(map, rawText);
+      } catch {
+        summary = answerContentsQueryNarration(null, rawText);
+      }
+      proposedCommandType = 'table.sync';
+    } else if (
       authority.disposition === 'propose_command' &&
       (authority.actionSequence[0]?.kind === 'unlock_door' ||
         (authority.actionSequence[0]?.kind === 'inspect' &&
@@ -1494,7 +1572,7 @@ export async function interpretNaturalLanguageIntent(options: {
         claimText: text,
         knownNpcNames: memoryForPremise?.npcs.map((npc) => npc.name) ?? [],
         inventoryNames: seatedSheet?.equipment.map((item) => item.name) ?? [],
-        facts: buildPremiseFactCorpus(memoryForPremise, extras),
+        facts: buildPremiseFactCorpus(memoryForPremise, extras.banners, extras.premiseKey),
       });
       if (premiseReject !== null) {
         proposedCommandType = 'table.sync';
