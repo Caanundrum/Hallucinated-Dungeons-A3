@@ -177,3 +177,48 @@ export function rejectUnsupportedItemClaim(options: {
   }
   return 'No key is established in your inventory or the scene. Do not invent one.';
 }
+
+
+/** Reject invented NPC handoffs / possessions before mechanics are chosen. */
+export function rejectUnsupportedPremiseClaim(options: {
+  readonly claimText: string;
+  readonly knownNpcNames: readonly string[];
+  readonly inventoryNames: readonly string[];
+  readonly facts: readonly CampaignFactRecord[];
+}): string | null {
+  const itemReject = rejectUnsupportedItemClaim({
+    claimText: options.claimText,
+    inventoryNames: options.inventoryNames,
+    facts: options.facts,
+  });
+  if (itemReject !== null) {
+    return itemReject;
+  }
+  const text = options.claimText;
+  const handoff =
+    /\b(?:handed\s+(?:me\s+)?over|gave\s+me|passed\s+me|from\s+)\b/i.test(text) &&
+    /\b(?:key|letter|package|parcel)\b/i.test(text);
+  if (!handoff) {
+    return null;
+  }
+  const named = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g) ?? [];
+  for (const candidate of named) {
+    if (/^(The|A|An|I|If|Then|East|West|North|South)$/i.test(candidate)) {
+      continue;
+    }
+    const known = options.knownNpcNames.some(
+      (name) => name.toLowerCase() === candidate.toLowerCase(),
+    );
+    const factNamed = options.facts.some((fact) =>
+      fact.label.toLowerCase().includes(candidate.toLowerCase()),
+    );
+    // Premise-named NPCs still do not authorize unestablished handoffs at the table.
+    if (!known) {
+      return `${candidate} is not established as present at this table, so no handoff or possession from them is in play. Declare what you do with what the scene already shows.`;
+    }
+    if (factNamed && /\b(?:handed|gave|passed)\b/i.test(options.claimText)) {
+      return `${candidate} is only named in the premise — they are not established as present, so no handoff is in play. Use what the scene already shows.`;
+    }
+  }
+  return null;
+}

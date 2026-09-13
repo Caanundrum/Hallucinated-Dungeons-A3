@@ -423,3 +423,15 @@ test('wait and listen is narrate-only, not a move draft', () => {
   assert.equal(authority.disposition, 'director_narrate_only');
   assert.equal(authority.actionSequence.some((step) => step.kind === 'move'), false);
 });
+
+
+test('crouch behind crates and listen is sensory narrate-only', () => {
+  const parsed = parsePlayerDeclaration('I crouch behind the broken crate stack and listen without attacking');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'sensory_sequence',
+    ),
+  );
+});
