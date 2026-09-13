@@ -25,12 +25,19 @@ export interface CampaignFactAnswer {
 }
 
 /** Seed facts from adventure premise text — never invent beyond explicit cues. */
-export function extractCampaignFactsFromPremise(premise: string): readonly CampaignFactRecord[] {
+export function extractCampaignFactsFromPremise(
+  premise: string,
+  options: {
+    /** When false, skip promoting proper names (e.g. Mara) into premise facts. */
+    readonly allowNamedNpcs?: boolean;
+  } = {},
+): readonly CampaignFactRecord[] {
   const text = premise.trim();
   if (text.length === 0) {
     return [];
   }
   const facts: CampaignFactRecord[] = [];
+  const allowNamedNpcs = options.allowNamedNpcs !== false;
 
   if (/\b(?:missing|vanished|lost)\s+courier\b/i.test(text) || /\bcourier\b/i.test(text)) {
     facts.push({
@@ -42,17 +49,56 @@ export function extractCampaignFactsFromPremise(premise: string): readonly Campa
       status: /\b(?:missing|vanished|lost)\s+courier\b/i.test(text) ? 'established' : 'inferred',
       tags: ['courier', 'premise', 'recap'],
     });
+    facts.push({
+      factId: 'unknown-courier-fate',
+      label: "the courier's fate",
+      summary: "Where the courier is now, and what happened to them, is not yet established.",
+      status: 'unknown',
+      tags: ['courier', 'unknown', 'recap'],
+    });
+    if (!/\bpackage\b/i.test(text)) {
+      facts.push({
+        factId: 'unknown-package-whereabouts',
+        label: "the package's whereabouts",
+        summary:
+          "Whether a package travels with the courier hook, and where it is now, is not yet established.",
+        status: 'unknown',
+        tags: ['package', 'unknown', 'recap'],
+      });
+    }
   }
 
-  const mara = text.match(/\b(Mara(?:\s+Venn)?)\b/);
-  if (mara !== null) {
+  if (/\b(?:missing|vanished|lost)\s+package\b/i.test(text) || /\bpackage\b/i.test(text)) {
     facts.push({
-      factId: 'premise-mara',
-      label: mara[1]!,
-      summary: `${mara[1]} is named in the premise. Presence at the table is separate — do not treat them as here unless the scene established them.`,
-      status: 'established',
-      tags: ['mara', 'npc', 'premise', 'recap'],
+      factId: 'premise-package',
+      label: 'the missing package',
+      summary: /\b(?:missing|vanished|lost)\s+package\b/i.test(text)
+        ? 'A package is missing alongside the courier hook — recovering it (or news of it) is part of why you are here.'
+        : 'A package figures in the premise; details beyond that are not yet established.',
+      status: /\b(?:missing|vanished|lost)\s+package\b/i.test(text) ? 'established' : 'inferred',
+      tags: ['package', 'premise', 'recap'],
     });
+    facts.push({
+      factId: 'unknown-package-whereabouts',
+      label: "the package's whereabouts",
+      summary: "Where the package is, and who holds it, is not yet established.",
+      status: 'unknown',
+      tags: ['package', 'unknown', 'recap'],
+    });
+  }
+
+  // Named NPCs only from true premise text — never from banners or player-echoed chapters.
+  if (allowNamedNpcs) {
+    const mara = text.match(/\b(Mara(?:\s+Venn)?)\b/);
+    if (mara !== null) {
+      facts.push({
+        factId: 'premise-mara',
+        label: mara[1]!,
+        summary: `${mara[1]} is named in the authored premise. Presence at the table is separate — do not treat them as here unless the scene established them.`,
+        status: 'established',
+        tags: ['mara', 'npc', 'premise', 'recap'],
+      });
+    }
   }
 
   if (/\b(?:silver\s+)?key\b/i.test(text)) {

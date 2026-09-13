@@ -6,9 +6,14 @@ import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '..
 import {
   doorAuthorityFromStored,
   formatDoorAuthorityLabel,
+  formatDoorPlayerFacingLabel,
   textRequestsLockPicking,
 } from '../../shared/play-authority-contract.js';
 import { declarationNegatesDoorOpen } from '../../shared/resolved-action-receipt.js';
+import {
+  extractUtteranceConstraints,
+  resolveConditionalDoorIntent,
+} from '../../shared/utterance-understanding.js';
 
 import { isOnOpenDoorPassage, nextStepThroughOpenDoor } from './move-planner.js';
 import {
@@ -269,8 +274,65 @@ export function resolveDoorIntentForMap(
   const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
   const wantsUnlock = textRequestsLockPicking(text);
   const wantsClose = !wantsUnlock && wantsCloseDoorAction(text);
-  const wantsOpen = !wantsUnlock && !wantsClose && (wantsOpenDoorAction(text) || wantsDoorPassage(text));
-  const wantsCross = !wantsClose && wantsDoorPassage(text);
+  const constraints = extractUtteranceConstraints(text);
+  // Conditional open-if-closed must never become a step-through of an already-open leaf.
+  if (constraints.openOnlyIfClosed) {
+    const named =
+      openDoors.find((edge) =>
+        /\beast\b/i.test(text) ? edge.orientation === 'east' : false,
+      ) ??
+      closedDoors.find((edge) =>
+        /\beast\b/i.test(text) ? edge.orientation === 'east' : false,
+      ) ??
+      openDoors.find((edge) =>
+        /\bwest\b/i.test(text) ? edge.orientation === 'west' : false,
+      ) ??
+      closedDoors.find((edge) =>
+        /\bwest\b/i.test(text) ? edge.orientation === 'west' : false,
+      ) ??
+      adjacentOpen ??
+      adjacentClosed ??
+      openDoors[0] ??
+      closedDoors[0] ??
+      null;
+    const doorLeaf: 'open' | 'closed' | 'unknown' =
+      named === null
+        ? 'unknown'
+        : named.doorState === 'open'
+          ? 'open'
+          : 'closed';
+    // Prefer live adjacency when the named orientation is missing but an open leaf is beside the token.
+    const liveLeaf: 'open' | 'closed' | 'unknown' =
+      adjacentOpen !== undefined
+        ? 'open'
+        : adjacentClosed !== undefined
+          ? 'closed'
+          : doorLeaf;
+    if (
+      resolveConditionalDoorIntent({ constraints, doorLeaf: liveLeaf }) === 'noop' ||
+      resolveConditionalDoorIntent({ constraints, doorLeaf }) === 'noop'
+    ) {
+      const leaf = named ?? adjacentOpen ?? openDoors[0] ?? null;
+      const label =
+        leaf !== null
+          ? formatDoorPlayerFacingLabel(
+              doorAuthorityFromStored(leaf.doorState),
+              leaf.orientation,
+            )
+          : 'the doorway';
+      return {
+        proposedCommandType: 'table.sync',
+        ...(leaf !== null ? { edgeId: leaf.edgeId } : {}),
+        summary: `${label} is already open. Leaving it exactly as it is — no open or step-through is prepared.`,
+      };
+    }
+  }
+  const wantsOpen =
+    !wantsUnlock &&
+    !wantsClose &&
+    !constraints.openOnlyIfClosed &&
+    (wantsOpenDoorAction(text) || wantsDoorPassage(text));
+  const wantsCross = !wantsClose && !constraints.openOnlyIfClosed && wantsDoorPassage(text);
   const wantsInspect =
     (/\b(?:inspect|check|examine|look\s*at|study|swing|ajar|hinge|free|test|listen|locked)\b/.test(
       text,

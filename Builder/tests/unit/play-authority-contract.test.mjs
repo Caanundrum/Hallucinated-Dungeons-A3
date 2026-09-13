@@ -435,3 +435,30 @@ test('crouch behind crates and listen is sensory narrate-only', () => {
     ),
   );
 });
+
+
+test('crouch + listen explains concealment is not established', () => {
+  const parsed = parsePlayerDeclaration(
+    'I crouch behind the broken crate stack and listen without attacking',
+  );
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.match(authority.summary, /[Hh]ide|conceal|crouch/i);
+  assert.match(authority.summary, /does not establish/i);
+});
+
+test('take the open courier satchel is take_item narrate-only', () => {
+  const parsed = parsePlayerDeclaration('I take the open courier satchel');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_item',
+    ),
+  );
+});
+
+test('cast Fireball parses as cast so capability can refuse', () => {
+  const parsed = parsePlayerDeclaration('Cast Fireball at the broken crate stack');
+  assert.ok(parsed.actionSequence.some((step) => step.kind === 'cast'));
+});

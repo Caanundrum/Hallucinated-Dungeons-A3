@@ -40,3 +40,28 @@ test('rejectUnsupportedItemClaim blocks invented keys', () => {
   assert.ok(rejection);
   assert.match(rejection, /key/i);
 });
+
+
+test('banner echo does not promote Mara into premise facts', () => {
+  const facts = extractCampaignFactsFromPremise(
+    'Canal warehouse loft. Mara Venn muttered something in a prior player claim.',
+    { allowNamedNpcs: false },
+  );
+  assert.equal(facts.some((fact) => /Mara/i.test(fact.label)), false);
+});
+
+test('authored premiseKey may name Mara; recap includes package unknowns with courier', () => {
+  const facts = extractCampaignFactsFromPremise(
+    'Find the missing courier and the missing package.',
+    { allowNamedNpcs: true },
+  );
+  assert.ok(facts.some((fact) => fact.tags.includes('courier')));
+  assert.ok(facts.some((fact) => fact.tags.includes('package')));
+  assert.ok(facts.some((fact) => fact.status === 'unknown'));
+  const answer = answerFromCampaignFacts({
+    facts,
+    queryText: 'Why am I here and what remains unproven?',
+  });
+  assert.match(answer.playerFacingBody, /courier/i);
+  assert.match(answer.playerFacingBody, /package|Unknown/i);
+});

@@ -18,6 +18,7 @@ import {
   relationToDoor,
   resolveCrossingAgainstTopology,
 } from '../../dist/shared/door-topology.js';
+import { resolveDoorIntentForMap } from '../../dist/server/table/scene-door-intent.js';
 import { buildResolvedActionReceipt } from '../../dist/shared/resolved-action-receipt.js';
 import {
   evaluateCharacterCapability,
@@ -157,6 +158,7 @@ section('8. QA R05 — crouch + listen is sensory narrate-only');
       (step) => step.kind === 'inspect' && step.outcomeHint === 'sensory_sequence',
     ),
   );
+  assert.match(authority.summary, /does not establish/i);
 }
 
 section('9. QA R06 — open-only-if-closed is a no-op on an already-open leaf');
@@ -223,5 +225,77 @@ section('12. QA R11 — open doorway table.move receipt narrates stepped through
   console.log('PASS  open-door-move-receipt');
   console.log(`      ${receipt.narrationSeed}`);
 }
+
+
+section('13. QA R06 — door resolver refuses step-through for conditional open');
+{
+  const cells = [];
+  for (let column = 0; column < 12; column += 1) {
+    for (let row = 0; row < 8; row += 1) {
+      cells.push({ column, row, terrain: 'normal', known: true });
+    }
+  }
+  const map = {
+    mapBundleId: 'blank:camp-1',
+    title: 'Canal warehouse loft',
+    coordinateSpace: { columns: 12, rows: 8, pixelsPerSquare: 48, feetPerSquare: 5 },
+    cells,
+    edges: [
+      {
+        edgeId: 'e:9:6:east',
+        column: 9,
+        row: 6,
+        orientation: 'east',
+        kind: 'door',
+        doorState: 'open',
+      },
+    ],
+    tokens: [
+      {
+        tokenId: 'tok-1',
+        seatId: 'seat-1',
+        label: 'Pip',
+        footprint: {
+          anchor: { column: 10, row: 6 },
+          widthSquares: 1,
+          heightSquares: 1,
+        },
+      },
+    ],
+    notableFeatures: [],
+    viewerSeatId: 'seat-1',
+  };
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 10, row: 6 },
+    'If the east doorway is closed, open it; otherwise leave it exactly as it is',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(resolved.summary, /step back through|step through/i);
+  console.log('PASS  resolver-conditional-noop');
+  console.log(`      ${resolved.summary}`);
+}
+
+section('14. QA take — open courier satchel is take_item narrate-only');
+{
+  const authority = expectNarrate('I take the open courier satchel', 'take-satchel');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_item',
+    ),
+  );
+}
+
+section('15. QA provenance — banner echo does not name Mara in premise');
+{
+  const facts = extractCampaignFactsFromPremise(
+    'Canal warehouse loft. Mara Venn muttered in a prior player claim.',
+    { allowNamedNpcs: false },
+  );
+  assert.equal(facts.some((fact) => /Mara/i.test(fact.label)), false);
+  console.log('PASS  banner-no-mara-premise');
+}
+
 
 console.log('\nAll DM-understanding staging smoke checks passed.');
