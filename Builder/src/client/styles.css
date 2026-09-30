@@ -609,10 +609,13 @@ a.account-chip-label:focus-visible {
   border-radius: 0;
 }
 
-/* Collapsed rails leave the stage; restore chips live in .table-focus-restore. */
+/* Collapsed rails leave the stage; restore chips live in .table-focus-restore.
+ * !important beats later .communication-dock { display:flex } so the full-width
+ * "Show chat" restore strip cannot reappear under the play dock. */
 .table-info-rail.is-collapsed,
-.table-comms-rail.is-collapsed {
-  display: none;
+.table-comms-rail.is-collapsed,
+.table-comms-rail.communication-dock.is-collapsed {
+  display: none !important;
 }
 
 /* Reference drawer — compact card over the map. */
@@ -734,10 +737,12 @@ a.account-chip-label:focus-visible {
   pointer-events: auto;
 }
 
-.table-focus-restore button {
+.table-focus-restore button,
+.table-focus-restore .table-secondary-action {
   font-size: 0.78rem;
   padding: var(--space-1) var(--space-2);
   min-height: 30px;
+  width: auto;
   background: color-mix(in srgb, var(--panel-surface) 92%, #000);
   border: var(--border-weight) solid var(--panel-border);
   color: var(--text-secondary);
@@ -865,13 +870,12 @@ a.account-chip-label:focus-visible {
 
 .table-action-bar {
   /*
-   * Map-first dock: size to chrome + timeline + composer. Do not stretch a tall
-   * empty thread band when only one or two beats are present.
+   * Quiet play dock: hug timeline + composer. Map claims leftover height.
    */
   flex: 0 1 auto;
   margin: 0;
   height: auto;
-  max-height: min(40vh, 22rem);
+  max-height: min(32vh, 16rem);
   min-height: 0;
   overflow: clip;
   overscroll-behavior: none;
@@ -891,7 +895,7 @@ a.account-chip-label:focus-visible {
   /* Grow only with timeline content — never leave an empty band under the composer. */
   flex: 0 1 auto;
   height: auto;
-  max-height: min(62vh, 34rem);
+  max-height: min(58vh, 32rem);
 }
 
 /* Slot host must participate in the dock column without forcing empty stretch. */
@@ -954,10 +958,10 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread {
-  /* Hug chrome + beats + intercept; scroll the list instead of stretching empty space. */
+  /* Compact by default — map keeps the viewport; Expand grows the timeline. */
   flex: 0 1 auto;
   min-height: 0;
-  max-height: min(28vh, 16rem);
+  max-height: min(16vh, 9rem);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1254,7 +1258,7 @@ ol.record-list.dm-thread-list > li {
   overflow: auto;
 }
 
-.table-comms-rail.communication-dock {
+.table-comms-rail.communication-dock:not(.is-collapsed) {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1403,13 +1407,13 @@ ol.record-list.dm-thread-list > li {
   .table-action-bar {
     flex: 0 1 auto;
     min-height: 0;
-    max-height: min(38vh, 20rem);
+    max-height: min(30vh, 15rem);
     height: auto;
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
     flex: 0 1 auto;
-    max-height: min(64vh, 36rem);
+    max-height: min(58vh, 32rem);
   }
 
   .table-action-bar-dm > .table-turn-banner {
@@ -1422,12 +1426,12 @@ ol.record-list.dm-thread-list > li {
   }
 
   .dm-play-thread {
-    max-height: min(26vh, 15rem);
+    max-height: min(14vh, 8rem);
   }
 
   .dm-play-thread.is-expanded {
     flex: 0 1 auto;
-    max-height: min(50vh, 28rem);
+    max-height: min(48vh, 26rem);
   }
 }
 
