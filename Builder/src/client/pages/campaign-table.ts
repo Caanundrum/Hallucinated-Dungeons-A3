@@ -170,14 +170,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let directorIdentityLabel = 'the Game Director';
   type InfoTab = 'character' | 'notes' | 'people' | 'rules' | 'tools';
   let activeInfoTab: InfoTab = 'character';
-  let infoRailCollapsed = false;
-  let commsRailCollapsed = false;
+  /** Map-first default: reference opens as an overlay drawer on demand. */
+  let infoRailCollapsed = true;
+  /** Map-first default: chat opens as an overlay drawer on demand. */
+  let commsRailCollapsed = true;
   let doorRecoveryVisible = false;
   let lastSubmittedDeclaration = '';
   /** When true, the play timeline sticks to the newest beat (A3). */
   let dmThreadFollowLatest = true;
-  /** Taller play timeline for reading long narration (TQA-074). Default expanded — quieter map-first shell. */
-  let dmThreadExpanded = true;
+  /** Compact play timeline by default so the map owns the first viewport. */
+  let dmThreadExpanded = false;
   /** Table character sheet overlay (TQA-061–066). */
   let sheetModalOpen = false;
   let sheetModalTab: SheetModalSection = 'overview';
@@ -3695,9 +3697,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         if (mode === 'sheet') {
           activeInfoTab = 'character';
           infoRailCollapsed = false;
+          commsRailCollapsed = true;
         } else if (mode === 'chat') {
           commsRailCollapsed = false;
+          infoRailCollapsed = true;
           activeTab = 'party_chat';
+        } else {
+          infoRailCollapsed = true;
+          commsRailCollapsed = true;
         }
         render();
         requestAnimationFrame(() => {
@@ -5478,13 +5485,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     infoRail?.classList.toggle('is-collapsed', infoRailCollapsed);
     commsRail?.classList.toggle('is-collapsed', commsRailCollapsed);
     dashboardBody?.classList.toggle('table-focus-mode', focusMode);
+    dashboardBody?.classList.toggle('table-drawer-info-open', !infoRailCollapsed);
+    dashboardBody?.classList.toggle('table-drawer-comms-open', !commsRailCollapsed);
     const focusRestore = container.querySelector<HTMLElement>('[data-testid="table-focus-restore"]');
     if (focusRestore !== null) {
-      focusRestore.hidden = !focusMode;
-      focusRestore.innerHTML = focusMode
+      const showRestore = infoRailCollapsed || commsRailCollapsed;
+      focusRestore.hidden = !showRestore;
+      focusRestore.innerHTML = showRestore
         ? `<div class="table-focus-restore-actions" data-testid="table-focus-restore-actions">
-             <button type="button" class="table-secondary-action" data-testid="expand-info-rail">Show reference</button>
-             <button type="button" class="table-secondary-action" data-testid="expand-comms-rail">Show chat</button>
+             ${
+               infoRailCollapsed
+                 ? `<button type="button" class="table-secondary-action" data-testid="expand-info-rail">Reference</button>`
+                 : ''
+             }
+             ${
+               commsRailCollapsed
+                 ? `<button type="button" class="table-secondary-action" data-testid="expand-comms-rail">Chat</button>`
+                 : ''
+             }
            </div>`
         : '';
     }

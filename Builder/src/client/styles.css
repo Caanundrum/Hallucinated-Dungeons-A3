@@ -578,8 +578,8 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-body {
   display: grid;
-  /* Map-first: character card overlays the stage; chat keeps a dedicated column. */
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  /* Map-first: stage + play dock own the column; sheet/chat are overlay drawers. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   flex: 1;
   min-height: 0;
@@ -587,15 +587,6 @@ a.account-chip-label:focus-visible {
   padding: 0;
   overflow: hidden;
   position: relative;
-}
-
-.table-dashboard-body.table-focus-mode {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.table-dashboard-body.table-focus-mode .table-info-rail.is-collapsed,
-.table-dashboard-body.table-focus-mode .table-comms-rail.is-collapsed {
-  display: none;
 }
 
 .table-dashboard-body.table-focus-mode .table-stage-frame {
@@ -613,27 +604,33 @@ a.account-chip-label:focus-visible {
   padding: var(--space-3);
   position: relative;
   border: none;
-  border-right: var(--border-weight) solid var(--panel-border);
   background: color-mix(in srgb, var(--panel-surface) 96%, #000);
   box-shadow: none;
   border-radius: 0;
 }
 
-/* Compact character card over the map — no empty full-height left column. */
+/* Collapsed rails leave the stage; restore chips live in .table-focus-restore. */
+.table-info-rail.is-collapsed,
+.table-comms-rail.is-collapsed {
+  display: none;
+}
+
+/* Reference drawer — compact card over the map. */
 .table-info-rail:not(.is-collapsed) {
   position: absolute;
   left: var(--space-2);
   top: var(--space-2);
-  width: min(240px, 34vw);
+  width: min(260px, 36vw);
   height: fit-content;
   max-height: calc(100% - (var(--space-2) * 2));
   overflow: auto;
-  z-index: 6;
+  z-index: 8;
   border: var(--border-weight) solid var(--panel-border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card);
   background: color-mix(in srgb, var(--panel-surface) 96%, #000);
   scrollbar-width: thin;
+  animation: tableDrawerIn var(--motion-emphasized, 220ms) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .table-info-rail:not(.is-collapsed) > [data-testid='table-info-slot'],
@@ -647,26 +644,43 @@ a.account-chip-label:focus-visible {
   gap: var(--space-2);
 }
 
-.table-info-rail.is-collapsed {
+/* Chat drawer — right overlay; does not steal a permanent column. */
+.table-comms-rail:not(.is-collapsed) {
   position: absolute;
-  left: var(--space-2);
+  right: var(--space-2);
   top: var(--space-2);
-  width: auto;
+  bottom: var(--space-2);
+  width: min(320px, 42vw);
   height: auto;
-  z-index: 6;
+  max-height: calc(100% - (var(--space-2) * 2));
+  z-index: 8;
   border: var(--border-weight) solid var(--panel-border);
   border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
   background: color-mix(in srgb, var(--panel-surface) 96%, #000);
-}
-
-.table-comms-rail {
-  border-right: none;
-  border-left: var(--border-weight) solid var(--panel-border);
-  grid-column: 2;
-  height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+  animation: tableDrawerIn var(--motion-emphasized, 220ms) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tableDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-info-rail:not(.is-collapsed),
+  .table-comms-rail:not(.is-collapsed) {
+    animation: none;
+  }
 }
 
 .table-comms-rail > [data-testid='table-comms-slot'],
@@ -690,25 +704,44 @@ a.account-chip-label:focus-visible {
   min-width: 0;
 }
 
-.table-info-rail.is-collapsed,
-.table-comms-rail.is-collapsed {
-  max-height: none;
-  overflow: visible;
-  min-width: 0;
-  padding: var(--space-2);
-}
-
 .table-focus-restore {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 7;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin: 0;
+  pointer-events: none;
+}
+
+.table-dashboard-body.table-drawer-comms-open .table-focus-restore {
+  right: auto;
+  left: var(--space-2);
+  justify-content: flex-start;
+}
+
+.table-focus-restore[hidden] {
+  display: none;
+}
+
+.table-focus-restore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  pointer-events: auto;
 }
 
 .table-focus-restore button {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   padding: var(--space-1) var(--space-2);
-  min-height: 32px;
+  min-height: 30px;
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000);
+  border: var(--border-weight) solid var(--panel-border);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-card);
 }
 
 .table-rail-collapse {
@@ -1256,39 +1289,17 @@ ol.record-list.dm-thread-list > li {
 
 @media (max-width: 1100px) and (min-width: 901px) {
   /*
-   * Mid tablet (R5 / FQA-023): play dock must keep the composer inside overflow:clip.
-   * Cap Chat/Reference tracks (do not steal with large fr fractions), shrink map,
-   * and never force a thread min-height that can push the textarea below the clip.
+   * Mid tablet: same map-first column as desktop — no stacked Chat/Reference strips.
+   * Drawers overlay the stage; keep the play dock composer inside overflow:clip.
    */
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 5.25rem) minmax(0, 4.75rem);
-    grid-template-areas:
-      'play'
-      'comms'
-      'info';
-  }
-
-  .table-info-rail {
-    grid-area: info;
-    max-height: 4.75rem;
-    order: 3;
-    overflow: auto;
-    position: relative;
-    left: auto;
-    top: auto;
-    width: auto;
-    height: auto;
-    border-radius: 0;
-    box-shadow: none;
-    border: none;
-    border-top: var(--border-weight) solid var(--panel-border);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: none;
   }
 
   .table-play-column {
-    grid-area: play;
-    grid-column: auto;
-    order: 1;
+    grid-column: 1;
     min-height: 0;
     height: 100%;
     display: flex;
@@ -1296,19 +1307,19 @@ ol.record-list.dm-thread-list > li {
     overflow: hidden;
   }
 
-  .table-comms-rail {
-    grid-area: comms;
-    grid-column: auto;
-    order: 2;
-    max-height: 5.25rem;
-    overflow: auto;
+  .table-info-rail:not(.is-collapsed) {
+    width: min(280px, 42vw);
+  }
+
+  .table-comms-rail:not(.is-collapsed) {
+    width: min(340px, 48vw);
   }
 
   .table-dashboard .table-map-chrome,
   .table-dashboard .table-stage-frame {
-    flex: 1.45 1 0;
+    flex: 1 1 auto;
     min-height: 12rem;
-    max-height: min(52dvh, 24rem);
+    max-height: none;
     aspect-ratio: auto;
   }
 
@@ -1316,7 +1327,7 @@ ol.record-list.dm-thread-list > li {
   .table-action-bar {
     flex: 0 1 auto;
     height: auto;
-    max-height: min(48vh, 26rem);
+    max-height: min(42vh, 22rem);
     min-height: 0;
     overflow: clip;
   }
@@ -1324,7 +1335,7 @@ ol.record-list.dm-thread-list > li {
   .table-action-bar:has(.dm-play-thread.is-expanded) {
     flex: 0 1 auto;
     height: auto;
-    max-height: min(58vh, 32rem);
+    max-height: min(56vh, 30rem);
   }
 
   .table-action-bar > [data-testid='table-action-slot'],
@@ -1352,45 +1363,32 @@ ol.record-list.dm-thread-list > li {
   .dm-play-thread {
     flex: 0 1 auto;
     min-height: 0;
-    max-height: min(28vh, 14rem);
+    max-height: min(22vh, 12rem);
     overflow: hidden;
   }
 
   .dm-play-thread.is-expanded {
     flex: 0 1 auto;
     min-height: 0;
-    max-height: min(42vh, 22rem);
+    max-height: min(38vh, 20rem);
   }
 
   .dm-thread-list,
   ol.record-list.dm-thread-list {
     min-height: 0;
-    max-height: min(16vh, 10rem);
+    max-height: min(14vh, 9rem);
     flex: 0 1 auto;
     overflow-y: auto;
   }
 
   .dm-play-thread.is-expanded .dm-thread-list,
   .dm-play-thread.is-expanded ol.record-list.dm-thread-list {
-    max-height: min(28vh, 16rem);
+    max-height: min(26vh, 14rem);
   }
 
   .table-action-bar .table-action-field textarea {
     min-height: 2.75rem;
     max-height: 4.5rem;
-  }
-
-  /* Expand timeline: reclaim Chat/Reference tracks for history reading. */
-  .table-dashboard-body:has(.dm-play-thread.is-expanded) {
-    grid-template-rows: minmax(0, 1fr) minmax(0, 2.5rem) minmax(0, 2.25rem);
-  }
-
-  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-comms-rail {
-    max-height: 2.5rem;
-  }
-
-  .table-dashboard-body:has(.dm-play-thread.is-expanded) .table-info-rail {
-    max-height: 2.25rem;
   }
 }
 
@@ -1524,9 +1522,6 @@ ol.record-list.dm-thread-list > li {
     grid-area: auto;
     width: 100%;
     max-width: 100%;
-    position: relative;
-    left: auto;
-    top: auto;
     max-height: none;
     min-height: 0;
     height: auto;
@@ -1536,7 +1531,8 @@ ol.record-list.dm-thread-list > li {
   .table-dashboard[data-mobile-task='map'] .table-info-rail,
   .table-dashboard[data-mobile-task='map'] .table-comms-rail,
   .table-dashboard[data-mobile-task='map'] .table-action-bar,
-  .table-dashboard[data-mobile-task='map'] .dm-play-thread {
+  .table-dashboard[data-mobile-task='map'] .dm-play-thread,
+  .table-dashboard[data-mobile-task='map'] .table-focus-restore {
     display: none !important;
   }
 
@@ -1551,23 +1547,48 @@ ol.record-list.dm-thread-list > li {
     display: flex;
   }
 
+  /* Play: map + quiet dock; sheet/chat stay closed unless opened as drawers. */
   .table-dashboard[data-mobile-task='play'] .table-info-rail,
   .table-dashboard[data-mobile-task='play'] .table-comms-rail {
     display: none !important;
   }
 
-  .table-dashboard[data-mobile-task='sheet'] .table-play-column,
-  .table-dashboard[data-mobile-task='sheet'] .table-comms-rail {
+  /* Sheet/Chat: keep map+dock under a full-bleed drawer (no hard task swap). */
+  .table-dashboard[data-mobile-task='sheet'] .table-comms-rail,
+  .table-dashboard[data-mobile-task='chat'] .table-info-rail {
     display: none !important;
   }
 
-  .table-dashboard[data-mobile-task='chat'] .table-info-rail,
-  .table-dashboard[data-mobile-task='chat'] .table-play-column {
+  .table-dashboard[data-mobile-task='sheet'] .table-info-rail:not(.is-collapsed),
+  .table-dashboard[data-mobile-task='chat'] .table-comms-rail:not(.is-collapsed) {
+    position: absolute;
+    inset: 0;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: none;
+    border-top: var(--border-weight) solid var(--panel-border);
+    z-index: 30;
+    box-shadow: none;
+    animation: tableDrawerIn var(--motion-emphasized, 220ms) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .table-dashboard[data-mobile-task='sheet'] .table-focus-restore,
+  .table-dashboard[data-mobile-task='chat'] .table-focus-restore {
     display: none !important;
   }
 
   .table-play-column {
     order: 1;
+    position: relative;
+    left: auto;
+    top: auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -1664,19 +1685,10 @@ ol.record-list.dm-thread-list > li {
     z-index: 4;
   }
 
-  .table-comms-rail {
-    order: 3;
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-    overflow: hidden;
+  .table-dashboard[data-mobile-task='chat'] .table-comms-rail:not(.is-collapsed) {
     display: flex;
     flex-direction: column;
-    z-index: 1;
-  }
-
-  .table-dashboard[data-mobile-task='chat'] .table-comms-rail {
-    height: 100%;
+    overflow: hidden;
   }
 
   .table-dashboard[data-mobile-task='chat'] .comms-cockpit,
@@ -1687,7 +1699,7 @@ ol.record-list.dm-thread-list > li {
     overflow: auto;
   }
 
-  /* Chat: collapse Story so far by default; keep composer in the first viewport. */
+  /* Chat drawer: collapse Story so far by default; keep composer in the first viewport. */
   .table-dashboard[data-mobile-task='chat'] .comms-story-tier {
     flex: 0 0 auto;
     max-height: 4.5rem;
@@ -1718,15 +1730,10 @@ ol.record-list.dm-thread-list > li {
     padding-top: var(--space-2);
   }
 
-  .table-info-rail {
-    order: 4;
-    flex: 1 1 auto;
-    min-height: 0;
+  .table-dashboard[data-mobile-task='sheet'] .table-info-rail:not(.is-collapsed) {
+    display: flex;
+    flex-direction: column;
     overflow: auto;
-  }
-
-  .table-dashboard[data-mobile-task='sheet'] .table-info-rail {
-    height: 100%;
   }
 
   .table-dashboard[data-mobile-task='sheet'] .floating-combat-host,
