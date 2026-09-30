@@ -708,22 +708,24 @@ a.account-chip-label:focus-visible {
 }
 
 .table-focus-restore {
+  /* Sit opposite the map zoom pill so chips stay clickable and quiet. */
   position: absolute;
   top: var(--space-2);
-  right: var(--space-2);
-  z-index: 7;
+  left: var(--space-2);
+  right: auto;
+  z-index: 12;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-1);
   margin: 0;
   pointer-events: none;
 }
 
-.table-dashboard-body.table-drawer-comms-open .table-focus-restore {
-  right: auto;
-  left: var(--space-2);
-  justify-content: flex-start;
+.table-dashboard-body.table-drawer-info-open .table-focus-restore {
+  left: auto;
+  right: var(--space-2);
+  justify-content: flex-end;
 }
 
 .table-focus-restore[hidden] {
