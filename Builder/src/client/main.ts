@@ -35,6 +35,7 @@ import { mountWelcomePage } from './pages/welcome.js';
 import { isHostedPlayerSurface } from './player-surface.js';
 import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
+import { playChaosBootSequence } from './chaos-boot-sequence.js';
 import {
   bindLegalPlayGatePage,
   renderLegalPlayGatePage,
@@ -55,6 +56,9 @@ async function start(): Promise<void> {
   onAuthFailure(() => {
     clearAccountOnAuthFailure();
   });
+
+  // Studio + game splash before shell chrome settles (skippable; once per session).
+  await playChaosBootSequence();
 
   let candidate: CandidateIdentity | null = null;
   try {

@@ -5382,7 +5382,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     heading.innerHTML = `
       <div class="table-ambient-hud" data-testid="table-ambient-hud">
         <div class="table-hud-brand">
-          <a class="table-hud-mark" href="/" data-link data-testid="table-hud-home" aria-label="Hallucinated Dungeons home">HD</a>
+          <a class="table-hud-mark" href="/" data-link data-testid="table-hud-home" aria-label="Hallucinated Dungeons home">
+            <svg class="table-hud-mark-icon" width="22" height="22" viewBox="0 0 96 96" fill="none" aria-hidden="true" focusable="false">
+              <path d="M20 88 V48 A28 28 0 0 1 76 48 V88" stroke="currentColor" stroke-width="6" stroke-linecap="round" />
+              <path d="M12 88 H84" stroke="currentColor" stroke-width="6" stroke-linecap="round" />
+            </svg>
+          </a>
           <div class="table-hud-titles">
             <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
             ${

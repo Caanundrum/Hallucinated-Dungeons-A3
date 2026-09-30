@@ -1,57 +1,67 @@
 /*
- * Design tokens — Phase 1 Visualization (Gemini cockpit look).
- * Supersedes flat Obsidian Chronicle surfaces for vibrancy while keeping
- * semantic roles (action / heal / danger / arcane / focus).
+ * Design tokens — Chaos Standard void + teal table shell.
+ * Studio teal is the primary accent; fantasy gold is demoted to rare highlight.
+ * Semantic roles (heal / danger / arcane / focus) stay distinct.
  */
 
 :root {
   color-scheme: dark;
 
-  /* Surface & void */
-  --bg-void: #0b0f17;
-  --panel-surface: #111827;
-  --panel-border: #1e293b;
-  --panel-border-hover: #334155;
+  /* Surface & void (Chaos Standard) */
+  --bg-void: #070b12;
+  --panel-surface: #0e1520;
+  --panel-border: #1a2836;
+  --panel-border-hover: #2a3d52;
 
-  /* Accent & action */
-  --gold-primary: #f59e0b;
-  --gold-hover: #d97706;
-  --gold-glow: rgba(245, 158, 11, 0.35);
+  /* Chaos teal — primary accent / action */
+  --chaos-teal: #4dd4d4;
+  --chaos-teal-bright: #6ee7e7;
+  --chaos-teal-deep: #2aa8a8;
+  --chaos-glow: rgba(77, 212, 212, 0.28);
+
+  /* Accent & action (mapped to Chaos teal; gold kept as optional highlight) */
+  --gold-primary: var(--chaos-teal);
+  --gold-hover: var(--chaos-teal-deep);
+  --gold-glow: var(--chaos-glow);
 
   /* Semantic feedback */
-  --emerald-heal: #10b981;
-  --emerald-glow: rgba(16, 185, 129, 0.3);
-  --crimson-danger: #ef4444;
-  --crimson-glow: rgba(239, 68, 68, 0.35);
-  --arcane-cyan: #38bdf8;
-  --arcane-glow: rgba(56, 189, 248, 0.3);
+  --emerald-heal: #3dcf9a;
+  --emerald-glow: rgba(61, 207, 154, 0.28);
+  --crimson-danger: #ef5a4a;
+  --crimson-glow: rgba(239, 90, 74, 0.32);
+  --arcane-cyan: var(--chaos-teal-bright);
+  --arcane-glow: var(--chaos-glow);
 
   /* Typography */
-  --font-serif: 'Cinzel', 'Lora', Georgia, serif;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --text-primary: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-gold: #fcd34d;
+  --font-serif: 'Cinzel', 'Palatino Linotype', Georgia, serif;
+  --font-sans: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --text-primary: #f4f7fa;
+  --text-muted: #8fa3b5;
+  --text-gold: var(--chaos-teal-bright);
 
-  /* Shadows & elevations */
-  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  --shadow-glow-gold: 0 0 15px var(--gold-glow);
-  --shadow-glow-cyan: 0 0 15px var(--arcane-glow);
+  /* Shadows & elevations — restrained, not multi-layer cockpit glow */
+  --shadow-card: 0 8px 28px -12px rgba(0, 0, 0, 0.65);
+  --shadow-glow-gold: 0 0 18px var(--chaos-glow);
+  --shadow-glow-cyan: 0 0 16px var(--chaos-glow);
 
-  /* Legacy Obsidian Chronicle aliases → Gemini cockpit tokens */
+  /* Legacy aliases + dock tokens that were previously undefined */
   --abyss-bg: var(--bg-void);
   --obsidian-surface: var(--panel-surface);
-  --raised-surface: #182131;
+  --raised-surface: #121c28;
   --structural-border: var(--panel-border);
   --text-secondary: var(--text-muted);
-  --amber-action: var(--gold-primary);
-  --amber-highlight: var(--gold-hover);
-  --moonlit-blue: var(--arcane-cyan);
+  --amber-action: var(--chaos-teal);
+  --amber-highlight: var(--chaos-teal-deep);
+  --moonlit-blue: var(--chaos-teal);
   --verdant-success: var(--emerald-heal);
-  --warning-gold: var(--text-gold);
+  --warning-gold: #e8c56a;
   --wound-red: var(--crimson-danger);
-  --arcane-violet: #a783d8;
-  --focus-cyan: #8fd3ff;
+  --arcane-violet: #8b9cc8;
+  --focus-cyan: var(--chaos-teal-bright);
+  --color-accent: var(--chaos-teal);
+  --color-border: var(--panel-border);
+  --color-surface: var(--panel-surface);
+  --color-ink: var(--text-primary);
 
   --font-heading: var(--font-serif);
   --font-body: var(--font-sans);
@@ -94,8 +104,9 @@ body {
   min-height: 100vh;
   background-color: var(--bg-void);
   background-image:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(245, 158, 11, 0.08), transparent 55%),
-    linear-gradient(180deg, #070a12 0%, var(--bg-void) 42%, #0e1522 100%);
+    radial-gradient(ellipse 90% 70% at 50% 40%, rgba(77, 212, 212, 0.06), transparent 58%),
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(42, 168, 168, 0.05), transparent 55%),
+    linear-gradient(180deg, #05080e 0%, var(--bg-void) 42%, #0a121c 100%);
   color: var(--text-primary);
   font-family: var(--font-body);
   line-height: 1.55;
@@ -367,23 +378,24 @@ a.account-chip-label:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
-  background: color-mix(in srgb, var(--gold-primary) 16%, var(--panel-surface));
-  color: var(--text-gold);
-  font-family: var(--font-serif);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--chaos-teal) 45%, var(--panel-border));
+  background: color-mix(in srgb, var(--chaos-teal) 12%, var(--panel-surface));
+  color: var(--chaos-teal-bright);
   text-decoration: none;
-  box-shadow: var(--shadow-glow-gold);
+  box-shadow: none;
+}
+
+.table-hud-mark-icon {
+  display: block;
 }
 
 .table-hud-mark:hover {
-  border-color: var(--gold-primary);
-  color: #fff7d6;
+  border-color: var(--chaos-teal);
+  color: #fff;
+  background: color-mix(in srgb, var(--chaos-teal) 22%, var(--panel-surface));
 }
 
 .table-hud-titles {
@@ -2405,9 +2417,8 @@ button[aria-disabled="true"] {
   min-height: 100vh;
   padding: var(--space-6) var(--space-5) var(--space-5);
   background:
-    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--moonlit-blue) 18%, transparent), transparent 42%),
-    radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--amber-action) 12%, transparent), transparent 38%),
-    linear-gradient(180deg, #05060a 0%, var(--abyss-bg) 55%, var(--obsidian-surface) 100%);
+    radial-gradient(ellipse 80% 60% at 50% 35%, color-mix(in srgb, var(--chaos-teal) 10%, transparent), transparent 55%),
+    linear-gradient(180deg, #05080e 0%, var(--abyss-bg) 55%, #0a121c 100%);
 }
 
 .welcome-screen-inner {
@@ -2461,11 +2472,11 @@ button[aria-disabled="true"] {
 
 .welcome-eyebrow {
   margin: 0 0 var(--space-2);
-  color: var(--amber-highlight);
+  color: var(--chaos-teal);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   opacity: 0;
   animation: welcome-rise var(--motion-emphasized) ease-out forwards;
   animation-delay: 420ms;
@@ -3510,12 +3521,12 @@ html.hd-low-effects .map-square-fog,
   border: var(--border-weight) solid transparent;
   padding: var(--space-3) var(--space-5);
   cursor: pointer;
-  background: var(--amber-action);
-  color: var(--abyss-bg);
+  background: var(--chaos-teal);
+  color: #061016;
 }
 
 .table-primary-action:hover {
-  background: var(--amber-highlight);
+  background: var(--chaos-teal-bright);
 }
 
 .table-secondary-action {
@@ -4597,19 +4608,20 @@ html.hd-low-effects .table-stage-svg-viewport,
 }
 
 .table-primary-action {
-  border-color: color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
-  background: color-mix(in srgb, var(--gold-primary) 22%, var(--panel-surface));
-  color: var(--text-gold);
-  box-shadow: 0 0 0 0 transparent;
+  border-color: color-mix(in srgb, var(--chaos-teal) 50%, transparent);
+  background: var(--chaos-teal);
+  color: #061016;
+  box-shadow: none;
   transition:
+    background var(--motion-ordinary) ease,
     border-color var(--motion-ordinary) ease,
-    box-shadow var(--motion-ordinary) ease,
     transform var(--motion-immediate) ease;
 }
 
 .table-primary-action:hover {
-  border-color: var(--gold-primary);
-  box-shadow: var(--shadow-glow-gold);
+  border-color: var(--chaos-teal-bright);
+  background: var(--chaos-teal-bright);
+  box-shadow: none;
 }
 
 .table-primary-action:active {
@@ -5685,4 +5697,162 @@ html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after 
   border-color: color-mix(in srgb, #34d399 45%, var(--panel-border));
   background: color-mix(in srgb, #34d399 12%, var(--panel-surface));
   color: var(--text-primary);
+}
+
+/* --- Chaos Standard → Hallucinated Dungeons boot sequence --- */
+body.chaos-boot-active {
+  overflow: hidden;
+}
+
+.chaos-boot-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, #0a1520 0%, #05080e 55%, #000 100%);
+  color: #fff;
+}
+
+.chaos-boot-root.is-exiting {
+  opacity: 0;
+  transition: opacity var(--motion-emphasized) ease;
+}
+
+.chaos-boot-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity var(--motion-cinematic) ease,
+    transform var(--motion-cinematic) ease;
+}
+
+.chaos-boot-layer.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.chaos-boot-chaos-inner,
+.chaos-boot-game-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.chaos-mark-icon {
+  display: block;
+  animation: chaos-mark-pulse 2.2s ease-in-out infinite;
+}
+
+.chaos-boot-studio {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.1rem, 2.4vw, 1.45rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #e8eef4;
+}
+
+.hd-boot-logo-mark {
+  color: var(--chaos-teal-bright);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--chaos-teal) 35%, transparent));
+}
+
+.chaos-boot-eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--chaos-teal);
+}
+
+.chaos-boot-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 5.5vw, 3.25rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+  color: #f7fafc;
+}
+
+.chaos-boot-tagline {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.chaos-boot-skip {
+  position: absolute;
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: #f0f4f8;
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.chaos-boot-skip:hover,
+.chaos-boot-skip:focus-visible {
+  color: var(--chaos-teal-bright);
+  outline: none;
+}
+
+@keyframes chaos-mark-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chaos-mark-icon {
+    animation: none;
+  }
+
+  .chaos-boot-layer {
+    transition: none;
+  }
+
+  .chaos-boot-root.is-exiting {
+    transition: none;
+  }
+}
+
+/* Quieter table chrome under Chaos shell */
+.table-ambient-hud {
+  background: color-mix(in srgb, var(--panel-surface) 88%, #000);
+  border-bottom: 1px solid color-mix(in srgb, var(--chaos-teal) 18%, var(--panel-border));
+  box-shadow: none;
+}
+
+.table-dashboard-header {
+  box-shadow: none;
+}
+
+.shell-table-mode .table-dashboard .panel.table-action-bar {
+  border-color: color-mix(in srgb, var(--chaos-teal) 16%, var(--panel-border));
+  background: color-mix(in srgb, var(--panel-surface) 94%, #000);
 }
