@@ -1029,7 +1029,7 @@ ol.record-list.dm-thread-list,
   flex: 0 1 auto;
   min-height: 0;
   height: auto;
-  max-height: min(14vh, 10rem);
+  max-height: min(10vh, 6.5rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
