@@ -75,7 +75,7 @@ export function mountWelcomePage(host: PageHost): void {
           <div class="welcome-logo-stage" data-testid="welcome-logo-stage">
             ${WELCOME_LOGO_MARK}
           </div>
-          <p class="welcome-eyebrow">Invite-only alpha</p>
+          <p class="welcome-eyebrow">A Chaos Standard table · Invite-only alpha</p>
           <h1 class="welcome-title" data-testid="welcome-heading">Hallucinated Dungeons</h1>
           <p class="welcome-lead">
             Forge a hero, gather your party, and step into a living story told around a shared
