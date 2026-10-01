@@ -42,8 +42,8 @@ export function answerContainerContentsQuery(options: {
     return {
       ok: true,
       body: open
-        ? `You reach for ${label} itself. Portability and inventory rules apply to the container as a prop — this is not a search of its contents. Confirm a take when the table can commit that inventory change.`
-        : `You reach for ${label}. It is closed; portability and inventory rules still apply to the container as a prop, not to inventing what might be inside. Confirm a take when the table can commit that inventory change.`,
+        ? `You pick up ${label} itself. Empty or not, the bag is a portable prop — authored contents are irrelevant to carrying it. Portability and inventory rules apply; this is not a search of what might be inside. Confirm when the table can commit that inventory change.`
+        : `You pick up ${label}. It is closed, but the container itself is still a portable prop — not an invitation to invent contents. Portability and inventory rules apply. Confirm when the table can commit that inventory change.`,
       nextDiscovery: discovery,
     };
   }

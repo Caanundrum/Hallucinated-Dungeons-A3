@@ -75,6 +75,12 @@ test('unlocked door language is state reference, not lock-picking', () => {
   assert.equal(textRequestsLockPicking('enters the room beyond the unlocked doorway'), false);
   assert.equal(textRequestsLockPicking('I pick the lock on the wooden door.'), true);
   assert.equal(textRequestsLockPicking('I unlock the door with thieves tools.'), true);
+  assert.equal(
+    textRequestsLockPicking(
+      'I pick up the courier satchel itself and carry the bag with me. I am not taking anything from inside it.',
+    ),
+    false,
+  );
 });
 
 test('addressing Nib makes dialogue the primary intent', () => {
@@ -458,6 +464,23 @@ test('take the open courier satchel is take_container narrate-only (VDM-005)', (
   );
   assert.match(authority.summary, /container as a prop|portability/i);
   assert.doesNotMatch(authority.summary, /from that container/i);
+});
+
+test('pick up the courier satchel itself is take_container, never lockpick (VDM-005)', () => {
+  const text =
+    'I pick up the courier satchel itself and carry the bag with me. I am not taking anything from inside it.';
+  assert.equal(textRequestsLockPicking(text), false);
+  const parsed = parsePlayerDeclaration(text);
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
+    ),
+  );
+  assert.equal(authority.actionSequence.some((step) => step.kind === 'unlock_door'), false);
+  assert.doesNotMatch(authority.summary, /lock|Sleight|Thieves/i);
+  assert.match(authority.summary, /container as a prop|portability/i);
 });
 
 test('take the letter from the courier satchel is take_from_container (VDM-005)', () => {

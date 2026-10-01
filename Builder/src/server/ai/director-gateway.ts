@@ -1562,20 +1562,21 @@ export async function interpretNaturalLanguageIntent(options: {
         ? [capability.reason, capability.suggestion].filter(Boolean).join(' ')
         : authority.clarificationPrompt ?? authority.summary;
     } else if (
-      /\b(?:take|grab|pocket|stow)\b/i.test(text) &&
-      containerLabelHintFromText(text) !== null
+      authority.actionSequence.some(
+        (step) =>
+          step.kind === 'inspect' &&
+          (step.outcomeHint === 'take_container' ||
+            step.outcomeHint === 'take_from_container' ||
+            step.outcomeHint === 'take_item' ||
+            step.outcomeHint === 'contents_query'),
+      ) ||
+      (/\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text) &&
+        containerLabelHintFromText(text) !== null)
     ) {
-      try {
-        const map = await fetchCampaignMap({
-          firestore: options.firestore,
-          accountId: options.accountId,
-          campaignId: options.campaignId,
-        });
-        summary = answerContentsQueryNarration(map, rawText);
-      } catch {
-        summary = answerContentsQueryNarration(null, rawText);
-      }
+      // Portability vs contents is owned by resolveDirectorNarrateOutput (VDM-005).
       proposedCommandType = 'table.sync';
+      deferDirectorNarrate = true;
+      summary = authority.summary;
     } else if (
       authority.disposition === 'propose_command' &&
       (authority.actionSequence[0]?.kind === 'unlock_door' ||

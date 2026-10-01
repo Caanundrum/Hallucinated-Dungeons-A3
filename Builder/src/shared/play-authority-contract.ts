@@ -596,20 +596,28 @@ export function textReferencesUnlockedDoorState(text: string): boolean {
 }
 
 export function textRequestsLockPicking(text: string): boolean {
+  // "Pick up / picking up" is inventory language — never a lock attempt (VDM-005).
+  const withoutPickUp = text.replace(/\bpick(?:ing|ed)?\s+up\b/gi, ' ');
+  const picksLockOrDoor =
+    /\bpick(?:ing|ed)?\s+(?:the\s+)?(?:lock|door|doorway|gate|entry(?:way)?)\b/i.test(
+      withoutPickUp,
+    ) ||
+    (/\b(?:pick|picking|picked)\b/i.test(withoutPickUp) &&
+      /\b(?:lock|door|doorway|gate|entry(?:way)?)\b/i.test(withoutPickUp));
   // "Unlocked door/doorway" is leaf/lock state, never a pick attempt (hosted recheck).
-  if (textReferencesUnlockedDoorState(text) || /\bunlocked\b/i.test(text)) {
-    // Allow explicit pick language even when the door is described as unlocked.
+  if (textReferencesUnlockedDoorState(withoutPickUp) || /\bunlocked\b/i.test(withoutPickUp)) {
+    // Allow explicit pick-the-lock language even when the door is described as unlocked.
     return (
-      /\b(?:pick|picking|picked)\b/i.test(text) ||
-      /\bthieves['’]?\s*tools\b/i.test(text) ||
-      /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(text)
+      picksLockOrDoor ||
+      /\bthieves['’]?\s*tools\b/i.test(withoutPickUp) ||
+      /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(withoutPickUp)
     );
   }
   return (
-    /\b(?:pick|picking|picked)\b/i.test(text) ||
-    /\bthieves['’]?\s*tools\b/i.test(text) ||
-    /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(text) ||
-    /\bunlock(?:s|ing)?\b/i.test(text)
+    picksLockOrDoor ||
+    /\bthieves['’]?\s*tools\b/i.test(withoutPickUp) ||
+    /\b(?:force|bypass|break)\s+(?:the\s+)?lock\b/i.test(withoutPickUp) ||
+    /\bunlock(?:s|ing)?\b/i.test(withoutPickUp)
   );
 }
 
@@ -880,23 +888,36 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
-  // Take / grab — distinguish taking a container prop from taking an item out of one.
+  // Take / pick up / carry — container prop vs item from inside (VDM-005).
+  const takeVerb =
+    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(trimmed);
+  const negatesTakeFrom =
+    /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing))\b[\s\S]{0,40}\b(?:from|inside|contents?)\b/i.test(
+      trimmed,
+    ) ||
+    /\bnot\s+taking\s+anything\s+from\b/i.test(trimmed);
   if (
     actionSequence.length === 0 &&
-    /\b(?:take|grab|pocket|stow)\b/i.test(trimmed) &&
+    takeVerb &&
     /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|item|object)\b/i.test(trimmed)
   ) {
     const containerNoun =
       /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(trimmed);
     const takeFromContainer =
       containerNoun &&
+      !negatesTakeFrom &&
       /\b(?:take|grab|pocket|stow)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(
         trimmed,
       );
     const takeContainer =
       containerNoun &&
       !takeFromContainer &&
-      !/\b(?:letter|key|item|object|contents?)\b/i.test(trimmed.replace(/\bopen\b/i, ''));
+      !/\b(?:letter|key|item|object|contents?)\b/i.test(
+        trimmed
+          .replace(/\bopen\b/i, '')
+          .replace(/\bnot\s+taking\s+anything\s+from\b[\s\S]*/i, '')
+          .replace(/\binside\s+it\b/gi, ''),
+      );
     actionSequence.push({
       kind: 'inspect',
       targetRef: null,
