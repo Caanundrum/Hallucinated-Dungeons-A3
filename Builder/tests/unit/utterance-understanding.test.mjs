@@ -130,6 +130,20 @@ test('conditional open-if-closed matches east doorway phrasing', () => {
   );
 });
 
+test('conditional open-if-closed matches wooden doorway east phrasing (VDM-004)', () => {
+  const understanding = understandUtterance(
+    'If the wooden doorway east is closed, open it; otherwise leave it exactly as it is.',
+  );
+  assert.equal(understanding.constraints.openOnlyIfClosed, true);
+  assert.equal(
+    resolveConditionalDoorIntent({
+      constraints: understanding.constraints,
+      doorLeaf: 'open',
+    }),
+    'noop',
+  );
+});
+
 test('Fireball refusal names class and spell when sheet has no spellcasting', () => {
   const verdict = evaluateCharacterCapability(
     {

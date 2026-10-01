@@ -328,6 +328,25 @@ export function resolveIntentAuthority(
     };
   }
 
+  // Conditional open-if-closed: never propose step-through movement from authority alone.
+  if (
+    understanding.constraints.openOnlyIfClosed &&
+    sequence.some((step) => step.kind === 'open_door')
+  ) {
+    return {
+      disposition: 'propose_command',
+      actionSequence: sequence.filter((step) => step.kind === 'open_door'),
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary:
+        'Conditional door check — open only if closed; leave it unchanged if already open. The table evaluates the live leaf before any draft commits.' +
+        (ignoredWorldFacts.length > 0
+          ? ' Player-authored places were ignored; only the Game Director establishes those.'
+          : ''),
+      proposedCommandType: 'table.sync',
+    };
+  }
+
   // Interrogative about a door ("which door…") is not a door action.
   if (
     parsed.isInterrogative &&
@@ -448,14 +467,28 @@ export function resolveIntentAuthority(
         proposedCommandType: 'table.sync',
       };
     }
-    if (only.outcomeHint === 'take_item') {
+    if (only.outcomeHint === 'take_container') {
       return {
         disposition: 'director_narrate_only',
         actionSequence: [only],
         ignoredWorldFacts,
         clarificationPrompt: null,
         summary:
-          'You try to take that prop — the Game Director answers from authored contents and inventory rules. No invented loot is prepared.' +
+          'You try to take that container as a prop — the Game Director applies portability and inventory rules. This is not a peek inside.' +
+          inventIgnoredNote,
+        proposedCommandType: 'table.sync',
+      };
+    }
+    if (only.outcomeHint === 'take_item' || only.outcomeHint === 'take_from_container') {
+      return {
+        disposition: 'director_narrate_only',
+        actionSequence: [only],
+        ignoredWorldFacts,
+        clarificationPrompt: null,
+        summary:
+          (only.outcomeHint === 'take_from_container'
+            ? 'You try to take something from that container — the Game Director answers from authored contents and inventory rules. No invented loot is prepared.'
+            : 'You try to take that prop — the Game Director answers from authored contents and inventory rules. No invented loot is prepared.') +
           inventIgnoredNote,
         proposedCommandType: 'table.sync',
       };
@@ -847,13 +880,32 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
-  // Take / grab an established prop — not a generic one-action clarify.
+  // Take / grab — distinguish taking a container prop from taking an item out of one.
   if (
     actionSequence.length === 0 &&
     /\b(?:take|grab|pocket|stow)\b/i.test(trimmed) &&
     /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|item|object)\b/i.test(trimmed)
   ) {
-    actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'take_item' });
+    const containerNoun =
+      /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(trimmed);
+    const takeFromContainer =
+      containerNoun &&
+      /\b(?:take|grab|pocket|stow)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(
+        trimmed,
+      );
+    const takeContainer =
+      containerNoun &&
+      !takeFromContainer &&
+      !/\b(?:letter|key|item|object|contents?)\b/i.test(trimmed.replace(/\bopen\b/i, ''));
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: takeFromContainer
+        ? 'take_from_container'
+        : takeContainer
+          ? 'take_container'
+          : 'take_item',
+    });
   }
 
   // Named spell cast — capability check owns refusal (not empty clarify).

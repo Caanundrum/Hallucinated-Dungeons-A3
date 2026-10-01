@@ -293,3 +293,16 @@ test('open-only-if-closed on an open door is a no-op, never step-through', () =>
   assert.match(resolved.summary, /already open|leaving it exactly as it is/i);
   assert.doesNotMatch(resolved.summary, /step back through|step through/i);
 });
+
+test('VDM-004: wooden doorway east conditional false branch is no-op, not movement', () => {
+  const map = chamberMap({ tokenColumn: 10, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 10, row: 6 },
+    'If the wooden doorway east is closed, open it; otherwise leave it exactly as it is.',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.match(resolved.summary, /already open|leaving it exactly as it is/i);
+  assert.doesNotMatch(resolved.summary, /step back through|step through|Ready to step/i);
+});
