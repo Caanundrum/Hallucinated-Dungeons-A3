@@ -821,7 +821,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (host === null) {
       return;
     }
-    host.scrollTo({ top: host.scrollHeight, behavior });
+    // Anchor on the last beat so the viewport does not clip a prior message stub.
+    const lastBeat = host.querySelector<HTMLElement>('li:last-child');
+    if (lastBeat !== null) {
+      lastBeat.scrollIntoView({ block: 'end', inline: 'nearest', behavior });
+    } else {
+      host.scrollTo({ top: host.scrollHeight, behavior });
+    }
     dmThreadFollowLatest = true;
     updateDmThreadJumpVisibility();
   }
