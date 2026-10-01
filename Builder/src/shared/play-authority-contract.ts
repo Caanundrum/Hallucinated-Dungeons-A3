@@ -474,7 +474,7 @@ export function resolveIntentAuthority(
         ignoredWorldFacts,
         clarificationPrompt: null,
         summary:
-          'You try to take that container as a prop — the Game Director applies portability and inventory rules. This is not a peek inside.' +
+          'You try to take that container as a prop — not a peek inside. Scene props cannot yet enter inventory on this table.' +
           inventIgnoredNote,
         proposedCommandType: 'table.sync',
       };

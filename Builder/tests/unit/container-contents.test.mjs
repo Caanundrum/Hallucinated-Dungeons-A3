@@ -44,10 +44,12 @@ test('take container prop does not invent contents take (VDM-005)', () => {
     wantsTakeContainer: true,
   });
   assert.equal(answer.ok, true);
-  assert.match(answer.body, /portability|portable prop/i);
+  assert.match(answer.body, /portable prop/i);
   assert.doesNotMatch(answer.body, /no contents are authored/i);
   assert.doesNotMatch(answer.body, /take .+ from/i);
   assert.match(answer.body, /Empty or not|irrelevant/i);
+  assert.match(answer.body, /cannot yet commit|not wired|nothing is stowed/i);
+  assert.doesNotMatch(answer.body, /\bConfirm\b/i);
 });
 
 test('take from container still uses contents rules (VDM-005)', () => {

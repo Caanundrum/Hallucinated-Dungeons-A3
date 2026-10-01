@@ -42,8 +42,8 @@ export function answerContainerContentsQuery(options: {
     return {
       ok: true,
       body: open
-        ? `You pick up ${label} itself. Empty or not, the bag is a portable prop — authored contents are irrelevant to carrying it. Portability and inventory rules apply; this is not a search of what might be inside. Confirm when the table can commit that inventory change.`
-        : `You pick up ${label}. It is closed, but the container itself is still a portable prop — not an invitation to invent contents. Portability and inventory rules apply. Confirm when the table can commit that inventory change.`,
+        ? `You mean ${label} itself — a portable prop, not a search of its contents. Empty or not, authored contents are irrelevant to carrying the bag. This table cannot yet commit scene props into inventory, so nothing is stowed or removed from the map.`
+        : `You mean ${label} itself — still a portable prop even while closed, not an invitation to invent contents. This table cannot yet commit scene props into inventory, so nothing is stowed or removed from the map.`,
       nextDiscovery: discovery,
     };
   }
@@ -81,7 +81,7 @@ export function answerContainerContentsQuery(options: {
     const first = remaining[0]!;
     return {
       ok: true,
-      body: `You can take ${first.label} from ${label}. Confirm a take declaration naming that item when the table supports inventory commits.`,
+      body: `You can take ${first.label} from ${label}. Inventory commits for taken items are not wired on this table yet — nothing is stowed or removed.`,
       nextDiscovery: remaining.length <= 1 ? 'taken' : 'searched',
     };
   }
