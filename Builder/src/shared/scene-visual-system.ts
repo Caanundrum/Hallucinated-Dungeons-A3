@@ -277,7 +277,11 @@ export function objectVisualFamily(feature: MapNotableFeatureRecord): {
       stateVariant: state === 'broken' ? 'state_broken' : 'state_intact',
     };
   }
-  if (kind === 'container') {
+  const label = feature.label.toLowerCase();
+  const looksLikeContainer =
+    kind === 'container' ||
+    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(label);
+  if (looksLikeContainer) {
     return {
       family: 'family_container',
       stateVariant:
@@ -297,7 +301,6 @@ export function objectVisualFamily(feature: MapNotableFeatureRecord): {
     return { family: 'family_npc', stateVariant: 'state_present' };
   }
   if (kind === 'exit' || feature.referenceKind === 'exit') {
-    const label = feature.label.toLowerCase();
     if (/\bstair|ladder|parapet\b/.test(label)) {
       return { family: 'family_exit_vertical', stateVariant: 'state_open' };
     }
