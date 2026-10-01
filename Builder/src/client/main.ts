@@ -57,9 +57,6 @@ async function start(): Promise<void> {
     clearAccountOnAuthFailure();
   });
 
-  // Studio + game splash before shell chrome settles (skippable; once per session).
-  await playChaosBootSequence();
-
   let candidate: CandidateIdentity | null = null;
   try {
     candidate = await fetchCandidate();
@@ -70,6 +67,11 @@ async function start(): Promise<void> {
 
   const shell = mountShell(root as HTMLDivElement, candidate);
   await hydrateAccount();
+  // VWR-030: signed-in players skip the blocking Chaos/HD title card and go to the hub.
+  // Anonymous / first-visit still get the skippable studio → game splash.
+  if (getAccount() === null) {
+    await playChaosBootSequence();
+  }
   await hydrateLegalAcceptance();
   if (getAccount() !== null) {
     try {
