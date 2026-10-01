@@ -59,9 +59,11 @@ export function buildSkillCheckDraftSummary(
   } = {},
 ): string {
   const wantsTrap = /(trap|disarm)/.test(text);
+  // "pick up" is inventory — never force a lock draft (VDM-005).
   const wantsLock =
-    textRequestsLockPicking(text) ||
-    (/\block\b/.test(text) && !/\bunlocked\b/.test(text));
+    !/\bpick(?:ing|ed)?\s+up\b/i.test(text) &&
+    (textRequestsLockPicking(text) ||
+      (/\block\b/.test(text) && !/\bunlocked\b/.test(text)));
   // Broad room surveys are Director perception — never "Which feature…".
   const broadSurvey =
     /\b(?:survey|look\s+around|peer\s+around|look\s+and\s+listen)\b/i.test(text) ||
