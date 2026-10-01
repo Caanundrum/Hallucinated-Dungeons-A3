@@ -32,9 +32,21 @@ export function answerContainerContentsQuery(options: {
   readonly containerLabel: string;
   readonly view: ContainerContentsView;
   readonly wantsTake?: boolean;
+  /** Take the container itself as a portable prop — not an item from inside it. */
+  readonly wantsTakeContainer?: boolean;
 }): ContainerContentsAnswer {
   const label = options.containerLabel.trim() || 'the container';
   const { contents, discovery, open } = options.view;
+
+  if (options.wantsTakeContainer === true) {
+    return {
+      ok: true,
+      body: open
+        ? `You reach for ${label} itself. Portability and inventory rules apply to the container as a prop — this is not a search of its contents. Confirm a take when the table can commit that inventory change.`
+        : `You reach for ${label}. It is closed; portability and inventory rules still apply to the container as a prop, not to inventing what might be inside. Confirm a take when the table can commit that inventory change.`,
+      nextDiscovery: discovery,
+    };
+  }
 
   if (!open && discovery === 'hidden') {
     return {

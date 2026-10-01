@@ -363,6 +363,10 @@ function answerKnowledgeRecapNarration(
 function answerContentsQueryNarration(
   map: MapBundleProjection | null,
   playerText: string,
+  options: {
+    readonly wantsTakeContainer?: boolean;
+    readonly forceTakeFrom?: boolean;
+  } = {},
 ): string {
   const hint = containerLabelHintFromText(playerText) ?? 'the container';
   let open = /\bopen\b/i.test(playerText) || /\binside\b/i.test(playerText);
@@ -382,11 +386,17 @@ function answerContentsQueryNarration(
       }
     }
   }
+  const wantsTakeContainer = options.wantsTakeContainer === true;
+  const wantsTakeFrom =
+    !wantsTakeContainer &&
+    (options.forceTakeFrom === true ||
+      (/\b(?:take|grab|pocket|stow)\b/i.test(playerText) && /\bfrom\b/i.test(playerText)));
   // Unauthored contents — honest limitation rather than invented loot.
   const answered = answerContainerContentsQuery({
     containerLabel: label,
     view: { contents: null, discovery: open ? 'visible' : 'hidden', open },
-    wantsTake: /\b(?:take|grab|pocket|stow)\b/i.test(playerText),
+    wantsTake: wantsTakeFrom,
+    wantsTakeContainer,
   });
   return answered.body;
 }
@@ -491,8 +501,16 @@ async function resolveDirectorNarrateOutput(options: {
     return 'You look and listen. The visible scene holds steady — nothing unseen invents itself from your words.';
   }
 
-  if (inspectHint === 'take_item') {
-    return answerContentsQueryNarration(map, options.playerText ?? options.structured.rawText);
+  if (
+    inspectHint === 'take_item' ||
+    inspectHint === 'take_container' ||
+    inspectHint === 'take_from_container'
+  ) {
+    const playerAsk = options.playerText ?? options.structured.rawText;
+    return answerContentsQueryNarration(map, playerAsk, {
+      wantsTakeContainer: inspectHint === 'take_container',
+      forceTakeFrom: inspectHint === 'take_from_container',
+    });
   }
 
   if (inspectHint === 'door_state' || inspectHint === 'listen' || inspectHint === 'sensory_sequence') {

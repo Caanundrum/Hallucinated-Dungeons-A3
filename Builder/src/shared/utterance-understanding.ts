@@ -148,8 +148,13 @@ export function extractUtteranceConstraints(text: string): UtteranceConstraints 
       /\bonly\s+listen\b/i.test(t) ||
       /\bfrom\s+where\s+i\s+stand\b/i.test(t));
 
+  // Allow material + orientation (e.g. "wooden doorway east") between the/it and closed.
   const openOnlyIfClosed =
-    /\bif\s+(?:(?:it|the(?:\s+\w+){0,3}\s+door(?:way)?)\s+is\s+)?closed\b/i.test(t) &&
+    (/\bif\s+(?:it|the)\b[\s\S]{0,64}?\b(?:door|doorway|gate|entry(?:way)?)\b[\s\S]{0,48}?\bis\s+closed\b/i.test(
+      t,
+    ) ||
+      /\bif\s+(?:it|the(?:\s+\w+){0,6}\s+door(?:way)?)\s+is\s+closed\b/i.test(t) ||
+      (/\bif\b/i.test(t) && /\bis\s+closed\b/i.test(t) && /\b(?:door|doorway)\b/i.test(t))) &&
     /\bopen\b/i.test(t) &&
     (/\b(?:otherwise|else|if\s+(?:already\s+)?open)\b/i.test(t) ||
       /\bleave\s+it\b/i.test(t) ||
@@ -297,6 +302,10 @@ export function filterActionsByConstraints<T extends { readonly kind: string }>(
       return false;
     }
     if (constraints.forbidTouch && (kind === 'open_door' || kind === 'use_item')) {
+      return false;
+    }
+    // Conditional open-if-closed must never draft movement/step-through from the false branch.
+    if (constraints.openOnlyIfClosed && kind === 'move') {
       return false;
     }
     return true;

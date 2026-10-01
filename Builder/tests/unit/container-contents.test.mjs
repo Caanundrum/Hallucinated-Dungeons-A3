@@ -36,3 +36,29 @@ test('authored empty container reports empty', () => {
   });
   assert.match(answer.body, /empty/i);
 });
+
+test('take container prop does not invent contents take (VDM-005)', () => {
+  const answer = answerContainerContentsQuery({
+    containerLabel: 'courier satchel',
+    view: { contents: null, discovery: 'visible', open: true },
+    wantsTakeContainer: true,
+  });
+  assert.equal(answer.ok, true);
+  assert.match(answer.body, /portability|container as a prop/i);
+  assert.doesNotMatch(answer.body, /no contents are authored/i);
+  assert.doesNotMatch(answer.body, /take .+ from/i);
+});
+
+test('take from container still uses contents rules (VDM-005)', () => {
+  const answer = answerContainerContentsQuery({
+    containerLabel: 'courier satchel',
+    view: {
+      contents: [{ itemId: 'letter-1', label: 'sealed letter' }],
+      discovery: 'visible',
+      open: true,
+    },
+    wantsTake: true,
+  });
+  assert.match(answer.body, /sealed letter/i);
+  assert.match(answer.body, /from courier satchel/i);
+});

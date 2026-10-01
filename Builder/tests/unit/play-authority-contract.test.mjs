@@ -447,15 +447,38 @@ test('crouch + listen explains concealment is not established', () => {
   assert.match(authority.summary, /does not establish/i);
 });
 
-test('take the open courier satchel is take_item narrate-only', () => {
+test('take the open courier satchel is take_container narrate-only (VDM-005)', () => {
   const parsed = parsePlayerDeclaration('I take the open courier satchel');
   const authority = resolveIntentAuthority(parsed);
   assert.equal(authority.disposition, 'director_narrate_only');
   assert.ok(
     authority.actionSequence.some(
-      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_item',
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
     ),
   );
+  assert.match(authority.summary, /container as a prop|portability/i);
+  assert.doesNotMatch(authority.summary, /from that container/i);
+});
+
+test('take the letter from the courier satchel is take_from_container (VDM-005)', () => {
+  const parsed = parsePlayerDeclaration('I take the letter from the courier satchel');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_from_container',
+    ),
+  );
+  assert.match(authority.summary, /from that container/i);
+});
+
+test('conditional wooden doorway east does not propose table.open_door (VDM-004)', () => {
+  const parsed = parsePlayerDeclaration(
+    'If the wooden doorway east is closed, open it; otherwise leave it exactly as it is.',
+  );
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(authority.summary, /Ready to (?:open the door|move|step)/i);
 });
 
 test('cast Fireball parses as cast so capability can refuse', () => {

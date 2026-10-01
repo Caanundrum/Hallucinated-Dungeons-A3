@@ -504,6 +504,8 @@ function paintSemanticSvg(
     const isExit =
       visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
     const isTorch = visual.family === 'family_light';
+    const isContainer = visual.family === 'family_container';
+    const isProp = visual.family === 'family_prop';
     const isUnlit = visual.stateVariant === 'state_unlit';
     const isBroken = visual.stateVariant === 'state_broken';
     const isCover = visual.family === 'family_cover';
@@ -523,9 +525,13 @@ function paintSemanticSvg(
               ? isUnlit
                 ? '#5a5048'
                 : '#f0c043'
-              : isBroken
-                ? '#6a5844'
-                : '#f2d38a';
+              : isContainer
+                ? visual.stateVariant === 'state_open'
+                  ? '#d4b06a'
+                  : '#c4a060'
+                : isBroken
+                  ? '#6a5844'
+                  : '#e0c070';
     const dampWash = isDampHazard || (isHazard && /damp|wet|slick/i.test(feature.label))
       ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
          <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
@@ -563,13 +569,29 @@ function paintSemanticSvg(
            </g>`
         : `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
       : '';
+    // Quiet markers: light = disc, container = rounded pouch, generic prop = diamond (VDM-002).
+    const containerMark = isContainer
+      ? `<g class="map-container-mark" pointer-events="none" aria-hidden="true">
+           <rect class="map-poi-core" x="${x - 7}" y="${y - 5}" width="14" height="11" rx="3.5" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+           <path d="M ${x - 4} ${y - 5} Q ${x} ${y - 9} ${x + 4} ${y - 5}" fill="none" stroke="#1a1208" stroke-width="1.25" />
+         </g>`
+      : '';
+    const propDiamond = isProp && !isContainer
+      ? `<polygon class="map-poi-core map-prop-diamond" points="${x},${y - 7} ${x + 6},${y} ${x},${y + 7} ${x - 6},${y}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
+      : '';
+    const coreDisc =
+      !isContainer && !isProp
+        ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
+        : '';
     const testId = isExit
       ? 'map-exit-marker'
       : isActor
         ? 'map-actor-marker'
         : isTorch
           ? 'map-light-marker'
-          : 'map-poi-marker';
+          : isContainer
+            ? 'map-container-marker'
+            : 'map-poi-marker';
     const boundDoor = isExit ? doorBoundToExitFeature(map, feature) : null;
     const doorOwnedExit = boundDoor !== null;
     const accessibleName = doorOwnedExit
@@ -579,13 +601,15 @@ function paintSemanticSvg(
     const interactiveAttrs = doorOwnedExit
       ? `role="img" aria-label="${escapeHtml(accessibleName)}"`
       : `tabindex="0" role="button" aria-label="${escapeHtml(accessibleName)}"`;
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
       ${actorRing}
       ${exitChevron}
-      <circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+      ${containerMark}
+      ${propDiamond}
+      ${coreDisc}
       <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)} · ${escapeHtml(visual.stateVariant.replace(/^state_/, ''))}</title>
     </g>`;
   };
@@ -1279,6 +1303,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const isActor = visual.family === 'family_creature' || visual.family === 'family_npc';
       const isExit =
         visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
+      const isContainer = visual.family === 'family_container';
+      const isProp = visual.family === 'family_prop';
       const isUnlit = visual.stateVariant === 'state_unlit';
       const marker = new Graphics();
       const color = isExit
@@ -1293,10 +1319,20 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
                 ? isUnlit
                   ? 0x5a5048
                   : 0xf0c043
-                : visual.stateVariant === 'state_broken'
-                  ? 0x6a5844
-                  : 0xf2d38a;
-      marker.circle(x, y, isActor || isExit ? 8 : 6).fill({ color, alpha: 0.95 });
+                : isContainer
+                  ? 0xc4a060
+                  : visual.stateVariant === 'state_broken'
+                    ? 0x6a5844
+                    : 0xe0c070;
+      if (isContainer) {
+        marker.roundRect(x - 7, y - 5, 14, 11, 3.5).fill({ color, alpha: 0.95 });
+      } else if (isProp) {
+        marker
+          .poly([x, y - 7, x + 6, y, x, y + 7, x - 6, y])
+          .fill({ color, alpha: 0.95 });
+      } else {
+        marker.circle(x, y, isActor || isExit ? 8 : 6).fill({ color, alpha: 0.95 });
+      }
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
       // Prop text lives on decluttered SVG chips; keep Pixi marks quiet at Fit.
