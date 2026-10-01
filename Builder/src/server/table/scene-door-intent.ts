@@ -267,6 +267,18 @@ export function resolveDoorIntentForMap(
     return null;
   }
 
+  // Scene survey / look-around mentioning doorway as location — not door open/cross.
+  if (
+    /\b(?:look(?:s|ing)?\s+around|peer(?:s|ing)?\s+around|survey(?:s|ing)?|take(?:s|ing)?\s+(?:a\s+)?look\s+around|see(?:s|ing)?\s+around)\b/i.test(
+      text,
+    ) &&
+    !/\b(?:opens?|opening|unlock|closes?|closing|shut|step(?:s|ping)?\s+through|through\s+(?:the\s+)?(?:door|doorway))\b/i.test(
+      text,
+    )
+  ) {
+    return null;
+  }
+
   const sceneTitle = map.title.trim().length > 0 ? map.title : 'this chamber';
   const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
   const openDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
