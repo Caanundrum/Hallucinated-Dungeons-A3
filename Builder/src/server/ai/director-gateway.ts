@@ -1471,6 +1471,9 @@ export async function interpretNaturalLanguageIntent(options: {
       authority.actionSequence[0]?.kind === 'inspect' &&
       authority.actionSequence[0]?.outcomeHint === 'trap_search') ||
     (authority.disposition === 'propose_command' &&
+      authority.actionSequence[0]?.kind === 'inspect' &&
+      authority.actionSequence[0]?.outcomeHint === 'take_container') ||
+    (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'move' &&
       !mentionsDoorIntent(text) &&
       authority.actionSequence[0]?.outcomeHint !== 'beside_door');
@@ -1563,17 +1566,49 @@ export async function interpretNaturalLanguageIntent(options: {
         : authority.clarificationPrompt ?? authority.summary;
     } else if (
       authority.actionSequence.some(
+        (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
+      )
+    ) {
+      try {
+        const { loadMapRuntime } = await import('../table/map-runtime.js');
+        const { matchTakeContainerByDeclaration } = await import('../table/scene-commands.js');
+        const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+        const matched = matchTakeContainerByDeclaration(runtime, rawText);
+        if (matched !== null) {
+          const active =
+            runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+              ? runtime.sceneInstances?.[runtime.activeSceneId]
+              : undefined;
+          const feature = active?.features.find((entry) => entry.objectId === matched);
+          const label =
+            feature?.label.replace(/\s*[—(].*$/, '').trim() ||
+            containerLabelHintFromText(rawText) ||
+            'that container';
+          proposedCommandType = 'table.take_scene_prop';
+          objectId = matched;
+          summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
+        } else {
+          proposedCommandType = 'table.sync';
+          deferDirectorNarrate = true;
+          summary = authority.summary;
+        }
+      } catch {
+        proposedCommandType = 'table.sync';
+        deferDirectorNarrate = true;
+        summary = authority.summary;
+      }
+    } else if (
+      authority.actionSequence.some(
         (step) =>
           step.kind === 'inspect' &&
-          (step.outcomeHint === 'take_container' ||
-            step.outcomeHint === 'take_from_container' ||
+          (step.outcomeHint === 'take_from_container' ||
             step.outcomeHint === 'take_item' ||
             step.outcomeHint === 'contents_query'),
       ) ||
       (/\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text) &&
         containerLabelHintFromText(text) !== null)
     ) {
-      // Portability vs contents is owned by resolveDirectorNarrateOutput (VDM-005).
+      // Contents take / peek remains narrate-only until inventory item commits land.
       proposedCommandType = 'table.sync';
       deferDirectorNarrate = true;
       summary = authority.summary;
@@ -2019,6 +2054,7 @@ export async function interpretNaturalLanguageIntent(options: {
     proposedCommandType === 'table.sync' ||
     proposedCommandType === 'table.move' ||
     proposedCommandType === 'table.open_door' ||
+    proposedCommandType === 'table.take_scene_prop' ||
     proposedCommandType === 'encounter.begin' ||
     proposedCommandType === 'initiative.roll' ||
     proposedCommandType === 'combat.short_rest' ||

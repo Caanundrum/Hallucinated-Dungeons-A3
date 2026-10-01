@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   answerContainerContentsQuery,
   containerLabelHintFromText,
+  labelLooksPortableContainer,
 } from '../../dist/shared/container-contents.js';
 
 test('containerLabelHintFromText extracts satchel and crate labels', () => {
@@ -48,8 +49,15 @@ test('take container prop does not invent contents take (VDM-005)', () => {
   assert.doesNotMatch(answer.body, /no contents are authored/i);
   assert.doesNotMatch(answer.body, /take .+ from/i);
   assert.match(answer.body, /Empty or not|irrelevant/i);
-  assert.match(answer.body, /cannot yet commit|not wired|nothing is stowed/i);
+  assert.match(answer.body, /No matching portable|nothing is taken|nothing is stowed/i);
   assert.doesNotMatch(answer.body, /\bConfirm\b/i);
+});
+
+test('labelLooksPortableContainer allowlists satchel not freight crate', () => {
+  assert.equal(labelLooksPortableContainer('Courier satchel (open)'), true);
+  assert.equal(labelLooksPortableContainer('Travel pack'), true);
+  assert.equal(labelLooksPortableContainer('Freight crate'), false);
+  assert.equal(labelLooksPortableContainer('Locked chest'), false);
 });
 
 test('take from container still uses contents rules (VDM-005)', () => {

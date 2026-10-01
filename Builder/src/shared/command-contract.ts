@@ -25,6 +25,7 @@ export const TABLE_COMMAND_TYPES = [
   'table.build_scene',
   'table.begin_adventure',
   'table.interact_object',
+  'table.take_scene_prop',
   'table.travel_scene',
   'encounter.begin',
   'initiative.roll',
@@ -51,6 +52,7 @@ export const TABLE_EVENT_TYPES = [
   'table.door_closed',
   'table.scene_built',
   'table.object_changed',
+  'table.scene_prop_taken',
   'table.scene_traveled',
   'encounter.started',
   'initiative.rolled',
@@ -85,7 +87,7 @@ export interface TableCommandRequest {
   readonly path?: readonly { readonly column: number; readonly row: number }[];
   /** Door edge id (table.open_door). */
   readonly edgeId?: string;
-  /** Interactable scene object id (table.interact_object). */
+  /** Interactable scene object id (table.interact_object / table.take_scene_prop). */
   readonly objectId?: string;
   /** Travel destination hint or exit id (table.travel_scene). */
   readonly destinationHint?: string;

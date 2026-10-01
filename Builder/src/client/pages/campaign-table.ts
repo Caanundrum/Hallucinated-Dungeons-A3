@@ -514,6 +514,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       commandType === 'table.build_scene' ||
       commandType === 'table.begin_adventure' ||
       commandType === 'table.interact_object' ||
+      commandType === 'table.take_scene_prop' ||
       commandType === 'table.travel_scene' ||
       commandType === 'table.sync'
     );
@@ -5196,6 +5197,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
             });
             tableState = accepted.table;
+            if (accepted.progression !== undefined) {
+              progression = accepted.progression;
+            }
             mapBundle = await fetchCampaignMap(campaignId);
             // Paint the committed token/door/scene state before slow Director narration.
             stageHandle?.renderMap(mapBundle);

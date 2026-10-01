@@ -97,6 +97,20 @@ export function resolvedSummaryAfterTableConfirm(options: {
       ? options.draftSummary.trim()
       : `An object changed${inScene}.`;
   }
+  if (options.commandType === 'table.take_scene_prop') {
+    if (
+      typeof options.eventSummary === 'string' &&
+      options.eventSummary.trim().length > 0 &&
+      !isIntentDraftConfirmCopy(options.eventSummary)
+    ) {
+      return options.eventSummary.trim();
+    }
+    const label =
+      typeof options.targetLabel === 'string' && options.targetLabel.trim().length > 0
+        ? options.targetLabel.trim()
+        : 'The prop';
+    return `${label} is stowed in inventory and leaves the scene${inScene}.`;
+  }
   if (options.openCross === true) {
     return `Opened the door and stepped through the doorway${inScene}.${sameSceneNote}`;
   }

@@ -97,6 +97,49 @@ export function baseSheetFor(source: StoredCharacterRulesSource): DerivedCharact
   return sheet;
 }
 
+/** Merge a taken scene prop into equipmentOverrides without wiping the base sheet. */
+export function appendEquipmentOverride(options: {
+  readonly baseEquipment: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
+  readonly equipmentOverrides?: readonly {
+    readonly name: string;
+    readonly quantity: number;
+    readonly equipped?: boolean;
+  }[];
+  readonly itemName: string;
+  readonly quantity?: number;
+}): readonly {
+  readonly name: string;
+  readonly quantity: number;
+  readonly equipped?: boolean;
+}[] {
+  const qty = Math.max(1, options.quantity ?? 1);
+  const current =
+    options.equipmentOverrides !== undefined && options.equipmentOverrides.length > 0
+      ? options.equipmentOverrides.map((item) => ({
+          name: item.name,
+          quantity: Math.max(0, item.quantity),
+          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
+        }))
+      : options.baseEquipment.map((item) => ({
+          name: item.name,
+          quantity: Math.max(0, item.quantity),
+          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
+        }));
+  const needle = options.itemName.trim().toLowerCase();
+  const index = current.findIndex((item) => item.name.trim().toLowerCase() === needle);
+  if (index >= 0) {
+    const existing = current[index]!;
+    return current.map((item, i) =>
+      i === index ? { ...item, quantity: existing.quantity + qty } : item,
+    );
+  }
+  return [...current, { name: options.itemName.trim(), quantity: qty }];
+}
+
 export function applyProgressionTrackers(
   sheet: DerivedCharacterSheet,
   progression: StoredProgression | null,
