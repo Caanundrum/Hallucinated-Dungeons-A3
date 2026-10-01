@@ -35,7 +35,6 @@ import { mountWelcomePage } from './pages/welcome.js';
 import { isHostedPlayerSurface } from './player-surface.js';
 import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
-import { playChaosBootSequence } from './chaos-boot-sequence.js';
 import {
   bindLegalPlayGatePage,
   renderLegalPlayGatePage,
@@ -67,11 +66,8 @@ async function start(): Promise<void> {
 
   const shell = mountShell(root as HTMLDivElement, candidate);
   await hydrateAccount();
-  // VWR-030: signed-in players skip the blocking Chaos/HD title card and go to the hub.
-  // Anonymous / first-visit still get the skippable studio → game splash.
-  if (getAccount() === null) {
-    await playChaosBootSequence();
-  }
+  // VWR recheck: the welcome sign-in hero is the entrance. Do not play a second
+  // blocking Chaos/HD cinematic before it (or before the signed-in hub).
   await hydrateLegalAcceptance();
   if (getAccount() !== null) {
     try {

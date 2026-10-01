@@ -1,9 +1,10 @@
 /**
  * Chaos Standard studio splash → Hallucinated Dungeons game splash.
  *
- * Phase 1 matches the shared Chaos Standard mark (teal icon + wordmark).
- * Phase 2 is this game only — never the HCOS boot screen from other titles.
- * Skippable; once per browser session.
+ * Optional cinematic only — not mounted on the ordinary sign-in or hub path
+ * (the welcome hero already carries brand + CTA). Keep for forced demos.
+ * Phase 1: Chaos Standard mark. Phase 2: this game only (never HCOS).
+ * Skippable; once per browser session when invoked.
  */
 
 const SESSION_KEY = 'hd.chaosBoot.seen.v1';

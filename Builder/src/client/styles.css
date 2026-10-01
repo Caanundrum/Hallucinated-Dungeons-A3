@@ -1479,8 +1479,38 @@ ol.record-list.dm-thread-list > li {
     flex: 0 0 auto;
   }
 
+  .table-hud-brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .table-hud-titles {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start;
+    flex-wrap: nowrap;
+    gap: 0.1rem;
+    overflow: visible;
+  }
+
+  .table-dashboard-header h1,
+  .table-ambient-hud h1 {
+    max-width: 100%;
+    font-size: 0.9rem;
+  }
+
+  .table-hud-scene {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.25;
+    max-width: 100%;
+  }
+
+  .table-hud-action-settings {
+    display: none;
   }
 
   .table-mobile-task-nav {
@@ -1709,11 +1739,38 @@ ol.record-list.dm-thread-list > li {
     background: color-mix(in srgb, var(--panel-surface) 94%, #000);
   }
 
+  /*
+   * Beat desktop `.table-action-bar .table-player-turn-composer` two-column grid
+   * so Tell/Expand do not sit beside a squeezed textarea (VWR recheck).
+   */
+  .table-action-bar .table-player-turn-composer {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .table-action-bar .table-player-actions {
+    justify-content: stretch;
+    max-width: none;
+    width: 100%;
+  }
+
+  .table-action-bar .table-player-actions .table-primary-action {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .table-action-bar .table-player-actions .dm-thread-expand,
+  .table-action-bar .table-player-actions .dm-thread-jump-latest {
+    flex: 0 0 auto;
+  }
+
   .table-action-bar {
     order: 2;
     position: relative;
     bottom: auto;
-    z-index: 4;
+    z-index: 10;
   }
 
   .table-dashboard[data-mobile-task='chat'] .table-comms-rail:not(.is-collapsed) {
@@ -1865,14 +1922,12 @@ ol.record-list.dm-thread-list > li {
     bottom: 1rem;
   }
 
-  .table-action-bar-inner,
-  .table-player-turn-composer {
+  .table-action-bar-inner {
     grid-template-columns: 1fr;
   }
 
   .table-action-bar .table-primary-action {
     max-width: none;
-    width: 100%;
   }
 
   .table-dashboard .table-stage-frame {
