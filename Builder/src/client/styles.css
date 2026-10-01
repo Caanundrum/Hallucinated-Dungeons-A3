@@ -647,15 +647,16 @@ a.account-chip-label:focus-visible {
   gap: var(--space-2);
 }
 
-/* Chat drawer — right overlay; does not steal a permanent column. */
+/* Chat drawer — right overlay over the map; never covers the play action dock. */
 .table-comms-rail:not(.is-collapsed) {
   position: absolute;
   right: var(--space-2);
   top: var(--space-2);
-  bottom: var(--space-2);
+  bottom: auto;
   width: min(320px, 42vw);
   height: auto;
-  max-height: calc(100% - (var(--space-2) * 2));
+  /* Leave the play dock (timeline + composer) clear below the overlay. */
+  max-height: calc(100% - min(32vh, 16rem) - (var(--space-2) * 2));
   z-index: 8;
   border: var(--border-weight) solid var(--panel-border);
   border-radius: var(--radius-panel);
@@ -883,7 +884,8 @@ a.account-chip-label:focus-visible {
   overscroll-behavior: none;
   padding: var(--space-2) var(--space-3);
   position: relative;
-  z-index: 4;
+  /* Above Reference/Chat overlays so Tell / Expand stay clickable. */
+  z-index: 10;
   background: color-mix(in srgb, var(--panel-surface) 94%, #000);
   border: none;
   border-top: var(--border-weight) solid var(--panel-border);
@@ -960,10 +962,10 @@ a.account-chip-label:focus-visible {
 }
 
 .dm-play-thread {
-  /* Compact by default — map keeps the viewport; Expand grows the timeline. */
+  /* Compact by default with a readable latest-beat floor; Expand grows further. */
   flex: 0 1 auto;
   min-height: 0;
-  max-height: min(16vh, 9rem);
+  max-height: min(22vh, 12rem);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1533,12 +1535,16 @@ ol.record-list.dm-thread-list > li {
     height: auto;
   }
 
+  /* Compact layouts: exclusive Map/Play/Sheet/Chat tabs own navigation (VWR-016). */
+  .table-focus-restore {
+    display: none !important;
+  }
+
   /* Hidden task regions contribute zero layout size. */
   .table-dashboard[data-mobile-task='map'] .table-info-rail,
   .table-dashboard[data-mobile-task='map'] .table-comms-rail,
   .table-dashboard[data-mobile-task='map'] .table-action-bar,
-  .table-dashboard[data-mobile-task='map'] .dm-play-thread,
-  .table-dashboard[data-mobile-task='map'] .table-focus-restore {
+  .table-dashboard[data-mobile-task='map'] .dm-play-thread {
     display: none !important;
   }
 
@@ -1603,16 +1609,21 @@ ol.record-list.dm-thread-list > li {
     overflow: hidden;
   }
 
+  /*
+   * VWR-001: Play is a deliberate split — meaningful map, readable latest outcome,
+   * composer without a large empty dark band under the dock.
+   */
   .table-dashboard[data-mobile-task='play'] .table-map-chrome {
-    flex: 0 0 auto;
-    min-height: min(18dvh, 7.5rem);
-    max-height: min(22dvh, 9rem);
+    flex: 1 1 42%;
+    min-height: min(34dvh, 13rem);
+    max-height: min(46dvh, 20rem);
   }
 
   @media (min-width: 768px) {
     .table-dashboard[data-mobile-task='play'] .table-map-chrome {
-      min-height: min(24dvh, 11rem);
-      max-height: min(28dvh, 13rem);
+      flex: 1 1 48%;
+      min-height: min(38dvh, 16rem);
+      max-height: min(52dvh, 24rem);
     }
   }
 
@@ -1622,7 +1633,7 @@ ol.record-list.dm-thread-list > li {
     height: 100%;
   }
 
-  /* Play prioritizes timeline + composer; keep a slim map strip for FABs. Zoom chrome stays on Map task. */
+  /* Play prioritizes timeline + composer; zoom chrome stays on Map task. */
   .table-dashboard[data-mobile-task='play'] .table-stage-toolbar,
   .table-dashboard[data-mobile-task='play'] .map-stage-help-floating,
   .table-dashboard[data-mobile-task='play'] .table-map-actions {
@@ -1630,11 +1641,13 @@ ol.record-list.dm-thread-list > li {
   }
 
   .table-dashboard[data-mobile-task='play'] .table-action-bar {
-    flex: 1 1 0;
+    flex: 1 1 58%;
     height: auto;
     max-height: none;
-    min-height: 0;
+    min-height: min(38dvh, 16rem);
     overflow: clip;
+    display: flex;
+    flex-direction: column;
   }
 
   .table-dashboard[data-mobile-task='play'] .table-action-bar:has(.dm-play-thread.is-expanded) {
@@ -1642,21 +1655,33 @@ ol.record-list.dm-thread-list > li {
     max-height: none;
   }
 
-  .table-dashboard[data-mobile-task='play'] .dm-play-thread {
+  /* Fill the dock with timeline + composer — no empty painted void below. */
+  .table-dashboard[data-mobile-task='play'] .table-action-bar > [data-testid='table-action-slot'],
+  .table-dashboard[data-mobile-task='play'] .table-action-bar-inner,
+  .table-dashboard[data-mobile-task='play'] .table-action-bar-dm {
     flex: 1 1 0;
     min-height: 0;
-    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .table-dashboard[data-mobile-task='play'] .dm-play-thread {
+    flex: 1 1 0;
+    min-height: min(18dvh, 8rem);
+    max-height: none;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-play-thread.is-expanded {
     flex: 1 1 0;
-    min-height: 0;
-    max-height: 100%;
+    min-height: min(22dvh, 10rem);
+    max-height: none;
   }
 
   .table-dashboard[data-mobile-task='play'] .dm-thread-list,
   .table-dashboard[data-mobile-task='play'] ol.record-list.dm-thread-list {
     flex: 1 1 0;
+    min-height: 4.5rem;
     max-height: none;
   }
 
@@ -1753,8 +1778,6 @@ ol.record-list.dm-thread-list > li {
   .table-dashboard[data-mobile-task='play'] .table-map-chrome {
     display: flex;
     flex-direction: column;
-    min-height: min(18dvh, 7.5rem);
-    max-height: min(22dvh, 9rem);
   }
 
   .table-dashboard[data-mobile-task='play'] .table-map-chrome > .table-stage-frame {
@@ -1873,11 +1896,6 @@ ol.record-list.dm-thread-list > li {
   }
 
   @media (min-width: 768px) {
-    .table-dashboard[data-mobile-task='play'] .table-map-chrome {
-      min-height: min(24dvh, 11rem);
-      max-height: min(28dvh, 13rem);
-    }
-
     .table-dashboard[data-mobile-task='play'] .table-stage-frame {
       min-height: 0;
     }

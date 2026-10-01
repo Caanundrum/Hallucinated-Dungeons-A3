@@ -1740,7 +1740,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-info-rail"
         aria-expanded="${!infoRailCollapsed}" ${infoRailCollapsed ? 'hidden' : ''}>
-        Hide reference
+        ${mobileTaskMode === 'sheet' ? 'Back to Play' : 'Hide reference'}
       </button>
       ${
         infoRailCollapsed
@@ -1767,7 +1767,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-comms-rail"
         aria-expanded="${!commsRailCollapsed}" ${commsRailCollapsed ? 'hidden' : ''}>
-        Hide chat
+        ${mobileTaskMode === 'chat' ? 'Back to Play' : 'Hide chat'}
       </button>
       ${
         commsRailCollapsed
@@ -3427,6 +3427,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         rulesModalOpen = true;
         activeInfoTab = 'rules';
         infoRailCollapsed = false;
+        commsRailCollapsed = true;
         render();
       });
     }
@@ -3557,6 +3558,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         rulesModalOpen = true;
         activeInfoTab = 'rules';
         infoRailCollapsed = false;
+        commsRailCollapsed = true;
         render();
       });
     });
@@ -3899,44 +3901,49 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root
       .querySelector<HTMLButtonElement>('[data-testid="collapse-info-rail"]')
       ?.addEventListener('click', () => {
-        infoRailCollapsed = !infoRailCollapsed;
+        infoRailCollapsed = true;
+        if (mobileTaskMode === 'sheet') {
+          mobileTaskMode = 'play';
+        }
         render();
       });
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="collapse-comms-rail"]')
       ?.addEventListener('click', () => {
-        commsRailCollapsed = !commsRailCollapsed;
+        commsRailCollapsed = true;
+        if (mobileTaskMode === 'chat') {
+          mobileTaskMode = 'play';
+        }
         render();
       });
+
+    const openInfoDrawer = () => {
+      infoRailCollapsed = false;
+      commsRailCollapsed = true;
+      render();
+    };
+    const openCommsDrawer = () => {
+      commsRailCollapsed = false;
+      infoRailCollapsed = true;
+      render();
+    };
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="expand-info-rail-inline"]')
-      ?.addEventListener('click', () => {
-        infoRailCollapsed = false;
-        render();
-      });
+      ?.addEventListener('click', () => openInfoDrawer());
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="expand-comms-rail-inline"]')
-      ?.addEventListener('click', () => {
-        commsRailCollapsed = false;
-        render();
-      });
+      ?.addEventListener('click', () => openCommsDrawer());
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="expand-info-rail"]')
-      ?.addEventListener('click', () => {
-        infoRailCollapsed = false;
-        render();
-      });
+      ?.addEventListener('click', () => openInfoDrawer());
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="expand-comms-rail"]')
-      ?.addEventListener('click', () => {
-        commsRailCollapsed = false;
-        render();
-      });
+      ?.addEventListener('click', () => openCommsDrawer());
 
     root
       .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
