@@ -1740,7 +1740,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-info-rail"
         aria-expanded="${!infoRailCollapsed}" ${infoRailCollapsed ? 'hidden' : ''}>
-        Hide reference
+        ${mobileTaskMode === 'sheet' ? 'Back to Play' : 'Hide reference'}
       </button>
       ${
         infoRailCollapsed
@@ -1767,7 +1767,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     return `
       <button type="button" class="table-rail-collapse" data-testid="collapse-comms-rail"
         aria-expanded="${!commsRailCollapsed}" ${commsRailCollapsed ? 'hidden' : ''}>
-        Hide chat
+        ${mobileTaskMode === 'chat' ? 'Back to Play' : 'Hide chat'}
       </button>
       ${
         commsRailCollapsed
@@ -3902,6 +3902,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="collapse-info-rail"]')
       ?.addEventListener('click', () => {
         infoRailCollapsed = true;
+        if (mobileTaskMode === 'sheet') {
+          mobileTaskMode = 'play';
+        }
         render();
       });
 
@@ -3909,6 +3912,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="collapse-comms-rail"]')
       ?.addEventListener('click', () => {
         commsRailCollapsed = true;
+        if (mobileTaskMode === 'chat') {
+          mobileTaskMode = 'play';
+        }
         render();
       });
 
