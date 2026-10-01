@@ -825,7 +825,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const lastBeat = host.querySelector<HTMLElement>('li:last-child');
     if (lastBeat !== null) {
       const pad = 4;
-      const targetTop = Math.max(0, lastBeat.offsetTop - pad);
+      const hostRect = host.getBoundingClientRect();
+      const beatRect = lastBeat.getBoundingClientRect();
+      const beatTopInHost = beatRect.top - hostRect.top + host.scrollTop;
+      const targetTop = Math.max(0, beatTopInHost - pad);
       const maxTop = Math.max(0, host.scrollHeight - host.clientHeight);
       host.scrollTo({ top: Math.min(targetTop, maxTop), behavior });
     } else {
