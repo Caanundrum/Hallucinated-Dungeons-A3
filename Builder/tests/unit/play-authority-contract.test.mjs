@@ -480,7 +480,8 @@ test('pick up the courier satchel itself is take_container, never lockpick (VDM-
   );
   assert.equal(authority.actionSequence.some((step) => step.kind === 'unlock_door'), false);
   assert.doesNotMatch(authority.summary, /lock|Sleight|Thieves/i);
-  assert.match(authority.summary, /container as a prop|portability/i);
+  assert.match(authority.summary, /container as a prop|cannot yet enter inventory/i);
+  assert.doesNotMatch(authority.summary, /\bConfirm\b/i);
 });
 
 test('take the letter from the courier satchel is take_from_container (VDM-005)', () => {
