@@ -208,9 +208,9 @@ function tokenLabelFontSize(
   mapPixelWidth: number,
 ): number {
   const displayScale = hostWidth > 0 && mapPixelWidth > 0 ? hostWidth / mapPixelWidth : 1;
-  const minCssPx = 11;
+  const minCssPx = 9;
   const minSvgUnits = minCssPx / Math.max(displayScale, 0.35);
-  return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.34));
+  return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.28));
 }
 
 function paintSemanticSvg(
@@ -876,14 +876,14 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     // Compact path uses less label pad so Fit fills empty canvas (Recheck 3).
     // Pad for labels without starving the grid (VWR-005 — Fit should show the scene).
     const labelPad = compactFit
-      ? Math.min(36, Math.max(14, viewport.clientWidth * 0.05))
-      : Math.min(48, Math.max(20, viewport.clientWidth * 0.06));
-    const pad = compactFit ? 4 : 8;
+      ? Math.min(28, Math.max(12, viewport.clientWidth * 0.04))
+      : Math.min(28, Math.max(12, viewport.clientWidth * 0.03));
+    const pad = compactFit ? 4 : 4;
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
-    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.35);
+    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.3);
     const contain = Math.min(vw / size.width, vh / size.height);
-    // Same calm contain scale for compact and desktop — avoid edge-to-edge label blowouts.
-    const fitScale = 0.92;
+    // Fill more of the stage; prop labels declutter at Fit so margins can stay tight.
+    const fitScale = 0.97;
     const fit = contain * fitScale;
     applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({
@@ -1276,15 +1276,17 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       marker.circle(x, y, isActor || isExit ? 8 : 6).fill({ color, alpha: 0.95 });
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
+      // Prop text lives on decluttered SVG chips; keep Pixi marks quiet at Fit.
       const featureLabel = new Text({
         text: feature.label,
         style: {
           fill: 0xf8e7b0,
-          fontSize: 11,
+          fontSize: 9,
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontStyle: 'italic',
         },
       });
+      featureLabel.visible = zoomScale >= 1.05;
       featureLabel.x = x + 8;
       featureLabel.y = y - 6;
       layer.addChild(featureLabel);

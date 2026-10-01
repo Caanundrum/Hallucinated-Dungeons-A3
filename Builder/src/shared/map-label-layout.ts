@@ -69,9 +69,9 @@ function estimateChipSize(
   text: string,
   fontSize: number,
 ): { readonly width: number; readonly height: number } {
-  const avgChar = fontSize * 0.56;
-  const width = Math.ceil(text.length * avgChar + 14);
-  const height = Math.ceil(fontSize + 10);
+  const avgChar = fontSize * 0.54;
+  const width = Math.ceil(text.length * avgChar + 10);
+  const height = Math.ceil(fontSize + 8);
   return { width, height };
 }
 
@@ -111,9 +111,9 @@ export function layoutMapLabels(
   options: MapLabelLayoutOptions,
 ): readonly MapLabelPlacement[] {
   const zoom = options.zoomScale ?? 1;
-  const fontSize = Math.max(11, Math.min(15, Math.round(options.pixelsPerSquare * 0.32)));
-  const gap = Math.max(8, Math.round(options.pixelsPerSquare * 0.22));
-  const showLeaders = zoom >= 1.05;
+  const fontSize = Math.max(9, Math.min(12, Math.round(options.pixelsPerSquare * 0.26)));
+  const gap = Math.max(6, Math.round(options.pixelsPerSquare * 0.18));
+  const showLeaders = zoom >= 1.12;
 
   const obstacles: { x: number; y: number; w: number; h: number }[] = anchors.map((anchor) => ({
     ...anchor.obstacle,
@@ -127,8 +127,8 @@ export function layoutMapLabels(
     return left.id.localeCompare(right.id);
   });
 
-  // At dense Fit / low zoom, keep tokens + exits; collapse other markers until zoomed (169).
-  const visible = zoom < 0.92
+  // At Fit / near-Fit, keep tokens + exits; hide prop plaques until the player zooms in.
+  const visible = zoom < 1.05
     ? ordered.filter(
         (anchor) =>
           anchor.kind === 'token' ||

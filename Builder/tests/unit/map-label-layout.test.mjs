@@ -21,38 +21,42 @@ test('doorStrokeColor distinguishes lock/open states', () => {
   assert.equal(doorStrokeColor('closed'), '#b86b2b');
 });
 
-test('layoutMapLabels keeps token and marker chips from overlapping', () => {
-  const placements = layoutMapLabels(
-    [
-      {
-        id: 'token:1',
-        kind: 'token',
-        x: 120,
-        y: 120,
-        obstacle: { x: 100, y: 100, w: 40, h: 40 },
-        fullLabel: 'Loophole Lantern',
-      },
-      {
-        id: 'marker:hazard',
-        kind: 'marker',
-        x: 130,
-        y: 130,
-        obstacle: { x: 123, y: 123, w: 14, h: 14 },
-        fullLabel: 'Damp stones — hazard reference',
-        referenceKind: 'hazard',
-      },
-      {
-        id: 'marker:cover',
-        kind: 'marker',
-        x: 150,
-        y: 110,
-        obstacle: { x: 143, y: 103, w: 14, h: 14 },
-        fullLabel: 'Rubble pile — cover reference',
-        referenceKind: 'cover',
-      },
-    ],
-    { mapWidth: 576, mapHeight: 384, pixelsPerSquare: 48, zoomScale: 1 },
-  );
+const crowdedAnchors = [
+  {
+    id: 'token:1',
+    kind: 'token',
+    x: 120,
+    y: 120,
+    obstacle: { x: 100, y: 100, w: 40, h: 40 },
+    fullLabel: 'Loophole Lantern',
+  },
+  {
+    id: 'marker:hazard',
+    kind: 'marker',
+    x: 130,
+    y: 130,
+    obstacle: { x: 123, y: 123, w: 14, h: 14 },
+    fullLabel: 'Damp stones — hazard reference',
+    referenceKind: 'hazard',
+  },
+  {
+    id: 'marker:cover',
+    kind: 'marker',
+    x: 150,
+    y: 110,
+    obstacle: { x: 143, y: 103, w: 14, h: 14 },
+    fullLabel: 'Rubble pile — cover reference',
+    referenceKind: 'cover',
+  },
+];
+
+test('layoutMapLabels keeps token and marker chips from overlapping when zoomed in', () => {
+  const placements = layoutMapLabels(crowdedAnchors, {
+    mapWidth: 576,
+    mapHeight: 384,
+    pixelsPerSquare: 48,
+    zoomScale: 1.2,
+  });
 
   assert.equal(placements.length, 3);
   assert.equal(placements.find((entry) => entry.id === 'marker:hazard')?.displayText, 'Damp stones');
@@ -83,4 +87,20 @@ test('layoutMapLabels keeps token and marker chips from overlapping', () => {
     140 <= tokenChip.y
   );
   assert.equal(coversToken, false);
+});
+
+test('layoutMapLabels hides prop plaques at Fit / near-Fit zoom', () => {
+  const placements = layoutMapLabels(crowdedAnchors, {
+    mapWidth: 576,
+    mapHeight: 384,
+    pixelsPerSquare: 48,
+    zoomScale: 1,
+  });
+
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0]?.id, 'token:1');
+  assert.equal(
+    placements.some((entry) => entry.id === 'marker:hazard' || entry.id === 'marker:cover'),
+    false,
+  );
 });
