@@ -469,14 +469,14 @@ export function resolveIntentAuthority(
     }
     if (only.outcomeHint === 'take_container') {
       return {
-        disposition: 'director_narrate_only',
+        disposition: 'propose_command',
         actionSequence: [only],
         ignoredWorldFacts,
         clarificationPrompt: null,
         summary:
-          'You try to take that container as a prop — not a peek inside. Scene props cannot yet enter inventory on this table.' +
+          'Ready to take that portable container into your inventory. Confirm to stow it and remove it from the map.' +
           inventIgnoredNote,
-        proposedCommandType: 'table.sync',
+        proposedCommandType: 'table.take_scene_prop',
       };
     }
     if (only.outcomeHint === 'take_item' || only.outcomeHint === 'take_from_container') {

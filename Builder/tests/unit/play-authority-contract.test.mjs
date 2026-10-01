@@ -453,26 +453,29 @@ test('crouch + listen explains concealment is not established', () => {
   assert.match(authority.summary, /does not establish/i);
 });
 
-test('take the open courier satchel is take_container narrate-only (VDM-005)', () => {
+test('take the open courier satchel proposes take_scene_prop (VDM-005 inventory)', () => {
   const parsed = parsePlayerDeclaration('I take the open courier satchel');
   const authority = resolveIntentAuthority(parsed);
-  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.disposition, 'propose_command');
+  assert.equal(authority.proposedCommandType, 'table.take_scene_prop');
   assert.ok(
     authority.actionSequence.some(
       (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
     ),
   );
-  assert.match(authority.summary, /container as a prop|portability/i);
+  assert.match(authority.summary, /Ready to take/i);
+  assert.match(authority.summary, /Confirm/i);
   assert.doesNotMatch(authority.summary, /from that container/i);
 });
 
-test('pick up the courier satchel itself is take_container, never lockpick (VDM-005)', () => {
+test('pick up the courier satchel itself proposes take_scene_prop, never lockpick (VDM-005)', () => {
   const text =
     'I pick up the courier satchel itself and carry the bag with me. I am not taking anything from inside it.';
   assert.equal(textRequestsLockPicking(text), false);
   const parsed = parsePlayerDeclaration(text);
   const authority = resolveIntentAuthority(parsed);
-  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.disposition, 'propose_command');
+  assert.equal(authority.proposedCommandType, 'table.take_scene_prop');
   assert.ok(
     authority.actionSequence.some(
       (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
@@ -480,8 +483,8 @@ test('pick up the courier satchel itself is take_container, never lockpick (VDM-
   );
   assert.equal(authority.actionSequence.some((step) => step.kind === 'unlock_door'), false);
   assert.doesNotMatch(authority.summary, /lock|Sleight|Thieves/i);
-  assert.match(authority.summary, /container as a prop|cannot yet enter inventory/i);
-  assert.doesNotMatch(authority.summary, /\bConfirm\b/i);
+  assert.match(authority.summary, /Ready to take/i);
+  assert.match(authority.summary, /Confirm/i);
 });
 
 test('take the letter from the courier satchel is take_from_container (VDM-005)', () => {

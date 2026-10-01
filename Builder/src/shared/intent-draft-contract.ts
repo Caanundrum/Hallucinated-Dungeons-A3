@@ -14,6 +14,7 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'table.build_scene',
   'table.begin_adventure',
   'table.interact_object',
+  'table.take_scene_prop',
   'table.travel_scene',
   'combat.attack',
   'combat.cast_spell',

@@ -176,6 +176,12 @@ export function buildNarrationSeedFromReceipt(options: {
     return `An object changed${inScene}.`;
   }
 
+  if (options.commandType === 'table.take_scene_prop') {
+    const mutation = options.mutations.find((entry) => entry.kind === 'object');
+    const label = mutation?.label ?? options.targetLabel;
+    return `${label} is stowed in inventory and leaves the scene${inScene}.`;
+  }
+
   if (options.commandType === 'table.begin_adventure') {
     return scene !== null
       ? `The Game Director established ${scene} as the opening scene.`

@@ -42,8 +42,8 @@ export function answerContainerContentsQuery(options: {
     return {
       ok: true,
       body: open
-        ? `You mean ${label} itself — a portable prop, not a search of its contents. Empty or not, authored contents are irrelevant to carrying the bag. This table cannot yet commit scene props into inventory, so nothing is stowed or removed from the map.`
-        : `You mean ${label} itself — still a portable prop even while closed, not an invitation to invent contents. This table cannot yet commit scene props into inventory, so nothing is stowed or removed from the map.`,
+        ? `You mean ${label} itself — a portable prop, not a search of its contents. Empty or not, authored contents are irrelevant to carrying the bag. No matching portable container is on this scene to stow, so nothing is taken or removed from the map.`
+        : `You mean ${label} itself — still a portable prop even while closed, not an invitation to invent contents. No matching portable container is on this scene to stow, so nothing is taken or removed from the map.`,
       nextDiscovery: discovery,
     };
   }
@@ -114,4 +114,12 @@ export function containerLabelHintFromText(text: string): string | null {
     /\b(?:the\s+)?(courier\s+satchel|satchel|pack|bag|crate|crates|chest|box|barrel|urn|pouch)\b/i,
   );
   return match?.[1]?.toLowerCase() ?? null;
+}
+
+/** Portable bags the table may stow — not furniture crates/chests. */
+export const PORTABLE_CONTAINER_LABEL =
+  /\b(?:courier\s+satchel|satchel|pack|bag|pouch)\b/i;
+
+export function labelLooksPortableContainer(label: string): boolean {
+  return PORTABLE_CONTAINER_LABEL.test(label);
 }

@@ -63,6 +63,7 @@ import {
   beginAdventureRuntime,
   interactObjectRuntime,
   loadCampaignPremise,
+  takeScenePropRuntime,
   travelSceneRuntime,
 } from './scene-commands.js';
 import { activeSceneInstance } from './map-runtime.js';
@@ -74,6 +75,7 @@ import {
 } from '../../shared/play-authority-contract.js';
 import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
 import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
+import type { CharacterProgressionProjection } from '../../shared/rules-combat-contract.js';
 
 function isAdjacentToDoorEdge(anchor: MapSquareCoordinate, edge: MapEdgeRecord): boolean {
   return (
@@ -125,8 +127,13 @@ function resolveUnlockTargetEdge(
   return candidates[0] ?? null;
 }
 import {
+  appendEquipmentOverride,
   baseSheetFor,
+  initialStoredProgression,
   loadCharacterRulesSource,
+  loadProgressionProjection,
+  projectProgression,
+  type StoredProgression,
 } from '../rules/engine/encounter-runtime.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 import { requireTableCommandTimingAuthority, TimingAuthorityError } from './timing-authority.js';
@@ -323,7 +330,7 @@ export function classifyExplorationConflict(options: {
     actorSeatId,
     encounterActive,
   } = options;
-  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.close_door' || commandType === 'table.build_scene' || commandType === 'table.begin_adventure' || commandType === 'table.interact_object' || commandType === 'table.travel_scene')) {
+  if (encounterActive && (commandType === 'table.move' || commandType === 'table.open_door' || commandType === 'table.close_door' || commandType === 'table.build_scene' || commandType === 'table.begin_adventure' || commandType === 'table.interact_object' || commandType === 'table.take_scene_prop' || commandType === 'table.travel_scene')) {
     return {
       reason: 'scene_lock',
       message:
@@ -587,6 +594,7 @@ export async function acceptTableCommand(options: {
     commandType !== 'table.build_scene' &&
     commandType !== 'table.begin_adventure' &&
     commandType !== 'table.interact_object' &&
+    commandType !== 'table.take_scene_prop' &&
     commandType !== 'table.travel_scene'
   ) {
     throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That table command type is not supported.');
@@ -697,6 +705,8 @@ export async function acceptTableCommand(options: {
     readonly priorState: string;
     readonly nextState: string;
   } | null = null;
+  let nextProgression: StoredProgression | null = null;
+  let takenEquipmentName: string | null = null;
   let doorTargetLabel = 'the wooden doorway';
 
   if (commandType === 'table.begin_adventure') {
@@ -784,6 +794,78 @@ export async function acceptTableCommand(options: {
         throw new TableCommandError(
           ERROR_CODES.BAD_REQUEST,
           'That object is already in that state.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (commandType === 'table.take_scene_prop') {
+    const targetObjectId =
+      typeof objectId === 'string' && objectId.length > 0 ? objectId : null;
+    if (targetObjectId === null) {
+      throw new TableCommandError(
+        ERROR_CODES.BAD_REQUEST,
+        'Name the portable container you want to take from this scene.',
+      );
+    }
+    try {
+      const active = activeSceneInstance(mapContext.runtime);
+      const priorFeature = active?.features.find((entry) => entry.objectId === targetObjectId);
+      const priorState = priorFeature?.state ?? 'present';
+      const result = takeScenePropRuntime({
+        runtime: mapContext.runtime,
+        objectId: targetObjectId,
+      });
+      nextSceneRuntime = result.runtime;
+      sceneChronicleBody = result.chronicle;
+      eventType = 'table.scene_prop_taken';
+      objectMutation = {
+        objectId: result.objectId,
+        baseLabel: result.label,
+        priorState,
+        nextState: 'inventory',
+      };
+      takenEquipmentName = result.equipmentName;
+      const source = await loadCharacterRulesSource(firestore, seat.characterId);
+      const progressionSnap = await firestore
+        .collection(COLLECTIONS.characterProgressions)
+        .doc(seat.characterId)
+        .get();
+      const priorProgression = progressionSnap.exists
+        ? (progressionSnap.data() as StoredProgression)
+        : initialStoredProgression(source);
+      const baseSheet = baseSheetFor(source);
+      const equipmentOverrides = appendEquipmentOverride({
+        baseEquipment: baseSheet.equipment,
+        ...(priorProgression.equipmentOverrides !== undefined
+          ? { equipmentOverrides: priorProgression.equipmentOverrides }
+          : {}),
+        itemName: result.equipmentName,
+      });
+      nextProgression = {
+        ...priorProgression,
+        equipmentOverrides,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'NO_ACTIVE_SCENE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Begin the adventure before taking scene props.',
+        );
+      }
+      if (code === 'OBJECT_NOT_FOUND') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That prop is not on this scene.',
+        );
+      }
+      if (code === 'OBJECT_NOT_PORTABLE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That prop cannot be stowed — only portable containers like a satchel, pack, bag, or pouch.',
         );
       }
       throw error;
@@ -1291,7 +1373,7 @@ export async function acceptTableCommand(options: {
     const receiptTargetKind =
       commandType === 'table.open_door' || commandType === 'table.close_door'
         ? 'door'
-        : commandType === 'table.interact_object'
+        : commandType === 'table.interact_object' || commandType === 'table.take_scene_prop'
           ? 'object'
           : commandType === 'table.move'
             ? 'token_path'
@@ -1425,6 +1507,12 @@ export async function acceptTableCommand(options: {
     transaction.set(firestore.collection(COLLECTIONS.campaignCommands).doc(commandId), command);
     transaction.set(firestore.collection(COLLECTIONS.campaignEvents).doc(eventId), event);
     transaction.set(projectionRef, nextProjection);
+    if (nextProgression !== null) {
+      transaction.set(
+        firestore.collection(COLLECTIONS.characterProgressions).doc(seat.characterId),
+        nextProgression,
+      );
+    }
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {
       lastAcknowledgedEventSequence: nextSequence,
       deviceSessionId,
@@ -1486,6 +1574,15 @@ export async function acceptTableCommand(options: {
           sceneChronicleBody ??
           `${seat.characterName || 'A player'} changed an object on the scene.`,
       });
+    } else if (eventType === 'table.scene_prop_taken') {
+      await appendChronicleEntry({
+        firestore,
+        campaignId,
+        kind: 'play_resolved',
+        body:
+          sceneChronicleBody ??
+          `${seat.characterName || 'A player'} took ${takenEquipmentName ?? 'a prop'} into inventory.`,
+      });
     } else if (eventType === 'table.door_opened' && openEdgeId !== undefined) {
       await appendChronicleEntry({
         firestore,
@@ -1543,6 +1640,16 @@ export async function acceptTableCommand(options: {
     }
   }
 
+  let progressionOut: CharacterProgressionProjection | undefined;
+  if (nextProgression !== null && !committed.duplicate) {
+    try {
+      const source = await loadCharacterRulesSource(firestore, seat.characterId);
+      progressionOut = projectProgression(source, nextProgression);
+    } catch {
+      progressionOut = await loadProgressionProjection(firestore, seat.characterId);
+    }
+  }
+
   return {
     duplicate: committed.duplicate,
     commandId: committed.command.commandId,
@@ -1550,5 +1657,6 @@ export async function acceptTableCommand(options: {
     event: eventProjection,
     table: toTableProjection(campaignId, committed.projection, withEvent),
     ...(eventProjection.receipt !== undefined ? { receipt: eventProjection.receipt } : {}),
+    ...(progressionOut !== undefined ? { progression: progressionOut } : {}),
   };
 }

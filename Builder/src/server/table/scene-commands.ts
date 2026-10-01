@@ -22,13 +22,16 @@ import {
   type ComposedScene,
   type SceneComposeKind,
 } from './scene-composition.js';
+import { labelLooksPortableContainer } from '../../shared/container-contents.js';
 import {
   applyComposedSceneToRuntime,
+  removeSceneObject,
   updateSceneObjectState,
 } from './scene-runtime.js';
 import {
   activeSceneInstance,
   type StoredMapRuntime,
+  type StoredSceneFeature,
   type StoredTokenPosition,
 } from './map-runtime.js';
 
@@ -303,6 +306,100 @@ export function travelSceneRuntime(options: {
       scene: composed,
       priorTitle: active.title,
     }),
+  };
+}
+
+export function isPortableSceneContainer(feature: StoredSceneFeature): boolean {
+  return feature.objectKind === 'container' && labelLooksPortableContainer(feature.label);
+}
+
+/** Match a portable container prop for inventory take (courier satchel, pack, bag, pouch). */
+export function matchTakeContainerByDeclaration(
+  runtime: StoredMapRuntime,
+  declaration: string,
+): string | null {
+  const active = activeSceneInstance(runtime);
+  if (active === null) {
+    return null;
+  }
+  const portable = active.features.filter(isPortableSceneContainer);
+  if (portable.length === 0) {
+    return null;
+  }
+  const text = declaration.toLowerCase();
+  const scored = portable
+    .map((feature) => {
+      const label = feature.label.toLowerCase();
+      let score = 0;
+      if (
+        label
+          .split(/\s+/)
+          .some((word) => word.length > 2 && declarationMentionsLabelWord(declaration, word))
+      ) {
+        score += 3;
+      }
+      if (/\b(?:courier\s+satchel|satchel)\b/.test(text) && /\bsatchel\b/.test(label)) {
+        score += 4;
+      }
+      if (/\b(?:pack|bag|pouch)\b/.test(text) && /\b(?:pack|bag|pouch)\b/.test(label)) {
+        score += 3;
+      }
+      return { objectId: feature.objectId, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored[0] !== undefined) {
+    return scored[0].objectId;
+  }
+  // Single portable container + take language, but not when naming furniture crates/chests.
+  const namesFurnitureContainer =
+    /\b(?:crate|crates|chest|box|barrel|urn|freight)\b/i.test(declaration) &&
+    !labelLooksPortableContainer(declaration);
+  if (
+    portable.length === 1 &&
+    !namesFurnitureContainer &&
+    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(declaration)
+  ) {
+    return portable[0]!.objectId;
+  }
+  return null;
+}
+
+export function takeScenePropRuntime(options: {
+  readonly runtime: StoredMapRuntime;
+  readonly objectId: string;
+}): {
+  readonly runtime: StoredMapRuntime;
+  readonly chronicle: string;
+  readonly label: string;
+  readonly objectId: string;
+  readonly equipmentName: string;
+} {
+  const active = activeSceneInstance(options.runtime);
+  if (active === null) {
+    throw new Error('NO_ACTIVE_SCENE');
+  }
+  const feature = active.features.find((entry) => entry.objectId === options.objectId);
+  if (feature === undefined) {
+    throw new Error('OBJECT_NOT_FOUND');
+  }
+  if (!isPortableSceneContainer(feature)) {
+    throw new Error('OBJECT_NOT_PORTABLE');
+  }
+  const runtime = removeSceneObject({
+    runtime: options.runtime,
+    objectId: options.objectId,
+  });
+  if (runtime === null) {
+    throw new Error('OBJECT_NOT_FOUND');
+  }
+  const baseLabel = feature.label.replace(/\s*[—(].*$/, '').trim() || feature.label.trim();
+  return {
+    runtime,
+    chronicle: `${baseLabel} is stowed in inventory and leaves the scene.`,
+    label: baseLabel,
+    objectId: options.objectId,
+    equipmentName: baseLabel,
   };
 }
 

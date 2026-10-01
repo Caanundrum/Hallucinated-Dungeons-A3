@@ -29,6 +29,7 @@ export const EXPLORATION_TABLE_COMMANDS = [
   'table.build_scene',
   'table.begin_adventure',
   'table.interact_object',
+  'table.take_scene_prop',
   'table.travel_scene',
   'table.sync',
 ] as const;

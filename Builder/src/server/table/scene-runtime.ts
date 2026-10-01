@@ -201,6 +201,41 @@ export function updateSceneObjectState(options: {
   };
 }
 
+/** Remove a scene feature from the active instance (taken into inventory). */
+export function removeSceneObject(options: {
+  readonly runtime: StoredMapRuntime;
+  readonly objectId: string;
+}): StoredMapRuntime | null {
+  const activeId = options.runtime.activeSceneId;
+  if (activeId === null || activeId === undefined) {
+    return null;
+  }
+  const instance = options.runtime.sceneInstances?.[activeId];
+  if (instance === undefined) {
+    return null;
+  }
+  const remaining = instance.features.filter((feature) => feature.objectId !== options.objectId);
+  if (remaining.length === instance.features.length) {
+    return null;
+  }
+  const inhabitantObjectIds = (instance.inhabitantObjectIds ?? []).filter(
+    (id) => id !== options.objectId,
+  );
+  const updated: StoredSceneInstance = {
+    ...instance,
+    features: remaining,
+    inhabitantObjectIds,
+    revision: instance.revision + 1,
+  };
+  return {
+    ...options.runtime,
+    sceneInstances: {
+      ...options.runtime.sceneInstances,
+      [activeId]: updated,
+    },
+  };
+}
+
 export function placeSeatOnActiveSpawn(
   runtime: StoredMapRuntime,
   seatId: string,
