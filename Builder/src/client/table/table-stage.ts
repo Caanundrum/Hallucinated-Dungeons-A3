@@ -874,15 +874,17 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
     // Contain the full Director scene — never force horizontal overflow after Fit.
     // Compact path uses less label pad so Fit fills empty canvas (Recheck 3).
+    // Pad for labels without starving the grid (VWR-005 — Fit should show the scene).
     const labelPad = compactFit
-      ? Math.min(16, Math.max(8, viewport.clientWidth * 0.02))
-      : Math.min(72, Math.max(28, viewport.clientWidth * 0.12));
-    const pad = compactFit ? 2 : 8;
+      ? Math.min(36, Math.max(14, viewport.clientWidth * 0.05))
+      : Math.min(48, Math.max(20, viewport.clientWidth * 0.06));
+    const pad = compactFit ? 4 : 8;
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
-    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.2);
+    const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.35);
     const contain = Math.min(vw / size.width, vh / size.height);
-    const fitScale = compactFit ? 1 : 0.96;
-    const fit = Math.min(contain * fitScale, contain);
+    // Same calm contain scale for compact and desktop — avoid edge-to-edge label blowouts.
+    const fitScale = 0.92;
+    const fit = contain * fitScale;
     applyZoom(Math.max(0.28, fit));
     viewport.scrollTo({
       left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
@@ -1339,9 +1341,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       hasFittedOnce = true;
       requestAnimationFrame(() => {
         ensureViewportHeight();
+        // Fit only — avoid the prior 1.12× overzoom that made labels poster-sized (VWR-004).
         fitMapToViewport();
-        // Slight overzoom so drag-to-pan works immediately on a map-first stage.
-        applyZoom(zoomScale * 1.12);
         const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
         const size = mapPixelSize();
         if (viewport !== null && size !== null) {
