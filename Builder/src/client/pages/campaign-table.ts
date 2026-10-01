@@ -5403,11 +5403,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             </svg>
           </a>
           <div class="table-hud-titles">
-            <h1 data-testid="campaign-table-heading">${escapeHtml(campaignName)}</h1>
+            <h1 data-testid="campaign-table-heading" title="${escapeHtml(campaignName)}">${escapeHtml(campaignName)}</h1>
             ${
               mapBundle === null
                 ? `<p class="table-hud-scene table-hud-scene-pending" data-testid="map-scene-banner">Establishing scene…</p>`
-                : `<p class="table-hud-scene" data-testid="map-scene-banner">${escapeHtml(mapBundle.sceneBanner)}</p>`
+                : `<p class="table-hud-scene" data-testid="map-scene-banner" title="${escapeHtml(mapBundle.sceneBanner)}">${escapeHtml(mapBundle.sceneBanner)}</p>`
             }
           </div>
         </div>
