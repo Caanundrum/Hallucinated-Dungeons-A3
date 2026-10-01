@@ -104,3 +104,16 @@ test('layoutMapLabels hides prop plaques at Fit / near-Fit zoom', () => {
     false,
   );
 });
+
+test('layoutMapLabels hides prop plaques when declutterProps is set even above 100% zoom', () => {
+  const placements = layoutMapLabels(crowdedAnchors, {
+    mapWidth: 576,
+    mapHeight: 384,
+    pixelsPerSquare: 48,
+    zoomScale: 1.65,
+    declutterProps: true,
+  });
+
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0]?.id, 'token:1');
+});

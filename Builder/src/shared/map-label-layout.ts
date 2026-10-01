@@ -43,8 +43,13 @@ export interface MapLabelLayoutOptions {
   readonly mapWidth: number;
   readonly mapHeight: number;
   readonly pixelsPerSquare: number;
-  /** Effective display zoom (1 = fit). Used for declutter thresholds. */
+  /** Effective display zoom (1 = 100%). Used for leader / typography thresholds. */
   readonly zoomScale?: number;
+  /**
+   * When true (Fit / near-Fit), keep tokens + exits and hide prop plaques.
+   * Absolute zoom is a poor Fit proxy — desktop Fit often lands well above 100%.
+   */
+  readonly declutterProps?: boolean;
 }
 
 const OFFSETS: readonly { readonly dx: number; readonly dy: number }[] = [
@@ -128,7 +133,8 @@ export function layoutMapLabels(
   });
 
   // At Fit / near-Fit, keep tokens + exits; hide prop plaques until the player zooms in.
-  const visible = zoom < 1.05
+  const hideProps = options.declutterProps === true || zoom < 1.05;
+  const visible = hideProps
     ? ordered.filter(
         (anchor) =>
           anchor.kind === 'token' ||

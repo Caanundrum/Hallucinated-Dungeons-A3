@@ -221,6 +221,7 @@ function paintSemanticSvg(
   priorTokenBoxes: Map<string, { x: number; y: number }>,
   zoomScale: number,
   mapToolbarMoreOpen: boolean,
+  declutterProps: boolean,
 ): Map<string, { x: number; y: number }> {
   const lowEffects =
     document.documentElement.classList.contains('hd-low-effects') ||
@@ -447,6 +448,7 @@ function paintSemanticSvg(
     mapHeight: height,
     pixelsPerSquare,
     zoomScale,
+    declutterProps,
   });
 
   const tokens = map.tokens
@@ -826,6 +828,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
   /** Absolute display scale: map pixel → CSS pixel (Fit sets this to fill the frame). */
   let zoomScale = 1;
+  /** Last Fit scale; prop plaques stay hidden until zoom rises ~12% above this. */
+  let lastFitZoom: number | null = null;
   let mapToolbarMoreOpen = false;
   let hasFittedOnce = false;
 
@@ -839,9 +843,19 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     };
   }
 
-  function applyZoom(next: number): void {
+  function shouldDeclutterProps(): boolean {
+    if (lastFitZoom === null) {
+      return zoomScale < 1.05;
+    }
+    return zoomScale <= lastFitZoom * 1.12;
+  }
+
+  function applyZoom(next: number, options?: { readonly fromFit?: boolean }): void {
     const size = mapPixelSize();
     zoomScale = Math.max(0.35, Math.min(3.2, next));
+    if (options?.fromFit === true) {
+      lastFitZoom = zoomScale;
+    }
     const scaler = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-scaler"]');
     const svg = host.querySelector<SVGSVGElement>('[data-testid="table-stage-svg"]');
     if (size !== null && scaler !== null && svg !== null) {
@@ -862,7 +876,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
     const size = mapPixelSize();
     if (viewport === null || size === null || currentMap === null) {
-      applyZoom(1);
+      applyZoom(1, { fromFit: true });
       return;
     }
     const dashboard = host.closest<HTMLElement>('.table-dashboard');
@@ -885,7 +899,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     // Fill more of the stage; prop labels declutter at Fit so margins can stay tight.
     const fitScale = 0.97;
     const fit = contain * fitScale;
-    applyZoom(Math.max(0.28, fit));
+    applyZoom(Math.max(0.28, fit), { fromFit: true });
     viewport.scrollTo({
       left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
       top: Math.max(0, (size.height * zoomScale - viewport.clientHeight) / 2),
@@ -1035,12 +1049,16 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     host.querySelectorAll<HTMLButtonElement>('[data-map-zoom]').forEach((button) => {
       button.onclick = () => {
         const mode = button.getAttribute('data-map-zoom');
+        let zoomChanged = false;
         if (mode === 'in') {
           applyZoom(zoomScale * 1.15);
+          zoomChanged = true;
         } else if (mode === 'out') {
           applyZoom(zoomScale / 1.15);
+          zoomChanged = true;
         } else if (mode === 'fit') {
           fitMapToViewport();
+          zoomChanged = true;
         } else if (mode === 'preview-cue') {
           playSceneDiscoveryCue();
         } else if (mode === 'center') {
@@ -1059,6 +1077,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           } else {
             applyZoom(preset);
           }
+          zoomChanged = true;
+        }
+        // Re-layout chips when Fit / zoom crosses the prop-declutter band.
+        if (zoomChanged && currentMap !== null) {
+          paint(currentMap);
         }
       };
     });
@@ -1286,7 +1309,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           fontStyle: 'italic',
         },
       });
-      featureLabel.visible = zoomScale >= 1.05;
+      featureLabel.visible = !shouldDeclutterProps();
       featureLabel.x = x + 8;
       featureLabel.y = y - 6;
       layer.addChild(featureLabel);
@@ -1331,6 +1354,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       priorTokenBoxes,
       zoomScale,
       mapToolbarMoreOpen,
+      shouldDeclutterProps(),
     );
     paintPixi(map);
     bindSquareClicks();
@@ -1345,6 +1369,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         ensureViewportHeight();
         // Fit only — avoid the prior 1.12× overzoom that made labels poster-sized (VWR-004).
         fitMapToViewport();
+        // Re-paint so Fit declutter (tokens/exits only) lands with the Fit scale.
+        if (currentMap !== null) {
+          paint(currentMap);
+        }
         const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
         const size = mapPixelSize();
         if (viewport !== null && size !== null) {
