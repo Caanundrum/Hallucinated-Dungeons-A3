@@ -806,6 +806,7 @@ export function parsePlayerDeclaration(
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
   // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).
+  // Skip scene surveys that only mention doorway as location ("look around from past the doorway").
   if (
     addressee === null &&
     isInterrogative &&
@@ -813,7 +814,8 @@ export function parsePlayerDeclaration(
     !wantsUnlock &&
     !wantsOpenDoor &&
     !wantsDoorStateRead &&
-    !wantsTrapOrHazardSearch
+    !wantsTrapOrHazardSearch &&
+    !observingScene
   ) {
     actionSequence.push({ kind: 'open_door', targetRef: null, outcomeHint: null });
   }

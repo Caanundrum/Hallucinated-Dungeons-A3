@@ -738,6 +738,17 @@ function mentionsDoorIntent(text: string): boolean {
   if (declarationNegatesDoorOpen(text)) {
     return false;
   }
+  // Scene survey / look-around that only uses doorway as location is perception, not door work.
+  if (
+    /\b(?:look(?:s|ing)?\s+around|peer(?:s|ing)?\s+around|survey(?:s|ing)?|take(?:s|ing)?\s+(?:a\s+)?look\s+around|see(?:s|ing)?\s+around)\b/i.test(
+      text,
+    ) &&
+    !/\b(?:opens?|opening|unlock|closes?|closing|shut|step(?:s|ping)?\s+through|through\s+(?:the\s+)?(?:door|doorway))\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
   // Adjectival "open wooden door" is door state, not an open-door verb.
   const withoutOpenNoun = stripAdjectivalOpenDoor(text);
   const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(withoutOpenNoun);

@@ -98,6 +98,30 @@ test('door check/listen with negation is inspect, never open_door or move', () =
   assert.equal(resolveIntentAuthority(listen).disposition, 'director_narrate_only');
 });
 
+test('look around from past the doorway is scene survey, never door clarify (VWR-003)', () => {
+  const text =
+    'I pause and look around from just past the doorway. What can Pip actually see from here? Do not move me or change anything.';
+  const parsed = parsePlayerDeclaration(text);
+  assert.ok(
+    parsed.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'scene_perception',
+    ),
+    JSON.stringify(parsed.actionSequence),
+  );
+  assert.ok(parsed.actionSequence.every((step) => step.kind !== 'open_door'));
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.doesNotMatch(
+    authority.clarificationPrompt ?? '',
+    /asking about a door|open or unlock/i,
+  );
+  const adjacent = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  assert.equal(
+    resolveDoorIntentForMap(adjacent, { column: 9, row: 6 }, text),
+    null,
+  );
+});
+
 test('walk without opening is move only — negation preserved, no open_door', () => {
   const parsed = parsePlayerDeclaration('I walk to the door without opening it.');
   assert.ok(parsed.actionSequence.some((step) => step.kind === 'move'));
