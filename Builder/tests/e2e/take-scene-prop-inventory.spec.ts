@@ -110,6 +110,10 @@ test.describe('Take portable scene prop into inventory', () => {
     });
     // Nearby must lose the satchel while other props remain.
     await expect(page.getByTestId('map-terrain-summary')).toContainText(/hanging lantern/i);
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/take-scene-prop-stowed.png',
+      fullPage: true,
+    });
 
     const campaignMatch = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)/);
     expect(campaignMatch).toBeTruthy();
