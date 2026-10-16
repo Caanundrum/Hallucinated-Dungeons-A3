@@ -149,6 +149,8 @@ export interface MapTokenProjection {
   readonly seatId: string;
   readonly label: string;
   readonly footprint: MapFootprint;
+  /** Circular portrait URL for the token face when available. */
+  readonly avatarUrl?: string | null;
 }
 
 /** A named point of interest on the map, independent of fog-of-war cells. */
@@ -223,9 +225,44 @@ export interface MapBundleProjection {
   readonly sceneLighting?: string | null;
   readonly scenePurpose?: string | null;
   readonly sceneMood?: string | null;
+  /** Director / Emberferry template id used to pick painted battlemap art. */
+  readonly sceneTemplateId?: string | null;
+  /** Absolute or root-relative URL for the painted battlemap raster. */
+  readonly sceneArtUrl?: string | null;
   readonly viewerSeatId: string | null;
   readonly exploredSquareIds: readonly string[];
   readonly visibleSquareIds: readonly string[];
+}
+
+/** Resolve painted battlemap URL from a scene template or Emberferry scene id. */
+export function resolveSceneArtUrl(templateId: string | null | undefined): string | null {
+  if (templateId === null || templateId === undefined || templateId.trim().length === 0) {
+    return null;
+  }
+  const id = templateId.trim().toLowerCase();
+  const warmInterior = new Set([
+    'interior_inn_common',
+    'interior_cottage',
+    'interior_workshop',
+  ]);
+  const cellarDungeon = new Set([
+    'interior_stone_crypt',
+    'interior_canal_warehouse',
+    'interior_warehouse',
+    'landmark_limestone_cavern',
+    'emberferry-mist-caves',
+    'emberferry_mist_caves',
+  ]);
+  if (warmInterior.has(id)) {
+    return '/assets/maps/interior_warm_split.jpg';
+  }
+  if (cellarDungeon.has(id) || id.includes('cavern') || id.includes('crypt') || id.includes('cellar')) {
+    return '/assets/maps/dungeon_cellar_split.jpg';
+  }
+  if (id.includes('inn') || id.includes('cottage') || id.includes('workshop') || id.includes('tavern')) {
+    return '/assets/maps/interior_warm_split.jpg';
+  }
+  return null;
 }
 
 export function isMapArtProvenance(value: unknown): value is MapArtProvenance {

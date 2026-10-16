@@ -201,8 +201,12 @@ const CONTENT_TYPES: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
   '.woff2': 'font/woff2',
 };
 

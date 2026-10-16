@@ -60,6 +60,11 @@ function edgeBlocksMovement(edge: MapEdgeRecord | undefined): boolean {
   return false;
 }
 
+/** Walls and closed/locked doors block line of sight the same way they block movement. */
+export function edgeBlocksVision(edge: MapEdgeRecord | undefined): boolean {
+  return edgeBlocksMovement(edge);
+}
+
 /**
  * Edge crossed when moving from `from` to orthogonally adjacent `to`.
  * Returns the canonical edge id owned by the shared face.
@@ -296,22 +301,121 @@ export function validateWalkPath(options: {
   };
 }
 
-/** Squares currently visible from an anchor within Chebyshev radius. */
+/**
+ * Squares currently visible from an anchor within Chebyshev radius.
+ * When `edges` are provided, vision cannot cross walls or closed/locked doors
+ * (BFS flood-fill through non-blocking faces, including careful diagonal steps).
+ * Perimeter / blocked terrain is opaque so vision cannot slip around a room divider
+ * through the map border.
+ */
 export function visibleSquaresFrom(
   origin: MapSquareCoordinate,
   radius: number,
-  space: { readonly columns: number; readonly rows: number },
+  space: {
+    readonly columns: number;
+    readonly rows: number;
+    readonly cells?: readonly MapCellRecord[];
+  },
+  edges?: readonly MapEdgeRecord[],
 ): MapSquareCoordinate[] {
-  const squares: MapSquareCoordinate[] = [];
-  for (let row = origin.row - radius; row <= origin.row + radius; row += 1) {
-    for (let column = origin.column - radius; column <= origin.column + radius; column += 1) {
-      if (column < 0 || row < 0 || column >= space.columns || row >= space.rows) {
-        continue;
+  if (edges === undefined || edges.length === 0) {
+    const squares: MapSquareCoordinate[] = [];
+    for (let row = origin.row - radius; row <= origin.row + radius; row += 1) {
+      for (let column = origin.column - radius; column <= origin.column + radius; column += 1) {
+        if (column < 0 || row < 0 || column >= space.columns || row >= space.rows) {
+          continue;
+        }
+        if (Math.max(Math.abs(column - origin.column), Math.abs(row - origin.row)) <= radius) {
+          squares.push({ column, row });
+        }
       }
-      if (Math.max(Math.abs(column - origin.column), Math.abs(row - origin.row)) <= radius) {
-        squares.push({ column, row });
+    }
+    return squares;
+  }
+
+  const edgeIndex = indexEdges(edges);
+  const cellIndex = space.cells !== undefined ? indexCells(space.cells) : null;
+  const isOpaqueTerrain = (column: number, row: number): boolean => {
+    if (cellIndex === null) {
+      // Without explicit cells, treat the outer frame as solid stone.
+      return (
+        column === 0 ||
+        row === 0 ||
+        column === space.columns - 1 ||
+        row === space.rows - 1
+      );
+    }
+    const cell = cellIndex.get(cellKey(column, row));
+    return cell !== undefined && cell.terrain === 'blocked';
+  };
+
+  const seen = new Set<string>();
+  const visible: MapSquareCoordinate[] = [];
+  const queue: MapSquareCoordinate[] = [origin];
+  seen.add(cellKey(origin.column, origin.row));
+  visible.push(origin);
+
+  const inBounds = (column: number, row: number): boolean =>
+    column >= 0 && row >= 0 && column < space.columns && row < space.rows;
+
+  const withinRadius = (column: number, row: number): boolean =>
+    Math.max(Math.abs(column - origin.column), Math.abs(row - origin.row)) <= radius;
+
+  const canStep = (from: MapSquareCoordinate, to: MapSquareCoordinate): boolean => {
+    if (!inBounds(to.column, to.row) || !withinRadius(to.column, to.row)) {
+      return false;
+    }
+    // Opaque stone cannot be entered (except the origin itself, already queued).
+    if (isOpaqueTerrain(to.column, to.row)) {
+      return false;
+    }
+    const dc = to.column - from.column;
+    const dr = to.row - from.row;
+    if (Math.abs(dc) > 1 || Math.abs(dr) > 1 || (dc === 0 && dr === 0)) {
+      return false;
+    }
+    if (dc !== 0 && dr !== 0) {
+      // Diagonal: both orthogonal faces must be clear (no corner cutting through walls).
+      const orthA = { column: to.column, row: from.row };
+      const orthB = { column: from.column, row: to.row };
+      if (isOpaqueTerrain(orthA.column, orthA.row) || isOpaqueTerrain(orthB.column, orthB.row)) {
+        return false;
+      }
+      const edgeA = crossedEdgeId(from, orthA);
+      const edgeB = crossedEdgeId(from, orthB);
+      const edgeA2 = crossedEdgeId(orthA, to);
+      const edgeB2 = crossedEdgeId(orthB, to);
+      if (
+        edgeBlocksVision(edgeA ? edgeIndex.get(edgeA) : undefined) ||
+        edgeBlocksVision(edgeB ? edgeIndex.get(edgeB) : undefined) ||
+        edgeBlocksVision(edgeA2 ? edgeIndex.get(edgeA2) : undefined) ||
+        edgeBlocksVision(edgeB2 ? edgeIndex.get(edgeB2) : undefined)
+      ) {
+        return false;
+      }
+      return true;
+    }
+    const edge = crossedEdgeId(from, to);
+    return edge === null || !edgeBlocksVision(edgeIndex.get(edge));
+  };
+
+  while (queue.length > 0) {
+    const cursor = queue.shift()!;
+    for (let dr = -1; dr <= 1; dr += 1) {
+      for (let dc = -1; dc <= 1; dc += 1) {
+        if (dc === 0 && dr === 0) {
+          continue;
+        }
+        const next = { column: cursor.column + dc, row: cursor.row + dr };
+        const key = cellKey(next.column, next.row);
+        if (seen.has(key) || !canStep(cursor, next)) {
+          continue;
+        }
+        seen.add(key);
+        visible.push(next);
+        queue.push(next);
       }
     }
   }
-  return squares;
+  return visible;
 }
