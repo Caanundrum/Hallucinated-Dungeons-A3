@@ -168,4 +168,30 @@ test('free-exploration multi-beat sensory prose narrates instead of verb-menu cl
     /Say one clear action your character attempts|Ask the Director a question/i,
   );
   assert.match(authority.summary, /Game Director|look and listen|perceive/i);
+  // Window / room listen must not become the door-ear listen template.
+  assert.equal(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'listen',
+    ),
+    false,
+  );
+  assert.ok(
+    authority.actionSequence.some(
+      (step) =>
+        step.kind === 'inspect' &&
+        (step.outcomeHint === 'sensory_sequence' || step.outcomeHint === 'scene_perception'),
+    ),
+  );
+});
+
+test('listen at a doorway still uses the door listen outcome hint', () => {
+  const authority = resolveIntentAuthority(
+    parsePlayerDeclaration('I listen closely at the wooden doorway east'),
+  );
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.ok(
+    authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'listen',
+    ),
+  );
 });

@@ -710,21 +710,41 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
+  /** True when the declaration asks to cross after opening (not open-only). */
+  function declarationWantsDoorCross(text: string): boolean {
+    return /\b(?:through|enter|beyond|cross|step(?:s|ping)?\s+(?:through|into|across)|walk(?:s|ing)?\s+through|go(?:es|ing)?\s+through|room beyond)\b/i.test(
+      text,
+    );
+  }
+
   async function resumeCompoundDeclarationAfterBuild(
     declaration: string,
-    options: { readonly narrateSteps?: boolean; readonly stopAfterFirstMove?: boolean } = {},
-  ): Promise<void> {
+    options: {
+      readonly narrateSteps?: boolean;
+      readonly stopAfterFirstMove?: boolean;
+      /** When true (open-only), stop as soon as table.open_door succeeds. */
+      readonly stopAfterOpenDoor?: boolean;
+    } = {},
+  ): Promise<{ readonly finalSummary: string | null }> {
     if (
       candidate === null ||
       !/\b(walk|go|step|approach|enter|through|beyond|room beyond|opens?|opening|closes?|closing)\b/i.test(
         declaration,
       )
     ) {
-      return;
+      return { finalSummary: null };
     }
     const narrateSteps = options.narrateSteps !== false;
-    const stopAfterFirstMove = options.stopAfterFirstMove === true;
+    const wantsCross = declarationWantsDoorCross(declaration);
+    const stopAfterOpenDoor =
+      options.stopAfterOpenDoor === true ||
+      (!wantsCross && /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(declaration));
+    // Open+cross: at most one through-step after open. Open-only never crosses.
+    const stopAfterFirstMove =
+      options.stopAfterFirstMove === true || (wantsCross && !stopAfterOpenDoor);
     const maxSteps = 12;
+    let finalSummary: string | null = null;
+    let openedDoor = false;
     for (let step = 0; step < maxSteps; step += 1) {
       if (candidate === null || tableState === null) {
         break;
@@ -757,6 +777,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ) {
         break;
       }
+      // After a successful open, refuse further through-steps unless the player asked to cross.
+      if (openedDoor && interpreted.proposedCommandType === 'table.move' && stopAfterOpenDoor) {
+        break;
+      }
       try {
         const accepted = await submitTableCommand({
           candidateId: candidate.candidateId,
@@ -776,13 +800,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const summary =
           accepted.event.summary?.trim() ||
           'Action committed on the table.';
+        finalSummary = summary;
         appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
         if (narrateSteps && shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
           await narrateIntoDmThread(summary, accepted.event.rolls ?? []);
         }
-        // Open+cross only needs one through-step; another interpret would chronicle
-        // a spurious "already through" clarification into Story so far.
-        if (stopAfterFirstMove && interpreted.proposedCommandType === 'table.move') {
+        if (interpreted.proposedCommandType === 'table.open_door') {
+          openedDoor = true;
+          if (stopAfterOpenDoor) {
+            break;
+          }
+        }
+        // Open+cross only needs one through-step; another interpret would ping-pong
+        // across the open edge or chronicle a spurious "already through" beat.
+        if (
+          (stopAfterFirstMove || openedDoor) &&
+          interpreted.proposedCommandType === 'table.move'
+        ) {
           break;
         }
       } catch {
@@ -790,6 +824,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
     }
     patchDmPlayThread();
+    return { finalSummary };
   }
 
   function fieldsFromIntentDraft(draft: ActionDraftSuggestion): RulesCommandFields {
@@ -2712,22 +2747,31 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       shell.announce('Action resolved on the table.');
       render();
       patchDmPlayThread();
+      let narrationSummary = resolvedSummary;
       if (resumeApproachThenOpen && declarationText.length > 0) {
-        await resumeCompoundDeclarationAfterBuild(declarationText, {
+        const wantsCross = declarationWantsDoorCross(declarationText);
+        const resumed = await resumeCompoundDeclarationAfterBuild(declarationText, {
           narrateSteps: false,
-          stopAfterFirstMove: false,
+          stopAfterOpenDoor: !wantsCross,
+          stopAfterFirstMove: wantsCross,
         });
+        if (resumed.finalSummary !== null && resumed.finalSummary.trim().length > 0) {
+          narrationSummary = resumed.finalSummary;
+        }
       } else if (resumeAfterOpenCross && doorOpenAfterConfirm && declarationText.length > 0) {
-        await resumeCompoundDeclarationAfterBuild(declarationText, {
+        const resumed = await resumeCompoundDeclarationAfterBuild(declarationText, {
           narrateSteps: false,
           stopAfterFirstMove: true,
         });
+        if (resumed.finalSummary !== null && resumed.finalSummary.trim().length > 0) {
+          narrationSummary = resumed.finalSummary;
+        }
       }
       if (
         shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-        /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
+        /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
       ) {
-        await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
+        await narrateIntoDmThread(narrationSummary, accepted.event.rolls ?? []);
       } else {
         patchDmPlayThread();
       }
@@ -5424,17 +5468,25 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             const shouldResumeOpenCross = resumeAfterOpenCross && doorOpenAfterConfirm;
             const resumeCompoundNow =
               resumeAfterSceneBuild || shouldResumeOpenCross || resumeApproachThenOpen;
+            let narrationSummary = resolvedSummary;
             if (resumeCompoundNow && declarationText.length > 0) {
+              const wantsCross = declarationWantsDoorCross(declarationText);
               // Approach→open, open→cross, or build→move without a second Confirm.
-              await resumeCompoundDeclarationAfterBuild(declarationText, {
+              const resumed = await resumeCompoundDeclarationAfterBuild(declarationText, {
                 narrateSteps: false,
-                stopAfterFirstMove: shouldResumeOpenCross && !resumeApproachThenOpen,
+                stopAfterOpenDoor: resumeApproachThenOpen && !wantsCross,
+                stopAfterFirstMove:
+                  (shouldResumeOpenCross && !resumeApproachThenOpen) ||
+                  (resumeApproachThenOpen && wantsCross),
               });
+              if (resumed.finalSummary !== null && resumed.finalSummary.trim().length > 0) {
+                narrationSummary = resumed.finalSummary;
+              }
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
+                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
               ) {
-                await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
+                await narrateIntoDmThread(narrationSummary, accepted.event.rolls ?? []);
               } else {
                 patchDmPlayThread();
               }

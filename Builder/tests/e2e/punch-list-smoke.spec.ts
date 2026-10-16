@@ -138,11 +138,20 @@ test.describe('Punch list smoke', () => {
       .poll(async () => page.getByTestId('dm-play-thread').innerText().catch(() => ''), {
         timeout: 90_000,
       })
-      .not.toMatch(/Say one clear action your character attempts/i);
+      .not.toMatch(/Say one clear action your character attempts|press an ear toward Wooden doorway/i);
 
+    const tokenBefore = await page.getByTestId('map-label-chip').filter({ hasText: /^Duran/ }).count();
     await input.fill('Open the wooden doorway east');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('confirm-intent-draft')).toBeHidden({ timeout: 45_000 });
+    // Allow approach + open to settle; must not leave a "remains closed" Veyra line after open.
+    await page.waitForTimeout(2500);
+    const thread = await page.getByTestId('dm-play-thread').innerText();
+    expect(thread).not.toMatch(/The doorway remains closed — no crossing/i);
+    // Ping-pong would flood mechanics with many consecutive move lines; keep the beat count sane.
+    const moveBeats = (thread.match(/Moved on the table/gi) ?? []).length;
+    expect(moveBeats).toBeLessThan(4);
+    void tokenBefore;
     await page.screenshot({
       path: '/opt/cursor/artifacts/punch-table-after-nl.png',
       fullPage: false,

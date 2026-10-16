@@ -494,8 +494,10 @@ export function resolveDoorIntentForMap(
     }
   }
 
-  // Standing on either side of an open doorway: through/enter/west is a confirmable cross.
-  if (wantsCross || (adjacentOpen !== undefined && wantsOpen)) {
+  // Standing on either side of an open doorway: only explicit through/enter/west is a cross.
+  // Open-only wording ("Open the wooden doorway east") must not become a through-step —
+  // that ping-pongs the token across the threshold when the compound resume re-evaluates.
+  if (wantsCross) {
     const throughStep = nextStepThroughOpenDoor(tokenAnchor, map);
     if (throughStep !== null) {
       const reversing = isOnOpenDoorPassage(tokenAnchor, map);
@@ -510,7 +512,7 @@ export function resolveDoorIntentForMap(
     }
   }
 
-  if (adjacentOpen !== undefined && wantsInspect) {
+  if (adjacentOpen !== undefined && (wantsOpen || wantsInspect)) {
     return {
       proposedCommandType: 'table.sync',
       edgeId: adjacentOpen.edgeId,
