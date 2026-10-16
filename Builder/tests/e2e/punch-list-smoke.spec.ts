@@ -39,12 +39,10 @@ async function createPublicTable(page: Page, name: string): Promise<string> {
   await page.getByTestId('start-campaign').click();
   await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
 
-  const optionList = page.locator('.option-list').first();
+  const optionList = page.getByTestId('table-visibility-list');
   await expect(optionList).toBeVisible();
-  const listStyle = await optionList.evaluate((el) => getComputedStyle(el).listStyleType);
-  const bulletPadding = await optionList.evaluate((el) => getComputedStyle(el).paddingLeft);
-  expect(listStyle).toBe('none');
-  expect(Number.parseFloat(bulletPadding)).toBe(0);
+  expect(await optionList.evaluate((el) => el.tagName)).toBe('DIV');
+  expect(await optionList.locator('li').count()).toBe(0);
   await page.screenshot({
     path: '/opt/cursor/artifacts/punch-create-table-bullets.png',
     fullPage: true,
