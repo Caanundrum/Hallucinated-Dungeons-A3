@@ -11,7 +11,7 @@
  * mist), animate token moves, and highlight the selected move square.
  */
 
-import { Application, Container, Graphics, Text } from 'pixi.js';
+import { Application, Assets, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 
 import {
   WEBGL_LAYER_Z_INDEX,
@@ -43,54 +43,10 @@ import {
   terrainFillCss,
   terrainFillPixi,
   voidFillCss,
-  type SceneAtmosphereFamily,
   type SceneVisualPresentation,
 } from './scene-visual-system.js';
 
-/** Location silhouette art keyed by atmosphere — readable place cue behind the grid. */
-function locationBackdropSvg(atmosphere: SceneAtmosphereFamily): string {
-  if (atmosphere === 'waterfront' || atmosphere === 'wet_fog') {
-    return `
-      <path fill="#1a3a42" fill-opacity="0.55" d="M0 170 Q80 150 160 168 T320 165 T400 172 V220 H0 Z"/>
-      <rect x="40" y="120" width="70" height="50" rx="2" fill="#2a2218" fill-opacity="0.5"/>
-      <rect x="130" y="100" width="90" height="70" rx="2" fill="#241c14" fill-opacity="0.45"/>
-      <rect x="250" y="110" width="60" height="60" rx="2" fill="#2c241a" fill-opacity="0.4"/>
-      <path stroke="#6a9aaa" stroke-opacity="0.35" stroke-width="2" fill="none" d="M0 185 Q100 175 200 188 T400 180"/>`;
-  }
-  if (atmosphere === 'enclosed_warm') {
-    return `
-      <path fill="#3a2818" fill-opacity="0.4" d="M40 220 L80 90 L200 40 L320 90 L360 220 Z"/>
-      <ellipse cx="200" cy="150" rx="36" ry="18" fill="#c47a28" fill-opacity="0.25"/>
-      <rect x="170" y="155" width="60" height="40" fill="#2a1c12" fill-opacity="0.45"/>`;
-  }
-  if (atmosphere === 'enclosed_cool' || atmosphere === 'cavernous') {
-    return `
-      <path fill="#1a222c" fill-opacity="0.5" d="M0 220 V120 Q60 70 120 110 T240 100 T400 130 V220 Z"/>
-      <path fill="#121820" fill-opacity="0.45" d="M60 220 V140 Q100 100 140 130 V220 Z"/>
-      <path fill="#121820" fill-opacity="0.45" d="M220 220 V135 Q270 95 320 140 V220 Z"/>`;
-  }
-  if (atmosphere === 'settled_street' || atmosphere === 'open_clearing') {
-    return `
-      <path fill="#2a3020" fill-opacity="0.35" d="M0 160 L60 100 L90 160 Z"/>
-      <path fill="#2a3020" fill-opacity="0.3" d="M300 165 L360 95 L400 165 Z"/>
-      <rect x="120" y="120" width="160" height="70" fill="#2c2418" fill-opacity="0.35"/>`;
-  }
-  if (atmosphere === 'wooded_path') {
-    return `
-      <path fill="#1c2818" fill-opacity="0.45" d="M20 220 V80 Q50 40 70 90 V220 Z"/>
-      <path fill="#1c2818" fill-opacity="0.4" d="M110 220 V60 Q140 20 160 80 V220 Z"/>
-      <path fill="#1c2818" fill-opacity="0.45" d="M280 220 V70 Q310 30 340 85 V220 Z"/>`;
-  }
-  if (atmosphere === 'ruined_open' || atmosphere === 'elevated_exposed') {
-    return `
-      <path fill="#3a3428" fill-opacity="0.4" d="M30 220 L30 110 L90 90 L90 220 Z"/>
-      <path fill="#322c22" fill-opacity="0.35" d="M200 220 L210 80 L280 100 L270 220 Z"/>
-      <path fill="#2a241c" fill-opacity="0.3" d="M320 220 L340 130 L390 150 L380 220 Z"/>`;
-  }
-  return `
-    <path fill="#241c14" fill-opacity="0.35" d="M0 180 Q200 150 400 180 V220 H0 Z"/>
-    <rect x="150" y="110" width="100" height="70" rx="4" fill="#2a2218" fill-opacity="0.4"/>`;
-}
+const NPC_FALLBACK_PORTRAIT_URL = '/assets/portraits/npc_tavernkeep.jpg';
 
 function edgeHitBox(
   edge: MapEdgeRecord,
@@ -235,6 +191,12 @@ function paintSemanticSvg(
   const nextBoxes = new Map<string, { x: number; y: number }>();
   const labelSize = tokenLabelFontSize(pixelsPerSquare, host.clientWidth, width);
 
+  const sceneArtUrl =
+    typeof map.sceneArtUrl === 'string' && map.sceneArtUrl.trim().length > 0
+      ? map.sceneArtUrl.trim()
+      : null;
+  const hasPaintedArt = sceneArtUrl !== null;
+
   const cells = map.cells
     .map((cell) => {
       const fogClass = cell.known
@@ -257,7 +219,7 @@ function paintSemanticSvg(
               ? ' map-square-floor'
               : '';
       const textureOverlay = (() => {
-        if (!cell.known) {
+        if (!cell.known || hasPaintedArt) {
           return '';
         }
         const x = cell.column * pixelsPerSquare;
@@ -273,7 +235,7 @@ function paintSemanticSvg(
           return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-damp-texture)" opacity="${visuals.terrainBias === 'damp' ? '0.55' : '0.4'}" pointer-events="none" />`;
         }
         if (visuals.terrainBias === 'timber') {
-          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-timber" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-timber-texture)" opacity="0.32" pointer-events="none" />`;
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-planks" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-floor-planks)" pointer-events="none" />`;
         }
         if (visuals.terrainBias === 'canopy') {
           return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-canopy" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-canopy-texture)" opacity="0.48" pointer-events="none" />`;
@@ -282,21 +244,31 @@ function paintSemanticSvg(
           return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-scrub" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-scrub-texture)" opacity="0.38" pointer-events="none" />`;
         }
         if (visuals.terrainBias === 'damp') {
-          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-damp-texture)" opacity="0.28" pointer-events="none" />`;
+          return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-flagstone" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-floor-flagstone)" pointer-events="none" />
+            <rect aria-hidden="true" class="map-terrain-texture map-terrain-damp" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-damp-texture)" opacity="0.4" pointer-events="none" />`;
         }
-        return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-stone" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-stone-texture)" opacity="0.35" pointer-events="none" />`;
+        return `<rect aria-hidden="true" class="map-terrain-texture map-terrain-flagstone" x="${x}" y="${y}" width="${s}" height="${s}" fill="url(#map-floor-flagstone)" pointer-events="none" />`;
       })();
-      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${terrainCss(cell.terrain, cell.known, emberferry, visuals.terrainBias)}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
+      const cellFill = hasPaintedArt
+        ? cell.known && cell.terrain === 'blocked'
+          ? 'rgba(8, 6, 4, 0.24)'
+          : 'transparent'
+        : terrainCss(cell.terrain, cell.known, emberferry, visuals.terrainBias);
+      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${cellFill}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
     })
     .join('');
-  const gridStroke =
-    visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open'
+  const gridStroke = hasPaintedArt
+    ? 'rgba(255, 240, 210, 0.12)'
+    : visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open'
       ? '#6a8a5a'
       : visuals.terrainBias === 'damp'
         ? '#5a7a7a'
         : '#c4a574';
-  const gridOpacity =
-    visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open' ? '0.22' : '0.28';
+  const gridOpacity = hasPaintedArt
+    ? '1'
+    : visuals.terrainBias === 'canopy' || visuals.terrainBias === 'open'
+      ? '0.22'
+      : '0.28';
   const gridLines: string[] = [];
   for (let column = 0; column <= columns; column += 1) {
     const x = column * pixelsPerSquare;
@@ -452,7 +424,7 @@ function paintSemanticSvg(
   });
 
   const tokens = map.tokens
-    .map((token) => {
+    .map((token, tokenIndex) => {
       const box = tokenPixelBox(map, token);
       nextBoxes.set(token.tokenId, { x: box.x, y: box.y });
       const prior = priorTokenBoxes.get(token.tokenId);
@@ -467,13 +439,24 @@ function paintSemanticSvg(
       const cx = box.x + box.w / 2;
       const cy = box.y + box.h / 2;
       const radius = Math.min(box.w, box.h) / 2;
-      return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token on the map" data-token="${escapeHtml(token.tokenId)}" data-testid="map-token" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="map-token${animate ? ' token-moving' : ''}" style="transform:${transform}">
-        <circle class="token-halo" cx="${cx}" cy="${cy}" r="${radius + 6}" fill="none" aria-hidden="true" />
-        <circle class="token-hit" cx="${cx}" cy="${cy}" r="${radius + 2}" fill="transparent" stroke="none" aria-hidden="true" />
-        <circle class="token-body-outer" cx="${cx}" cy="${cy}" r="${radius}" fill="#d4a84b" stroke="#f8e7b0" stroke-width="2.75" />
+      const avatarUrl =
+        typeof token.avatarUrl === 'string' && token.avatarUrl.trim().length > 0
+          ? token.avatarUrl.trim()
+          : null;
+      const face =
+        avatarUrl !== null
+          ? `<clipPath id="token-avatar-clip-${tokenIndex}"><circle cx="${cx}" cy="${cy}" r="${Math.max(4, radius - 3.5)}" /></clipPath>
+        <circle class="token-body-outer token-body-ring-metal" cx="${cx}" cy="${cy}" r="${radius}" fill="#1a1208" stroke="url(#map-token-ring)" stroke-width="3.25" />
+        <image class="token-avatar" data-testid="map-token-avatar" href="${escapeHtml(avatarUrl)}" x="${cx - radius}" y="${cy - radius}" width="${radius * 2}" height="${radius * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#token-avatar-clip-${tokenIndex})" />
+        <circle class="token-body-ring" cx="${cx}" cy="${cy}" r="${Math.max(3, radius - 3.5)}" fill="none" stroke="#1a1208" stroke-width="1" stroke-opacity="0.6" aria-hidden="true" />`
+          : `<circle class="token-body-outer" cx="${cx}" cy="${cy}" r="${radius}" fill="#d4a84b" stroke="#f8e7b0" stroke-width="2.75" />
         <circle class="token-body-inner" cx="${cx}" cy="${cy}" r="${Math.max(4, radius - 3.5)}" fill="#4a3010" stroke="none" />
         <circle class="token-body-ring" cx="${cx}" cy="${cy}" r="${Math.max(3, radius - 1.5)}" fill="none" stroke="#1a1208" stroke-width="1.25" stroke-opacity="0.55" aria-hidden="true" />
-        <text class="token-glyph" x="${cx}" y="${cy + labelSize * 0.35}" text-anchor="middle" fill="#f8e7b0" font-size="${Math.max(10, labelSize * 0.85)}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700">${escapeHtml(initial)}</text>
+        <text class="token-glyph" x="${cx}" y="${cy + labelSize * 0.35}" text-anchor="middle" fill="#f8e7b0" font-size="${Math.max(10, labelSize * 0.85)}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700">${escapeHtml(initial)}</text>`;
+      return `<g role="img" tabindex="0" aria-label="${escapeHtml(token.label)} token on the map" data-token="${escapeHtml(token.tokenId)}" data-testid="map-token" data-has-avatar="${avatarUrl !== null}" data-anchor-column="${token.footprint.anchor.column}" data-anchor-row="${token.footprint.anchor.row}" class="map-token${animate ? ' token-moving' : ''}" style="transform:${transform}">
+        <circle class="token-halo" cx="${cx}" cy="${cy}" r="${radius + 6}" fill="none" aria-hidden="true" />
+        <circle class="token-hit" cx="${cx}" cy="${cy}" r="${radius + 2}" fill="transparent" stroke="none" aria-hidden="true" />
+        ${face}
       </g>`;
     })
     .join('');
@@ -495,6 +478,7 @@ function paintSemanticSvg(
       feature.referenceKind !== 'exit' &&
       feature.objectKind !== 'exit',
   );
+  let featureClipSeq = 0;
   const paintFeatureDot = (feature: (typeof map.notableFeatures)[number]): string => {
     const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
     const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
@@ -558,7 +542,17 @@ function paintSemanticSvg(
         : isTorch && isUnlit
           ? `<circle class="map-torch-unlit" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.55}" fill="#2a241c" stroke="#6a5844" stroke-width="1" opacity="0.85" aria-hidden="true" />`
           : '';
-    const actorRing = isActor
+    const isNpcPortrait = feature.objectKind === 'npc' || visual.family === 'family_npc';
+    const portraitR = Math.max(11, pixelsPerSquare * 0.3);
+    const npcPortrait = isNpcPortrait
+      ? `<g class="map-npc-portrait" pointer-events="none" aria-hidden="true">
+           <clipPath id="npc-portrait-clip-${featureClipSeq}"><circle cx="${x}" cy="${y}" r="${portraitR - 2}" /></clipPath>
+           <circle cx="${x}" cy="${y}" r="${portraitR}" fill="#1a1208" stroke="url(#map-token-ring)" stroke-width="3" />
+           <image data-testid="map-npc-portrait" href="${NPC_FALLBACK_PORTRAIT_URL}" x="${x - portraitR}" y="${y - portraitR}" width="${portraitR * 2}" height="${portraitR * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#npc-portrait-clip-${featureClipSeq})" />
+         </g>`
+      : '';
+    featureClipSeq += 1;
+    const actorRing = isActor && !isNpcPortrait
       ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="${visual.family === 'family_creature' ? '#e07060' : '#f2d38a'}" stroke-width="1.5" stroke-opacity="0.9" pointer-events="none" aria-hidden="true" />`
       : '';
     const exitChevron = isExit
@@ -580,7 +574,7 @@ function paintSemanticSvg(
       ? `<polygon class="map-poi-core map-prop-diamond" points="${x},${y - 7} ${x + 6},${y} ${x},${y + 7} ${x - 6},${y}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
       : '';
     const coreDisc =
-      !isContainer && !isProp
+      !isContainer && !isProp && !isNpcPortrait
         ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
         : '';
     const testId = isExit
@@ -606,6 +600,7 @@ function paintSemanticSvg(
       ${rubbleChips}
       ${torchGlow}
       ${actorRing}
+      ${npcPortrait}
       ${exitChevron}
       ${containerMark}
       ${propDiamond}
@@ -631,6 +626,44 @@ function paintSemanticSvg(
       </g>`;
     })
     .join('');
+
+  const fogPad = pixelsPerSquare * 2;
+  const fogCells = map.cells
+    .filter((cell) => !cell.known)
+    .map((cell) => {
+      const x0 = cell.column === 0 ? -fogPad : cell.column * pixelsPerSquare;
+      const y0 = cell.row === 0 ? -fogPad : cell.row * pixelsPerSquare;
+      const x1 = cell.column === columns - 1 ? width + fogPad : (cell.column + 1) * pixelsPerSquare;
+      const y1 = cell.row === rows - 1 ? height + fogPad : (cell.row + 1) * pixelsPerSquare;
+      return `<rect class="map-fog-depth" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="#05070c" />`;
+    })
+    .join('');
+  const fogBlur = Math.max(4, pixelsPerSquare * 0.3);
+
+  const pointLights = map.notableFeatures
+    .filter((feature) => feature.referenceKind === 'lighting' && feature.objectState !== 'unlit')
+    .map((feature) => {
+      const lx = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
+      const ly = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
+      return `<circle class="map-point-light" data-testid="map-point-light" data-light-label="${escapeHtml(feature.label)}" cx="${lx}" cy="${ly}" r="${pixelsPerSquare * 3.4}" fill="url(#map-point-light)" style="mix-blend-mode:screen" />`;
+    })
+    .join('');
+  const viewerToken =
+    map.viewerSeatId === null
+      ? undefined
+      : map.tokens.find((token) => token.seatId === map.viewerSeatId);
+  const viewerHalo =
+    viewerToken !== undefined &&
+    (visuals.lightWash === 'wash_torchlit' || visuals.lightWash === 'wash_dim')
+      ? (() => {
+          const box = tokenPixelBox(map, viewerToken);
+          return `<circle class="map-viewer-halo" data-testid="map-viewer-halo" cx="${box.x + box.w / 2}" cy="${box.y + box.h / 2}" r="${pixelsPerSquare * 1.9}" fill="url(#map-viewer-halo)" style="mix-blend-mode:screen" />`;
+        })()
+      : '';
+  const battlemapArt =
+    sceneArtUrl === null
+      ? ''
+      : `<image class="map-battlemap-art" data-testid="map-battlemap-art" href="${escapeHtml(sceneArtUrl)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" pointer-events="none" aria-hidden="true" />`;
 
   let wrap = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
   if (wrap === null) {
@@ -670,11 +703,50 @@ function paintSemanticSvg(
       <div class="table-stage-svg-scaler" data-testid="table-stage-svg-scaler" style="width:${width * zoomScale}px;height:${height * zoomScale}px;">
         <svg viewBox="0 0 ${width} ${height}" width="${width * zoomScale}" height="${height * zoomScale}" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
           <defs>
-            <pattern id="map-fog-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
-              <rect width="8" height="8" fill="#05080e" />
-              <path d="M0 8 L8 0" stroke="#2a3848" stroke-width="1.1" stroke-opacity="0.75" />
-              <path d="M-2 4 L4 -2" stroke="#1a2430" stroke-width="1" stroke-opacity="0.55" />
+            <filter id="fog-blur" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+              <feGaussianBlur stdDeviation="${fogBlur}" />
+            </filter>
+            <pattern id="map-floor-planks" width="48" height="24" patternUnits="userSpaceOnUse">
+              <rect width="48" height="24" fill="#5b4330" />
+              <rect y="0" width="48" height="6" fill="#6a4e36" />
+              <rect y="6" width="48" height="6" fill="#553d2b" />
+              <rect y="12" width="48" height="6" fill="#634a33" />
+              <rect y="18" width="48" height="6" fill="#4f3828" />
+              <path d="M0 6 H48 M0 12 H48 M0 18 H48 M0 24 H48" stroke="#2a1b10" stroke-width="0.9" stroke-opacity="0.7" />
+              <path d="M30 0 V6 M12 6 V12 M38 12 V18 M20 18 V24" stroke="#2a1b10" stroke-width="0.9" stroke-opacity="0.65" />
+              <path d="M3 3 H22 M26 9 H44 M6 15 H28 M32 21 H46" stroke="#8a6a48" stroke-width="0.5" stroke-opacity="0.35" />
+              <circle cx="40" cy="3" r="0.9" fill="#2a1b10" fill-opacity="0.5" />
+              <circle cx="9" cy="14" r="0.8" fill="#2a1b10" fill-opacity="0.45" />
             </pattern>
+            <pattern id="map-floor-flagstone" width="48" height="48" patternUnits="userSpaceOnUse">
+              <rect width="48" height="48" fill="#3a3733" />
+              <path d="M0 0 H22 V15 H0 Z" fill="#46423c" />
+              <path d="M22 0 H48 V20 H22 Z" fill="#3d3a35" />
+              <path d="M0 15 H14 V48 H0 Z" fill="#3c3935" />
+              <path d="M14 15 H30 V32 H14 Z" fill="#4a4640" />
+              <path d="M30 20 H48 V48 H30 Z" fill="#43403a" />
+              <path d="M14 32 H30 V48 H14 Z" fill="#383530" />
+              <path d="M0 15 H30 M22 0 V20 M22 20 H48 M14 15 V48 M30 20 V48 M14 32 H30" stroke="#16130f" stroke-width="1.2" stroke-opacity="0.8" fill="none" />
+              <path d="M2 2 H20 M24 2 H46 M16 17 H28 M32 22 H46" stroke="#7a7266" stroke-width="0.6" stroke-opacity="0.35" fill="none" />
+              <path d="M5 40 l3 -4 l3 3 M36 8 l4 3 l-1 4" stroke="#1a1612" stroke-width="0.6" stroke-opacity="0.5" fill="none" />
+            </pattern>
+            <radialGradient id="map-point-light" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffd890" stop-opacity="0.62" />
+              <stop offset="35%" stop-color="#f0a040" stop-opacity="0.3" />
+              <stop offset="70%" stop-color="#c47a28" stop-opacity="0.1" />
+              <stop offset="100%" stop-color="#8a5010" stop-opacity="0" />
+            </radialGradient>
+            <radialGradient id="map-viewer-halo" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffe2a8" stop-opacity="0.34" />
+              <stop offset="55%" stop-color="#f0b060" stop-opacity="0.12" />
+              <stop offset="100%" stop-color="#f0b060" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="map-token-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f8e7b0" />
+              <stop offset="35%" stop-color="#c9a227" />
+              <stop offset="70%" stop-color="#4dd4d4" />
+              <stop offset="100%" stop-color="#2aa8a8" />
+            </linearGradient>
             <pattern id="map-stone-texture" width="12" height="12" patternUnits="userSpaceOnUse">
               <rect width="12" height="12" fill="#2a231c" fill-opacity="0" />
               <path d="M0 6 H12 M6 0 V12" stroke="#1a1510" stroke-width="0.7" stroke-opacity="0.35" />
@@ -690,11 +762,6 @@ function paintSemanticSvg(
               <rect width="10" height="10" fill="#1a2828" fill-opacity="0" />
               <path d="M1 3 Q5 1 9 4" fill="none" stroke="#5a8a8a" stroke-width="0.8" stroke-opacity="0.35" />
               <path d="M0 7 Q4 5 8 8" fill="none" stroke="#3a6060" stroke-width="0.7" stroke-opacity="0.3" />
-            </pattern>
-            <pattern id="map-timber-texture" width="14" height="10" patternUnits="userSpaceOnUse">
-              <rect width="14" height="10" fill="#3a2e22" fill-opacity="0" />
-              <path d="M0 5 H14" stroke="#1a120c" stroke-width="0.8" stroke-opacity="0.4" />
-              <path d="M0 1 H14 M0 9 H14" stroke="#4a3a28" stroke-width="0.5" stroke-opacity="0.25" />
             </pattern>
             <pattern id="map-canopy-texture" width="16" height="16" patternUnits="userSpaceOnUse">
               <rect width="16" height="16" fill="#1a2818" fill-opacity="0" />
@@ -742,17 +809,11 @@ function paintSemanticSvg(
               ? `<rect class="map-elevation-frame" data-elevation="${visuals.elevationCue}" x="4" y="4" width="${width - 8}" height="${height - 8}" fill="none" stroke="#c4a574" stroke-opacity="0.35" stroke-width="3" rx="${visuals.elevationCue === 'raised' ? '10' : '2'}" pointer-events="none" aria-hidden="true" />`
               : ''
           }
-          <g data-layer="terrain_art">${cells}</g>
-          <g data-layer="fog_hatch">${map.cells
-            .filter((cell) => !cell.known)
-            .map(
-              (cell) =>
-                `<g class="map-fog-cell" aria-hidden="true">
-                  <rect class="map-fog-depth" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="#04060a" opacity="0.62" />
-                  <rect class="map-square-fog-hatch map-fog-mist" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="url(#map-fog-hatch)" opacity="0.42" />
-                </g>`,
-            )
-            .join('')}</g>
+          <g data-layer="terrain_art">${battlemapArt}${cells}</g>
+          <g data-layer="point_lights" data-testid="map-point-lights" pointer-events="none" aria-hidden="true">${pointLights}${viewerHalo}</g>
+          <g data-layer="fog_hatch" data-testid="map-fog-overlay" pointer-events="none" aria-hidden="true">
+            <g class="map-fog-cell" filter="url(#fog-blur)" opacity="0.94">${fogCells}</g>
+          </g>
           <g data-layer="grid_reference">${gridLines.join('')}</g>
           <g data-layer="structural_underlays">${edges}</g>
           <g data-layer="hazards_zones" data-testid="table-stage-hazard-markers">${hazardLayer}</g>
@@ -767,9 +828,6 @@ function paintSemanticSvg(
     </div>
     <div class="table-stage-atmosphere atmosphere-${visuals.atmosphere} ${visuals.lightWash} ${visuals.threat}" data-testid="table-stage-atmosphere" data-atmosphere="${visuals.atmosphere}" data-light-wash="${visuals.lightWash}" data-threat="${visuals.threat}" aria-hidden="true">
       <span class="scene-atmosphere-wash" data-testid="scene-atmosphere-wash"></span>
-      <svg class="scene-location-backdrop" data-testid="scene-location-backdrop" data-location-art="${visuals.atmosphere}" viewBox="0 0 400 220" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-        ${locationBackdropSvg(visuals.atmosphere)}
-      </svg>
       <span class="cavern-dust cavern-dust-a"></span>
       <span class="cavern-dust cavern-dust-b"></span>
       <span class="cavern-dust cavern-dust-c"></span>
@@ -856,6 +914,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let lastFitZoom: number | null = null;
   let mapToolbarMoreOpen = false;
   let hasFittedOnce = false;
+  let pixiPaintSeq = 0;
 
   function mapPixelSize(): { width: number; height: number } | null {
     if (currentMap === null) {
@@ -1208,15 +1267,39 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     });
     layers.world_background.addChild(background);
 
+    const paintSeq = (pixiPaintSeq += 1);
+    const sceneArtUrl =
+      typeof map.sceneArtUrl === 'string' && map.sceneArtUrl.trim().length > 0
+        ? map.sceneArtUrl.trim()
+        : null;
     const terrain = new Graphics();
     for (const cell of map.cells) {
       const x = cell.column * pixelsPerSquare;
       const y = cell.row * pixelsPerSquare;
+      if (sceneArtUrl !== null) {
+        if (!cell.known) {
+          terrain.rect(x, y, pixelsPerSquare, pixelsPerSquare).fill({ color: 0x05070c, alpha: 0.94 });
+        }
+        continue;
+      }
       terrain
         .rect(x, y, pixelsPerSquare, pixelsPerSquare)
         .fill(terrainColor(cell.terrain, cell.known, emberferry, visuals.terrainBias));
     }
     layers.terrain_art.addChild(terrain);
+    if (sceneArtUrl !== null) {
+      Assets.load<Texture>(sceneArtUrl)
+        .then((texture) => {
+          if (layers === null || paintSeq !== pixiPaintSeq) {
+            return;
+          }
+          const art = new Sprite(texture);
+          art.width = width;
+          art.height = height;
+          layers.terrain_art.addChildAt(art, 0);
+        })
+        .catch(() => undefined);
+    }
 
     const grid = new Graphics();
     for (let column = 0; column <= columns; column += 1) {
@@ -1227,7 +1310,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const y = row * pixelsPerSquare;
       grid.moveTo(0, y).lineTo(width, y);
     }
-    grid.stroke({ width: 1, color: 0xc4a574, alpha: 0.35 });
+    grid.stroke(
+      sceneArtUrl !== null
+        ? { width: 1, color: 0xfff0d2, alpha: 0.12 }
+        : { width: 1, color: 0xc4a574, alpha: 0.35 },
+    );
     layers.grid_reference.addChild(grid);
 
     const structural = new Graphics();
