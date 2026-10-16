@@ -950,10 +950,19 @@ export function parsePlayerDeclaration(
     !wantsCloseDoor &&
     !wantsUnlock
   ) {
+    const listenMentionsDoor =
+      /\blisten\b/i.test(trimmed) &&
+      /\b(?:door|doorway|gate|entry(?:way)?|threshold|passage)\b/i.test(trimmed);
     actionSequence.push({
       kind: 'inspect',
       targetRef: null,
-      outcomeHint: /\blisten\b/i.test(trimmed) ? 'listen' : 'scene_perception',
+      // Door-ear listen only when the text names a door/threshold. Window / lantern /
+      // room listens stay scene perception so Director narrates the declared props.
+      outcomeHint: listenMentionsDoor
+        ? 'listen'
+        : /\blisten\b/i.test(trimmed)
+          ? 'sensory_sequence'
+          : 'scene_perception',
     });
   }
 
