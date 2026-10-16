@@ -77,6 +77,20 @@ import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '..
 import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
 import type { CharacterProgressionProjection } from '../../shared/rules-combat-contract.js';
 
+/** Apply runtime doorStates onto edge records so vision respects open/closed leaves. */
+function edgesWithDoorStates(
+  edges: readonly MapEdgeRecord[],
+  doorStates: Record<string, string>,
+): MapEdgeRecord[] {
+  return edges.map((edge) => {
+    const override = doorStates[edge.edgeId];
+    if (override === undefined || edge.kind !== 'door') {
+      return edge;
+    }
+    return { ...edge, doorState: override as MapEdgeRecord['doorState'] };
+  });
+}
+
 function isAdjacentToDoorEdge(anchor: MapSquareCoordinate, edge: MapEdgeRecord): boolean {
   return (
     (edge.orientation === 'east' &&
@@ -1120,7 +1134,8 @@ export async function acceptTableCommand(options: {
       syncVisionSquares = visibleSquaresFrom(
         token.footprint.anchor,
         DEFAULT_VISION_RADIUS_SQUARES,
-        map.coordinateSpace,
+        { ...map.coordinateSpace, cells: map.cells },
+        map.edges,
       );
     }
     if (trimmedPlaySummary !== undefined && /^Ready to /i.test(trimmedPlaySummary)) {
@@ -1254,10 +1269,20 @@ export async function acceptTableCommand(options: {
       const destination = movePath[movePath.length - 1]!;
       tokenPositions = upsertTokenPosition(tokenPositions, seat.seatId, destination);
       const active = activeSceneId ? sceneInstances[activeSceneId] : null;
-      const vision = visibleSquaresFrom(destination, DEFAULT_VISION_RADIUS_SQUARES, {
-        columns: active?.columns ?? 12,
-        rows: active?.rows ?? 8,
-      });
+      const visionEdges = edgesWithDoorStates(
+        active?.edges ?? runtimeEdges,
+        { ...(active?.doorStates ?? {}), ...doorStates },
+      );
+      const vision = visibleSquaresFrom(
+        destination,
+        DEFAULT_VISION_RADIUS_SQUARES,
+        {
+          columns: active?.columns ?? 12,
+          rows: active?.rows ?? 8,
+          ...(active?.cells !== undefined ? { cells: active.cells } : {}),
+        },
+        visionEdges,
+      );
       exploredByAccount[accountId] = mergeExplored(exploredByAccount[accountId], [
         ...movePath,
         destination,
@@ -1300,12 +1325,33 @@ export async function acceptTableCommand(options: {
           const base = stripDoorStateLabelSuffix(feature.label);
           return { ...feature, label: `${base} — open` };
         });
+        // Flood vision through the newly opened door from the actor's current position.
+        const actorToken =
+          tokenPositions.find((entry) => entry.seatId === seat.seatId) ??
+          activeScene.tokenPositions.find((entry) => entry.seatId === seat.seatId) ??
+          null;
+        const mergedDoorStates = { ...activeScene.doorStates, ...doorStates, [openEdgeId]: 'open' as const };
+        const visionEdges = edgesWithDoorStates(activeScene.edges, mergedDoorStates);
+        if (actorToken !== null) {
+          const vision = visibleSquaresFrom(
+            { column: actorToken.column, row: actorToken.row },
+            DEFAULT_VISION_RADIUS_SQUARES,
+            {
+              columns: activeScene.columns,
+              rows: activeScene.rows,
+              cells: activeScene.cells,
+            },
+            visionEdges,
+          );
+          exploredByAccount[accountId] = mergeExplored(exploredByAccount[accountId], vision);
+        }
         sceneInstances = {
           ...sceneInstances,
           [activeSceneId]: {
             ...activeScene,
             features,
-            doorStates: { ...activeScene.doorStates, [openEdgeId]: 'open' },
+            doorStates: mergedDoorStates,
+            exploredByAccount,
           },
         };
       }

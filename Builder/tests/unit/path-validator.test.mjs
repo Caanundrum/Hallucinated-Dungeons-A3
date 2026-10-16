@@ -83,14 +83,14 @@ test('closed door edge rejects orthogonal entry', () => {
       tokenId: 'token:a',
       seatId: 'seat-a',
       label: 'Scout',
-      footprint: defaultFootprintForSize('medium', { column: 5, row: 3 }),
+      footprint: defaultFootprintForSize('medium', { column: 6, row: 4 }),
     },
   ]);
   const result = validateWalkPath({
     map,
-    start: { column: 5, row: 3 },
-    path: [{ column: 6, row: 3 }],
-    footprintTemplate: defaultFootprintForSize('medium', { column: 5, row: 3 }),
+    start: { column: 6, row: 4 },
+    path: [{ column: 7, row: 4 }],
+    footprintTemplate: defaultFootprintForSize('medium', { column: 6, row: 4 }),
     movementBudgetFeet: DEFAULT_MOVEMENT_BUDGET_FEET,
     movementMode: 'walk',
     actorSeatId: 'seat-a',
@@ -124,4 +124,34 @@ test('blocked border terrain rejects entry', () => {
 test('vision radius enumerates Chebyshev disk inside map bounds', () => {
   const squares = visibleSquaresFrom({ column: 2, row: 2 }, 1, { columns: 12, rows: 8 });
   assert.equal(squares.length, 9);
+});
+
+test('closed dividing door blocks vision into the east chamber', () => {
+  const edges = buildStarterInteriorWalls();
+  const west = visibleSquaresFrom({ column: 5, row: 4 }, 6, { columns: 12, rows: 8 }, edges);
+  assert.equal(
+    west.some((square) => square.column >= 7),
+    false,
+    'east chamber must stay unknown while the door is closed',
+  );
+  assert.equal(
+    west.some((square) => square.column === 6 && square.row === 4),
+    true,
+    'the west face of the door square remains visible',
+  );
+
+  const openEdges = edges.map((edge) =>
+    edge.kind === 'door' ? { ...edge, doorState: 'open' } : edge,
+  );
+  const revealed = visibleSquaresFrom(
+    { column: 5, row: 4 },
+    6,
+    { columns: 12, rows: 8 },
+    openEdges,
+  );
+  assert.equal(
+    revealed.some((square) => square.column === 7 && square.row === 4),
+    true,
+    'opening the door must flood vision into column 7',
+  );
 });

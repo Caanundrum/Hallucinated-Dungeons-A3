@@ -52,6 +52,7 @@ import {
 } from './encounter-runtime.js';
 import { spellAreaCells, spellEffect } from './spell-effects.js';
 import { levelForExperience } from './xp-progression.js';
+import { withMilestonePortraitCredit } from '../../characters/characters.js';
 
 export const RULES_COMMAND_TYPES = [
   'encounter.begin',
@@ -1990,12 +1991,15 @@ export async function acceptRulesCommand(options: {
       .collection(COLLECTIONS.campaignCommands)
       .where('idempotencyKey', '==', idempotencyKey)
       .limit(1);
-    const [duplicateSnapshot, tableSnap, encounterSnap, progressionSnap] = await Promise.all([
-      transaction.get(duplicateQuery),
-      transaction.get(projectionRef),
-      transaction.get(encounterRef),
-      transaction.get(progressionRef),
-    ]);
+    const characterRef = firestore.collection(COLLECTIONS.characters).doc(seat.characterId);
+    const [duplicateSnapshot, tableSnap, encounterSnap, progressionSnap, characterSnap] =
+      await Promise.all([
+        transaction.get(duplicateQuery),
+        transaction.get(projectionRef),
+        transaction.get(encounterRef),
+        transaction.get(progressionRef),
+        transaction.get(characterRef),
+      ]);
     if (!duplicateSnapshot.empty) {
       throw new RulesCommandError(
         ERROR_CODES.STALE_STATE_VERSION,
@@ -2092,6 +2096,16 @@ export async function acceptRulesCommand(options: {
     transaction.set(firestore.collection(COLLECTIONS.campaignEvents).doc(eventId), event);
     transaction.set(projectionRef, nextTable);
     transaction.set(progressionRef, mutation.progression);
+    if (
+      commandType === 'progression.level_up' &&
+      mutation.progression.level > currentProgression.level &&
+      characterSnap.exists
+    ) {
+      const credits = withMilestonePortraitCredit(
+        characterSnap.data() as { milestonePortraitCredits?: number },
+      ).milestonePortraitCredits;
+      transaction.update(characterRef, { milestonePortraitCredits: credits });
+    }
     if (nextEncounter !== null) transaction.set(encounterRef, nextEncounter);
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {
       lastAcknowledgedEventSequence: nextSequence,

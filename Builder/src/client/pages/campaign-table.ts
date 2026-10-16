@@ -107,6 +107,7 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
 import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
+import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import { bindModalChrome } from '../modal-engine.js';
@@ -274,6 +275,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let cuePlanInFlight = false;
   let presentationAudioContext: AudioContext | null = null;
   let busy = false;
+  /** Map-stage NPC roleplay spotlight (portrait + latest spoken line). */
+  let roleplaySpotlight: {
+    readonly npcName: string;
+    readonly portraitUrl: string;
+    readonly line: string;
+  } | null = null;
+  /** Multiplayer party travel readiness overlay. */
+  let partyTravel: {
+    readonly destinationTitle: string;
+    readonly readyCharacterName: string;
+    readonly destinationHint: string;
+    readonly returnToPrevious: boolean;
+    readonly expiresAt: number;
+    readonly draft: ActionDraftSuggestion;
+    readonly declarationText: string;
+  } | null = null;
+  let partyTravelTimer: ReturnType<typeof setInterval> | null = null;
+  let sceneTitleCard: { readonly title: string; readonly until: number } | null = null;
   let error: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
@@ -1340,8 +1359,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
     }
     const sheet = progression.sheet;
-    const label =
-      mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    const ownToken = mapBundle?.tokens.find((token) => token.seatId === ownSeatId);
+    const label = ownToken?.label ?? 'Your character';
+    const heroAvatarUrl =
+      typeof ownToken?.avatarUrl === 'string' && isTrustedAvatarUrl(ownToken.avatarUrl)
+        ? ownToken.avatarUrl
+        : null;
     const classLabel = (progression.classId ?? 'adventurer')
       .replace(/[-_]+/g, ' ')
       .replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -1356,7 +1379,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="table-character-compact hero-mini-sheet" data-testid="table-character-compact">
         <button type="button" class="hero-mini-hud" data-testid="table-character-hud"
           aria-label="Open character sheet for ${escapeHtml(label)}">
-          <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>
+          ${
+            heroAvatarUrl !== null
+              ? `<img class="hero-mini-avatar hero-mini-avatar-img" data-testid="hero-avatar-img" src="${escapeHtml(heroAvatarUrl)}" alt="" />`
+              : `<span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>`
+          }
           <span class="hero-mini-copy">
             <strong class="hero-mini-name">${escapeHtml(label)}</strong>
             <span class="record-meta" data-testid="hero-class-level">Lv ${sheet.level} ${escapeHtml(classLabel)}</span>
@@ -2051,16 +2078,21 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               ? '<p class="record-meta" data-testid="npc-spotlight-empty">No NPC holds the floor. Address someone by name already known at this table.</p>'
               : '<p class="visually-hidden" data-testid="npc-spotlight-empty">NPC floor is clear.</p>'
             : `<div class="npc-spotlight-banner" data-testid="npc-spotlight-banner">
-                <p data-testid="npc-spotlight-meta">
-                  Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
-                  ${escapeHtml(spotlight.holderDisplayName)}
-                  ${holdOwnSpotlight ? '(you)' : ''}
-                </p>
-                ${
-                  spotlight.lastMessagePreview === null
-                    ? ''
-                    : `<p class="record-meta" data-testid="npc-spotlight-preview">${escapeHtml(spotlight.lastMessagePreview)}</p>`
-                }
+                <div class="npc-spotlight-banner-row">
+                  <img class="npc-spotlight-avatar" data-testid="npc-spotlight-avatar" src="/assets/portraits/npc_tavernkeep.jpg" alt="" />
+                  <div>
+                    <p data-testid="npc-spotlight-meta">
+                      Floor with <strong>${escapeHtml(spotlight.npcName)}</strong>:
+                      ${escapeHtml(spotlight.holderDisplayName)}
+                      ${holdOwnSpotlight ? '(you)' : ''}
+                    </p>
+                    ${
+                      spotlight.lastMessagePreview === null
+                        ? ''
+                        : `<p class="record-meta" data-testid="npc-spotlight-preview">${escapeHtml(spotlight.lastMessagePreview)}</p>`
+                    }
+                  </div>
+                </div>
                 ${
                   holdOwnSpotlight
                     ? `<button type="button" data-testid="yield-npc-spotlight">Yield floor</button>`
@@ -2676,6 +2708,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (candidate === null || tableState === null) {
       return;
     }
+    if (gateSceneTravel({ draft, declarationText })) {
+      return;
+    }
+    if (draft.proposedCommandType === 'table.move' || draft.proposedCommandType === 'table.travel_scene') {
+      dismissRoleplaySpotlight();
+    }
     busy = true;
     error = null;
     render();
@@ -3262,6 +3300,239 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     slot.classList.toggle('table-stage-low-effects', lowEffects || reducedMotion);
+  }
+
+  function activeSeatCount(): number {
+    return mapBundle?.tokens.length ?? 0;
+  }
+
+  function clearPartyTravelTimer(): void {
+    if (partyTravelTimer !== null) {
+      clearInterval(partyTravelTimer);
+      partyTravelTimer = null;
+    }
+  }
+
+  function dismissRoleplaySpotlight(): void {
+    roleplaySpotlight = null;
+    const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+    if (chrome !== null) {
+      syncMapStageOverlays(chrome);
+    }
+  }
+
+  function showRoleplaySpotlightForNpc(npcName: string, line: string): void {
+    const feature =
+      mapBundle?.notableFeatures.find(
+        (entry) =>
+          (entry.objectKind === 'npc' || entry.referenceKind === 'npc') &&
+          entry.label.toLowerCase().includes(npcName.toLowerCase().split(/\s+/)[0] ?? npcName),
+      ) ?? null;
+    if (feature === null && !(tableState?.npcSpotlight?.npcName === npcName)) {
+      // Only spotlight when the active scene actually has this NPC (or floor holder).
+      if (mapBundle?.notableFeatures.some((entry) => entry.objectKind === 'npc') !== true) {
+        return;
+      }
+    }
+    roleplaySpotlight = {
+      npcName,
+      portraitUrl: '/assets/portraits/npc_tavernkeep.jpg',
+      line,
+    };
+    const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+    if (chrome !== null) {
+      syncMapStageOverlays(chrome);
+    }
+  }
+
+  function syncMapStageOverlays(mapChrome: HTMLElement): void {
+    mapChrome.classList.toggle('map-roleplay-dimmed', roleplaySpotlight !== null);
+
+    let travelBanner = mapChrome.querySelector<HTMLElement>('[data-testid="party-travel-banner"]');
+    if (partyTravel !== null) {
+      const secondsLeft = Math.max(0, Math.ceil((partyTravel.expiresAt - Date.now()) / 1000));
+      const html = `<div class="party-travel-banner" data-testid="party-travel-banner" role="status">
+        <p data-testid="party-travel-copy">
+          <strong>${escapeHtml(partyTravel.readyCharacterName)}</strong> is ready to travel to
+          <strong>${escapeHtml(partyTravel.destinationTitle)}</strong>
+          · ${secondsLeft}s
+        </p>
+        <div class="party-travel-actions">
+          <button type="button" class="table-primary-action" data-testid="party-travel-together">Travel Together</button>
+          <button type="button" class="table-secondary-action" data-testid="party-travel-hold">Wait, Hold On!</button>
+        </div>
+      </div>`;
+      if (travelBanner === null) {
+        travelBanner = document.createElement('div');
+        mapChrome.insertBefore(travelBanner, mapChrome.firstChild);
+      }
+      travelBanner.outerHTML = html;
+      travelBanner = mapChrome.querySelector<HTMLElement>('[data-testid="party-travel-banner"]');
+      travelBanner
+        ?.querySelector<HTMLButtonElement>('[data-testid="party-travel-together"]')
+        ?.addEventListener('click', () => {
+          void commitPendingPartyTravel();
+        });
+      travelBanner
+        ?.querySelector<HTMLButtonElement>('[data-testid="party-travel-hold"]')
+        ?.addEventListener('click', () => {
+          clearPartyTravelTimer();
+          partyTravel = null;
+          syncMapStageOverlays(mapChrome);
+          shell.announce('Travel held — the party stays put.');
+        });
+    } else if (travelBanner !== null) {
+      travelBanner.remove();
+    }
+
+    let titleCard = mapChrome.querySelector<HTMLElement>('[data-testid="scene-title-card"]');
+    if (sceneTitleCard !== null && Date.now() < sceneTitleCard.until) {
+      const html = `<div class="scene-title-card" data-testid="scene-title-card" role="status">
+        <p data-testid="scene-title-card-copy">Descending into ${escapeHtml(sceneTitleCard.title)}…</p>
+      </div>`;
+      if (titleCard === null) {
+        titleCard = document.createElement('div');
+        mapChrome.appendChild(titleCard);
+      }
+      titleCard.outerHTML = html;
+    } else if (titleCard !== null) {
+      titleCard.remove();
+      sceneTitleCard = null;
+    }
+
+    let spotlightCard = mapChrome.querySelector<HTMLElement>('[data-testid="npc-roleplay-spotlight"]');
+    if (roleplaySpotlight !== null) {
+      const html = `<div class="npc-roleplay-spotlight" data-testid="npc-roleplay-spotlight" role="dialog" aria-label="NPC spotlight">
+        <img class="npc-roleplay-portrait" data-testid="npc-roleplay-portrait" src="${escapeHtml(roleplaySpotlight.portraitUrl)}" alt="" />
+        <div class="npc-roleplay-copy">
+          <strong data-testid="npc-roleplay-name">${escapeHtml(roleplaySpotlight.npcName)}</strong>
+          <p data-testid="npc-roleplay-line">${escapeHtml(roleplaySpotlight.line)}</p>
+        </div>
+        <button type="button" class="table-secondary-action" data-testid="npc-roleplay-dismiss">Close</button>
+      </div>`;
+      if (spotlightCard === null) {
+        spotlightCard = document.createElement('div');
+        mapChrome.appendChild(spotlightCard);
+      }
+      spotlightCard.outerHTML = html;
+      mapChrome
+        .querySelector<HTMLButtonElement>('[data-testid="npc-roleplay-dismiss"]')
+        ?.addEventListener('click', () => {
+          dismissRoleplaySpotlight();
+        });
+    } else if (spotlightCard !== null) {
+      spotlightCard.remove();
+    }
+  }
+
+  async function commitPendingPartyTravel(): Promise<void> {
+    if (partyTravel === null || candidate === null || tableState === null) {
+      return;
+    }
+    const pending = partyTravel;
+    clearPartyTravelTimer();
+    partyTravel = null;
+    sceneTitleCard = {
+      title: pending.destinationTitle,
+      until: Date.now() + 800,
+    };
+    const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+    if (chrome !== null) {
+      syncMapStageOverlays(chrome);
+    }
+    // Re-enter the normal confirm path by restoring the draft and submitting.
+    setIntentDraft(pending.draft);
+    lastSubmittedDeclaration = pending.declarationText;
+    busy = true;
+    error = null;
+    render();
+    try {
+      const accepted = await submitTableCommand({
+        candidateId: candidate.candidateId,
+        campaignId,
+        requestId: crypto.randomUUID(),
+        commandType: 'table.travel_scene',
+        expectedStateVersion: tableState.stateVersion,
+        ...(explorationMode() || timingAuthority === null
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+        destinationHint: pending.destinationHint,
+        ...(pending.returnToPrevious ? { returnToPrevious: true } : {}),
+        ...(pending.declarationText.length > 0 ? { declaration: pending.declarationText } : {}),
+      });
+      tableState = accepted.table;
+      mapBundle = await fetchCampaignMap(campaignId);
+      stageHandle?.renderMap(mapBundle);
+      setIntentDraft(null);
+      shell.announce(`Arrived at ${pending.destinationTitle}.`);
+    } catch (failure) {
+      error = failure instanceof Error ? failure.message : 'Travel could not complete.';
+    } finally {
+      busy = false;
+      window.setTimeout(() => {
+        sceneTitleCard = null;
+        const host = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+        if (host !== null) {
+          syncMapStageOverlays(host);
+        }
+      }, 850);
+      render();
+    }
+  }
+
+  /**
+   * Gate scene-changing travel: solo players fade through a title card;
+   * multi-seat tables show a non-blocking party ready banner with countdown.
+   * Returns true when travel was deferred to the banner (caller should not submit yet).
+   */
+  function gateSceneTravel(options: {
+    readonly draft: ActionDraftSuggestion;
+    readonly declarationText: string;
+  }): boolean {
+    if (options.draft.proposedCommandType !== 'table.travel_scene') {
+      return false;
+    }
+    const destinationTitle =
+      options.draft.destinationHint?.trim() ||
+      options.draft.summary.replace(/^Ready to\s+/i, '').trim() ||
+      'the next scene';
+    const readyName =
+      mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    if (activeSeatCount() <= 1) {
+      sceneTitleCard = { title: destinationTitle, until: Date.now() + 800 };
+      const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+      if (chrome !== null) {
+        syncMapStageOverlays(chrome);
+      }
+      return false;
+    }
+    clearPartyTravelTimer();
+    partyTravel = {
+      destinationTitle,
+      readyCharacterName: readyName,
+      destinationHint: options.draft.destinationHint ?? destinationTitle,
+      returnToPrevious: options.draft.returnToPrevious === true,
+      expiresAt: Date.now() + 15_000,
+      draft: options.draft,
+      declarationText: options.declarationText,
+    };
+    partyTravelTimer = setInterval(() => {
+      if (partyTravel === null) {
+        clearPartyTravelTimer();
+        return;
+      }
+      if (Date.now() >= partyTravel.expiresAt) {
+        void commitPendingPartyTravel();
+        return;
+      }
+      const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+      if (chrome !== null) {
+        syncMapStageOverlays(chrome);
+      }
+    }, 250);
+    setIntentDraft(null);
+    render();
+    return true;
   }
 
   async function ensureStage(): Promise<void> {
@@ -5348,6 +5619,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             return;
           }
           const draft = intentDraft;
+          const declarationForGate =
+            (intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim();
+          if (gateSceneTravel({ draft, declarationText: declarationForGate })) {
+            return;
+          }
+          if (draft.proposedCommandType === 'table.move' || draft.proposedCommandType === 'table.travel_scene') {
+            dismissRoleplaySpotlight();
+          }
           if (isRulesIntentDraftCommand(draft.proposedCommandType)) {
             const chainInitiative =
               draft.proposedCommandType === 'encounter.begin' &&
@@ -5711,6 +5990,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       } else if (mapDoorActions !== null) {
         mapDoorActions.remove();
       }
+      syncMapStageOverlays(mapChrome);
     }
     syncTurnBannerSplash();
     commsSlot.innerHTML = commsDockBody();
@@ -6012,6 +6292,27 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const nextSpotlightKey = tableFeed.npcSpotlight
       ? `${tableFeed.npcSpotlight.npcId}:${tableFeed.npcSpotlight.holderSeatId}:${tableFeed.npcSpotlight.expiresAt}`
       : null;
+    if (
+      nextSpotlightKey !== null &&
+      nextSpotlightKey !== priorSpotlightKey &&
+      tableFeed.npcSpotlight !== null
+    ) {
+      showRoleplaySpotlightForNpc(
+        tableFeed.npcSpotlight.npcName,
+        tableFeed.npcSpotlight.lastMessagePreview ??
+          `${tableFeed.npcSpotlight.npcName} holds the floor.`,
+      );
+    }
+    if (nextSpotlightKey === null && priorSpotlightKey !== null) {
+      dismissRoleplaySpotlight();
+    }
+    // Fresh party-chat address to an NPC also raises the map spotlight card.
+    if (chatFeed.messages.length > priorChatCount) {
+      const latest = chatFeed.messages[chatFeed.messages.length - 1];
+      if (latest?.addressedNpcName) {
+        showRoleplaySpotlightForNpc(latest.addressedNpcName, latest.body);
+      }
+    }
     const changed =
       options?.forceRender === true ||
       tableFeed.stateVersion !== priorVersion ||
@@ -6025,6 +6326,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     // Only announce scene changes after the first load has a prior map to compare against (PQA-183).
     if (priorMap.length > 0 && mapSyncFingerprint(mapFeed) !== priorMap) {
       shell.announce(`Scene updated: ${mapFeed.title || 'Map changed'}.`);
+      dismissRoleplaySpotlight();
     }
     if (changed) {
       if (chronicleFeed.entries.length !== priorChronicleCount) {

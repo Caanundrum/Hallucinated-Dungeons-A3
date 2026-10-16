@@ -125,11 +125,27 @@ function adjacentSquaresForDoor(edge: MapEdgeRecord): MapSquareCoordinate[] {
   ];
 }
 
+type DoorCompass = MapEdgeRecord['orientation'];
+
+/** Compass word attached to a door noun ("east doorway", "door to the north"), if any. */
+function namedDoorCompass(text: string): DoorCompass | null {
+  const match =
+    /\b(east|west|north|south)(?:ern)?\s+(?:wooden\s+)?(?:door|doorway|gate|exit)\b/i.exec(text) ??
+    /\b(?:door|doorway|gate|exit)\s+(?:(?:to|on|toward|towards)\s+the\s+|facing\s+)?(east|west|north|south)\b/i.exec(
+      text,
+    );
+  return match === null ? null : (match[1]!.toLowerCase() as DoorCompass);
+}
+
 function nearestClosedDoor(
   anchor: MapSquareCoordinate,
   map: MapBundleProjection,
+  preferred: DoorCompass | null = null,
 ): MapEdgeRecord | null {
-  const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
+  const allClosed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
+  const named =
+    preferred === null ? [] : allClosed.filter((edge) => edge.orientation === preferred);
+  const closedDoors = named.length > 0 ? named : allClosed;
   if (closedDoors.length === 0) {
     return null;
   }
@@ -173,8 +189,9 @@ function nextStepTowardSquare(
 function nextStepTowardClosedDoor(
   anchor: MapSquareCoordinate,
   map: MapBundleProjection,
+  preferred: DoorCompass | null = null,
 ): MapSquareCoordinate | null {
-  const nearest = nearestClosedDoor(anchor, map);
+  const nearest = nearestClosedDoor(anchor, map, preferred);
   if (nearest === null || isAdjacentToDoor(anchor, nearest)) {
     return null;
   }
@@ -199,8 +216,9 @@ function pathBesideClosedDoor(
   anchor: MapSquareCoordinate,
   map: MapBundleProjection,
   maxSteps = 6,
+  preferred: DoorCompass | null = null,
 ): MapSquareCoordinate[] | null {
-  const nearest = nearestClosedDoor(anchor, map);
+  const nearest = nearestClosedDoor(anchor, map, preferred);
   if (nearest === null || isAdjacentToDoor(anchor, nearest)) {
     return null;
   }
@@ -290,8 +308,19 @@ export function resolveDoorIntentForMap(
   const sceneTitle = map.title.trim().length > 0 ? map.title : 'this chamber';
   const closedDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
   const openDoors = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
-  const adjacentClosed = closedDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
-  const adjacentOpen = openDoors.find((edge) => isAdjacentToDoor(tokenAnchor, edge));
+  const namedCompass = namedDoorCompass(text);
+  const namedCompassExists =
+    namedCompass !== null &&
+    [...closedDoors, ...openDoors].some((edge) => edge.orientation === namedCompass);
+  const matchesNamedCompass = (edge: MapEdgeRecord): boolean =>
+    !namedCompassExists || edge.orientation === namedCompass;
+  const adjacentClosed = closedDoors.find(
+    (edge) => isAdjacentToDoor(tokenAnchor, edge) && matchesNamedCompass(edge),
+  );
+  const adjacentOpen = openDoors.find(
+    (edge) => isAdjacentToDoor(tokenAnchor, edge) && matchesNamedCompass(edge),
+  );
+  const preferredCompass = namedCompassExists ? namedCompass : null;
   const wantsUnlock = textRequestsLockPicking(text);
   const wantsClose = !wantsUnlock && wantsCloseDoorAction(text);
   const constraints = extractUtteranceConstraints(text);
@@ -532,9 +561,9 @@ export function resolveDoorIntentForMap(
           : `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
-    const nearestClosed = nearestClosedDoor(tokenAnchor, map);
+    const nearestClosed = nearestClosedDoor(tokenAnchor, map, preferredCompass);
     if (wantsBesideDoorIntent(text) && nearestClosed !== null) {
-      const besidePath = pathBesideClosedDoor(tokenAnchor, map, 12);
+      const besidePath = pathBesideClosedDoor(tokenAnchor, map, 12, preferredCompass);
       if (besidePath !== null) {
         return {
           proposedCommandType: 'table.move',
@@ -553,9 +582,9 @@ export function resolveDoorIntentForMap(
     // Free exploration: walk the full approach path (not one square), then open.
     if (nearestClosed !== null && (wantsOpen || wantsBesideDoorIntent(text) || mentionsMovementIntent(text))) {
       const besidePath =
-        pathBesideClosedDoor(tokenAnchor, map, 12) ??
+        pathBesideClosedDoor(tokenAnchor, map, 12, preferredCompass) ??
         (() => {
-          const one = nextStepTowardClosedDoor(tokenAnchor, map);
+          const one = nextStepTowardClosedDoor(tokenAnchor, map, preferredCompass);
           return one !== null ? [one] : null;
         })();
       if (besidePath !== null) {

@@ -13,11 +13,19 @@ import {
   type CharacterIdentity,
   type CharacterProjection,
 } from '../../shared/character-contract.js';
+import {
+  APPEARANCE_PROMPT_MAX_LENGTH,
+  MILESTONE_STORY_SCAR_MAX_LENGTH,
+  appendStoryScar,
+  archetypePortraitUrl,
+  validateAppearancePrompt,
+} from '../../shared/portrait-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   deleteCharacter,
   fetchCharacter,
+  generatePortrait,
   updateCharacterIdentity,
   updateCharacterLoadout,
   updateCharacterTrackers,
@@ -54,7 +62,104 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let trackerBusy = false;
   let correctionUnlocked = false;
   let correctionReasonDraft = '';
+  let portraitScarDraft = '';
+  let portraitBusy = false;
+  let portraitError: string | null = null;
   const mountToken = beginPageMount(container);
+
+  function renderPortraitPanel(): string {
+    if (character === null) {
+      return '';
+    }
+    const credits = character.milestonePortraitCredits ?? 0;
+    const portraitUrl =
+      character.avatarUrl && character.avatarUrl.length > 0
+        ? character.avatarUrl
+        : archetypePortraitUrl({
+            ancestryId: character.choices.speciesId,
+            classId: character.choices.classId,
+            name: character.identity.name,
+          });
+    const basePrompt = character.appearancePrompt ?? '';
+    return `
+      <section class="panel portrait-section" aria-labelledby="portrait-edit-heading" data-testid="character-portrait-panel">
+        <h2 id="portrait-edit-heading">Portrait</h2>
+        <div class="portrait-section-body">
+          <img class="portrait-preview" data-testid="character-portrait" src="${escapeHtml(portraitUrl)}"
+            alt="Portrait of ${escapeHtml(character.identity.name)}" width="128" height="128" />
+          <div class="portrait-section-fields">
+            <p class="record-meta" data-testid="portrait-credits">Milestone portrait updates available: ${credits}</p>
+            ${
+              portraitError === null
+                ? ''
+                : `<div class="message error" role="alert" data-testid="portrait-update-error">${escapeHtml(portraitError)}</div>`
+            }
+            ${
+              credits > 0
+                ? `<label for="portrait-scar-note">Story scar note (appended to appearance, max ${MILESTONE_STORY_SCAR_MAX_LENGTH} characters)</label>
+                   <input id="portrait-scar-note" type="text" data-testid="portrait-scar-note"
+                     maxlength="${MILESTONE_STORY_SCAR_MAX_LENGTH}" value="${escapeHtml(portraitScarDraft)}"
+                     placeholder="A burn across the left hand from the bell tower" />
+                   <p class="record-meta">Current appearance: ${escapeHtml(basePrompt.length > 0 ? basePrompt : 'none recorded')}</p>
+                   <button type="button" data-testid="update-portrait" ${portraitBusy ? 'disabled' : ''}>
+                     ${portraitBusy ? 'Forging…' : 'Update portrait'}
+                   </button>`
+                : '<p class="record-meta">Reach a level-up milestone to earn a portrait update.</p>'
+            }
+          </div>
+        </div>
+      </section>`;
+  }
+
+  function bindPortraitControls(): void {
+    container
+      .querySelector<HTMLInputElement>('[data-testid="portrait-scar-note"]')
+      ?.addEventListener('input', (event) => {
+        portraitScarDraft = (event.target as HTMLInputElement).value;
+      });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="update-portrait"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || character === null || portraitBusy) {
+            return;
+          }
+          const nextPrompt = appendStoryScar(character.appearancePrompt ?? '', portraitScarDraft);
+          const validation = validateAppearancePrompt(nextPrompt);
+          if (!validation.ok) {
+            portraitError = validation.message;
+            renderSignedIn();
+            return;
+          }
+          portraitBusy = true;
+          portraitError = null;
+          renderSignedIn();
+          try {
+            const result = await generatePortrait({
+              candidateId: candidate.candidateId,
+              request: {
+                appearancePrompt: validation.text.slice(0, APPEARANCE_PROMPT_MAX_LENGTH),
+                characterId: character.characterId,
+              },
+            });
+            character = {
+              ...character,
+              avatarUrl: result.avatarUrl,
+              appearancePrompt: result.appearancePrompt,
+              milestonePortraitCredits: result.milestonePortraitCredits ?? 0,
+            };
+            portraitScarDraft = '';
+            shell.announce('Portrait updated.');
+          } catch (failure) {
+            portraitError =
+              failure instanceof ApiFailure ? failure.message : 'Portrait could not be updated.';
+          } finally {
+            portraitBusy = false;
+            renderSignedIn();
+          }
+        })();
+      });
+  }
 
   function renderLoadoutEditor(): string {
     if (character === null || !editingLoadout) {
@@ -250,6 +355,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             </div>`
           }
         </section>
+        ${renderPortraitPanel()}
         <section class="panel" aria-labelledby="correction-mode-heading" data-testid="character-correction-mode">
           <h2 id="correction-mode-heading">Correction mode</h2>
           <p class="record-meta">
@@ -339,6 +445,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       });
 
     bindIdentityControls();
+    bindPortraitControls();
     bindLoadoutControls();
     if (correctionUnlocked) {
       bindSheetTrackers();

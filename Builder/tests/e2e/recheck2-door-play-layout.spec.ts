@@ -353,7 +353,7 @@ test.describe('Recheck 2 door + play layout', () => {
         timeout: 60_000,
       })
       .toMatch(/canal|warehouse|loft|inn|chamber|room/i);
-    await expect(page.getByTestId('scene-location-backdrop')).toBeVisible();
+    await expect(page.getByTestId('table-stage-svg')).toBeVisible();
     await expect
       .poll(
         async () => {

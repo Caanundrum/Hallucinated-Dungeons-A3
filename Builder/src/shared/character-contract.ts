@@ -289,6 +289,8 @@ export interface DraftProjection {
   readonly unresolved: readonly UnresolvedChoice[];
   readonly completedSteps: readonly WizardStep[];
   readonly canCreate: boolean;
+  readonly avatarUrl?: string | null;
+  readonly appearancePrompt?: string | null;
 }
 
 /** A committed, account-owned character. */
@@ -307,6 +309,10 @@ export interface CharacterProjection {
   readonly editOptions: DraftOptions;
   /** Recent ledger correction / identity audit reasons (newest last). */
   readonly revisions?: readonly { readonly at: string; readonly reason: string }[];
+  readonly avatarUrl?: string | null;
+  readonly appearancePrompt?: string | null;
+  /** Portrait updates earned at level-up milestones; spent one per regenerate. Default 0. */
+  readonly milestonePortraitCredits?: number;
 }
 
 export interface CharacterVaultProjection {
@@ -332,6 +338,9 @@ export interface CharacterSummary {
   readonly hitPointsMax?: number;
   /** Compact resource / slot hint when relevant. */
   readonly resourceSummary?: string | null;
+  readonly avatarUrl?: string | null;
+  readonly appearancePrompt?: string | null;
+  readonly milestonePortraitCredits?: number;
 }
 
 export interface DraftSummary {

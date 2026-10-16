@@ -12,6 +12,7 @@ import {
   FEET_PER_SQUARE,
   MAP_COORDINATE_SCHEMA_VERSION,
   edgeId,
+  resolveSceneArtUrl,
   squareId,
   type MapBundleProjection,
   type MapCellRecord,
@@ -19,6 +20,7 @@ import {
   type MapNotableFeatureRecord,
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
+import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
@@ -48,6 +50,8 @@ interface StoredSeat {
   readonly ownerAccountId: string;
   readonly characterId: string;
   readonly characterName: string;
+  /** Joined from the character document at load time; absent on raw seat docs. */
+  readonly avatarUrl?: string | null;
 }
 
 export async function assertCampaignMember(options: {
@@ -128,13 +132,14 @@ export function buildBlankChamberCells(): MapCellRecord[] {
   return cells;
 }
 
+/** Canonical starter divider: full-height wall at column 6 with door at (6, 4). */
 export function buildStarterInteriorWalls(): MapEdgeRecord[] {
   const edges: MapEdgeRecord[] = [];
-  for (const row of [2, 3, 4, 5]) {
-    const kind = row === 3 ? 'door' : 'wall';
+  for (let row = 1; row <= STARTER_ROWS - 2; row += 1) {
+    const kind = row === 4 ? 'door' : 'wall';
     edges.push({
-      edgeId: edgeId(5, row, 'east'),
-      column: 5,
+      edgeId: edgeId(6, row, 'east'),
+      column: 6,
       row,
       orientation: 'east',
       kind,
@@ -199,6 +204,7 @@ function buildTokens(
       tokenId: `token:${seat.seatId}`,
       seatId: seat.seatId,
       label: seat.characterName || 'Seated character',
+      avatarUrl: seat.avatarUrl ?? null,
       footprint: {
         size: 'medium',
         anchor,
@@ -221,11 +227,13 @@ function applyViewerFog(
 ): MapBundleProjection {
   const { accountId, viewerSeatId, runtime } = options;
   const ownToken = full.tokens.find((token) => token.seatId === viewerSeatId) ?? null;
+  // Pass edges so vision cannot X-ray walls or closed/locked doors.
   const visible = ownToken
     ? visibleSquaresFrom(
         ownToken.footprint.anchor,
         DEFAULT_VISION_RADIUS_SQUARES,
-        full.coordinateSpace,
+        { ...full.coordinateSpace, cells: full.cells },
+        full.edges,
       )
     : [];
   const visibleIds = new Set(visible.map((square) => squareId(square.column, square.row)));
@@ -233,12 +241,8 @@ function applyViewerFog(
   for (const id of visibleIds) {
     exploredIds.add(id);
   }
-  // Contract exits are always player-known once the scene is established.
-  for (const feature of full.notableFeatures) {
-    if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
-      exploredIds.add(squareId(feature.column, feature.row));
-    }
-  }
+  // Do NOT pre-reveal exits (or any east-chamber squares) behind closed doors.
+  // Exits become known only when vision/exploration actually reaches their square.
 
   const cells = full.cells.map((cell) => {
     const id = squareId(cell.column, cell.row);
@@ -352,13 +356,17 @@ export function buildAuthoritativeMapBundle(options: {
         currentChapterId: null,
         spawnOverride: directorScene.spawn,
       }),
-      artProvenance: 'procedural_local_placeholder',
+      artProvenance: resolveSceneArtUrl(directorScene.templateId)
+        ? 'original_phase5_starter_v1'
+        : 'procedural_local_placeholder',
       sceneBanner: directorScene.sceneBanner,
       notableFeatures: features,
       sceneEnvironment: directorScene.environment,
       sceneLighting: directorScene.lighting,
       scenePurpose: directorScene.purpose,
       sceneMood: directorScene.mood,
+      sceneTemplateId: directorScene.templateId,
+      sceneArtUrl: resolveSceneArtUrl(directorScene.templateId),
       viewerSeatId: null,
       exploredSquareIds: [],
       visibleSquareIds: [],
@@ -437,6 +445,8 @@ export function buildAuthoritativeMapBundle(options: {
       presentation?.notableFeatures ??
       (blankBootstrap?.notableFeatures ??
         (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES)),
+    sceneTemplateId: scene?.sceneId ?? options.currentChapterId ?? null,
+    sceneArtUrl: resolveSceneArtUrl(scene?.sceneId ?? options.currentChapterId ?? null),
     viewerSeatId: null,
     exploredSquareIds: [],
     visibleSquareIds: [],
@@ -452,7 +462,23 @@ export async function loadCampaignSeats(
     .where('campaignId', '==', campaignId)
     .limit(12)
     .get();
-  return seatSnap.docs.map((doc) => doc.data() as StoredSeat);
+  const seats = seatSnap.docs.map((doc) => doc.data() as StoredSeat);
+  return Promise.all(
+    seats.map(async (seat) => {
+      try {
+        const characterSnap = await firestore
+          .collection(COLLECTIONS.characters)
+          .doc(seat.characterId)
+          .get();
+        const avatarUrl = characterSnap.exists
+          ? (characterSnap.data() as { avatarUrl?: unknown }).avatarUrl
+          : null;
+        return { ...seat, avatarUrl: isTrustedAvatarUrl(avatarUrl) ? avatarUrl : null };
+      } catch {
+        return { ...seat, avatarUrl: null };
+      }
+    }),
+  );
 }
 
 /**

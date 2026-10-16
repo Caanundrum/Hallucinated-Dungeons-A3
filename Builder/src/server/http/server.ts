@@ -85,10 +85,13 @@ import {
   AbilityRollsExhaustedError,
   CharacterIncompleteError,
   CharacterNotFoundError,
+  PortraitCreditRequiredError,
+  PortraitRequestError,
   applyQuickStart,
   commitDraft,
   deleteCharacter,
   discardDraft,
+  generateCharacterPortrait,
   openOrResumeDraft,
   readCharacter,
   readDraft,
@@ -201,8 +204,12 @@ const CONTENT_TYPES: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
   '.woff2': 'font/woff2',
 };
 
@@ -1494,6 +1501,22 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      if (path === '/api/characters/generate-portrait') {
+        if (method !== 'POST') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
+        const body = await readBody();
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        sendJson(response, 200, await generateCharacterPortrait({ firestore, accountId, body }));
+        return;
+      }
+
       if (path === '/api/characters/drafts' && method === 'POST') {
         if (!(await requireLegalForPlay())) {
           return;
@@ -1827,6 +1850,13 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
       if (error instanceof AbilityRollsExhaustedError) {
         sendError(response, ERROR_CODES.ABILITY_ROLLS_EXHAUSTED);
+        return;
+      }
+      if (error instanceof PortraitRequestError || error instanceof PortraitCreditRequiredError) {
+        sendJson(response, 400, {
+          error: ERROR_CODES.BAD_REQUEST,
+          message: error.message,
+        } satisfies ApiErrorBody);
         return;
       }
       throw error;

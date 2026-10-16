@@ -352,3 +352,28 @@ export interface CampaignDetailProjection {
   }[];
   readonly settings: CampaignSettingsProjection;
 }
+
+/** One act of the structured outline derived from the authored premise. */
+export interface CampaignBlueprintBeat {
+  readonly act: 1 | 2 | 3;
+  readonly title: string;
+  readonly currentActGoal: string;
+  readonly keyClue: string;
+  readonly nextSceneTrigger: string;
+  /** Scene-composition template the Director may prefer for this act, or null. */
+  readonly templateIdHint: string | null;
+}
+
+/**
+ * Structured campaign outline extracted generally from the premise text
+ * (named NPCs / places / props / exits plus a three-act beat list).
+ */
+export interface CampaignBlueprint {
+  readonly premiseDigest: string;
+  readonly namedNpcs: readonly string[];
+  readonly namedPlaces: readonly string[];
+  readonly namedProps: readonly string[];
+  readonly namedExits: readonly string[];
+  readonly questHook: string | null;
+  readonly acts: readonly CampaignBlueprintBeat[];
+}

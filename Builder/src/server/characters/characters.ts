@@ -23,7 +23,13 @@ import {
   type CharacterVaultProjection,
   type DraftProjection,
 } from '../../shared/character-contract.js';
+import {
+  type GeneratePortraitResponse,
+  isTrustedAvatarUrl,
+  validateAppearancePrompt,
+} from '../../shared/portrait-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { resolvePortrait, type PortraitEnvironment } from './portrait.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
   RULES_VERSION,
@@ -51,6 +57,8 @@ interface StoredDraft {
   readonly choices: CharacterChoices;
   readonly createdAt: Timestamp | Date;
   readonly updatedAt: Timestamp | Date;
+  readonly avatarUrl?: string | null;
+  readonly appearancePrompt?: string | null;
 }
 
 interface StoredCharacter {
@@ -60,6 +68,9 @@ interface StoredCharacter {
   readonly choices: CharacterChoices;
   readonly createdAt: Timestamp | Date;
   readonly revisions: readonly { readonly at: string; readonly reason: string }[];
+  readonly avatarUrl?: string | null;
+  readonly appearancePrompt?: string | null;
+  readonly milestonePortraitCredits?: number;
 }
 
 export class CharacterNotFoundError extends Error {
@@ -107,6 +118,8 @@ function projectDraft(stored: StoredDraft): DraftProjection {
     unresolved: problems,
     completedSteps: completedSteps(choices),
     canCreate: problems.length === 0,
+    avatarUrl: stored.avatarUrl ?? null,
+    appearancePrompt: stored.appearancePrompt ?? null,
   };
 }
 
@@ -148,6 +161,9 @@ function projectCharacter(
       at: revision.at,
       reason: revision.reason,
     })),
+    avatarUrl: stored.avatarUrl ?? null,
+    appearancePrompt: stored.appearancePrompt ?? null,
+    milestonePortraitCredits: stored.milestonePortraitCredits ?? 0,
   };
 }
 
@@ -368,6 +384,9 @@ export async function commitDraft(options: {
     choices,
     createdAt: now,
     revisions: [{ at: now.toISOString(), reason: 'Character created' }],
+    avatarUrl: stored.avatarUrl ?? null,
+    appearancePrompt: stored.appearancePrompt ?? null,
+    milestonePortraitCredits: 0,
   };
 
   await firestore.runTransaction(async (transaction) => {
@@ -516,6 +535,9 @@ export async function readVault(options: {
             createdAt: toIso(stored.createdAt),
             seatedCampaignNames: seatInfo?.names ?? [],
             seatedCampaignId: seatInfo?.campaignId ?? null,
+            avatarUrl: stored.avatarUrl ?? null,
+            appearancePrompt: stored.appearancePrompt ?? null,
+            milestonePortraitCredits: stored.milestonePortraitCredits ?? 0,
             ...(sheet !== null
               ? {
                   hitPointsCurrent: sheet.hitPointsCurrent,
@@ -763,4 +785,118 @@ export async function updateCharacterTrackers(options: {
   };
   await firestore.collection(COLLECTIONS.characters).doc(characterId).set(audited);
   return projectCharacter(audited, next);
+}
+
+/**
+ * Level-up / milestone hook: grants one portrait update credit. Pure so the
+ * rules transaction can write it alongside the progression document.
+ */
+export function withMilestonePortraitCredit<T extends { readonly milestonePortraitCredits?: number }>(
+  stored: T,
+): T & { readonly milestonePortraitCredits: number } {
+  return { ...stored, milestonePortraitCredits: (stored.milestonePortraitCredits ?? 0) + 1 };
+}
+
+export class PortraitRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PortraitRequestError';
+  }
+}
+
+export class PortraitCreditRequiredError extends Error {
+  constructor() {
+    super('Reach a level-up milestone to earn another portrait update.');
+    this.name = 'PortraitCreditRequiredError';
+  }
+}
+
+function optionalId(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= 120 ? value : null;
+}
+
+/**
+ * Resolves a portrait (Imagen when a key is configured, curated archetype
+ * otherwise) and, when a draft or character id is supplied, persists it on the
+ * caller's own document. A character update spends one milestone credit.
+ */
+export async function generateCharacterPortrait(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly body: unknown;
+  readonly env?: PortraitEnvironment;
+  readonly fetchImpl?: typeof fetch;
+}): Promise<GeneratePortraitResponse> {
+  const { firestore, accountId } = options;
+  const body =
+    typeof options.body === 'object' && options.body !== null && !Array.isArray(options.body)
+      ? (options.body as Record<string, unknown>)
+      : null;
+  if (body === null || typeof body.appearancePrompt !== 'string') {
+    throw new PortraitRequestError('appearancePrompt is required.');
+  }
+  const validation = validateAppearancePrompt(body.appearancePrompt);
+  if (!validation.ok) {
+    throw new PortraitRequestError(validation.message);
+  }
+  const appearancePrompt = validation.text;
+  let ancestryId = optionalId(body.ancestryId);
+  let classId = optionalId(body.classId);
+  const characterId = optionalId(body.characterId);
+  const draftId = optionalId(body.draftId);
+
+  const stored = characterId !== null ? await loadOwnedCharacter(firestore, accountId, characterId) : null;
+  const draft = draftId !== null ? await loadOwnedDraft(firestore, accountId, draftId) : null;
+  const choices = stored?.choices ?? draft?.choices ?? null;
+  if (choices !== null) {
+    ancestryId = ancestryId ?? choices.speciesId;
+    classId = classId ?? choices.classId;
+  }
+  if (stored !== null && (stored.milestonePortraitCredits ?? 0) < 1) {
+    throw new PortraitCreditRequiredError();
+  }
+
+  const portrait = await resolvePortrait({
+    appearancePrompt,
+    ancestryId,
+    classId,
+    characterName: choices?.identity.name ?? null,
+    ...(options.env !== undefined ? { env: options.env } : {}),
+    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+  });
+  if (!isTrustedAvatarUrl(portrait.avatarUrl)) {
+    throw new PortraitRequestError('Portrait could not be produced.');
+  }
+
+  let milestonePortraitCredits: number | undefined;
+  if (stored !== null && characterId !== null) {
+    milestonePortraitCredits = Math.max(0, (stored.milestonePortraitCredits ?? 0) - 1);
+    const updated: StoredCharacter = {
+      ...stored,
+      avatarUrl: portrait.avatarUrl,
+      appearancePrompt,
+      milestonePortraitCredits,
+      revisions: [
+        ...stored.revisions,
+        { at: new Date().toISOString(), reason: 'Portrait updated (milestone credit spent)' },
+      ],
+    };
+    await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updated);
+  }
+  if (draft !== null && draftId !== null) {
+    const updatedDraft: StoredDraft = {
+      ...draft,
+      avatarUrl: portrait.avatarUrl,
+      appearancePrompt,
+      updatedAt: new Date(),
+    };
+    await firestore.collection(COLLECTIONS.characterDrafts).doc(draftId).set(updatedDraft);
+  }
+
+  return {
+    avatarUrl: portrait.avatarUrl,
+    appearancePrompt,
+    source: portrait.source,
+    ...(milestonePortraitCredits !== undefined ? { milestonePortraitCredits } : {}),
+  };
 }
