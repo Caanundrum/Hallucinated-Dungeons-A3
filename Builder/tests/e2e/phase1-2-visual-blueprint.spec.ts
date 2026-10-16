@@ -155,18 +155,14 @@ test.describe('Phase 1-2 visual blueprint gate', () => {
     expect(Math.max(...closedFog.map((cell) => cell.column))).toBe(COLUMNS - 1);
     expect(Math.max(...closedFog.map((cell) => cell.row))).toBe(ROWS - 1);
 
-    // Closed east door: the east chamber is unknown (fogged) for every row. The scene
-    // contract pre-explores exactly one square behind the door: the Cellar exit landmark.
+    // Closed east door: the entire east chamber (column >= 7) stays unknown.
     const eastDoor = page.locator('.map-edge-hit-target[aria-label*="Wooden doorway east"]');
     await expect(eastDoor).toHaveCount(1);
     await expect(eastDoor).toHaveAttribute('aria-label', /closed/i);
     const eastClosed = closedFog.filter((cell) => cell.column >= FIRST_EAST_COLUMN);
     expect(eastClosed).toHaveLength((COLUMNS - FIRST_EAST_COLUMN) * ROWS);
     const eastLeaks = eastClosed.filter((cell) => cell.known !== 'false');
-    expect(eastLeaks.length).toBeLessThanOrEqual(1);
-    expect(eastClosed.filter((cell) => cell.known === 'false').length).toBeGreaterThanOrEqual(
-      eastClosed.length - 1,
-    );
+    expect(eastLeaks).toHaveLength(0);
     expect(closedFog.some((cell) => cell.column < FIRST_EAST_COLUMN && cell.known === 'true')).toBe(
       true,
     );
@@ -188,7 +184,7 @@ test.describe('Phase 1-2 visual blueprint gate', () => {
           ).length,
         { timeout: 20_000 },
       )
-      .toBeGreaterThan(eastLeaks.length + 5);
+      .toBeGreaterThan(5);
     const openFog = await readCellFog(page);
     expect(openFog).toHaveLength(COLUMNS * ROWS);
     await screenshot(page, 'phase1-2-east-revealed');

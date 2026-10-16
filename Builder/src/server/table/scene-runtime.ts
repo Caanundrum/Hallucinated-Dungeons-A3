@@ -124,14 +124,19 @@ export function applyComposedSceneToRuntime(options: {
   }
 
   const accountIds = options.accountIds ?? Object.keys(runtime.exploredByAccount);
+  // Seed only west-chamber actors near spawn. Do NOT pre-reveal exits (or any
+  // east-chamber props) — fog must respect walls/closed doors until vision floods.
   const contractSquares = composed.features
     .filter(
       (feature) =>
         feature.objectKind === 'creature' ||
         feature.objectKind === 'npc' ||
-        feature.objectKind === 'exit' ||
         composed.inhabitantObjectIds.includes(feature.objectId),
     )
+    .filter((feature) => {
+      // Keep seeded actors inside the west chamber / spawn wing (columns <= wall).
+      return feature.column <= Math.min(composed.spawn.column + 3, 6);
+    })
     .map((feature) => ({ column: feature.column, row: feature.row }));
   const explored =
     mode === 'establish' || mode === 'travel'
