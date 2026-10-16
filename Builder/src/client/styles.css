@@ -578,8 +578,11 @@ a.account-chip-label:focus-visible {
 
 .table-dashboard-body {
   display: grid;
-  /* Map-first: stage + play dock own the column; sheet/chat are overlay drawers. */
+  /* Default: single column — map + bottom story dock. Desktop widens into a right dock. */
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'play'
+    'story';
   gap: 0;
   flex: 1;
   min-height: 0;
@@ -587,6 +590,19 @@ a.account-chip-label:focus-visible {
   padding: 0;
   overflow: hidden;
   position: relative;
+}
+
+.table-play-column {
+  grid-area: play;
+  min-width: 0;
+  min-height: 0;
+}
+
+.table-story-dock,
+.table-action-bar {
+  grid-area: story;
+  min-width: 0;
+  min-height: 0;
 }
 
 .table-dashboard-body.table-focus-mode .table-stage-frame {
@@ -704,8 +720,22 @@ a.account-chip-label:focus-visible {
 }
 
 .table-play-column {
-  grid-column: 1;
+  grid-area: play;
   min-width: 0;
+}
+
+.table-info-rail,
+.table-comms-rail {
+  /* Overlay drawers — do not consume story/play grid tracks. */
+  grid-area: play;
+  justify-self: start;
+  align-self: start;
+  pointer-events: none;
+}
+
+.table-info-rail:not(.is-collapsed),
+.table-comms-rail:not(.is-collapsed) {
+  pointer-events: auto;
 }
 
 .table-focus-restore {
@@ -1402,28 +1432,61 @@ ol.record-list.dm-thread-list > li {
   }
 }
 
-/* Desktop: map-first stage; dock stays compact so the map keeps the viewport. */
-@media (min-width: 1101px) {
+/* Desktop: map stage (~65%) + full-height story dock (~35%). */
+@media (min-width: 1024px) {
+  .table-dashboard-body {
+    grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 0.95fr);
+    grid-template-areas: 'play story';
+  }
+
+  .table-play-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+
   .table-map-chrome {
     flex: 1 1 auto;
     min-height: 16rem;
     max-height: none;
+    position: relative;
   }
 
+  .table-story-dock,
   .table-action-bar {
-    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: none;
     min-height: 0;
-    max-height: min(30vh, 15rem);
-    height: auto;
+    border-left: var(--border-weight) solid var(--panel-border);
+    background: color-mix(in srgb, var(--panel-surface) 96%, #000);
   }
 
   .table-action-bar:has(.dm-play-thread.is-expanded) {
-    flex: 0 1 auto;
-    max-height: min(58vh, 32rem);
+    max-height: none;
+  }
+
+  .table-action-bar [data-testid='table-action-slot'] {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .table-action-bar-dm {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
   }
 
   .table-action-bar-dm > .table-turn-banner {
     max-height: 3.5rem;
+    flex: 0 0 auto;
   }
 
   .table-action-bar-dm > .table-turn-detail,
@@ -1432,12 +1495,85 @@ ol.record-list.dm-thread-list > li {
   }
 
   .dm-play-thread {
-    max-height: min(14vh, 8rem);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .dm-play-thread.is-expanded {
-    flex: 0 1 auto;
-    max-height: min(48vh, 26rem);
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  .dm-thread-list,
+  ol.record-list.dm-thread-list {
+    flex: 1 1 auto;
+    min-height: 8rem;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .table-player-turn-composer {
+    flex: 0 0 auto;
+    margin-top: auto;
+  }
+
+  .table-floating-hud {
+    position: absolute;
+    left: var(--space-2);
+    top: var(--space-2);
+    z-index: 6;
+    max-width: min(22rem, 46%);
+  }
+
+  .table-floating-hud .hero-mini-sheet {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-weight) solid var(--panel-border);
+    border-radius: var(--radius-panel);
+    background: color-mix(in srgb, var(--panel-surface) 92%, #000);
+    box-shadow: var(--shadow-card);
+  }
+
+  .table-floating-hud .hp-bar,
+  .table-floating-hud .hero-mini-actions {
+    display: none;
+  }
+
+  .hero-mini-hud {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .hero-mini-copy {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .hero-mini-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+    opacity: 0.92;
+  }
+}
+
+@media (min-width: 1101px) {
+  .table-map-chrome {
+    flex: 1 1 auto;
+    min-height: 16rem;
+    max-height: none;
   }
 }
 
@@ -2643,28 +2779,39 @@ button[aria-disabled="true"] {
   margin-bottom: var(--space-4);
 }
 
-.welcome-legal {
+.welcome-legal,
+.welcome-legal-footer {
   list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-3) var(--space-5);
-  margin: 0;
+  display: block;
+  text-align: center;
+  margin: 0 auto;
+  max-width: 34rem;
   padding: 0;
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.5;
   opacity: 0;
   animation: welcome-rise var(--motion-emphasized) ease-out forwards;
   animation-delay: 960ms;
 }
 
-.welcome-legal a {
+.welcome-legal a,
+.welcome-legal-footer a {
   color: var(--text-secondary);
-  font-size: 0.82rem;
-  text-decoration: none;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .welcome-legal a:hover,
-.welcome-legal a:focus-visible {
+.welcome-legal a:focus-visible,
+.welcome-legal-footer a:hover,
+.welcome-legal-footer a:focus-visible {
   color: var(--text-primary);
+}
+
+.welcome-legal-sep {
+  opacity: 0.7;
 }
 
 @keyframes welcome-logo-shell {
@@ -2951,14 +3098,72 @@ button[aria-disabled="true"] {
   }
 }
 
-.option-list {
+.option-list,
+ul.option-list,
+.panel .option-list {
   display: grid;
   gap: var(--space-2);
   margin: 0 0 var(--space-4);
+  padding-inline-start: 0;
+  padding-left: 0;
+  list-style: none;
+  list-style-type: none;
+}
+
+/* display:contents removes the li box + marker so cards sit cleanly in the grid. */
+.option-list > li,
+ul.option-list > li,
+.panel .option-list > li {
+  display: contents;
+  list-style: none;
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+.option-list > li::marker,
+ul.option-list > li::marker {
+  content: none;
 }
 
 .option-list.compact {
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.campaign-list-tools {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.4fr) repeat(4, minmax(7.5rem, 1fr)) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+  margin: 0 0 var(--space-4);
+}
+
+.campaign-list-tools .field {
+  margin-bottom: 0;
+}
+
+.campaign-list-tools .field span {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.campaign-list-tools .actions[role='tablist'] {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding-bottom: 0.15rem;
+}
+
+@media (max-width: 900px) {
+  .campaign-list-tools {
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  }
+
+  .campaign-list-tools .actions[role='tablist'] {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
 }
 
 .option {
@@ -4076,6 +4281,25 @@ html.hd-low-effects .map-square-fog,
   font-style: normal;
 }
 
+/* Compact badges by default; native <title> + focus ring reveal full callout text. */
+.table-stage-semantic .map-label-chip {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.table-stage-semantic .map-label-chip:focus,
+.table-stage-semantic .map-label-chip:focus-within,
+.table-stage-semantic .map-label-chip:hover .map-label-plate {
+  stroke: #f0c043;
+  stroke-opacity: 0.95;
+}
+
+.table-stage-semantic .map-label-chip:focus .map-label-plate,
+.table-stage-semantic .map-label-chip:focus-within .map-label-plate {
+  stroke: #f0c043;
+  stroke-opacity: 1;
+}
+
 .table-stage-semantic rect[data-square] {
   pointer-events: auto;
   cursor: pointer;
@@ -4417,10 +4641,19 @@ html.hd-low-effects .table-stage-svg-viewport,
   justify-content: center;
   font-family: var(--font-serif);
   font-weight: 700;
+  font-size: 0.95rem;
   color: var(--text-gold);
   border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
   background: color-mix(in srgb, var(--gold-primary) 18%, var(--panel-surface));
   box-shadow: var(--shadow-glow-gold);
+  flex: 0 0 auto;
+}
+
+.table-floating-hud .hero-mini-avatar {
+  width: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.85rem;
+  box-shadow: none;
 }
 
 .hero-mini-name {

@@ -262,18 +262,16 @@ export function mountCampaignCreatePage(host: PageHost): void {
             create one, you can copy an invite link from the table page (and refresh or revoke it
             later). Public tables may optionally require a password to join.
           </p>
-          <ul class="option-list" data-testid="table-visibility-list">
+          <div class="option-list" role="radiogroup" aria-labelledby="table-visibility-heading" data-testid="table-visibility-list">
             ${CAMPAIGN_VISIBILITY.map(
               (option) => `
-              <li>
                 <label class="option${visibility === option ? ' selected' : ''}" data-testid="visibility-${escapeHtml(option)}">
                   <input type="radio" name="table-visibility" value="${escapeHtml(option)}"
                     ${visibility === option ? 'checked' : ''} />
                   <span class="option-label">${escapeHtml(CAMPAIGN_VISIBILITY_LABELS[option])}</span>
-                </label>
-              </li>`,
+                </label>`,
             ).join('')}
-          </ul>
+          </div>
           ${
             visibility === 'public'
               ? `<label class="field">
@@ -306,11 +304,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <section class="panel" aria-labelledby="director-identity-heading">
           <h2 id="director-identity-heading">3. Game Director identity</h2>
           <p>Choose Veyra or Garrick first. Each has exactly one player-facing name.</p>
-          <ul class="option-list director-identity-cards" data-testid="director-identity-list">
+          <div class="option-list director-identity-cards" role="radiogroup" aria-labelledby="director-identity-heading" data-testid="director-identity-list">
             ${catalog.identities
               .map(
                 (identity) => `
-              <li>
                 <label class="option director-identity-option${directorIdentity === identity.id ? ' selected' : ''}" data-testid="identity-${escapeHtml(identity.id)}">
                   <input type="radio" name="director-identity" value="${escapeHtml(identity.id)}"
                     ${directorIdentity === identity.id ? 'checked' : ''} />
@@ -322,11 +319,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
                   })}
                   <span class="option-label">${escapeHtml(identity.label)}</span>
                   <span class="option-summary">${escapeHtml(identity.summary)}</span>
-                </label>
-              </li>`,
+                </label>`,
               )
               .join('')}
-          </ul>
+          </div>
         </section>
 
         <section class="panel${personalityLocked ? ' panel-gated' : ''}" aria-labelledby="director-personality-heading">
@@ -341,11 +337,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
                    nothing is selected until you choose.
                  </p>`
           }
-          <ul class="option-list" data-testid="director-personality-list">
+          <div class="option-list" role="radiogroup" aria-labelledby="director-personality-heading" data-testid="director-personality-list">
             ${catalog.personalities
               .map(
                 (personality) => `
-              <li>
                 <label class="option${directorPersonality === personality.id ? ' selected' : ''}${personalityLocked ? ' disabled' : ''}" data-testid="personality-${escapeHtml(personality.id)}">
                   <input type="radio" name="director-personality" value="${escapeHtml(personality.id)}"
                     ${directorPersonality === personality.id ? 'checked' : ''}
@@ -355,11 +350,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
                     ${personality.recommended ? '<span class="option-badge" data-testid="personality-recommended">Recommended</span>' : ''}
                   </span>
                   <span class="option-summary">${escapeHtml(personality.summary)}</span>
-                </label>
-              </li>`,
+                </label>`,
               )
               .join('')}
-          </ul>
+          </div>
         </section>
 
         ${renderPreview()}

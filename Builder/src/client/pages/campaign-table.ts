@@ -77,6 +77,7 @@ import {
   fetchPresentationCuePlan,
   fetchRulesCatalog,
   fetchRulesState,
+  fetchTableSnapshot,
   fetchTableState,
   fetchTimingAuthority,
   heartbeatCampaignPresence,
@@ -136,6 +137,30 @@ function isSyncClarificationOnly(
     interpreted.path === undefined &&
     !/^Ready to /i.test(scrubbedSummary)
   );
+}
+
+/** Peaceful free-exploration drafts that should not require a Confirm click. */
+function isRoutineExplorationDraft(
+  draft: {
+    readonly proposedCommandType: string;
+    readonly summary: string;
+  },
+): boolean {
+  const type = draft.proposedCommandType;
+  if (
+    type !== 'table.move' &&
+    type !== 'table.open_door' &&
+    type !== 'table.close_door' &&
+    type !== 'table.interact_object' &&
+    type !== 'table.take_scene_prop'
+  ) {
+    return false;
+  }
+  // Keep Confirm for skill-check Ready-to drafts (Investigation / Sleight / traps).
+  if (/Investigation|Sleight of Hand|Trap search|Lock attempt/i.test(draft.summary)) {
+    return false;
+  }
+  return true;
 }
 
 /** Distinct short tone per cue kind so table events are at least audibly distinguishable. */
@@ -691,7 +716,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   ): Promise<void> {
     if (
       candidate === null ||
-      !/\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declaration)
+      !/\b(walk|go|step|approach|enter|through|beyond|room beyond|opens?|opening|closes?|closing)\b/i.test(
+        declaration,
+      )
     ) {
       return;
     }
@@ -1107,13 +1134,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
    * events server-side (`presentation-cues.ts`) — this function never invents
    * state and never reads Director narration text.
    */
-  async function processPresentationCues(): Promise<void> {
+  async function processPresentationCues(
+    planOverride?: PresentationCuePlanProjection,
+  ): Promise<void> {
     if (!isPageMountCurrent(container, mountToken) || cuePlanInFlight) {
       return;
     }
     cuePlanInFlight = true;
     try {
-      const plan: PresentationCuePlanProjection = await fetchPresentationCuePlan(campaignId);
+      const plan: PresentationCuePlanProjection =
+        planOverride ?? (await fetchPresentationCuePlan(campaignId));
       const freshCues = plan.cues.filter((cue) => !playedCueDedupeKeys.has(cue.dedupeKey));
       for (const cue of freshCues) {
         playedCueDedupeKeys.add(cue.dedupeKey);
@@ -1277,6 +1307,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const sheet = progression.sheet;
     const label =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    const classLabel = (progression.classId ?? 'adventurer')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
     const hpMax = Math.max(1, sheet.hitPoints.value);
     const hpNow = Math.max(
       0,
@@ -1286,22 +1319,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const hpTone = hpPct > 50 ? 'healthy' : hpPct > 25 ? 'wounded' : 'critical';
     return `
       <div class="table-character-compact hero-mini-sheet" data-testid="table-character-compact">
-        <div class="hero-mini-identity">
+        <button type="button" class="hero-mini-hud" data-testid="table-character-hud"
+          aria-label="Open character sheet for ${escapeHtml(label)}">
           <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>
-          <div>
-            <p class="hero-mini-name"><strong>${escapeHtml(label)}</strong></p>
-            <p class="record-meta">Level ${sheet.level}</p>
-          </div>
-        </div>
+          <span class="hero-mini-copy">
+            <strong class="hero-mini-name">${escapeHtml(label)}</strong>
+            <span class="record-meta" data-testid="hero-class-level">Lv ${sheet.level} ${escapeHtml(classLabel)}</span>
+            <span class="hero-mini-stats">
+              <span data-testid="hero-hp-inline">${hpNow}/${hpMax} HP</span>
+              <span data-testid="hero-ac-badge">AC ${sheet.armorClass.value}</span>
+            </span>
+          </span>
+        </button>
         <div class="hp-bar" data-testid="hero-hp-bar" data-hp-tone="${hpTone}" aria-label="Hit points ${hpNow} of ${hpMax}">
           <div class="hp-bar-track">
             <div class="hp-bar-fill" style="width:${hpPct}%"></div>
           </div>
           <span class="hp-bar-label">${hpNow}/${hpMax} HP</span>
-        </div>
-        <div class="hero-mini-badges">
-          <span class="hero-badge" data-testid="hero-ac-badge">AC ${sheet.armorClass.value}</span>
-          <span class="hero-badge" data-testid="hero-speed-badge">SPD ${sheet.speed.value} ft</span>
         </div>
         <div class="hero-mini-actions">
           <button type="button" class="table-primary-action" data-testid="open-table-sheet-modal">
@@ -2596,6 +2630,126 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
+  /**
+   * Free exploration: commit routine move/open/interact without a Confirm click.
+   * Still resumes approach→open and open→cross compounds.
+   */
+  async function autoCommitExplorationDraft(
+    draft: ActionDraftSuggestion,
+    declarationText: string,
+  ): Promise<void> {
+    if (candidate === null || tableState === null) {
+      return;
+    }
+    busy = true;
+    error = null;
+    render();
+    try {
+      const resumeAfterOpenCross =
+        draft.proposedCommandType === 'table.open_door' &&
+        declarationText.length > 0 &&
+        /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+      const resumeApproachThenOpen =
+        draft.proposedCommandType === 'table.move' &&
+        draft.edgeId !== undefined &&
+        /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
+          declarationText,
+        );
+      const summaryForCommand =
+        draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
+          ? draft.summary.trim()
+          : undefined;
+      const accepted = await submitTableCommand({
+        candidateId: candidate.candidateId,
+        campaignId,
+        requestId: crypto.randomUUID(),
+        commandType: draft.proposedCommandType,
+        expectedStateVersion: tableState.stateVersion,
+        ...(explorationMode() || timingAuthority === null
+          ? {}
+          : { timingAuthorityId: timingAuthority.timingAuthorityId }),
+        ...(draft.path !== undefined ? { path: draft.path } : {}),
+        ...(draft.edgeId !== undefined ? { edgeId: draft.edgeId } : {}),
+        ...(draft.objectId !== undefined ? { objectId: draft.objectId } : {}),
+        ...(draft.destinationHint !== undefined ? { destinationHint: draft.destinationHint } : {}),
+        ...(draft.returnToPrevious === true ? { returnToPrevious: true } : {}),
+        ...(draft.premise !== undefined ? { premise: draft.premise } : {}),
+        ...(summaryForCommand !== undefined ? { summary: summaryForCommand } : {}),
+        ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
+      });
+      tableState = accepted.table;
+      if (accepted.progression !== undefined) {
+        progression = accepted.progression;
+      }
+      mapBundle = await fetchCampaignMap(campaignId);
+      stageHandle?.renderMap(mapBundle);
+      const receipt = accepted.receipt ?? accepted.event.receipt ?? null;
+      const doorOpenAfterConfirm =
+        receipt !== null
+          ? receipt.namedDoorOpenAfter
+          : draft.edgeId !== undefined &&
+            (mapBundle?.edges.some(
+              (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
+            ) ??
+              false);
+      const resolvedSummary = resolvedSummaryAfterTableConfirm({
+        commandType: draft.proposedCommandType,
+        draftSummary: draft.summary,
+        declaration: declarationText,
+        ...(accepted.event.summary !== undefined ? { eventSummary: accepted.event.summary } : {}),
+        openCross: resumeAfterOpenCross && doorOpenAfterConfirm,
+        sceneTitle: mapBundle?.title,
+        ...(receipt !== null ? { receipt } : {}),
+        namedDoorOpenAfter: doorOpenAfterConfirm,
+        ...(receipt?.target.label !== undefined ? { targetLabel: receipt.target.label } : {}),
+      });
+      if (declarationText.length > 0) {
+        appendDmThread('player', 'You', declarationText, 'declaration');
+      }
+      appendDmThread('system', 'Table', playerFacingMechanicsCopy(resolvedSummary), 'mechanics');
+      setIntentDraft(null);
+      doorRecoveryVisible = false;
+      shell.announce('Action resolved on the table.');
+      render();
+      patchDmPlayThread();
+      if (resumeApproachThenOpen && declarationText.length > 0) {
+        await resumeCompoundDeclarationAfterBuild(declarationText, {
+          narrateSteps: false,
+          stopAfterFirstMove: false,
+        });
+      } else if (resumeAfterOpenCross && doorOpenAfterConfirm && declarationText.length > 0) {
+        await resumeCompoundDeclarationAfterBuild(declarationText, {
+          narrateSteps: false,
+          stopAfterFirstMove: true,
+        });
+      }
+      if (
+        shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
+        /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
+      ) {
+        await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
+      } else {
+        patchDmPlayThread();
+      }
+    } catch (failure) {
+      const raw =
+        failure instanceof ApiFailure ? failure.message : 'That action could not be resolved.';
+      error = playerFacingMechanicsCopy(raw);
+      setIntentDraft({
+        ...draft,
+        interceptState: 'awaiting_confirmation',
+        summary: playerFacingMechanicsCopy(`${draft.summary} — confirm to retry.`),
+      });
+      shell.announce('Confirm the draft to retry that action.');
+      if (failure instanceof ApiFailure && failure.code === 'STALE_STATE_VERSION') {
+        presentTableConflict(failure);
+      }
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function playerActionBar(): string {
     seedDmThreadIfNeeded();
     const banner = turnBanner();
@@ -3036,17 +3190,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <main class="table-play-column" aria-label="Play area">
             <div class="table-focus-restore" data-testid="table-focus-restore" hidden></div>
             <div class="table-map-chrome" data-testid="table-map-chrome">
+              <div class="table-hud-anchor" data-testid="table-hud-anchor"></div>
               <section class="table-stage-frame${lowEffects || reducedMotion ? ' table-stage-low-effects' : ''}" aria-label="Tactical map" data-testid="table-stage-slot">
                 <p class="record-meta" data-testid="table-stage-loading">Loading tactical map…</p>
               </section>
               <div class="floating-combat-host" data-testid="floating-combat-host"></div>
               <div class="dice-fab-host" data-testid="dice-fab-host"></div>
             </div>
-            <section class="panel action-composer table-action-bar" aria-labelledby="action-composer-heading" data-testid="action-composer">
-              <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
-              <div data-testid="table-action-slot"></div>
-            </section>
           </main>
+          <section class="panel action-composer table-action-bar table-story-dock" aria-labelledby="action-composer-heading" data-testid="action-composer">
+            <h2 id="action-composer-heading" class="visually-hidden">${escapeHtml(ACTION_COMPOSER_STRUCTURE.heading)}</h2>
+            <div data-testid="table-action-slot"></div>
+          </section>
           <aside class="table-comms-rail panel communication-dock" aria-label="Conversation dock" data-testid="communication-dock">
             <div data-testid="table-comms-slot"></div>
           </aside>
@@ -3464,13 +3619,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         render();
         shell.announce(dmThreadExpanded ? 'Timeline expanded.' : 'Timeline compacted.');
       });
+    const openSheetModal = () => {
+      sheetModalOpen = true;
+      sheetModalTab = 'overview';
+      render();
+      root.querySelector<HTMLElement>('[data-testid="close-table-sheet-modal"]')?.focus();
+    };
     root
-      .querySelector<HTMLButtonElement>('[data-testid="open-table-sheet-modal"]')
-      ?.addEventListener('click', () => {
-        sheetModalOpen = true;
-        sheetModalTab = 'overview';
-        render();
-        root.querySelector<HTMLElement>('[data-testid="close-table-sheet-modal"]')?.focus();
+      .querySelectorAll<HTMLButtonElement>(
+        '[data-testid="open-table-sheet-modal"], [data-testid="table-character-hud"]',
+      )
+      .forEach((button) => {
+        button.addEventListener('click', () => openSheetModal());
       });
     root.querySelectorAll<HTMLButtonElement>('[data-sheet-modal-tab]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -4453,14 +4613,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           error = null;
           render();
           try {
+            const declaration = nlIntentText.trim();
+            lastSubmittedDeclaration = declaration;
             const interpreted = await interpretNaturalLanguage({
               candidateId: candidate.candidateId,
               campaignId,
-              text: nlIntentText.trim(),
+              text: declaration,
               moveTarget,
             });
-            setIntentDraft(draftFromInterpret(interpreted));
-            shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+            const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
+            const draft = draftFromInterpret({
+              ...interpreted,
+              summary: scrubbedSummary,
+            });
+            if (explorationMode() && isRoutineExplorationDraft(draft)) {
+              setIntentDraft(null);
+              await autoCommitExplorationDraft(draft, declaration);
+            } else {
+              setIntentDraft(draft);
+              shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+            }
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -4723,11 +4895,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               setIntentDraft(null);
               await maybeAutoBeginAdventure({ force: true });
             } else {
-              setIntentDraft(draftFromInterpret({
+              const draft = draftFromInterpret({
                 ...interpreted,
                 summary: scrubbedSummary,
-              }));
-              shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
+              });
+              if (explorationMode() && isRoutineExplorationDraft(draft)) {
+                setIntentDraft(null);
+                await autoCommitExplorationDraft(draft, declaration);
+              } else {
+                setIntentDraft(draft);
+                shell.announce(`${directorIdentityLabel} prepared a draft — confirm to resolve it.`);
+              }
             }
           } catch (failure) {
             error =
@@ -5169,6 +5347,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             draft.proposedCommandType === 'table.open_door' &&
             declarationText.length > 0 &&
             /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+          const resumeApproachThenOpen =
+            draft.proposedCommandType === 'table.move' &&
+            draft.edgeId !== undefined &&
+            /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
+              declarationText,
+            );
           // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
           const summaryForCommand =
             draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
@@ -5238,12 +5422,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             render();
             patchDmPlayThread();
             const shouldResumeOpenCross = resumeAfterOpenCross && doorOpenAfterConfirm;
-            const resumeCompoundNow = resumeAfterSceneBuild || shouldResumeOpenCross;
+            const resumeCompoundNow =
+              resumeAfterSceneBuild || shouldResumeOpenCross || resumeApproachThenOpen;
             if (resumeCompoundNow && declarationText.length > 0) {
-              // Open/build first, then chain the through-step without double-narrating.
+              // Approach→open, open→cross, or build→move without a second Confirm.
               await resumeCompoundDeclarationAfterBuild(declarationText, {
                 narrateSteps: false,
-                stopAfterFirstMove: shouldResumeOpenCross,
+                stopAfterFirstMove: shouldResumeOpenCross && !resumeApproachThenOpen,
               });
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
@@ -5451,6 +5636,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     infoSlot.innerHTML = infoRailBody();
     actionSlot.innerHTML = playerActionBar();
+    const hudAnchor = container.querySelector<HTMLElement>('[data-testid="table-hud-anchor"]');
+    if (hudAnchor !== null) {
+      hudAnchor.innerHTML =
+        seated && progression !== null
+          ? `<div class="table-floating-hud" data-testid="table-floating-hud">${characterSheetPanel()}</div>`
+          : '';
+    }
     const mapChrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
     if (mapChrome !== null) {
       let mapDoorActions = mapChrome.querySelector<HTMLElement>('[data-testid="map-door-actions"]');
@@ -5732,19 +5924,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (!isPageMountCurrent(container, mountToken) || getAccount() === null) {
       return;
     }
-    const [tableFeed, mapFeed, timingFeed, rulesFeed, chatFeed, chronicleFeed, memoryFeed] =
-      await Promise.all([
-      fetchTableState(campaignId),
-      fetchCampaignMap(campaignId),
-      fetchTimingAuthority(campaignId),
-      seated ? fetchRulesState(campaignId) : Promise.resolve(null),
-      fetchPartyChat(campaignId),
-      fetchChronicle(campaignId),
-      fetchCampaignMemory(campaignId).catch(() => null),
-    ]);
+    const snapshot = await fetchTableSnapshot(campaignId);
     if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
+    const tableFeed = snapshot.table;
+    const mapFeed = snapshot.map;
+    const timingFeed = snapshot.timingAuthority;
+    const rulesFeed = seated ? snapshot.rules : null;
+    const chatFeed = snapshot.partyChat;
+    const chronicleFeed = snapshot.chronicle;
+    const memoryFeed = snapshot.memory;
     const priorVersion = tableState?.stateVersion ?? -1;
     const priorMap = mapSyncFingerprint(mapBundle);
     const priorAuthorityId = timingAuthority?.timingAuthorityId ?? null;
@@ -5792,7 +5982,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } else if (mapBundle !== null && stageHandle !== null) {
       stageHandle.renderMap(mapBundle);
     }
-    void processPresentationCues();
+    void processPresentationCues(snapshot.presentationCues);
   }
 
   function stopProjectionPoll(): void {

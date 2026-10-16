@@ -111,7 +111,7 @@ export function mountCampaignsPage(host: PageHost): void {
       (tab === 'open' && joinFilter !== 'all');
 
     container.innerHTML = `
-      <div class="page">
+      <div class="page page-wide">
         <h1 data-testid="campaigns-heading">Tables</h1>
         <p class="tagline">
           Jump in: pick a table, choose your character, and play. Up to four seats are active at once.

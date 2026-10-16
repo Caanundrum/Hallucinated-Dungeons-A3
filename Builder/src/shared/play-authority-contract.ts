@@ -387,6 +387,30 @@ export function resolveIntentAuthority(
   }
 
   if (actionable.length === 0) {
+    // Free exploration: rich sensory / roleplay prose must never bounce with a
+    // robotic verb menu — pass the declaration to the Game Director instead.
+    const looksLikeExplorationProse =
+      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|peer(?:s|ing)?|search(?:es|ing)?|observe(?:s|ing)?|notice(?:s|ing)?|study|studying|feel(?:s|ing)?|smell(?:s|ing)?|taste(?:s|ing)?|whisper(?:s|ing)?|murmur(?:s|ing)?)\b/i.test(
+        parsed.rawText,
+      ) &&
+      !/\b(?:attack|strike|cast|fireball|unlock|pick\s+the\s+lock)\b/i.test(parsed.rawText);
+    if (looksLikeExplorationProse) {
+      return {
+        disposition: 'director_narrate_only',
+        actionSequence: [
+          {
+            kind: 'inspect',
+            targetRef: null,
+            outcomeHint: 'sensory_sequence',
+          },
+        ],
+        ignoredWorldFacts,
+        clarificationPrompt: null,
+        summary:
+          'You look and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
+        proposedCommandType: 'table.sync',
+      };
+    }
     const fallback = actionableDirectorFallback(understanding);
     return {
       disposition: 'clarify',
@@ -398,8 +422,7 @@ export function resolveIntentAuthority(
     };
   }
 
-  
-  // Approved sensory compounds resolve as one Director-narrated beat.
+  // Sensory / perception compounds resolve as one Director-narrated beat.
   const sensoryOnly = actionable.every(
     (step) =>
       step.kind === 'inspect' &&
@@ -407,14 +430,12 @@ export function resolveIntentAuthority(
         step.outcomeHint === 'door_state' ||
         step.outcomeHint === 'scene_perception' ||
         step.outcomeHint === 'sensory_sequence' ||
-        step.outcomeHint === 'stay_put'),
+        step.outcomeHint === 'stay_put' ||
+        step.outcomeHint === 'who_is_present' ||
+        step.outcomeHint === 'map_state_correction' ||
+        step.outcomeHint === null),
   );
-  const hasSensorySequence = actionable.some(
-    (step) =>
-      step.kind === 'inspect' &&
-      (step.outcomeHint === 'sensory_sequence' || step.outcomeHint === 'listen'),
-  );
-  if (actionable.length > 1 && sensoryOnly && hasSensorySequence) {
+  if (actionable.length > 1 && sensoryOnly) {
     return {
       disposition: 'director_narrate_only',
       actionSequence: [
@@ -427,12 +448,42 @@ export function resolveIntentAuthority(
       ignoredWorldFacts,
       clarificationPrompt: null,
       summary:
-        'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
+        'You look and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
       proposedCommandType: 'table.sync',
     };
   }
 
   if (actionable.length > 1) {
+    // Prefer the first concrete table action; Director narration can carry flavor.
+    const primaryStep =
+      actionable.find(
+        (step) =>
+          step.kind === 'move' ||
+          step.kind === 'open_door' ||
+          step.kind === 'close_door' ||
+          step.kind === 'unlock_door' ||
+          step.kind === 'attack' ||
+          step.kind === 'cast',
+      ) ?? null;
+    if (
+      primaryStep !== null &&
+      (primaryStep.kind === 'move' ||
+        primaryStep.kind === 'open_door' ||
+        primaryStep.kind === 'close_door')
+    ) {
+      const proposedCommandType = commandTypeForActionKind(primaryStep.kind);
+      return {
+        disposition: proposedCommandType === null ? 'clarify' : 'propose_command',
+        actionSequence: [primaryStep],
+        ignoredWorldFacts,
+        clarificationPrompt:
+          proposedCommandType === null
+            ? 'That action is not supported yet — try a simpler declaration.'
+            : null,
+        summary: summaryForActionStep(primaryStep),
+        proposedCommandType,
+      };
+    }
     const labels = actionable.map((step) => step.kind.replace(/_/g, ' '));
     const primary = labels[0]!;
     const rest = labels.slice(1).join(', then ');
@@ -886,6 +937,24 @@ export function parsePlayerDeclaration(
 
   if (actionSequence.length === 0 && observingScene) {
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
+  }
+
+  // Targeted prop examine / listen (lantern, window, shutters) — Director narrates.
+  if (
+    actionSequence.length === 0 &&
+    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?\s+at|listen(?:s|ing)?|peer(?:s|ing)?|study|studying)\b/i.test(
+      trimmed,
+    ) &&
+    !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(trimmed) &&
+    !wantsOpenDoor &&
+    !wantsCloseDoor &&
+    !wantsUnlock
+  ) {
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: /\blisten\b/i.test(trimmed) ? 'listen' : 'scene_perception',
+    });
   }
 
   // Take / pick up / carry — container prop vs item from inside (VDM-005).

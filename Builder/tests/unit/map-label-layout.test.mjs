@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  compactMapLabel,
   doorStrokeColor,
   layoutMapLabels,
   shortenMapLabel,
@@ -12,6 +13,12 @@ test('shortenMapLabel strips reference kind suffixes', () => {
   assert.equal(shortenMapLabel('Wall sconce - lighting reference'), 'Wall sconce');
   assert.equal(shortenMapLabel('Rubble pile — cover reference'), 'Rubble pile');
   assert.equal(shortenMapLabel('Loophole Lantern'), 'Loophole Lantern');
+});
+
+test('compactMapLabel keeps door/token badges short for small rooms', () => {
+  assert.equal(compactMapLabel('Wooden doorway east — closed', 'marker'), 'Door E');
+  assert.equal(compactMapLabel('Damp stones — hazard reference', 'marker'), 'Damp');
+  assert.equal(compactMapLabel('Duran Stoneguard', 'token'), 'Duran');
 });
 
 test('doorStrokeColor distinguishes lock/open states', () => {
@@ -59,7 +66,11 @@ test('layoutMapLabels keeps token and marker chips from overlapping when zoomed 
   });
 
   assert.equal(placements.length, 3);
-  assert.equal(placements.find((entry) => entry.id === 'marker:hazard')?.displayText, 'Damp stones');
+  assert.equal(placements.find((entry) => entry.id === 'marker:hazard')?.displayText, 'Damp');
+  assert.equal(
+    placements.find((entry) => entry.id === 'marker:hazard')?.fullLabel,
+    'Damp stones — hazard reference',
+  );
 
   for (let i = 0; i < placements.length; i += 1) {
     for (let j = i + 1; j < placements.length; j += 1) {

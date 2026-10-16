@@ -156,3 +156,16 @@ test('Fireball refusal names class and spell when sheet has no spellcasting', ()
   assert.match(verdict.reason ?? '', /Rogue/i);
   assert.match(verdict.reason ?? '', /Fireball/i);
 });
+
+test('free-exploration multi-beat sensory prose narrates instead of verb-menu clarify', () => {
+  const text =
+    'I examine the table lantern and listen closely at the shuttered window to hear what is happening outside in Emberferry';
+  const authority = resolveIntentAuthority(parsePlayerDeclaration(text));
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.proposedCommandType, 'table.sync');
+  assert.doesNotMatch(
+    authority.summary,
+    /Say one clear action your character attempts|Ask the Director a question/i,
+  );
+  assert.match(authority.summary, /Game Director|look and listen|perceive/i);
+});

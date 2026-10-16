@@ -623,10 +623,10 @@ function paintSemanticSvg(
         placement.leader === null
           ? ''
           : `<line class="map-label-leader" x1="${placement.leader.x1}" y1="${placement.leader.y1}" x2="${placement.leader.x2}" y2="${placement.leader.y2}" stroke="#c4a574" stroke-opacity="0.55" stroke-width="1" />`;
-      return `<g class="map-label-chip" data-label-id="${escapeHtml(placement.id)}" data-label-kind="${placement.kind}" data-testid="map-label-chip">
+      return `<g class="map-label-chip" tabindex="0" role="img" aria-label="${escapeHtml(placement.fullLabel)}" data-label-id="${escapeHtml(placement.id)}" data-label-kind="${placement.kind}" data-full-label="${escapeHtml(placement.fullLabel)}" data-testid="map-label-chip">
         ${leader}
         <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="4" class="map-label-plate" fill="#16110c" fill-opacity="0.92" stroke="#c4a574" stroke-opacity="0.7" />
-        <text x="${placement.x + 7}" y="${placement.y + placement.height / 2 + placement.fontSize * 0.35}" fill="#f8e7b0" font-size="${placement.fontSize}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="600">${escapeHtml(placement.displayText)}</text>
+        <text class="map-label-compact" x="${placement.x + 7}" y="${placement.y + placement.height / 2 + placement.fontSize * 0.35}" fill="#f8e7b0" font-size="${placement.fontSize}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="600">${escapeHtml(placement.displayText)}</text>
         <title>${escapeHtml(placement.fullLabel)}</title>
       </g>`;
     })
