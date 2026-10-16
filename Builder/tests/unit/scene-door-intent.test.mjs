@@ -391,3 +391,44 @@ test('VDM-004: wooden doorway east conditional false branch is no-op, not moveme
   assert.match(resolved.summary, /already open|leaving it exactly as it is/i);
   assert.doesNotMatch(resolved.summary, /step back through|step through|Ready to step/i);
 });
+
+function twoDoorMap(tokenAnchor) {
+  const base = chamberMap({ tokenColumn: tokenAnchor.column, tokenRow: tokenAnchor.row });
+  return {
+    ...base,
+    mapBundleId: 'scene:camp-2',
+    edges: [
+      { edgeId: 'e:5:4:east', column: 5, row: 4, orientation: 'east', kind: 'door', doorState: 'closed' },
+      { edgeId: 'e:3:2:north', column: 3, row: 2, orientation: 'north', kind: 'door', doorState: 'closed' },
+    ],
+  };
+}
+
+test('open declaration honours a named compass direction over the nearest door', () => {
+  const anchor = { column: 3, row: 2 };
+  const map = twoDoorMap(anchor);
+
+  const east = resolveDoorIntentForMap(map, anchor, 'I open the wooden doorway to the east.');
+  assert.equal(east.edgeId, 'e:5:4:east');
+  assert.equal(east.proposedCommandType, 'table.move');
+
+  const unnamed = resolveDoorIntentForMap(map, anchor, 'I open the wooden doorway.');
+  assert.equal(unnamed.edgeId, 'e:3:2:north');
+  assert.equal(unnamed.proposedCommandType, 'table.open_door');
+});
+
+test('open declaration beside a door of another compass direction still walks to the named door', () => {
+  const anchor = { column: 3, row: 2 };
+  const map = twoDoorMap(anchor);
+  const resolved = resolveDoorIntentForMap(map, anchor, 'Open the east door.');
+  assert.equal(resolved.edgeId, 'e:5:4:east');
+  assert.notEqual(resolved.proposedCommandType, 'table.open_door');
+});
+
+test('named compass door adjacent to the token opens directly', () => {
+  const anchor = { column: 5, row: 4 };
+  const map = twoDoorMap(anchor);
+  const resolved = resolveDoorIntentForMap(map, anchor, 'I open the east doorway.');
+  assert.equal(resolved.edgeId, 'e:5:4:east');
+  assert.equal(resolved.proposedCommandType, 'table.open_door');
+});
