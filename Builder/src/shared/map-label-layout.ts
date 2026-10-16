@@ -70,6 +70,23 @@ export function shortenMapLabel(fullLabel: string): string {
   return cut.length > 0 ? cut : trimmed;
 }
 
+/** Compact badge text so small rooms are not covered by full callouts. */
+export function compactMapLabel(fullLabel: string, kind: 'token' | 'marker' = 'marker'): string {
+  const short = shortenMapLabel(fullLabel);
+  if (/door|doorway|gate|entry/i.test(short)) {
+    const dir = short.match(/\b(east|west|north|south)\b/i)?.[1];
+    if (dir !== undefined) {
+      return `Door ${dir.slice(0, 1).toUpperCase()}`;
+    }
+    return 'Door';
+  }
+  const words = short.split(/\s+/).filter(Boolean);
+  if (kind === 'token') {
+    return (words[0] ?? short).slice(0, 10);
+  }
+  return (words[0] ?? short).slice(0, 12);
+}
+
 function estimateChipSize(
   text: string,
   fontSize: number,
@@ -144,7 +161,7 @@ export function layoutMapLabels(
     : ordered;
 
   for (const anchor of visible) {
-    const displayText = shortenMapLabel(anchor.fullLabel);
+    const displayText = compactMapLabel(anchor.fullLabel, anchor.kind);
     const size = estimateChipSize(displayText, fontSize);
     let placed: MapLabelPlacement | null = null;
 

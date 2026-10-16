@@ -116,7 +116,7 @@ test('PQA-155: inspect adjacent open door narrates free swing', () => {
   assert.match(resolved.summary, /already open|swings freely/i);
 });
 
-test('open/step-through while not adjacent explains approach then re-declare', () => {
+test('open while not adjacent drafts a full approach path (walk all the way)', () => {
   const map = chamberMap({ tokenColumn: 2, tokenRow: 2 });
   map.edges = map.edges.map((edge) =>
     edge.kind === 'door' ? { ...edge, doorState: 'unlocked' } : edge,
@@ -128,10 +128,68 @@ test('open/step-through while not adjacent explains approach then re-declare', (
   );
   assert.ok(resolved);
   assert.equal(resolved.proposedCommandType, 'table.move');
-  assert.match(resolved.summary, /Confirm moves you closer only/i);
-  assert.match(resolved.summary, /declare open|step through again/i);
-  assert.match(resolved.summary, /unlocked|closed/i);
-  assert.doesNotMatch(resolved.summary, /Sleight of Hand|attempt the lock|Confirm to roll/i);
+  assert.ok(resolved.path);
+  assert.ok(resolved.path.length >= 2, 'must pathfind more than one square when farther away');
+  assert.equal(resolved.edgeId, 'e:9:6:east');
+  assert.match(resolved.summary, /Walk beside|open it/i);
+  assert.match(resolved.summary, /unlocked|closed|doorway/i);
+  assert.doesNotMatch(resolved.summary, /moves you closer only|Sleight of Hand|attempt the lock|Confirm to roll/i);
+});
+
+test('open from two squares away still walks the full approach in a 5x5 parlor', () => {
+  const cells = [];
+  for (let column = 0; column < 5; column += 1) {
+    for (let row = 0; row < 5; row += 1) {
+      cells.push({ column, row, terrain: 'normal', known: true });
+    }
+  }
+  const map = {
+    mapBundleId: 'cottage:parlor',
+    title: 'Cottage Parlor',
+    coordinateSpace: {
+      columns: 5,
+      rows: 5,
+      pixelsPerSquare: 48,
+      feetPerSquare: 5,
+    },
+    cells,
+    edges: [
+      {
+        edgeId: 'e:4:2:east',
+        column: 4,
+        row: 2,
+        orientation: 'east',
+        kind: 'door',
+        doorState: 'closed',
+      },
+    ],
+    tokens: [
+      {
+        tokenId: 'tok-1',
+        seatId: 'seat-1',
+        label: 'Duran',
+        footprint: {
+          anchor: { column: 2, row: 2 },
+          widthSquares: 1,
+          heightSquares: 1,
+        },
+      },
+    ],
+    notableFeatures: [],
+    viewerSeatId: 'seat-1',
+  };
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 2, row: 2 },
+    'Open the wooden doorway east',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.ok(resolved.path);
+  assert.equal(resolved.path.length, 2);
+  assert.deepEqual(resolved.path[resolved.path.length - 1], { column: 4, row: 2 });
+  assert.equal(resolved.edgeId, 'e:4:2:east');
+  assert.match(resolved.summary, /open it/i);
 });
 
 test('adjacent unlocked open/step-through drafts table.open_door with cross-on-confirm copy', () => {

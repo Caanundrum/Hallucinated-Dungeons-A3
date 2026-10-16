@@ -246,12 +246,20 @@ function doorApproachLabel(edge: MapEdgeRecord): string {
   return formatDoorAuthorityLabel(doorAuthorityFromStored(edge.doorState)).replace(/^Wooden doorway/i, 'doorway');
 }
 
-function approachThenOpenCopy(sceneTitle: string, edge: MapEdgeRecord, wantsOpen: boolean): string {
+function approachThenOpenCopy(
+  sceneTitle: string,
+  edge: MapEdgeRecord,
+  wantsOpen: boolean,
+  pathLength: number,
+  feetPerSquare: number,
+): string {
   const label = doorApproachLabel(edge);
+  const steps = Math.max(1, pathLength);
+  const feet = steps * feetPerSquare;
   if (wantsOpen) {
-    return `Ready to step toward the ${label} in ${sceneTitle}. Confirm moves you closer only — when you are beside it, declare open / step through again to finish the passage.`;
+    return `Walk beside the ${label} in ${sceneTitle} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft) and open it.`;
   }
-  return `Ready to step toward the ${label} in ${sceneTitle}. Confirm to commit the step.`;
+  return `Walk beside the ${label} in ${sceneTitle} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft).`;
 }
 
 /**
@@ -524,25 +532,44 @@ export function resolveDoorIntentForMap(
     }
     const nearestClosed = nearestClosedDoor(tokenAnchor, map);
     if (wantsBesideDoorIntent(text) && nearestClosed !== null) {
-      const besidePath = pathBesideClosedDoor(tokenAnchor, map);
+      const besidePath = pathBesideClosedDoor(tokenAnchor, map, 12);
       if (besidePath !== null) {
-        const steps = besidePath.length;
-        const feet = steps * map.coordinateSpace.feetPerSquare;
         return {
           proposedCommandType: 'table.move',
           path: besidePath,
           edgeId: nearestClosed.edgeId,
-          summary: `Ready to move beside the ${doorApproachLabel(nearestClosed)} in ${sceneTitle} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to arrive adjacent — then declare open / inspect.`,
+          summary: approachThenOpenCopy(
+            sceneTitle,
+            nearestClosed,
+            wantsOpen,
+            besidePath.length,
+            map.coordinateSpace.feetPerSquare,
+          ),
         };
       }
     }
-    const approachClosed = nextStepTowardClosedDoor(tokenAnchor, map);
-    if (approachClosed !== null && nearestClosed !== null) {
-      return {
-        proposedCommandType: 'table.move',
-        path: [approachClosed],
-        summary: approachThenOpenCopy(sceneTitle, nearestClosed, wantsOpen),
-      };
+    // Free exploration: walk the full approach path (not one square), then open.
+    if (nearestClosed !== null && (wantsOpen || wantsBesideDoorIntent(text) || mentionsMovementIntent(text))) {
+      const besidePath =
+        pathBesideClosedDoor(tokenAnchor, map, 12) ??
+        (() => {
+          const one = nextStepTowardClosedDoor(tokenAnchor, map);
+          return one !== null ? [one] : null;
+        })();
+      if (besidePath !== null) {
+        return {
+          proposedCommandType: 'table.move',
+          path: besidePath,
+          edgeId: nearestClosed.edgeId,
+          summary: approachThenOpenCopy(
+            sceneTitle,
+            nearestClosed,
+            wantsOpen,
+            besidePath.length,
+            map.coordinateSpace.feetPerSquare,
+          ),
+        };
+      }
     }
   }
 

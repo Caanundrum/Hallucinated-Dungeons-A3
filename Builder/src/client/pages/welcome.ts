@@ -32,8 +32,8 @@ const WELCOME_LOGO_MARK = `
 function welcomeLegalLinks(): string {
   return LEGAL_ROUTES.map(
     (route) =>
-      `<li><a href="${route}" target="_blank" rel="noopener noreferrer">${escapeHtml(LEGAL_LABELS[route] ?? route)}</a></li>`,
-  ).join('');
+      `<a href="${route}" target="_blank" rel="noopener noreferrer">${escapeHtml(LEGAL_LABELS[route] ?? route)}</a>`,
+  ).join('<span class="welcome-legal-sep" aria-hidden="true"> · </span>');
 }
 
 export function mountWelcomePage(host: PageHost): void {
@@ -95,13 +95,10 @@ export function mountWelcomePage(host: PageHost): void {
                   : `<div class="hosted-google-sign-in" data-testid="welcome-google-hosted-button"></div>`
             }
           </div>
-          <p class="welcome-consent">
-            By continuing with Google, you agree to our
-            <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Notice</a>
-            and
-            <a href="/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>.
+          <p class="welcome-legal welcome-legal-footer" data-testid="welcome-legal-links">
+            By continuing you agree to our legal terms —
+            ${welcomeLegalLinks()}.
           </p>
-          <ul class="welcome-legal" data-testid="welcome-legal-links">${welcomeLegalLinks()}</ul>
         </div>
       </div>`;
 

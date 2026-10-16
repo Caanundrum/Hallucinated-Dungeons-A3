@@ -83,16 +83,12 @@ function cueLabel(kind: PresentationCueKind, summary: string): string {
   return summary.length > 0 ? summary : kind.replace(/_/g, ' ');
 }
 
-/** Derives a Presentation Cue Plan from the campaign's canonical committed event log. */
-export async function fetchPresentationCuePlan(options: {
-  readonly firestore: Firestore;
-  readonly accountId: string;
-  readonly campaignId: string;
-}): Promise<PresentationCuePlanProjection> {
-  const { firestore, accountId, campaignId } = options;
-  const tableState = await fetchTableState({ firestore, accountId, campaignId });
+/** Pure cue plan from an already-loaded table projection (avoids a second table-state read). */
+export function buildPresentationCuePlanFromTable(
+  campaignId: string,
+  tableState: Awaited<ReturnType<typeof fetchTableState>>,
+): PresentationCuePlanProjection {
   const recent = tableState.recentEvents.slice(-CUE_EVENT_WINDOW);
-
   const cues: PresentationCueProjection[] = [];
   for (const event of recent) {
     const kind = classifyEvent(event);
@@ -109,7 +105,6 @@ export async function fetchPresentationCuePlan(options: {
       createdAt: event.committedAt,
     });
   }
-
   return {
     campaignId,
     stateVersion: tableState.stateVersion,
@@ -117,4 +112,15 @@ export async function fetchPresentationCuePlan(options: {
     maxConcurrentSounds: MAX_CONCURRENT_CUE_SOUNDS,
     maxCueSoundDurationMs: MAX_CUE_SOUND_DURATION_MS,
   };
+}
+
+/** Derives a Presentation Cue Plan from the campaign's canonical committed event log. */
+export async function fetchPresentationCuePlan(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly campaignId: string;
+}): Promise<PresentationCuePlanProjection> {
+  const { firestore, accountId, campaignId } = options;
+  const tableState = await fetchTableState({ firestore, accountId, campaignId });
+  return buildPresentationCuePlanFromTable(campaignId, tableState);
 }

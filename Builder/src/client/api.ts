@@ -53,6 +53,7 @@ import type {
   TableStateProjection,
 } from '../shared/command-contract.js';
 import type { MapBundleProjection } from '../shared/map-contract.js';
+import type { TableSnapshotProjection } from '../shared/table-snapshot-contract.js';
 import type { MovementPreviewProjection } from '../shared/movement-contract.js';
 import type {
   TimingAuthorityClaimResponse,
@@ -559,6 +560,11 @@ export async function yieldNpcSpotlight(options: {
 
 export async function fetchTableState(campaignId: string): Promise<TableStateProjection> {
   return (await request(`/api/campaigns/${campaignId}/table-state`)) as TableStateProjection;
+}
+
+/** One GET replacing the eight parallel tabletop poll requests. */
+export async function fetchTableSnapshot(campaignId: string): Promise<TableSnapshotProjection> {
+  return (await request(`/api/campaigns/${campaignId}/table-snapshot`)) as TableSnapshotProjection;
 }
 
 export async function fetchCampaignMap(campaignId: string): Promise<MapBundleProjection> {

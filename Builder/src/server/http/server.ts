@@ -152,6 +152,7 @@ import {
   TableCommandError,
 } from '../table/commands.js';
 import { fetchCampaignMap, MapProjectionError } from '../table/map-projection.js';
+import { fetchTableSnapshot } from '../table/table-snapshot.js';
 import type { DmSceneDirective } from '../../shared/play-authority-contract.js';
 import {
   CampaignMemoryError,
@@ -2692,6 +2693,19 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           }
           throw error;
         }
+        return;
+      }
+
+      const tableSnapshotMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/table-snapshot$/.exec(
+        path,
+      );
+      if (tableSnapshotMatch !== null) {
+        if (method !== 'GET') {
+          sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+          return;
+        }
+        const campaignId = tableSnapshotMatch[1]!;
+        sendJson(response, 200, await fetchTableSnapshot({ firestore, accountId, campaignId }));
         return;
       }
 
