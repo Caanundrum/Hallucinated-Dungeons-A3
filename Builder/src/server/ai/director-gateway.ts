@@ -452,7 +452,11 @@ async function resolveDirectorNarrateOutput(options: {
     return answerContentsQueryNarration(map, playerAsk);
   }
 
-  if (inspectHint === 'scene_perception' || inspectHint === 'unlocked door') {
+  if (
+    inspectHint === 'scene_perception' ||
+    inspectHint === 'sensory_sequence' ||
+    inspectHint === 'unlocked door'
+  ) {
     if (map !== null) {
       try {
         await applyDmSceneDirective(options.firestore, options.campaignId, options.accountId, {
@@ -513,7 +517,9 @@ async function resolveDirectorNarrateOutput(options: {
     });
   }
 
-  if (inspectHint === 'door_state' || inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
+  // Door-ear / door-state only — sensory_sequence (window, lantern, room listen) stays
+  // on the scene_perception path so Veyra does not hijack it into the nearest doorway.
+  if (inspectHint === 'door_state' || inspectHint === 'listen') {
     if (map !== null) {
       const closed = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState !== 'open');
       const open = map.edges.filter((edge) => edge.kind === 'door' && edge.doorState === 'open');
@@ -523,7 +529,7 @@ async function resolveDirectorNarrateOutput(options: {
         const authority = doorAuthorityFromStored(door.doorState);
         const facing = door.orientation;
         const label = formatDoorPlayerFacingLabel(authority, facing);
-        if (inspectHint === 'listen' || inspectHint === 'sensory_sequence') {
+        if (inspectHint === 'listen') {
           const hideClause = /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(
             options.playerText ?? options.structured.rawText,
           )

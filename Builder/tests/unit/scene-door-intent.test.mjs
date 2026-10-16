@@ -192,6 +192,33 @@ test('open from two squares away still walks the full approach in a 5x5 parlor',
   assert.match(resolved.summary, /open it/i);
 });
 
+test('open-only beside an already-open door syncs — does not step through (no ping-pong)', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'Open the wooden doorway east',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.sync');
+  assert.equal(resolved.edgeId, 'e:9:6:east');
+  assert.match(resolved.summary, /already open/i);
+  assert.doesNotMatch(resolved.summary, /Ready to step through|Confirm to commit the step/i);
+  assert.equal(resolved.path, undefined);
+});
+
+test('open and step through beside an open door still drafts a through move', () => {
+  const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
+  const resolved = resolveDoorIntentForMap(
+    map,
+    { column: 9, row: 6 },
+    'Open the wooden doorway east and step through',
+  );
+  assert.ok(resolved);
+  assert.equal(resolved.proposedCommandType, 'table.move');
+  assert.deepEqual(resolved.path, [{ column: 10, row: 6 }]);
+});
+
 test('adjacent unlocked open/step-through drafts table.open_door with cross-on-confirm copy', () => {
   const map = chamberMap({ tokenColumn: 9, tokenRow: 6 });
   map.edges = map.edges.map((edge) =>
