@@ -46,6 +46,11 @@ import {
 import type { NarrationDensity } from '../../shared/settings-contract.js';
 import type { EncounterProjection } from '../../shared/rules-combat-contract.js';
 import { getAiKillSwitch } from '../admin/admin-service.js';
+import {
+  formatBlueprintBeatPrompt,
+  isCampaignBlueprint,
+  selectActiveBlueprintBeat,
+} from '../campaigns/campaign-blueprint.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { fetchRulesState } from '../rules/engine/rules-commands.js';
@@ -1260,6 +1265,33 @@ async function loadDirectorConfig(
   };
 }
 
+/** Active chapter beat (goal / clue / next trigger) for the Director prompt; empty when unavailable. */
+async function loadBlueprintBeatPrompt(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<string> {
+  try {
+    const snap = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+    const blueprint = (snap.data() as { campaignBlueprint?: unknown } | undefined)
+      ?.campaignBlueprint;
+    if (!isCampaignBlueprint(blueprint)) {
+      return '';
+    }
+    let sceneDepth = 0;
+    try {
+      const { loadMapRuntime } = await import('../table/map-runtime.js');
+      const runtime = await loadMapRuntime(firestore, campaignId);
+      sceneDepth = runtime.sceneStack?.length ?? 0;
+    } catch {
+      sceneDepth = 0;
+    }
+    const beat = selectActiveBlueprintBeat(blueprint, sceneDepth);
+    return beat === null ? '' : `\n\n${formatBlueprintBeatPrompt(beat)}`;
+  } catch {
+    return '';
+  }
+}
+
 function titleCaseWords(value: string): string {
   return value
     .split(/\s+/)
@@ -2245,11 +2277,14 @@ export async function answerDirectorAddress(options: {
       } Declare the action in the ${PLAY_CHANNEL_LABEL} when you are ready — this consult does not resolve it.`
     : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the Director. Use the ${PLAY_CHANNEL_LABEL} to declare what you do.`;
 
+  const beatPrompt = mechanical
+    ? ''
+    : await loadBlueprintBeatPrompt(options.firestore, options.campaignId);
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${
       mechanical ? ARBITER_CONSTITUTION : `${ARBITER_CONSTITUTION} Also answer scene questions without inventing unseen detail.`
     } Never cite internal grid coordinates such as c4r3 — describe doors and props by player-facing names and directions only.`,
-    userPrompt: `${context.text}\n\nPlayer ask-the-DM message:\n${text}`,
+    userPrompt: `${context.text}${beatPrompt}\n\nPlayer ask-the-DM message:\n${text}`,
   });
 
   // Shared fact corpus with Play — Ask must not invent beyond established/inferred facts.
@@ -2365,9 +2400,10 @@ export async function narrateVisibleBeat(options: {
     director.personality,
     effectiveDensity,
   );
+  const beatPrompt = await loadBlueprintBeatPrompt(options.firestore, options.campaignId);
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.${beatPrompt}`,
   });
   const liveCandidate =
     liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;

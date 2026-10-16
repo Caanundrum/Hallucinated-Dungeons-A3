@@ -25,6 +25,7 @@ import {
   MAX_ACTIVE_PLAYERS,
   type ActiveSeatedTableProjection,
   type AdventureTemplate,
+  type CampaignBlueprint,
   type CampaignDetailProjection,
   type CampaignListProjection,
   type CampaignMemberRole,
@@ -52,6 +53,7 @@ import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
 } from './director-catalog.js';
+import { buildCampaignBlueprint } from './campaign-blueprint.js';
 import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
 import {
   AlreadySeatedError,
@@ -104,6 +106,8 @@ interface StoredCampaign {
   /** Starter pack this campaign was created from, or null for a blank table (Phase 5). */
   readonly adventureTemplateId: string | null;
   readonly adventurePackVersion: string | null;
+  /** Structured outline extracted from the premise at creation (absent on older campaigns). */
+  readonly campaignBlueprint?: CampaignBlueprint;
   readonly visibility: CampaignVisibility;
   readonly joinPasswordHash: string | null;
   readonly createdAt: Timestamp | Date;
@@ -608,6 +612,7 @@ export async function createCampaign(options: {
     directorLockedAt: director.lockedAt,
     adventureTemplateId: starterPack?.packId ?? null,
     adventurePackVersion: starterPack?.packVersion ?? null,
+    campaignBlueprint: buildCampaignBlueprint(summary),
     visibility,
     joinPasswordHash,
     createdAt: now,

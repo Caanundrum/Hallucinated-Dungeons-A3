@@ -13,6 +13,14 @@ import {
   type MapReferenceMarkerKind,
   type MapSquareCoordinate,
 } from '../../shared/map-contract.js';
+import {
+  capitalizeLabel,
+  detectPremiseLocation,
+  detectQuestHook,
+  extractPremiseEntities,
+  isDoorLikeExitPhrase,
+  isLightSourcePhrase,
+} from '../campaigns/campaign-blueprint.js';
 import { attachExitsToComposedScene } from './scene-exit-projection.js';
 
 export const SCENE_PURPOSES = [
@@ -269,92 +277,32 @@ export interface PremiseContinuity {
   readonly questHook: string | null;
   /** Named places / people / props the opening scene must keep (player-visible facts). */
   readonly namedEntities: readonly string[];
+  readonly namedNpcs: readonly string[];
+  readonly namedPlaces: readonly string[];
+  readonly namedProps: readonly string[];
+  readonly namedExits: readonly string[];
 }
 
 export function extractPremiseContinuity(premise: string): PremiseContinuity {
-  const text = premise.toLowerCase();
-  let locationKind: PremiseContinuity['locationKind'] = null;
-  let locationPhrase: string | null = null;
-  if (/\b(canal|dock|docks|pier|harbor|harbour|ferry|waterfront|wharf|quay)\b/.test(text)) {
-    locationKind = 'canal_waterfront';
-    locationPhrase = /\bcanal\b/.test(text)
-      ? 'a canal-town waterfront'
-      : 'a dockside waterfront';
-  } else if (/\b(inn|tavern|pub|alehouse)\b/.test(text)) {
-    locationKind = 'inn';
-    locationPhrase = 'a roadside inn';
-  } else if (/\b(crypt|tomb|catacomb|grave)\b/.test(text)) {
-    locationKind = 'crypt';
-    locationPhrase = 'a stone crypt';
-  } else if (/\b(workshop|forge|smith|tinker)\b/.test(text)) {
-    locationKind = 'workshop';
-    locationPhrase = 'a working workshop';
-  } else if (/\b(cottage|cabin|hut)\b/.test(text)) {
-    locationKind = 'cottage';
-    locationPhrase = 'a modest cottage';
-  } else if (/\b(marsh|bog|fen)\b/.test(text)) {
-    locationKind = 'marsh';
-    locationPhrase = 'a marsh settlement';
-  } else if (/\b(town|village|city|settlement)\b/.test(text)) {
-    locationKind = 'town';
-    locationPhrase = 'a busy town';
-  }
-
-  let questHook: string | null = null;
-  if (
-    /\b(courier|package|missive|parcel|delivery|missing\s+(?:packet|letter|courier))\b/.test(text)
-  ) {
-    questHook = 'a missing courier and the package they carried';
-  } else if (/\b(kidnap|abduct|ransom)\b/.test(text)) {
-    questHook = 'a disappearance that needs answering';
-  } else if (/\b(murder|assassin|poison)\b/.test(text)) {
-    questHook = 'a violent death that cannot stay quiet';
-  }
-
-  const namedEntities: string[] = [];
-  const pushUnique = (label: string) => {
-    if (!namedEntities.some((entry) => entry.toLowerCase() === label.toLowerCase())) {
-      namedEntities.push(label);
-    }
-  };
-  // Preserve exact casing from the premise when present.
-  const namedPatterns: Array<{ pattern: RegExp; fallback: string }> = [
-    { pattern: /\bBlue Heron\b/i, fallback: 'Blue Heron' },
-    { pattern: /\bMara Venn\b/i, fallback: 'Mara Venn' },
-    { pattern: /\bbroken silver lantern\b/i, fallback: 'broken silver lantern' },
-    { pattern: /\bsilver lantern\b/i, fallback: 'silver lantern' },
-    { pattern: /\blocked red warehouse door\b/i, fallback: 'locked red warehouse door' },
-    { pattern: /\bred warehouse door\b/i, fallback: 'red warehouse door' },
-    { pattern: /\blocked red door\b/i, fallback: 'locked red door' },
-    { pattern: /\bred door\b/i, fallback: 'red door' },
+  const { locationKind, locationPhrase } = detectPremiseLocation(premise);
+  const questHook = detectQuestHook(premise);
+  const entities = extractPremiseEntities(premise);
+  const namedEntities = [
+    ...entities.places,
+    ...entities.npcs,
+    ...entities.props,
+    ...entities.exits,
   ];
-  for (const entry of namedPatterns) {
-    const match = premise.match(entry.pattern);
-    if (match === null) {
-      continue;
-    }
-    const label = match[0] ?? entry.fallback;
-    // Skip shorter aliases when a more specific entity already matched (e.g. locked red warehouse door).
-    if (
-      namedEntities.some(
-        (existing) =>
-          existing.toLowerCase().includes(label.toLowerCase()) ||
-          label.toLowerCase().includes(existing.toLowerCase()),
-      )
-    ) {
-      // Prefer the longer / more specific label.
-      const idx = namedEntities.findIndex((existing) =>
-        label.toLowerCase().includes(existing.toLowerCase()),
-      );
-      if (idx >= 0 && label.length > namedEntities[idx]!.length) {
-        namedEntities[idx] = label;
-      }
-      continue;
-    }
-    pushUnique(label);
-  }
-
-  return { locationKind, locationPhrase, questHook, namedEntities };
+  return {
+    locationKind,
+    locationPhrase,
+    questHook,
+    namedEntities,
+    namedNpcs: entities.npcs,
+    namedPlaces: entities.places,
+    namedProps: entities.props,
+    namedExits: entities.exits,
+  };
 }
 
 type InteriorFamily = {
@@ -412,44 +360,73 @@ function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string)
       poiLabel = 'Courier satchel';
     }
   }
-  for (const entity of continuity.namedEntities) {
-    if (/mara\s+venn/i.test(entity)) {
-      npcLabel = 'Mara Venn';
-      if (!/mara\s+venn/i.test(`${mood} ${description}`)) {
-        mood = `${mood} Mara Venn waits for the hand-off.`;
-        description = `${description} Mara Venn is here expecting the courier.`;
-      }
-      continue;
+  const haystack = () => `${mood} ${description} ${poiLabel} ${lightLabel} ${coverLabel}`;
+  const mentions = (label: string) =>
+    new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(haystack());
+  const withArticle = (label: string) => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
+
+  const [firstNpc, ...otherNpcs] = continuity.namedNpcs;
+  if (firstNpc !== undefined) {
+    npcLabel = firstNpc;
+    if (!mentions(firstNpc)) {
+      mood = `${mood} ${firstNpc} is waiting here.`;
+      description =
+        continuity.questHook !== null
+          ? `${description} ${firstNpc} is here, tied up in ${continuity.questHook}.`
+          : `${description} ${firstNpc} is here.`;
     }
-    if (/blue\s+heron/i.test(entity)) {
-      // Keep courier/poi intact — Blue Heron lives on cover so both stay map-visible.
-      if (!/blue\s+heron/i.test(coverLabel)) {
-        coverLabel = 'Blue Heron crate mark';
-      }
-      if (!/blue\s+heron/i.test(`${mood} ${description}`)) {
-        mood = `${mood} The Blue Heron is the meeting mark people still use.`;
-        description = `${description} A faded Blue Heron mark is scratched into a crate.`;
-      }
-      continue;
+  }
+
+  // The first named place becomes a visible mark on the cover slot; the rest stay in prose.
+  const [firstPlace, ...otherPlaces] = continuity.namedPlaces;
+  if (firstPlace !== undefined) {
+    if (!mentions(firstPlace)) {
+      coverLabel = `${firstPlace} mark`;
+      mood = `${mood} The ${firstPlace} is the meeting mark people still use.`;
+      description = `${description} A faded ${firstPlace} mark is scratched into the ${family.coverLabel.toLowerCase()}.`;
     }
-    if (/silver\s+lantern/i.test(entity)) {
-      lightLabel = /broken/i.test(entity) ? 'Broken silver lantern' : 'Silver lantern';
-      if (!/silver\s+lantern/i.test(description)) {
-        description = `${description} A ${entity} lies among the rope coils.`;
-      }
-      continue;
+  }
+
+  const props = [...continuity.namedProps];
+  const lightProp = props.find((prop) => isLightSourcePhrase(prop));
+  if (lightProp !== undefined) {
+    lightLabel = capitalizeLabel(lightProp);
+    props.splice(props.indexOf(lightProp), 1);
+    if (!new RegExp(lightProp, 'i').test(description)) {
+      description = `${description} ${capitalizeLabel(withArticle(lightProp))} sits within reach.`;
     }
-    if (/(?:red\s+(?:warehouse\s+)?door|warehouse\s+door)/i.test(entity)) {
-      const locked = /\blocked\b/i.test(entity);
-      exitLabel = locked ? 'Locked red warehouse door east' : 'Red warehouse door east';
-      exitDoorState = locked ? 'locked' : 'unlocked';
-      if (!/red\s+(?:warehouse\s+)?door/i.test(description)) {
-        description = `${description} The east exit is the ${entity}.`;
-      }
-      continue;
+  }
+  const [firstProp, ...otherProps] = props;
+  if (firstProp !== undefined) {
+    if (continuity.questHook === null) {
+      poiLabel = capitalizeLabel(firstProp);
     }
-    const escaped = entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!new RegExp(escaped, 'i').test(`${mood} ${description} ${poiLabel} ${lightLabel}`)) {
+    if (!mentions(firstProp)) {
+      description = `${description} ${capitalizeLabel(withArticle(firstProp))} is part of the scene.`;
+    }
+  }
+
+  const exits = continuity.namedExits;
+  const chosenExit = exits.find((exit) => isDoorLikeExitPhrase(exit)) ?? exits[0];
+  if (chosenExit !== undefined) {
+    const locked = /\b(locked|sealed|barred)\b/i.test(chosenExit);
+    const directional = /\b(east|west|north|south)\b/i.test(chosenExit);
+    const label = capitalizeLabel(chosenExit);
+    exitLabel = isDoorLikeExitPhrase(chosenExit) && !directional ? `${label} east` : label;
+    exitDoorState = locked ? 'locked' : 'unlocked';
+    if (!mentions(chosenExit)) {
+      description = `${description} The way onward is the ${chosenExit}.`;
+    }
+  }
+
+  const leftovers = [
+    ...otherNpcs,
+    ...otherPlaces,
+    ...otherProps,
+    ...exits.filter((exit) => exit !== chosenExit),
+  ];
+  for (const entity of leftovers) {
+    if (!mentions(entity)) {
       description = `${description} Premise detail kept: ${entity}.`;
     }
   }
@@ -853,6 +830,12 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
   return pickLandmarkFamily('watchtower', seed);
 }
 
+/** Canonical interior grid — west chamber (cols 1–6) | door wall | east chamber (cols 7–10). */
+const INTERIOR_COLUMNS = 12;
+const INTERIOR_ROWS = 8;
+const INTERIOR_WALL_COLUMN = 6;
+const INTERIOR_DOOR_ROW = 4;
+
 function composeInterior(options: {
   readonly sceneId: string;
   readonly premise: string;
@@ -863,41 +846,37 @@ function composeInterior(options: {
     pickInteriorFamily(options.premise, seed),
     options.premise,
   );
-  const columns = 10 + (seed % 3);
-  const rows = 7 + (seed % 2);
+  const columns = INTERIOR_COLUMNS;
+  const rows = INTERIOR_ROWS;
   const cells = perimeterCells(columns, rows);
-  const spawn = { column: 2, row: Math.floor(rows / 2) };
-  const wallColumn = Math.min(columns - 3, spawn.column + 3);
-  const doorRow = spawn.row;
-  const { edges, doorEdgeId } = eastDoorWall(
-    wallColumn,
-    doorRow,
-    Math.max(1, doorRow - 1),
-    Math.min(rows - 2, doorRow + 1),
-  );
-  setTerrain(cells, spawn.column + 1, spawn.row + 1, 'difficult');
+  // West chamber spawn — always inside vision of west-wing props.
+  const spawn = { column: 3, row: 4 };
+  const wallColumn = INTERIOR_WALL_COLUMN;
+  const doorRow = INTERIOR_DOOR_ROW;
+  // Full interior-height dividing wall (rows 1..rows-2) with the door at (6, 4).
+  const { edges, doorEdgeId } = eastDoorWall(wallColumn, doorRow, 1, rows - 2);
+  setTerrain(cells, 4, 5, 'difficult');
 
   const lightId = `${options.sceneId}:light`;
   const coverId = `${options.sceneId}:cover`;
   const poiId = `${options.sceneId}:poi`;
-  const lightPos = nearSpawn(spawn, columns, rows, -1, -1);
-  const coverPos = nearSpawn(spawn, columns, rows, 0, 1);
-  const poiPos = nearSpawn(spawn, columns, rows, 1, -1);
+  const chestId = `${options.sceneId}:east-chest`;
+  const passageExitId = `${options.sceneId}:exit-passage`;
   const features: ComposedSceneFeature[] = [
     {
       objectId: lightId,
-      column: lightPos.column,
-      row: lightPos.row,
+      column: 3,
+      row: 2,
       label: family.lightLabel,
       referenceKind: 'lighting',
       objectKind: 'light',
-      state: /broken/i.test(family.lightLabel) ? 'unlit' : 'lit',
+      state: /broken|unlit/i.test(family.lightLabel) ? 'unlit' : 'lit',
       interactable: true,
     },
     {
       objectId: coverId,
-      column: coverPos.column,
-      row: coverPos.row,
+      column: 2,
+      row: 2,
       label: family.coverLabel,
       referenceKind: 'cover',
       objectKind: 'cover',
@@ -906,21 +885,43 @@ function composeInterior(options: {
     },
     {
       objectId: poiId,
-      column: poiPos.column,
-      row: poiPos.row,
+      column: 4,
+      row: 4,
       label: family.poiLabel,
       referenceKind: family.poiRef,
       objectKind: family.poiKind,
       state: family.poiState,
       interactable: true,
     },
+    // East chamber — behind the closed dividing door.
+    {
+      objectId: chestId,
+      column: 9,
+      row: 2,
+      label: 'Sturdy oak chest',
+      referenceKind: 'prop',
+      objectKind: 'container',
+      state: 'closed',
+      interactable: true,
+    },
+    {
+      objectId: passageExitId,
+      column: 9,
+      row: 5,
+      label: family.exitLabel?.includes('Cellar') || /cellar|stairs|passage/i.test(family.exitLabel ?? '')
+        ? (family.exitLabel ?? 'Cellar stairs')
+        : 'Cellar stairs',
+      referenceKind: 'exit',
+      objectKind: 'exit',
+      state: 'present',
+      interactable: true,
+    },
   ];
   if (family.npcLabel !== null && family.npcLabel !== undefined && family.npcLabel.trim().length > 0) {
-    const npcPos = nearSpawn(spawn, columns, rows, -1, 1);
     features.push({
       objectId: `${options.sceneId}:npc-premise`,
-      column: npcPos.column,
-      row: npcPos.row,
+      column: 2,
+      row: 3,
       label: family.npcLabel,
       referenceKind: 'npc',
       objectKind: 'npc',
@@ -929,7 +930,8 @@ function composeInterior(options: {
     });
   }
 
-  const exitLabel = family.exitLabel ?? 'Wooden doorway east';
+  // Dividing door stays the tactical east leaf; the passage exit is the scene travel target.
+  const exitDoorLabel = family.exitLabel ?? 'Wooden doorway east';
   const exitDoorState: DoorState = family.exitDoorState ?? 'closed';
 
   return {
@@ -950,8 +952,13 @@ function composeInterior(options: {
     spawn,
     exits: [
       {
-        exitId: `${options.sceneId}:exit-east`,
-        label: exitLabel,
+        exitId: passageExitId,
+        label: 'Cellar stairs',
+        destinationHint: inferExteriorHint(options.premise, seed),
+      },
+      {
+        exitId: `${options.sceneId}:exit-east-door`,
+        label: exitDoorLabel,
         destinationHint: inferExteriorHint(options.premise, seed),
       },
     ],

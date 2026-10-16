@@ -11,6 +11,12 @@ import {
   matchLandmarkDestination,
   sceneContractSummary,
 } from '../../dist/server/table/scene-composition.js';
+import {
+  buildCampaignBlueprint,
+  extractPremiseEntities,
+  formatBlueprintBeatPrompt,
+  selectActiveBlueprintBeat,
+} from '../../dist/server/campaigns/campaign-blueprint.js';
 import { applyComposedSceneToRuntime, updateSceneObjectState } from '../../dist/server/table/scene-runtime.js';
 import { emptyMapRuntime } from '../../dist/server/table/map-runtime.js';
 import { buildAuthoritativeMapBundle } from '../../dist/server/table/map-projection.js';
@@ -333,5 +339,81 @@ describe('Premise named entities (UX 67–70 recheck)', () => {
       Object.values(scene.doorStates).some((state) => state === 'locked'),
       'locked red warehouse door must store locked leaf/lock',
     );
+  });
+});
+
+describe('Campaign Blueprint engine (general premise extraction)', () => {
+  const premise =
+    'At the Blue Heron, Mara Venn waits for a missing courier. A broken silver lantern and locked red warehouse door mark the canal loft.';
+
+  it('extracts NPCs, places, props, and exits without a hardcoded name list', () => {
+    const entities = extractPremiseEntities(premise);
+    assert.deepEqual([...entities.npcs], ['Mara Venn']);
+    assert.deepEqual([...entities.places], ['Blue Heron']);
+    assert.deepEqual([...entities.props], ['broken silver lantern']);
+    assert.deepEqual([...entities.exits], ['locked red warehouse door']);
+  });
+
+  it('extracts a different premise with the same rules', () => {
+    const entities = extractPremiseEntities(
+      'Captain Rook guards the Ashen Keep. Find the cracked bone key and the iron gate beneath the chapel. Meet Old Tom at Gull Street.',
+    );
+    assert.ok(entities.npcs.includes('Captain Rook'));
+    assert.ok(entities.npcs.includes('Old Tom') || entities.npcs.some((n) => /Tom/.test(n)));
+    assert.ok(entities.places.includes('Ashen Keep'));
+    assert.ok(entities.places.includes('Gull Street'));
+    assert.ok(entities.props.includes('cracked bone key'));
+    assert.ok(entities.exits.includes('iron gate'));
+  });
+
+  it('dresses an unrelated premise through the same general path', () => {
+    const scene = composeDirectorScene({
+      kind: 'interior',
+      sceneId: 'general-dress',
+      premise:
+        'In the Gull Tavern, Captain Rook hides a stolen brass key behind a sealed oak door while a missing courier is hunted.',
+      seedKey: 'camp-general:0',
+    });
+    assert.ok(scene.features.some((f) => /Captain Rook/.test(f.label) && f.objectKind === 'npc'));
+    assert.ok(scene.features.some((f) => /Gull Tavern/.test(f.label)));
+    assert.ok(scene.exits.some((e) => /sealed oak door/i.test(e.label)));
+    assert.ok(Object.values(scene.doorStates).some((state) => state === 'locked'));
+  });
+
+  it('leaves lowercase premises without named entities untouched', () => {
+    const entities = extractPremiseEntities('a misty marsh inn beside the reeds');
+    assert.equal(entities.npcs.length, 0);
+    assert.equal(entities.places.length, 0);
+    assert.equal(entities.props.length, 0);
+    assert.equal(entities.exits.length, 0);
+  });
+
+  it('builds a three-act blueprint and selects the active beat', () => {
+    const blueprint = buildCampaignBlueprint(premise);
+    assert.equal(blueprint.acts.length, 3);
+    assert.deepEqual(
+      blueprint.acts.map((beat) => beat.act),
+      [1, 2, 3],
+    );
+    assert.ok(blueprint.questHook && /courier/.test(blueprint.questHook));
+    assert.equal(blueprint.acts[0].templateIdHint, 'interior_canal_warehouse');
+    assert.match(blueprint.acts[0].keyClue, /broken silver lantern/);
+    assert.match(blueprint.acts[0].nextSceneTrigger, /locked red warehouse door/);
+    assert.match(blueprint.premiseDigest, /Blue Heron/);
+    assert.equal(selectActiveBlueprintBeat(blueprint, 0)?.act, 1);
+    assert.equal(selectActiveBlueprintBeat(blueprint, 1)?.act, 2);
+    assert.equal(selectActiveBlueprintBeat(blueprint, 9)?.act, 3);
+    assert.equal(selectActiveBlueprintBeat(null, 0), null);
+    const prompt = formatBlueprintBeatPrompt(blueprint.acts[0]);
+    assert.match(prompt, /Current act goal/);
+    assert.match(prompt, /Key clue/);
+    assert.match(prompt, /Next scene trigger/);
+    assert.match(prompt, /freedom/i);
+  });
+
+  it('produces a valid blueprint for an empty premise', () => {
+    const blueprint = buildCampaignBlueprint('');
+    assert.equal(blueprint.acts.length, 3);
+    assert.equal(blueprint.questHook, null);
   });
 });
