@@ -20,6 +20,7 @@ import {
   type MapNotableFeatureRecord,
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
+import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
@@ -49,6 +50,8 @@ interface StoredSeat {
   readonly ownerAccountId: string;
   readonly characterId: string;
   readonly characterName: string;
+  /** Joined from the character document at load time; absent on raw seat docs. */
+  readonly avatarUrl?: string | null;
 }
 
 export async function assertCampaignMember(options: {
@@ -201,6 +204,7 @@ function buildTokens(
       tokenId: `token:${seat.seatId}`,
       seatId: seat.seatId,
       label: seat.characterName || 'Seated character',
+      avatarUrl: seat.avatarUrl ?? null,
       footprint: {
         size: 'medium',
         anchor,
@@ -458,7 +462,23 @@ export async function loadCampaignSeats(
     .where('campaignId', '==', campaignId)
     .limit(12)
     .get();
-  return seatSnap.docs.map((doc) => doc.data() as StoredSeat);
+  const seats = seatSnap.docs.map((doc) => doc.data() as StoredSeat);
+  return Promise.all(
+    seats.map(async (seat) => {
+      try {
+        const characterSnap = await firestore
+          .collection(COLLECTIONS.characters)
+          .doc(seat.characterId)
+          .get();
+        const avatarUrl = characterSnap.exists
+          ? (characterSnap.data() as { avatarUrl?: unknown }).avatarUrl
+          : null;
+        return { ...seat, avatarUrl: isTrustedAvatarUrl(avatarUrl) ? avatarUrl : null };
+      } catch {
+        return { ...seat, avatarUrl: null };
+      }
+    }),
+  );
 }
 
 /**

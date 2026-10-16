@@ -107,6 +107,7 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
 import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
+import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import { bindModalChrome } from '../modal-engine.js';
@@ -1340,8 +1341,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       </p>`;
     }
     const sheet = progression.sheet;
-    const label =
-      mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
+    const ownToken = mapBundle?.tokens.find((token) => token.seatId === ownSeatId);
+    const label = ownToken?.label ?? 'Your character';
+    const heroAvatarUrl =
+      typeof ownToken?.avatarUrl === 'string' && isTrustedAvatarUrl(ownToken.avatarUrl)
+        ? ownToken.avatarUrl
+        : null;
     const classLabel = (progression.classId ?? 'adventurer')
       .replace(/[-_]+/g, ' ')
       .replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -1356,7 +1361,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       <div class="table-character-compact hero-mini-sheet" data-testid="table-character-compact">
         <button type="button" class="hero-mini-hud" data-testid="table-character-hud"
           aria-label="Open character sheet for ${escapeHtml(label)}">
-          <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>
+          ${
+            heroAvatarUrl !== null
+              ? `<img class="hero-mini-avatar hero-mini-avatar-img" data-testid="hero-avatar-img" src="${escapeHtml(heroAvatarUrl)}" alt="" />`
+              : `<span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1).toUpperCase())}</span>`
+          }
           <span class="hero-mini-copy">
             <strong class="hero-mini-name">${escapeHtml(label)}</strong>
             <span class="record-meta" data-testid="hero-class-level">Lv ${sheet.level} ${escapeHtml(classLabel)}</span>

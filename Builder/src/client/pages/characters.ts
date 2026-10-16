@@ -9,6 +9,7 @@
  */
 
 import type { CharacterVaultProjection } from '../../shared/character-contract.js';
+import { archetypePortraitUrl } from '../../shared/portrait-contract.js';
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
 import { ApiFailure, discardDraft, fetchVault } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -88,7 +89,17 @@ export function mountCharactersPage(host: PageHost): void {
                   ${characters
                     .map(
                       (character) => `
-                    <li data-testid="character-item">
+                    <li data-testid="character-item" class="vault-character-card">
+                      <img class="vault-portrait" data-testid="vault-portrait" width="48" height="48"
+                        src="${escapeHtml(
+                          character.avatarUrl && character.avatarUrl.length > 0
+                            ? character.avatarUrl
+                            : archetypePortraitUrl({
+                                ancestryId: character.speciesLabel.toLowerCase(),
+                                classId: character.classLabel.toLowerCase(),
+                                name: character.name,
+                              }),
+                        )}" alt="Portrait of ${escapeHtml(character.name)}" loading="lazy" />
                       <a class="record-note" href="/characters/${escapeHtml(character.characterId)}" data-link data-testid="character-link">
                         ${escapeHtml(character.name)}
                       </a>

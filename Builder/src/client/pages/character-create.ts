@@ -35,11 +35,17 @@ import {
   applyQuickStartTemplate,
   createCharacter,
   discardDraft,
+  generatePortrait,
   openDraft,
   rollDraftAbilities,
   saveDraft,
   type DraftResponse,
 } from '../api.js';
+import {
+  APPEARANCE_PROMPT_MAX_LENGTH,
+  archetypePortraitUrl,
+  validateAppearancePrompt,
+} from '../../shared/portrait-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { isCreatorTutorialDismissed, setCreatorTutorialDismissed } from '../browser-preferences.js';
@@ -190,6 +196,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let inFlightChoices: CharacterChoices | null = null;
   /** Advance to next wizard step once the in-flight save finishes. */
   let pendingAdvance = false;
+  /** Physical Appearance text typed in the portrait section; survives re-renders. */
+  let portraitPromptText: string | null = null;
+  let portraitBusy = false;
+  let portraitError: string | null = null;
   let openGeneration = 0;
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let legalGateBusy = false;
@@ -1157,6 +1167,95 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${spells}`;
   }
 
+  function portraitPromptValue(): string {
+    return portraitPromptText ?? current?.draft.appearancePrompt ?? '';
+  }
+
+  function renderPortraitSection(): string {
+    const state = current;
+    if (state === null) {
+      return '';
+    }
+    const choices = state.draft.choices;
+    const forged = state.draft.avatarUrl ?? null;
+    const previewUrl =
+      forged ??
+      archetypePortraitUrl({
+        ancestryId: choices.speciesId,
+        classId: choices.classId,
+        name: choices.identity.name,
+      });
+    const promptValue = portraitPromptValue();
+    return `
+      <section class="panel portrait-section" data-testid="portrait-section" aria-labelledby="portrait-heading">
+        <h3 id="portrait-heading">Portrait &amp; Physical Appearance</h3>
+        <div class="portrait-section-body">
+          <img class="portrait-preview" data-testid="portrait-preview" src="${escapeHtml(previewUrl)}"
+            alt="${forged ? 'Forged character portrait' : 'Default archetype portrait'}" width="128" height="128" />
+          <div class="portrait-section-fields">
+            <label for="character-physical-appearance">Physical Appearance (max ${APPEARANCE_PROMPT_MAX_LENGTH} characters)</label>
+            <textarea id="character-physical-appearance" data-testid="identity-physical-appearance"
+              rows="3" maxlength="${APPEARANCE_PROMPT_MAX_LENGTH}"
+              placeholder="Braided auburn beard, soot-stained leather, a notch in the left ear…">${escapeHtml(promptValue)}</textarea>
+            <p class="record-meta" data-testid="portrait-char-count">${promptValue.length}/${APPEARANCE_PROMPT_MAX_LENGTH}</p>
+            <p class="message error" data-testid="portrait-error" role="alert" ${portraitError === null ? 'hidden' : ''}>${escapeHtml(portraitError ?? '')}</p>
+            <button type="button" class="button" data-testid="forge-portrait" ${portraitBusy || busy ? 'disabled' : ''}>
+              ${portraitBusy ? 'Forging…' : 'Forge Portrait'}
+            </button>
+            <p class="record-meta">${forged ? 'Portrait saved with this draft.' : 'Showing the curated default until you forge one.'}
+              Medieval fantasy only.</p>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  async function forgePortrait(): Promise<boolean> {
+    if (candidate === null || current === null) {
+      return false;
+    }
+    const validation = validateAppearancePrompt(portraitPromptValue());
+    if (!validation.ok) {
+      portraitError = validation.message;
+      render();
+      return false;
+    }
+    portraitBusy = true;
+    portraitError = null;
+    render();
+    try {
+      const choices = current.draft.choices;
+      const result = await generatePortrait({
+        candidateId: candidate.candidateId,
+        request: {
+          appearancePrompt: validation.text,
+          ancestryId: choices.speciesId,
+          classId: choices.classId,
+          draftId: current.draft.draftId,
+        },
+      });
+      current = {
+        ...current,
+        draft: {
+          ...current.draft,
+          avatarUrl: result.avatarUrl,
+          appearancePrompt: result.appearancePrompt,
+        },
+      };
+      portraitPromptText = result.appearancePrompt;
+      shell.announce(
+        result.source === 'generated' ? 'Portrait forged.' : 'Portrait set from the curated archetype gallery.',
+      );
+      return true;
+    } catch (failure) {
+      portraitError =
+        failure instanceof ApiFailure ? failure.message : 'That portrait could not be forged.';
+      return false;
+    } finally {
+      portraitBusy = false;
+      render();
+    }
+  }
+
   function renderIdentityStep(): string {
     const state = current;
     if (state === null) {
@@ -1175,8 +1274,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
         briefly show <strong>Saving…</strong> — your draft is still safe on the server.
       </p>
       <div class="identity-token-preview" data-testid="identity-token-preview" aria-live="polite">
-        <span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>
-        <span class="record-meta">Map token initial preview</span>
+        ${
+          state.draft.avatarUrl
+            ? `<img class="hero-mini-avatar hero-mini-avatar-img" data-testid="identity-token-avatar" src="${escapeHtml(state.draft.avatarUrl)}" alt="" />`
+            : `<span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>`
+        }
+        <span class="record-meta">Map token preview</span>
       </div>
       <label for="character-name">Character name (required, max ${nameMax} characters)</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
@@ -1194,6 +1297,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
         maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Concept"
         value="${escapeHtml(identity.concept)}" autocomplete="off" placeholder="Optional one-liner" />
+
+      ${renderPortraitSection()}
 
       <section class="panel" data-testid="character-readiness-summary" aria-labelledby="readiness-heading">
         <h3 id="readiness-heading">What can this character do?</h3>
@@ -1921,6 +2026,29 @@ export function mountCharacterCreatePage(host: PageHost): void {
       input.addEventListener('change', persistIdentity);
     });
 
+    const physicalAppearance = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="identity-physical-appearance"]',
+    );
+    physicalAppearance?.addEventListener('input', () => {
+      portraitPromptText = physicalAppearance.value;
+      const validation = validateAppearancePrompt(physicalAppearance.value);
+      const errorNode = container.querySelector<HTMLElement>('[data-testid="portrait-error"]');
+      const countNode = container.querySelector<HTMLElement>('[data-testid="portrait-char-count"]');
+      if (countNode !== null) {
+        countNode.textContent = `${physicalAppearance.value.length}/${APPEARANCE_PROMPT_MAX_LENGTH}`;
+      }
+      portraitError = validation.ok ? null : validation.message;
+      if (errorNode !== null) {
+        errorNode.textContent = portraitError ?? '';
+        errorNode.hidden = portraitError === null;
+      }
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="forge-portrait"]')
+      ?.addEventListener('click', () => {
+        void forgePortrait();
+      });
+
     container
       .querySelector<HTMLButtonElement>('[data-testid="create-character"]')
       ?.addEventListener('click', () => {
@@ -1955,6 +2083,20 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 : 'Cannot create yet. Finish every required choice first.';
             shell.announce(error);
             render();
+            return;
+          }
+          const pendingPrompt = portraitPromptValue().trim();
+          if (
+            current.draft.avatarUrl === null ||
+            current.draft.avatarUrl === undefined
+          ) {
+            if (pendingPrompt.length > 0 && !(await forgePortrait()) && portraitError !== null) {
+              error = portraitError;
+              render();
+              return;
+            }
+          }
+          if (current === null) {
             return;
           }
           busy = true;

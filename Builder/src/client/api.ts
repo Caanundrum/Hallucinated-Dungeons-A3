@@ -42,6 +42,11 @@ import type {
   CampaignSessionSuspendResponse,
   PersonalRecapProjection,
 } from '../shared/campaign-memory-contract.js';
+import {
+  GENERATE_PORTRAIT_PATH,
+  type GeneratePortraitRequest,
+  type GeneratePortraitResponse,
+} from '../shared/portrait-contract.js';
 import type { PresentationCuePlanProjection } from '../shared/presentation-cue-contract.js';
 import type {
   ChronicleFeedProjection,
@@ -240,6 +245,17 @@ export async function rollDraftAbilities(options: {
     method: 'POST',
     candidateId: options.candidateId,
   })) as DraftResponse;
+}
+
+export async function generatePortrait(options: {
+  readonly candidateId: string;
+  readonly request: GeneratePortraitRequest;
+}): Promise<GeneratePortraitResponse> {
+  return (await request<GeneratePortraitResponse>(GENERATE_PORTRAIT_PATH, {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify(options.request),
+  })) as GeneratePortraitResponse;
 }
 
 export async function createCharacter(options: {
