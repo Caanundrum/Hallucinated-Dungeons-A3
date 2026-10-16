@@ -3118,8 +3118,8 @@ button[aria-disabled="true"] {
 
 .campaign-list-tools {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: minmax(10rem, 1.4fr) repeat(4, minmax(7.5rem, 1fr)) auto;
+  gap: var(--space-2) var(--space-3);
   align-items: end;
   margin: 0 0 var(--space-4);
 }
@@ -3128,11 +3128,28 @@ button[aria-disabled="true"] {
   margin-bottom: 0;
 }
 
+.campaign-list-tools .field span {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
 .campaign-list-tools .actions[role='tablist'] {
-  grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
+  align-items: center;
+  padding-bottom: 0.15rem;
+}
+
+@media (max-width: 900px) {
+  .campaign-list-tools {
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  }
+
+  .campaign-list-tools .actions[role='tablist'] {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
 }
 
 .option {
