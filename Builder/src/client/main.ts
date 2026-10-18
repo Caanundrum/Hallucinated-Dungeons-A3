@@ -15,6 +15,7 @@ import {
 } from '../shared/routes.js';
 import { hydrateAccount, clearAccountOnAuthFailure, getAccount } from './account-session.js';
 import { fetchCandidate, fetchPlayerSettings, onAuthFailure } from './api.js';
+import { hasSeenChaosBoot, playChaosBootSequence } from './chaos-boot-sequence.js';
 import { applyPresentationPreferences, clearPresentationPreferences } from './presentation-preferences.js';
 import { mountAccountPage } from './pages/account.js';
 import { mountAdminPage } from './pages/admin.js';
@@ -140,6 +141,9 @@ async function start(): Promise<void> {
     if (path === '/') {
       if (hostedPlayerEntry && getAccount() === null) {
         mountWelcomePage(host);
+        if (!hasSeenChaosBoot()) {
+          void playChaosBootSequence();
+        }
       } else {
         mountHomePage(host);
       }

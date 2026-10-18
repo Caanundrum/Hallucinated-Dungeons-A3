@@ -1,9 +1,9 @@
 /**
  * Hosted player welcome: one full-screen entry point before sign-in.
  *
- * Milestone / Gold Master artifacts land here first. Signed-in players are
- * routed straight to the campaign list; unsigned players see the official
- * Google Sign-In button per Google Identity Services branding policy.
+ * Milestone / Gold Master artifacts land here after the Chaos Standard splash reveal.
+ * Signed-in players are routed straight to the Home dashboard; unsigned players
+ * see the official Google Sign-In button per Google Identity Services branding policy.
  */
 
 import { LEGAL_ROUTES } from '../../shared/routes.js';
@@ -55,7 +55,7 @@ export function mountWelcomePage(host: PageHost): void {
       return;
     }
     shell.setPresentationMode('app');
-    navigate('/campaigns', { replace: true });
+    navigate('/', { replace: true });
   }
 
   function render(): void {
@@ -72,20 +72,34 @@ export function mountWelcomePage(host: PageHost): void {
     container.innerHTML = `
       <div class="welcome-screen" data-testid="welcome-screen">
         <div class="welcome-screen-inner">
+          <div class="welcome-cs-badge" data-testid="welcome-cs-badge">
+            <img src="/brand/chaos-mark-symbol.png" alt="Chaos Standard" class="welcome-cs-logo" width="28" height="28" />
+            <span class="welcome-cs-badge-text">A CHAOS STANDARD GAME · ALPHA 3</span>
+          </div>
+
           <div class="welcome-logo-stage" data-testid="welcome-logo-stage">
             ${WELCOME_LOGO_MARK}
           </div>
-          <p class="welcome-eyebrow">A Chaos Standard table · Invite-only alpha</p>
+
           <h1 class="welcome-title" data-testid="welcome-heading">Hallucinated Dungeons</h1>
+          <p class="welcome-subtitle">Tabletop RPG Soul × Generative Fantasy Intelligence</p>
           <p class="welcome-lead">
-            Forge a hero, gather your party, and step into a living story told around a shared
-            table. Play together in the browser with friends &mdash; no download, no install.
+            Step into an unscripted fantasy world moderated by an autonomous AI Dungeon Master.
+            Forge a hero, gather your party, and play together in the browser with full SRD 5.2.1 mechanics &mdash; no download, no install.
           </p>
+
+          <div class="welcome-feature-pills">
+            <span class="welcome-pill">🎲 SRD 5.2.1 Rules Foundation</span>
+            <span class="welcome-pill">🧠 Autonomous AI Director</span>
+            <span class="welcome-pill">🌐 Browser-Native Multiplayer</span>
+          </div>
+
           ${
             error === null
               ? ''
               : `<div class="message error welcome-error" role="alert" tabindex="-1" data-testid="welcome-error">${escapeHtml(error)}</div>`
           }
+
           <div class="welcome-actions">
             ${
               candidate === null
@@ -95,6 +109,13 @@ export function mountWelcomePage(host: PageHost): void {
                   : `<div class="hosted-google-sign-in" data-testid="welcome-google-hosted-button"></div>`
             }
           </div>
+
+          <div class="welcome-studio-attribution">
+            <a href="https://chaosstandard.com" target="_blank" rel="noopener noreferrer" class="welcome-studio-link">
+              Chaos Standard &mdash; <em>"We take making ridiculous things extremely seriously."</em>
+            </a>
+          </div>
+
           <p class="welcome-legal welcome-legal-footer" data-testid="welcome-legal-links">
             By continuing you agree to our legal terms —
             ${welcomeLegalLinks()}.

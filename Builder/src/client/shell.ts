@@ -106,7 +106,12 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
     <div class="shell">
       <header class="shell-header">
         <div class="shell-header-inner">
-          <a class="wordmark" href="/" data-link>Hallucinated Dungeons</a>
+          <a class="wordmark" href="/" data-link data-testid="shell-wordmark">
+            <img src="/brand/chaos-mark-symbol.png" alt="Chaos Standard" class="shell-cs-icon" width="22" height="22" />
+            <span class="shell-cs-brand">CHAOS STANDARD</span>
+            <span class="shell-brand-divider" aria-hidden="true">//</span>
+            <span class="shell-game-title">Hallucinated Dungeons</span>
+          </a>
           <nav class="primary-nav" aria-label="Primary">
             <ul>
               <li><a href="/" data-link data-testid="nav-home">Home</a></li>
@@ -127,13 +132,20 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
       <main id="main" class="shell-main" tabindex="-1"></main>
       <footer class="shell-footer">
         <div class="shell-footer-inner">
+          <div class="shell-footer-studio">
+            <a href="https://chaosstandard.com" target="_blank" rel="noopener noreferrer" class="shell-studio-link">
+              <img src="/brand/chaos-mark-symbol.png" alt="" width="16" height="16" class="shell-studio-icon" />
+              <span>A Chaos Standard Game</span>
+            </a>
+            <span class="shell-studio-motto">&mdash; <em>"We take making ridiculous things extremely seriously."</em></span>
+          </div>
           <ul class="footer-legal-links" data-testid="footer-legal-links">${legalLinks}</ul>
           <p class="footer-build-info" data-testid="footer-build-info">
             ${
               candidate === null
                 ? 'Connecting…'
                 : isHostedPlayerSurface(candidate)
-                  ? 'Hallucinated Dungeons · Invite-Only Alpha'
+                  ? 'Hallucinated Dungeons · Alpha 3 Staging'
                   : `Blueprint ${escapeHtml(candidate.blueprintVersion)} · Build ${escapeHtml(candidate.candidateId)}`
             }
           </p>
