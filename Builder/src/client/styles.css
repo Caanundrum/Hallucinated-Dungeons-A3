@@ -1546,41 +1546,6 @@ ol.record-list.dm-thread-list > li {
   .table-floating-hud .hero-mini-actions {
     display: none;
   }
-
-  .hero-mini-hud {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .hero-mini-copy {
-    display: grid;
-    gap: 0.15rem;
-    min-width: 0;
-  }
-
-  .hero-mini-stats {
-    display: flex;
-    flex-wrap: nowrap;
-    white-space: nowrap;
-    gap: 0.55rem;
-    font-size: 0.85rem;
-    opacity: 0.95;
-  }
-
-  .hero-mini-copy .record-meta {
-    color: var(--text-secondary);
-    opacity: 0.95;
-    font-weight: 500;
-  }
 }
 
 @media (min-width: 1101px) {
@@ -4760,8 +4725,74 @@ html.hd-low-effects .table-stage-svg-viewport,
   overflow: auto;
 }
 
+.table-character-compact.hero-mini-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3) !important;
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--panel-surface) 96%, #000);
+  border: var(--border-weight) solid var(--panel-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
 .hero-mini-sheet {
   gap: var(--space-3) !important;
+}
+
+.hero-mini-hud {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.hero-mini-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.hero-mini-name {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.hero-mini-copy .record-meta {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 1 !important;
+}
+
+.hero-mini-stats {
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.hero-mini-stats [data-testid="hero-hp-inline"],
+.hero-mini-stats [data-testid="hero-ac-badge"] {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .hero-mini-identity {

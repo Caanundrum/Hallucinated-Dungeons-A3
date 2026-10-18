@@ -89,28 +89,53 @@ function formatEncounter(encounter: EncounterProjection | null): string {
   ].join('\n');
 }
 
-function formatMap(map: MapBundleProjection): string {
+export function formatMap(map: MapBundleProjection): string {
   const ownToken =
     map.viewerSeatId === null
       ? null
       : map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? null;
-  const features = map.notableFeatures
-    .map((feature) => {
-      if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
-        return feature.label;
-      }
-      return feature.label;
-    })
+  // Separate non-exit features from exit features so exits are never duplicated between features and doors
+  const exitFeatures = map.notableFeatures.filter(
+    (feature) =>
+      feature.referenceKind === 'exit' ||
+      feature.objectKind === 'exit' ||
+      (typeof feature.objectId === 'string' && feature.objectId.includes(':exit')),
+  );
+
+  const nonExitFeatures = map.notableFeatures
+    .filter(
+      (feature) =>
+        feature.referenceKind !== 'exit' &&
+        feature.objectKind !== 'exit' &&
+        !(typeof feature.objectId === 'string' && feature.objectId.includes(':exit')),
+    )
+    .map((feature) => feature.label)
     .slice(0, 12);
+
   const visibleDoors = map.edges
     .filter((edge) => edge.kind === 'door')
     .map((edge) => {
       const facing = edge.orientation;
       const state = edge.doorState ?? 'closed';
       const stateLabel = state === 'unlocked' ? 'closed, unlocked' : state;
+      // Match with an exit feature if one aliases this doorway
+      const matchingExit = exitFeatures.find((ef) => {
+        const lowerLabel = ef.label.toLowerCase();
+        return (
+          lowerLabel.includes(facing) ||
+          (Math.abs(ef.column - edge.column) <= 1 && Math.abs(ef.row - edge.row) <= 1)
+        );
+      });
+      if (matchingExit !== undefined) {
+        const baseAlias = matchingExit.label.replace(/\s*\([^)]*\)\s*/g, '').trim();
+        if (baseAlias.length > 0 && !baseAlias.toLowerCase().includes('doorway')) {
+          return `${baseAlias} (wooden doorway ${facing}) — ${stateLabel}`;
+        }
+      }
       return `Wooden doorway ${facing} — ${stateLabel}`;
     })
     .slice(0, 12);
+
   return [
     `Scene: ${map.title}`,
     `Banner: ${map.sceneBanner}`,
@@ -118,8 +143,12 @@ function formatMap(map: MapBundleProjection): string {
       ? 'Your token is on the current scene map.'
       : 'No seated token on the map for this viewer.',
     `Visible squares: ${map.visibleSquareIds.length}; explored: ${map.exploredSquareIds.length}`,
-    visibleDoors.length > 0 ? `Doors known: ${visibleDoors.join('; ')}` : 'No doors in the visible projection.',
-    features.length > 0 ? `Visible features: ${features.join('; ')}` : 'No named features in visible squares.',
+    visibleDoors.length > 0
+      ? `Doors / Exits known (each entry is one distinct route — do not describe doorways and archways as separate routes if they share an alias): ${visibleDoors.join('; ')}`
+      : 'No doors in the visible projection.',
+    nonExitFeatures.length > 0
+      ? `Visible features: ${nonExitFeatures.join('; ')}`
+      : 'No named features in visible squares.',
   ].join('\n');
 }
 

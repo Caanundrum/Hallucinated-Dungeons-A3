@@ -232,6 +232,10 @@ export function resolveIntentAuthority(
   parsed: StructuredDeclarationParse,
 ): IntentAuthorityResolution {
   const ignoredWorldFacts = [...parsed.playerAssertedWorldFacts];
+  const inventIgnoredNote =
+    ignoredWorldFacts.length > 0
+      ? ' Player-authored places, NPCs, or rules were ignored — only the Game Director establishes those.'
+      : '';
   const understanding = understandUtterance(parsed.rawText);
   const sequence = filterActionsByConstraints(
     [...parsed.actionSequence],
@@ -430,7 +434,6 @@ export function resolveIntentAuthority(
         step.outcomeHint === 'door_state' ||
         step.outcomeHint === 'scene_perception' ||
         step.outcomeHint === 'sensory_sequence' ||
-        step.outcomeHint === 'stealth_hide' ||
         step.outcomeHint === 'stay_put' ||
         step.outcomeHint === 'who_is_present' ||
         step.outcomeHint === 'map_state_correction' ||
@@ -455,7 +458,32 @@ export function resolveIntentAuthority(
   }
 
   if (actionable.length > 1) {
-    // Prefer the first concrete table action; Director narration can carry flavor.
+    // Prefer an active skill check or concrete table action; Director narration can carry flavor.
+    const skillCheckStep = actionable.find(
+      (step) =>
+        step.kind === 'inspect' &&
+        (step.outcomeHint === 'trap_search' ||
+          step.outcomeHint === 'investigate_mark' ||
+          step.outcomeHint === 'active_search' ||
+          step.outcomeHint === 'stealth_hide'),
+    );
+    if (skillCheckStep !== undefined) {
+      return {
+        disposition: 'propose_command',
+        actionSequence: [skillCheckStep],
+        ignoredWorldFacts,
+        clarificationPrompt: null,
+        summary:
+          skillCheckStep.outcomeHint === 'stealth_hide'
+            ? 'Ready to hide. Confirm to roll Stealth check on the table.' + inventIgnoredNote
+            : skillCheckStep.outcomeHint === 'investigate_mark'
+              ? 'Ready to inspect the mark. Confirm to roll Investigation check on the table.' + inventIgnoredNote
+              : skillCheckStep.outcomeHint === 'active_search'
+                ? 'Ready to search carefully. Confirm to roll Investigation check on the table.' + inventIgnoredNote
+                : 'Ready to search carefully for traps. Confirm to roll Investigation against the named target.' + inventIgnoredNote,
+        proposedCommandType: 'table.sync',
+      };
+    }
     const primaryStep =
       actionable.find(
         (step) =>
@@ -499,23 +527,29 @@ export function resolveIntentAuthority(
   }
 
   const only = actionable[0]!;
-  const inventIgnoredNote =
-    ignoredWorldFacts.length > 0
-      ? ' Player-authored places, NPCs, or rules were ignored — only the Game Director establishes those.'
-      : '';
 
   // Perception / presence checks are Director narration, never map or combat commands.
   // Trap / hazard searches are confirmable skill-check drafts (not casual prose).
   if (only.kind === 'inspect') {
-    if (only.outcomeHint === 'trap_search') {
+    if (
+      only.outcomeHint === 'trap_search' ||
+      only.outcomeHint === 'investigate_mark' ||
+      only.outcomeHint === 'active_search' ||
+      only.outcomeHint === 'stealth_hide'
+    ) {
       return {
         disposition: 'propose_command',
         actionSequence: [only],
         ignoredWorldFacts,
         clarificationPrompt: null,
         summary:
-          'Ready to search carefully for traps. Confirm to roll Investigation against the named target.' +
-          inventIgnoredNote,
+          only.outcomeHint === 'stealth_hide'
+            ? 'Ready to hide. Confirm to roll Stealth check on the table.' + inventIgnoredNote
+            : only.outcomeHint === 'investigate_mark'
+              ? 'Ready to inspect the mark. Confirm to roll Investigation check on the table.' + inventIgnoredNote
+              : only.outcomeHint === 'active_search'
+                ? 'Ready to search carefully. Confirm to roll Investigation check on the table.' + inventIgnoredNote
+                : 'Ready to search carefully for traps. Confirm to roll Investigation against the named target.' + inventIgnoredNote,
         proposedCommandType: 'table.sync',
       };
     }
@@ -547,7 +581,7 @@ export function resolveIntentAuthority(
     }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
-      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence' || only.outcomeHint === 'stealth_hide';
+      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence';
     const mapCorrection = only.outcomeHint === 'map_state_correction';
     return {
       disposition: 'director_narrate_only',
@@ -560,14 +594,12 @@ export function resolveIntentAuthority(
           : mapCorrection
             ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
-            ? only.outcomeHint === 'sensory_sequence' || only.outcomeHint === 'stealth_hide'
-              ? /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(
-                  parsed.rawText,
-                )
+            ? only.outcomeHint === 'sensory_sequence'
+              ? /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(parsed.rawText)
                 ? 'You listen from cover — the Game Director narrates what you perceive. Crouching does not establish a Hide on the table; no move or attack is prepared.'
                 : /\b(?:wait|hold\s+(?:still|position)|pause|minute)\b/i.test(parsed.rawText)
-                  ? 'You wait a beat and listen — the Game Director narrates what you perceive after that short pause. No move or attack is prepared.'
-                  : 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
+                ? 'You wait a beat and listen — the Game Director narrates what you perceive after that short pause. No move or attack is prepared.'
+                : 'You hold still and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
               : only.outcomeHint === 'listen'
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
               : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
@@ -950,6 +982,10 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'scene_perception' });
   }
 
+  const wantsInvestigation =
+    /\b(?:investigat(?:e|es|ing)?|using\s+(?:my\s+)?investigation)\b/i.test(trimmed);
+  const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed) && !observingScene;
+
   // Targeted prop examine / listen (lantern, window, shutters) — Director narrates.
   if (
     actionSequence.length === 0 &&
@@ -973,7 +1009,11 @@ export function parsePlayerDeclaration(
         ? 'listen'
         : /\blisten\b/i.test(trimmed)
           ? 'sensory_sequence'
-          : 'scene_perception',
+          : wantsInvestigation
+            ? 'investigate_mark'
+            : wantsSearch
+              ? 'active_search'
+              : 'scene_perception',
     });
   }
 
@@ -1046,7 +1086,10 @@ export function parsePlayerDeclaration(
     ) ||
       wantsBesideDoor) &&
     !wantsUnlock &&
-    !wantsTrapOrHazardSearch;
+    !wantsTrapOrHazardSearch &&
+    !wantsInvestigation &&
+    !wantsSearch &&
+    !wantsHide;
   if (wantsMove) {
     if (!actionSequence.some((step) => step.kind === 'move')) {
       actionSequence.push({

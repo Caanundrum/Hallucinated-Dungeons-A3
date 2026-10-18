@@ -455,8 +455,44 @@ export function sanitizeWotcProductIdentity(text: string): string {
   return result;
 }
 
+export interface ClassifiedNpcRoles {
+  readonly missingNpcs: readonly string[];
+  readonly presentNpcs: readonly string[];
+}
+
+export function classifyNpcRoles(
+  npcs: readonly string[],
+  premise: string,
+): ClassifiedNpcRoles {
+  const missing: string[] = [];
+  const present: string[] = [];
+
+  for (const name of npcs) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const isMissing =
+      new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:vanished|missing|lost|kidnapped|captive|hostage)\\b`, 'i').test(premise) ||
+      new RegExp(`\\b(?:vanished|missing|lost|kidnapped|captive|hostage|rescue|save)\\b[^.!?,;\\n]*\\b${escaped}\\b`, 'i').test(premise) ||
+      new RegExp(`\\b(?:find|rescue|save)\\s+(?:missing\\s+)?(?:courier\\s+|the\\s+)?${escaped}\\s+alive\\b`, 'i').test(premise);
+
+    const isPresent =
+      new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:waiting|entrance|greets?|meets?|here)\\b`, 'i').test(premise) ||
+      new RegExp(`\\b(?:waiting|entrance|greets?|meets?|question|speak\\s+with|talk\\s+to|meet)\\s+(?:(?:the|with|to)\\s+)?(?:[a-z]+\\s+){0,3}${escaped}\\b`, 'i').test(premise);
+
+    if (isMissing) {
+      missing.push(name);
+    } else if (isPresent) {
+      present.push(name);
+    } else {
+      present.push(name);
+    }
+  }
+
+  return { missingNpcs: missing, presentNpcs: present };
+}
+
 export interface BuildCampaignBlueprintOptions {
   readonly summary: string;
+  readonly premise?: string;
   readonly name?: string;
   readonly startLevel?: number;
   readonly targetEndLevel?: number;
@@ -505,6 +541,8 @@ function buildMilestoneGraph(options: {
   const milestones: CampaignMilestoneBlueprint[] = [];
   const totalMilestones = Math.max(1, options.targetEndLevel - options.startLevel);
   const toneLabel = CAMPAIGN_TONE_LABELS[options.campaignTone];
+  const premiseText = typeof options.premise === 'string' ? options.premise : '';
+  const { missingNpcs, presentNpcs } = classifyNpcRoles(options.entities.npcs, premiseText);
 
   for (let m = 1; m <= totalMilestones; m += 1) {
     const fromLevel = options.startLevel + m - 1;
@@ -520,23 +558,16 @@ function buildMilestoneGraph(options: {
     const r3EncounterXp = Math.round(xpBudgetForMilestone * 0.4);
 
     const openingNpcFromPremise =
-      m === 1 && typeof options.premise === 'string'
-        ? options.entities.npcs.find(
-            (name) =>
-              new RegExp(
-                `\\b${name}\\b[^.!?]*\\b(waiting|entrance|greets|meets)\\b`,
-                'i',
-              ).test(options.premise!) ||
-              new RegExp(`\\b(?:waiting|entrance)\\b[^.!?]*\\b${name}\\b`, 'i').test(
-                options.premise!,
-              ),
-          )
-        : null;
+      m === 1
+        ? presentNpcs[0] ??
+          options.entities.npcs.find((name) => !missingNpcs.includes(name)) ??
+          null
+        : presentNpcs[m - 1] ??
+          options.entities.npcs.filter((name) => !missingNpcs.includes(name))[m - 1] ??
+          null;
     const fallbackNpc = EVOCATIVE_FALLBACK_NPCS[(m - 1) % EVOCATIVE_FALLBACK_NPCS.length]!;
     const npcName = sanitizeWotcProductIdentity(
-      openingNpcFromPremise ??
-        options.entities.npcs[(m - 1) % Math.max(1, options.entities.npcs.length)] ??
-        fallbackNpc,
+      openingNpcFromPremise ?? fallbackNpc,
     );
     const fallbackPlaceBase =
       options.campaignName.trim().length > 0 &&
@@ -647,6 +678,29 @@ function buildMilestoneGraph(options: {
       });
     }
 
+    const missingTarget =
+      m === 1 && missingNpcs.length > 0 ? sanitizeWotcProductIdentity(missingNpcs[0]!) : null;
+
+    const room3Npcs: CampaignRoomBlueprint['npcs'] =
+      missingTarget !== null
+        ? [
+            {
+              name: missingTarget,
+              role: 'Missing person awaiting rescue',
+              portraitPrompt: sanitizeWotcProductIdentity(
+                `${missingTarget}, missing person awaiting rescue in ${placeName}, ${toneLabel.toLowerCase()} fantasy portrait`,
+              ),
+            },
+          ]
+        : [];
+
+    const room3SummaryFinal =
+      missingTarget !== null
+        ? sanitizeWotcProductIdentity(
+            `${room3Summary} ${missingTarget} is held here, awaiting rescue alongside ${options.hook}.`,
+          )
+        : room3Summary;
+
     const rooms: CampaignRoomBlueprint[] = [
       {
         sceneId: room1Id,
@@ -654,7 +708,9 @@ function buildMilestoneGraph(options: {
         roomIndex: 1,
         title: m === 1 ? capitalizeLabel(placeName) : `${capitalizeLabel(placeName)} — Threshold`,
         summary: sanitizeWotcProductIdentity(
-          `${npcName} keeps watch over ${placeName} where ${options.hook} begins to surface.`,
+          m === 1
+            ? `${npcName} is waiting at ${placeName} where ${options.hook} begins to surface.`
+            : `${npcName} keeps watch over ${placeName} where ${options.hook} begins to surface.`,
         ),
         templateId: m === 1 ? options.openingTemplate : options.investigationTemplate,
         battlemapPrompt: sanitizeWotcProductIdentity(
@@ -704,13 +760,13 @@ function buildMilestoneGraph(options: {
         milestoneIndex: m,
         roomIndex: 3,
         title: room3Title,
-        summary: room3Summary,
+        summary: room3SummaryFinal,
         templateId: 'interior_stone_crypt',
         battlemapPrompt: sanitizeWotcProductIdentity(
           `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework`,
         ),
         exits: room3Exits,
-        npcs: [],
+        npcs: room3Npcs,
         encounters: [
           {
             name: bossMonster.name,
@@ -737,7 +793,9 @@ function buildMilestoneGraph(options: {
         `Earn ${xpBudgetForMilestone} XP across ${placeName} (reaching ${requiredXpThreshold} total XP) to unlock the Level ${targetLevel} milestone.`,
       ),
       climaxObjective: sanitizeWotcProductIdentity(
-        `Uncover the truth behind ${options.hook} in ${placeName} and overcome the sanctum guardian.`,
+        missingTarget !== null
+          ? `Find ${missingTarget} alive in ${placeName} and recover ${options.hook}.`
+          : `Uncover the truth behind ${options.hook} in ${placeName} and overcome the sanctum guardian.`,
       ),
       rooms,
     });
@@ -751,7 +809,9 @@ export function buildCampaignBlueprint(
   maybeName?: string,
 ): CampaignBlueprint {
   const rawSummary =
-    typeof premiseOrOptions === 'string' ? premiseOrOptions : premiseOrOptions.summary;
+    typeof premiseOrOptions === 'string'
+      ? premiseOrOptions
+      : [premiseOrOptions.summary, premiseOrOptions.premise].filter(Boolean).join('\n\n');
   const campaignName =
     typeof premiseOrOptions === 'string'
       ? (maybeName ?? 'Campaign')
@@ -897,7 +957,9 @@ export async function draftCampaignBlueprintWithAi(
       `Campaign Title: ${sanitizeWotcProductIdentity(options.name ?? 'Campaign')}`,
       `Tone: ${CAMPAIGN_TONE_LABELS[base.campaignTone ?? 'heroic_fantasy']}`,
       `Level Range: Level ${base.startLevel ?? 1} to Level ${base.targetEndLevel ?? 3}`,
-      `Premise: ${sanitizeWotcProductIdentity(options.summary)}`,
+      `Premise: ${sanitizeWotcProductIdentity(
+        [options.summary, options.premise].filter(Boolean).join('\n\n') || options.summary,
+      )}`,
       'Return JSON only with shape: {"centralTension": string, "milestoneTitles": string[], "climaxObjectives": string[]}',
     ].join('\n');
 

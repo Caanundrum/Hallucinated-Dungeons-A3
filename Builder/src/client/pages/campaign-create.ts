@@ -155,7 +155,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
   const mountToken = beginPageMount(container);
 
   function effectivePremise(): string {
-    return (premise.trim() || summary.trim() || name.trim()).slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
+    const parts = [summary.trim(), premise.trim()].filter((part) => part.length > 0);
+    if (parts.length > 0) {
+      return parts.join('\n\n').slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
+    }
+    return name.trim().slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
   }
 
   function canSubmit(): boolean {

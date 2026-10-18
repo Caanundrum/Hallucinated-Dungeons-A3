@@ -1672,7 +1672,10 @@ export async function interpretNaturalLanguageIntent(options: {
       authority.actionSequence[0]?.kind === 'unlock_door') ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'inspect' &&
-      authority.actionSequence[0]?.outcomeHint === 'trap_search') ||
+      (authority.actionSequence[0]?.outcomeHint === 'trap_search' ||
+        authority.actionSequence[0]?.outcomeHint === 'investigate_mark' ||
+        authority.actionSequence[0]?.outcomeHint === 'active_search' ||
+        authority.actionSequence[0]?.outcomeHint === 'stealth_hide')) ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'inspect' &&
       authority.actionSequence[0]?.outcomeHint === 'take_container') ||
@@ -1819,7 +1822,10 @@ export async function interpretNaturalLanguageIntent(options: {
       authority.disposition === 'propose_command' &&
       (authority.actionSequence[0]?.kind === 'unlock_door' ||
         (authority.actionSequence[0]?.kind === 'inspect' &&
-          authority.actionSequence[0]?.outcomeHint === 'trap_search'))
+          (authority.actionSequence[0]?.outcomeHint === 'trap_search' ||
+            authority.actionSequence[0]?.outcomeHint === 'investigate_mark' ||
+            authority.actionSequence[0]?.outcomeHint === 'active_search' ||
+            authority.actionSequence[0]?.outcomeHint === 'stealth_hide')))
     ) {
       const extras = await loadScenePremiseExtras({
         firestore: options.firestore,

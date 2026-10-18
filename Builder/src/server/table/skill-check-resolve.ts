@@ -115,6 +115,15 @@ export function buildSkillCheckDraftSummary(
         return candidate;
       }
     }
+    const approachTarget = sanitized.match(
+      /\b(?:approach(?:es|ing)?|head(?:s|ing)?\s+to|move\s+to|walk\s+to)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:to|and|for)\b|[.,;!?]|$)/i,
+    );
+    if (approachTarget !== null && approachTarget[1]?.trim()) {
+      const candidate = approachTarget[1].trim();
+      if (!/^(?:me|myself|it|them|here|closer|door|doorway)$/i.test(candidate)) {
+        return candidate;
+      }
+    }
     const actionTarget = sanitized.match(
       /\b(?:investigat(?:e|es|ing)?|search(?:es|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)?)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:for|using|with|to|and)\b|[.,;!?]|$)/i,
     );
