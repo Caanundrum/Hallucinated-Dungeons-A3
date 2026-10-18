@@ -67,3 +67,23 @@ test('hosted Google session mint is refused on Local Arena', async () => {
     /Hosted Google Sign-In exists only on Milestone/,
   );
 });
+
+test('Google ID token exchange propagates Identity Toolkit error messages', async () => {
+  await assert.rejects(
+    () =>
+      exchangeGoogleIdToken({
+        webApiKey: 'test-key',
+        googleIdToken: 'a'.repeat(40),
+        requestUri: 'https://hd-a3-player--hd-a3-staging.us-central1.hosted.app',
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'CONFIGURATION_NOT_FOUND' },
+            }),
+            { status: 400, headers: { 'content-type': 'application/json' } },
+          ),
+      }),
+    /CONFIGURATION_NOT_FOUND/,
+  );
+});
+

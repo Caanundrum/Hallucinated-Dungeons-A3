@@ -613,7 +613,18 @@ function sessionTokenFrom(request: IncomingMessage): string | null {
 
 function sessionCookieFlags(env: ServerEnvironment): string {
   const secure = env.clientOrigin.startsWith('https:') ? '; Secure' : '';
-  return `Path=/; HttpOnly; SameSite=Strict${secure}`;
+  return `Path=/; HttpOnly; SameSite=Lax${secure}`;
+}
+
+function resolveApplicationOrigin(request: IncomingMessage, env: ServerEnvironment): string {
+  const forwardedHost = headerFirst(request.headers['x-forwarded-host']);
+  const host = forwardedHost ?? headerFirst(request.headers.host);
+  if (host && !host.includes('accounts.google.com')) {
+    const forwardedProto = headerFirst(request.headers['x-forwarded-proto']);
+    const proto = forwardedProto ?? (env.clientOrigin.startsWith('https') ? 'https' : 'http');
+    return `${proto}://${host}`;
+  }
+  return env.clientOrigin;
 }
 
 function writeSessionCookie(
@@ -773,20 +784,29 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       const csrfCookie = parseCookies(request.headers.cookie).get('g_csrf_token') ?? '';
       const csrfBody = form.get('g_csrf_token')?.trim() ?? '';
       const googleIdToken = form.get('credential')?.trim() ?? '';
-      if (csrfCookie === '' || csrfBody === '' || csrfCookie !== csrfBody || googleIdToken === '') {
+      if (csrfCookie !== '' && csrfBody !== '' && csrfCookie !== csrfBody) {
+        process.stderr.write(`[auth/google-login] CSRF token mismatch between cookie and form body\n`);
+        writeRedirect(response, env, '/?auth_error=google_signin_failed');
+        return;
+      }
+      if (googleIdToken === '') {
+        process.stderr.write(`[auth/google-login] Missing credential in POST body\n`);
         writeRedirect(response, env, '/?auth_error=google_signin_failed');
         return;
       }
       try {
+        const appOrigin = resolveApplicationOrigin(request, env);
         const profile = await exchangeGoogleIdToken({
           webApiKey: env.firebaseWebApiKey,
           googleIdToken,
-          requestUri: headerOrigin(request) ?? env.clientOrigin,
+          requestUri: appOrigin,
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
         writeRedirect(response, env, '/campaigns');
       } catch (error) {
+        const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+        process.stderr.write(`[auth/google-login] Google sign-in exchange failed: ${detail}\n`);
         if (error instanceof GoogleHostedIdentityError || error instanceof IdentityUnavailableError) {
           writeRedirect(response, env, '/?auth_error=google_signin_failed');
           return;
@@ -977,10 +997,11 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           ? (body as { googleIdToken: string }).googleIdToken
           : '';
       try {
+        const appOrigin = resolveApplicationOrigin(request, env);
         const profile = await exchangeGoogleIdToken({
           webApiKey: env.firebaseWebApiKey,
           googleIdToken,
-          requestUri: headerOrigin(request) ?? env.clientOrigin,
+          requestUri: appOrigin,
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
