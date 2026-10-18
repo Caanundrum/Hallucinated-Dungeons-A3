@@ -390,7 +390,7 @@ export function resolveIntentAuthority(
     // Free exploration: rich sensory / roleplay prose must never bounce with a
     // robotic verb menu — pass the declaration to the Game Director instead.
     const looksLikeExplorationProse =
-      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|peer(?:s|ing)?|search(?:es|ing)?|observe(?:s|ing)?|notice(?:s|ing)?|study|studying|feel(?:s|ing)?|smell(?:s|ing)?|taste(?:s|ing)?|whisper(?:s|ing)?|murmur(?:s|ing)?)\b/i.test(
+      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|peer(?:s|ing)?|search(?:es|ing)?|observe(?:s|ing)?|notice(?:s|ing)?|study|studying|feel(?:s|ing)?|smell(?:s|ing)?|taste(?:s|ing)?|whisper(?:s|ing)?|murmur(?:s|ing)?|investigat(?:e|es|ing)?|hide|hiding|hid|conceal(?:s|ing|ed)?|take\s+cover)\b/i.test(
         parsed.rawText,
       ) &&
       !/\b(?:attack|strike|cast|fireball|unlock|pick\s+the\s+lock)\b/i.test(parsed.rawText);
@@ -430,6 +430,7 @@ export function resolveIntentAuthority(
         step.outcomeHint === 'door_state' ||
         step.outcomeHint === 'scene_perception' ||
         step.outcomeHint === 'sensory_sequence' ||
+        step.outcomeHint === 'stealth_hide' ||
         step.outcomeHint === 'stay_put' ||
         step.outcomeHint === 'who_is_present' ||
         step.outcomeHint === 'map_state_correction' ||
@@ -546,7 +547,7 @@ export function resolveIntentAuthority(
     }
     const seekingPresence = only.outcomeHint === 'who_is_present';
     const doorState =
-      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence';
+      only.outcomeHint === 'door_state' || only.outcomeHint === 'listen' || only.outcomeHint === 'sensory_sequence' || only.outcomeHint === 'stealth_hide';
     const mapCorrection = only.outcomeHint === 'map_state_correction';
     return {
       disposition: 'director_narrate_only',
@@ -559,7 +560,7 @@ export function resolveIntentAuthority(
           : mapCorrection
             ? 'You are correcting visible map state — the Game Director will reconcile the live door summary.'
           : doorState
-            ? only.outcomeHint === 'sensory_sequence'
+            ? only.outcomeHint === 'sensory_sequence' || only.outcomeHint === 'stealth_hide'
               ? /\b(?:hide|conceal|crouch|kneel|hunker|duck\s+behind|take\s+cover)\b/i.test(
                   parsed.rawText,
                 )
@@ -899,6 +900,12 @@ export function parsePlayerDeclaration(
         actionSequence.push(step);
       }
     }
+  } else if (wantsHide && actionSequence.length === 0) {
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: 'stealth_hide',
+    });
   }
   // Interrogative door mention without an unlock/open verb — surface for authority clarify.
   // Skip when a named addressee is already present (dialogue / unknown-NPC path owns it).
@@ -946,7 +953,7 @@ export function parsePlayerDeclaration(
   // Targeted prop examine / listen (lantern, window, shutters) — Director narrates.
   if (
     actionSequence.length === 0 &&
-    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?\s+at|listen(?:s|ing)?|peer(?:s|ing)?|study|studying)\b/i.test(
+    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?\s+at|listen(?:s|ing)?|peer(?:s|ing)?|study|studying|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
       trimmed,
     ) &&
     !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(trimmed) &&

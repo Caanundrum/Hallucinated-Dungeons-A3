@@ -37,6 +37,7 @@ import {
 } from '../../shared/character-contract.js';
 import { randomInt } from 'node:crypto';
 import {
+  ARMOR,
   BACKGROUNDS,
   CLASSES,
   QUICK_START_TEMPLATES,
@@ -903,11 +904,11 @@ function equipmentOptionFor(
  * Matching tools, packs, kits, and identical weapons take the larger quantity;
  * other shared items still stack, with an explicit source note for the sheet.
  */
-function combineStartingEquipment(
+export function combineStartingEquipment(
   classEquipment: EquipmentOption | null,
   backgroundEquipment: EquipmentOption | null,
 ): {
-  readonly equipment: { readonly name: string; readonly quantity: number; readonly note?: string }[];
+  readonly equipment: { readonly name: string; readonly quantity: number; readonly note?: string; readonly equipped?: boolean }[];
   readonly overlapNotes: readonly string[];
 } {
   const classItems = classEquipment?.items ?? [];
@@ -915,8 +916,24 @@ function combineStartingEquipment(
   const classByName = new Map(classItems.map((item) => [item.name, item.quantity]));
   const backgroundByName = new Map(backgroundItems.map((item) => [item.name, item.quantity]));
   const names = new Set([...classByName.keys(), ...backgroundByName.keys()]);
-  const equipment: { name: string; quantity: number; note?: string }[] = [];
+  const equipment: { name: string; quantity: number; note?: string; equipped?: boolean }[] = [];
   const overlapNotes: string[] = [];
+
+  const isArmorOrShield = (itemName: string) => {
+    const itemLower = itemName.toLowerCase();
+    return (
+      ARMOR.some(
+        (armor) =>
+          armor.label.toLowerCase() === itemLower ||
+          itemLower.includes(armor.label.toLowerCase()) ||
+          itemLower === 'shield',
+      ) ||
+      (classEquipment?.armorIds?.some((id) => {
+        const armor = findArmor(id);
+        return armor !== null && armor.label.toLowerCase() === itemLower;
+      }) ?? false)
+    );
+  };
 
   for (const name of names) {
     const fromClass = classByName.get(name) ?? 0;
@@ -927,12 +944,14 @@ function combineStartingEquipment(
       /^(Club|Dagger|Greatclub|Handaxe|Javelin|Light Hammer|Mace|Quarterstaff|Sickle|Spear|Crossbow|Dart|Shortbow|Sling|Battleaxe|Flail|Glaive|Greataxe|Greatsword|Halberd|Lance|Longsword|Maul|Morningstar|Pike|Rapier|Scimitar|Shortsword|Trident|War Pick|Warhammer|Whip|Blowgun|Hand Crossbow|Heavy Crossbow|Longbow|Net)$/i.test(
         name,
       );
+    const equipped = isArmorOrShield(name) ? true : undefined;
     if (fromClass > 0 && fromBackground > 0) {
       if (isToolOrPack || isWeapon) {
         const quantity = Math.max(fromClass, fromBackground);
         equipment.push({
           name,
           quantity,
+          ...(equipped !== undefined ? { equipped } : {}),
           note: `Shared by Class and Background kits — kept ×${quantity} (not stacked).`,
         });
         overlapNotes.push(
@@ -943,6 +962,7 @@ function combineStartingEquipment(
         equipment.push({
           name,
           quantity,
+          ...(equipped !== undefined ? { equipped } : {}),
           note: `Class kit ×${fromClass} + Background kit ×${fromBackground}.`,
         });
         overlapNotes.push(
@@ -950,7 +970,11 @@ function combineStartingEquipment(
         );
       }
     } else {
-      equipment.push({ name, quantity: fromClass + fromBackground });
+      equipment.push({
+        name,
+        quantity: fromClass + fromBackground,
+        ...(equipped !== undefined ? { equipped } : {}),
+      });
     }
   }
 

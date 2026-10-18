@@ -15,7 +15,7 @@
 
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
-import type { AdventureTemplate } from '../../shared/campaign-contract.js';
+import type { AdventureTemplate, CampaignBlueprint } from '../../shared/campaign-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import {
   type CampaignChapterProjection,
@@ -399,16 +399,57 @@ export async function ensureCampaignMemory(
   firestore: Firestore,
   campaignId: string,
   starterPack?: StarterCampaignPack,
+  blueprint?: CampaignBlueprint,
 ): Promise<StoredCampaignMemory> {
   const memoryRef = firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId);
   const memorySnapshot = await memoryRef.get();
   if (memorySnapshot.exists) {
-    return memorySnapshot.data() as StoredCampaignMemory;
+    const existing = memorySnapshot.data() as StoredCampaignMemory;
+    if (existing.npcs.length === 0 && blueprint && Array.isArray(blueprint.namedNpcs) && blueprint.namedNpcs.length > 0) {
+      const seededNpcs: CampaignNpcRecordProjection[] = blueprint.namedNpcs.map((name, idx) => ({
+        npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        name,
+        role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
+        motive: 'Helpful',
+        knowledge: blueprint.questHook ?? 'Present in the area.',
+        audience: 'public',
+      }));
+      const updated: StoredCampaignMemory = { ...existing, npcs: seededNpcs };
+      await memoryRef.set(updated, { merge: true });
+      return updated;
+    }
+    return existing;
   }
 
   const now = new Date();
-  const created =
+  let created =
     starterPack === undefined ? blankMemory(campaignId, now) : seededMemory(campaignId, starterPack, now);
+  if (starterPack === undefined && blueprint) {
+    const seededNpcs: CampaignNpcRecordProjection[] = (blueprint.namedNpcs ?? []).map((name, idx) => ({
+      npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
+      motive: 'Helpful',
+      knowledge: blueprint.questHook ?? 'Present in the area.',
+      audience: 'public',
+    }));
+    const seededQuests: CampaignQuestProjection[] = blueprint.questHook
+      ? [
+          {
+            questId: 'quest-primary',
+            title: blueprint.namedProps[0] ? `Recover ${blueprint.namedProps[0]}` : 'The Campaign Goal',
+            status: 'open',
+            summary: blueprint.questHook,
+            audience: 'public',
+          },
+        ]
+      : [];
+    created = {
+      ...created,
+      npcs: seededNpcs,
+      quests: seededQuests,
+    };
+  }
   const batch = firestore.batch();
   batch.set(memoryRef, created);
   const sessionRef = firestore.collection(COLLECTIONS.campaignSessions).doc(campaignId);
@@ -421,7 +462,32 @@ export async function ensureCampaignMemory(
 }
 
 async function loadStoredMemory(firestore: Firestore, campaignId: string): Promise<StoredCampaignMemory> {
-  return ensureCampaignMemory(firestore, campaignId);
+  const memory = await ensureCampaignMemory(firestore, campaignId);
+  if (memory.npcs.length === 0) {
+    try {
+      const campSnap = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+      if (campSnap.exists) {
+        const campData = campSnap.data() as { campaignBlueprint?: CampaignBlueprint };
+        const bp = campData.campaignBlueprint;
+        if (bp && Array.isArray(bp.namedNpcs) && bp.namedNpcs.length > 0) {
+          const seededNpcs: CampaignNpcRecordProjection[] = bp.namedNpcs.map((name, idx) => ({
+            npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            name,
+            role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
+            motive: 'Helpful',
+            knowledge: bp.questHook ?? 'Present in the area.',
+            audience: 'public',
+          }));
+          const updated: StoredCampaignMemory = { ...memory, npcs: seededNpcs };
+          await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated, { merge: true });
+          return updated;
+        }
+      }
+    } catch {
+      // Fallback to existing memory
+    }
+  }
+  return memory;
 }
 
 async function loadStoredSession(firestore: Firestore, campaignId: string): Promise<StoredSessionState> {
@@ -857,9 +923,10 @@ export async function seedCampaignMemoryForTemplate(
   firestore: Firestore,
   campaignId: string,
   adventureTemplateId: string | null,
+  blueprint?: CampaignBlueprint,
 ): Promise<void> {
   const pack = resolveStarterPack(adventureTemplateId);
-  await ensureCampaignMemory(firestore, campaignId, pack ?? undefined);
+  await ensureCampaignMemory(firestore, campaignId, pack ?? undefined, blueprint);
 }
 
 /**

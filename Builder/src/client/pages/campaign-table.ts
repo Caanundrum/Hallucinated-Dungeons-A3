@@ -1747,13 +1747,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
              </p>`
       }
       <h3 class="preview-subheading">NPCs encountered</h3>
-      ${
-        memory.npcs.filter((npc) => npc.audience === 'public' || npc.audience === 'private')
-          .length === 0
+      ${(() => {
+        const knownNpcs = [
+          ...memory.npcs.filter((npc) => npc.audience === 'public' || npc.audience === 'private'),
+          ...(mapBundle?.notableFeatures ?? [])
+            .filter((f) => f.referenceKind === 'npc' || f.objectKind === 'npc')
+            .map((f) => ({
+              npcId: f.objectId ?? f.label,
+              name: f.label.replace(/\s+[—–-]\s+.*$/, '').trim(),
+              role: 'Present on the scene',
+              motive: 'Encountered',
+              audience: 'public' as const,
+            })),
+        ].filter(
+          (npc, idx, arr) =>
+            arr.findIndex((n) => n.name.toLowerCase() === npc.name.toLowerCase()) === idx,
+        );
+        return knownNpcs.length === 0
           ? `<p class="empty-state" data-testid="table-npc-empty">None yet — the Game Director introduces people during play. Players cannot invent NPCs.</p>`
           : `<ul class="record-list compact" data-testid="table-npc-list">
-               ${memory.npcs
-                 .filter((npc) => npc.audience === 'public' || npc.audience === 'private')
+               ${knownNpcs
                  .map(
                    (npc) => `
                  <li data-testid="table-npc-item" data-npc-id="${escapeHtml(npc.npcId)}">
@@ -1763,8 +1776,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                  </li>`,
                  )
                  .join('')}
-             </ul>`
-      }
+             </ul>`;
+      })()}
       ${
         memory.quests.length === 0
           ? ''
@@ -2065,7 +2078,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
               <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
             </label>
-            <button type="submit" data-testid="director-address-send" aria-disabled="${askDmConsulting || candidate === null || directorDraft.trim().length === 0}">
+            <button type="submit" data-testid="director-address-send" aria-disabled="${askDmConsulting || directorDraft.trim().length === 0}">
               ${askDmConsulting ? 'Consulting…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
             </button>
           </form>
@@ -2728,11 +2741,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         draft.proposedCommandType === 'table.open_door' &&
         declarationText.length > 0 &&
         /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+      const nonAdjectivalDeclaration = declarationText.replace(
+        /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
+        'doorway',
+      );
       const resumeApproachThenOpen =
         draft.proposedCommandType === 'table.move' &&
         draft.edgeId !== undefined &&
         /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
-          declarationText,
+          nonAdjectivalDeclaration,
         );
       const summaryForCommand =
         draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
@@ -2912,7 +2929,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
           </div>
           <p class="record-meta visually-hidden" data-testid="dm-beat-queue-hint">
-            Declarations, rulings, mechanics, and narration share one timeline. Confirm drafts before the scene moves on.
+            Declarations, rulings, mechanics, and narration share one timeline. Free exploration resolves immediately; skill checks, attacks, and scene transitions present drafts for confirmation before committing.
           </p>
           ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
           ${
@@ -4845,58 +4862,79 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const directorInput = root.querySelector<HTMLTextAreaElement>(
       '[data-testid="director-address-input"]',
     );
+    const directorSend = root.querySelector<HTMLButtonElement>(
+      '[data-testid="director-address-send"]',
+    );
     directorInput?.addEventListener('input', () => {
       directorDraft = directorInput.value;
-      const send = root.querySelector<HTMLButtonElement>('[data-testid="director-address-send"]');
-      send?.setAttribute(
+      directorSend?.setAttribute(
         'aria-disabled',
-        String(askDmConsulting || candidate === null || directorDraft.trim().length === 0),
+        String(askDmConsulting || directorDraft.trim().length === 0),
       );
+    });
+
+    const submitDirectorConsult = () => {
+      void (async () => {
+        const question = (directorInput?.value ?? directorDraft).trim();
+        if (askDmConsulting || question.length === 0) {
+          return;
+        }
+        // Ask DM is a side channel — never claim the play-mutation `busy` latch.
+        askDmConsulting = true;
+        error = null;
+        appendAskDmThread('player', 'You', question, 'declaration');
+        directorDraft = '';
+        if (directorInput) {
+          directorInput.value = '';
+        }
+        render();
+        try {
+          const answered = await postDirectorAddress({
+            candidateId: candidate?.candidateId ?? 'player-client',
+            campaignId,
+            body: question,
+          });
+          directorIdentityLabel = answered.directorIdentityLabel || directorIdentityLabel;
+          appendAskDmThread(
+            'dm',
+            answered.directorIdentityLabel,
+            answered.body,
+            'ruling_hint',
+          );
+          if (textToSpeechEnabled && 'speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(answered.body);
+            window.speechSynthesis.speak(utterance);
+          }
+          shell.announce(`${answered.directorIdentityLabel} answered. No table state changed.`);
+        } catch (failure) {
+          error =
+            failure instanceof ApiFailure
+              ? failure.message
+              : 'Ask the Game Director could not be sent.';
+        } finally {
+          askDmConsulting = false;
+          render();
+        }
+      })();
+    };
+
+    directorInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        submitDirectorConsult();
+      }
+    });
+
+    directorSend?.addEventListener('click', (event) => {
+      event.preventDefault();
+      submitDirectorConsult();
     });
 
     root
       .querySelector<HTMLFormElement>('[data-testid="director-address-composer"]')
       ?.addEventListener('submit', (event) => {
         event.preventDefault();
-        void (async () => {
-          if (candidate === null || askDmConsulting || directorDraft.trim().length === 0) {
-            return;
-          }
-          const question = directorDraft.trim();
-          // Ask DM is a side channel — never claim the play-mutation `busy` latch.
-          askDmConsulting = true;
-          error = null;
-          appendAskDmThread('player', 'You', question, 'declaration');
-          directorDraft = '';
-          render();
-          try {
-            const answered = await postDirectorAddress({
-              candidateId: candidate.candidateId,
-              campaignId,
-              body: question,
-            });
-            directorIdentityLabel = answered.directorIdentityLabel || directorIdentityLabel;
-            appendAskDmThread(
-              'dm',
-              answered.directorIdentityLabel,
-              answered.body,
-              'ruling_hint',
-            );
-            if (textToSpeechEnabled && 'speechSynthesis' in window) {
-              const utterance = new SpeechSynthesisUtterance(answered.body);
-              window.speechSynthesis.speak(utterance);
-            }
-            shell.announce(`${answered.directorIdentityLabel} answered. No table state changed.`);
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Ask the Game Director could not be sent.';
-          } finally {
-            askDmConsulting = false;
-            render();
-          }
-        })();
+        submitDirectorConsult();
       });
 
     const nlInput = root.querySelector<HTMLTextAreaElement>('[data-testid="nl-intent-input"]');
@@ -5685,11 +5723,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             draft.proposedCommandType === 'table.open_door' &&
             declarationText.length > 0 &&
             /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+          const nonAdjectivalDeclaration = declarationText.replace(
+            /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
+            'doorway',
+          );
           const resumeApproachThenOpen =
             draft.proposedCommandType === 'table.move' &&
             draft.edgeId !== undefined &&
             /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
-              declarationText,
+              nonAdjectivalDeclaration,
             );
           // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
           const summaryForCommand =

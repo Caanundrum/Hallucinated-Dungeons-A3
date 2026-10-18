@@ -357,10 +357,18 @@ function paintSemanticSvg(
             Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
         );
         if (nearbyDoor !== undefined) {
-          fullLabel = formatDoorPlayerFacingLabel(
+          const doorLabel = formatDoorPlayerFacingLabel(
             doorAuthorityFromStored(nearbyDoor.doorState),
             nearbyDoor.orientation,
           );
+          const cleanFeatureLabel = feature.label
+            .replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+            .trim();
+          if (cleanFeatureLabel.length > 0 && !/^wooden doorway/i.test(cleanFeatureLabel)) {
+            fullLabel = `${cleanFeatureLabel} (${doorLabel})`;
+          } else {
+            fullLabel = doorLabel;
+          }
         }
       }
       return {
@@ -596,13 +604,20 @@ function paintSemanticSvg(
     const doorOwnedExit = boundDoor !== null;
     const boundEdgeAttr =
       boundDoor !== null ? ` data-bound-edge="${escapeHtml(boundDoor.edgeId)}"` : '';
+    const cleanLabel = feature.label.replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '').trim();
     const accessibleName = doorOwnedExit
-      ? `Exit marker for ${formatEdgeAccessibleLabel(boundDoor, map.edges)}`
+      ? `Exit marker for ${cleanLabel} (${formatEdgeAccessibleLabel(boundDoor, map.edges)})`
       : feature.label;
     // Door edges own the interactive name; exit dots bound to a door are markers only (146/147).
     const interactiveAttrs = doorOwnedExit
       ? `role="img" aria-label="${escapeHtml(accessibleName)}"`
       : `tabindex="0" role="button" aria-label="${escapeHtml(accessibleName)}"`;
+    const exitStateDisplay =
+      doorOwnedExit && boundDoor.doorState !== 'open'
+        ? boundDoor.doorState === 'locked'
+          ? 'closed, locked'
+          : 'closed'
+        : visual.stateVariant.replace(/^state_/, '');
     return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
@@ -613,7 +628,7 @@ function paintSemanticSvg(
       ${containerMark}
       ${propDiamond}
       ${coreDisc}
-      <title>${escapeHtml(feature.label)} · ${escapeHtml(kindLabel)} · ${escapeHtml(visual.stateVariant.replace(/^state_/, ''))}</title>
+      <title>${escapeHtml(cleanLabel)} · ${escapeHtml(kindLabel)} · ${escapeHtml(exitStateDisplay)}</title>
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');

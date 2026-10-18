@@ -107,7 +107,8 @@ function formatMap(map: MapBundleProjection): string {
     .map((edge) => {
       const facing = edge.orientation;
       const state = edge.doorState ?? 'closed';
-      return `Wooden doorway ${facing} — ${state}`;
+      const stateLabel = state === 'unlocked' ? 'closed, unlocked' : state;
+      return `Wooden doorway ${facing} — ${stateLabel}`;
     })
     .slice(0, 12);
   return [

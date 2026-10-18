@@ -14,6 +14,7 @@ import {
   type MapSquareCoordinate,
 } from '../../shared/map-contract.js';
 import {
+  ARCHITECTURAL_ROOM_NOUNS,
   capitalizeLabel,
   detectPremiseLocation,
   detectQuestHook,
@@ -365,7 +366,12 @@ function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string)
     new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(haystack());
   const withArticle = (label: string) => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
 
-  const [firstNpc, ...otherNpcs] = continuity.namedNpcs;
+  const validNpcs = continuity.namedNpcs.filter(
+    (name) =>
+      !ARCHITECTURAL_ROOM_NOUNS.has(name.toLowerCase()) &&
+      !/\b(?:passage|sanctum|chamber|room|cellar|corridor|hall|vault|antechamber|alcove)\b/i.test(name),
+  );
+  const [firstNpc, ...otherNpcs] = validNpcs;
   if (firstNpc !== undefined) {
     npcLabel = firstNpc;
     if (!mentions(firstNpc)) {

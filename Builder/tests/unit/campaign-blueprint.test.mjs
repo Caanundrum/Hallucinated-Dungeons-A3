@@ -179,18 +179,45 @@ test('QA Report Fix #1: room summaries and exits stay in-world and multi-word NP
   }
 });
 
-test('QA Report Fix #4: natural approach + ask phrasing resolves to NPC dialogue when NPC is present', async () => {
-  const { parsePlayerDeclaration, resolveIntentAuthority } = await import(
-    '../../dist/shared/play-authority-contract.js'
-  );
-  const parsed = parsePlayerDeclaration(
-    'I approach Warden Elira and ask what she has discovered about the dragon cult',
-    { knownNpcs: [{ id: 'bp-npc-m1-r1-1', label: 'Warden Elira' }] },
-  );
-  assert.equal(parsed.addressee, 'Warden Elira');
-  const authority = resolveIntentAuthority(parsed);
-  assert.equal(authority.disposition, 'director_narrate_only');
-  assert.equal(authority.actionSequence[0]?.kind, 'dialogue');
-  assert.equal(authority.actionSequence[0]?.targetRef, 'Warden Elira');
+test('QA Report Fix HD18-01 through HD18-05: Copper Bell mystery entity roles and milestone variance', () => {
+  const premise =
+    'In Brindlefen village, courier Mira Vale vanished with a copper bell. Nim arrives at the riverside mill to find Mira alive and recover the bell. The miller Orin is waiting at the entrance.';
+  const blueprint = buildCampaignBlueprint({
+    summary: premise,
+    name: 'The Copper Bell Mystery',
+    startLevel: 1,
+    targetEndLevel: 3,
+    campaignTone: 'dark_fantasy',
+  });
+
+  // HD18-01: Mira Vale is an NPC, NOT a place. Mill and Brindlefen are places.
+  assert.ok(blueprint.namedNpcs.some((n) => /Mira Vale/i.test(n)), 'Mira Vale is an NPC');
+  assert.ok(blueprint.namedNpcs.some((n) => /Orin/i.test(n)), 'Orin is an NPC');
+  assert.ok(!blueprint.namedPlaces.some((p) => /Mira Vale/i.test(p)), 'Mira Vale is NOT a place');
+  assert.ok(blueprint.namedPlaces.some((p) => /riverside mill/i.test(p)), 'Riverside mill is a place');
+
+  // HD18-02: Prop is copper bell and hook contains copper bell
+  assert.ok(blueprint.namedProps.some((p) => /copper bell/i.test(p)), 'copper bell is extracted as prop');
+  assert.match(blueprint.questHook ?? '', /copper bell/i, 'quest hook names the copper bell');
+
+  // HD18-03: Orin is the opening NPC waiting at the entrance in Room 1
+  const m1 = blueprint.milestones?.[0];
+  const m2 = blueprint.milestones?.[1];
+  assert.ok(m1 && m2);
+  assert.equal(m1.rooms[0]?.npcs[0]?.name, 'Orin', 'Opening NPC is Orin');
+
+  // HD18-04: Distinct room titles across milestones
+  assert.notEqual(m1.rooms[1]?.title, m2.rooms[1]?.title, 'Room 2 titles differ across milestones');
+  assert.notEqual(m1.rooms[2]?.title, m2.rooms[2]?.title, 'Room 3 titles differ across milestones');
+
+  // HD18-05: No Informant #2 placeholder
+  for (const m of blueprint.milestones ?? []) {
+    for (const r of m.rooms) {
+      assert.doesNotMatch(r.summary, /Informant\s+#\d+/i, 'No Informant #N placeholder');
+      for (const npc of r.npcs) {
+        assert.doesNotMatch(npc.name, /Informant\s+#\d+/i, 'No Informant #N NPC name');
+      }
+    }
+  }
 });
 

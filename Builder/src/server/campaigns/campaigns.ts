@@ -60,6 +60,7 @@ import {
 } from './director-catalog.js';
 import { buildCampaignBlueprint } from './campaign-blueprint.js';
 import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
+import { levelForExperience } from '../rules/engine/xp-progression.js';
 import {
   AlreadySeatedError,
   AlreadyAtAnotherTableError,
@@ -729,7 +730,7 @@ export async function createCampaign(options: {
   await batch.commit();
 
   await seedCampaignSettings(firestore, campaignId, now);
-  await seedCampaignMemoryForTemplate(firestore, campaignId, campaign.adventureTemplateId);
+  await seedCampaignMemoryForTemplate(firestore, campaignId, campaign.adventureTemplateId, campaignBlueprint);
   await appendChronicleEntry({
     firestore,
     campaignId,
@@ -1234,6 +1235,20 @@ export async function createSeat(options: {
         },
         { merge: true },
       );
+    }
+    const startingXp = activeScene?.xpAwardOnDiscovery ?? 75;
+    const progressionRef = firestore
+      .collection(COLLECTIONS.characterProgressions)
+      .doc(character.characterId);
+    const progressionSnap = await progressionRef.get();
+    if (!progressionSnap.exists && startingXp > 0) {
+      await progressionRef.set({
+        characterId: character.characterId,
+        classId: character.choices.classId ?? 'rogue',
+        experiencePoints: startingXp,
+        level: levelForExperience(startingXp),
+        updatedAt: now.toISOString(),
+      });
     }
   }
   await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).update({ updatedAt: now });

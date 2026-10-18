@@ -60,7 +60,7 @@ export function buildStoredSceneFromRoomBlueprint(
   const composed = composeDirectorScene({
     kind,
     sceneId: room.sceneId,
-    premise: `${room.title} — ${room.summary}`,
+    premise: room.summary,
     destinationHint: room.title,
     seedKey: `${campaignId}:${room.sceneId}:${room.title}`,
   });

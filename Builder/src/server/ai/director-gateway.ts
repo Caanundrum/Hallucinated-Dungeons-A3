@@ -769,10 +769,18 @@ function mentionsSkillCheckIntent(text: string): boolean {
   if (mentionsDoorStateIntent(text) || textReferencesUnlockedDoorState(text)) {
     return false;
   }
+  // Compound sensory listen (e.g. "hide and listen", "crouch and listen") is Director perception, not a roll draft.
+  if (/\blisten\b/i.test(text)) {
+    return false;
+  }
+  const wantsStealth = /\b(?:hide|conceal|take\s+cover|stealth|crouch\s+behind|duck\s+behind)\b/i.test(text);
+  const wantsSkill = /\b(?:trap|disarm|investigat(?:e|es|ing|ion)?|perception|search(?:es|ing)?|examine|inspect|stealth|hide|sleight\s+of\s+hand|athletics|acrobatics)\b/i.test(text);
   return (
-    (/(trap|disarm|investigat|perception|search|examine|inspect)/.test(text) &&
-      /(door|lock|way|trap|entry|gate)/.test(text)) ||
-    textRequestsLockPicking(text)
+    wantsStealth ||
+    textRequestsLockPicking(text) ||
+    (wantsSkill &&
+      (/\b(?:door|lock|way|trap|entry|gate|bench|workbench|mark|desk|chest|table|wall|shelf|corpse|body|floor|ceiling|statue|altar|symbol|footprint|tracks)\b/i.test(text) ||
+        /\b(?:using|with|for)\s+(?:investigation|perception|stealth|athletics|thieves)/i.test(text)))
   );
 }
 
@@ -1198,6 +1206,31 @@ export function scrubEngineCoordinates(body: string): string {
     .trim();
 }
 
+/** When an unauthored container opens, prevent hallucinated loot or contents (HD18-12). */
+export function scrubInventedContainerContents(body: string, mechanicsSummary: string): string {
+  const opensContainer =
+    /\b(?:open|opened|inspect|inspects|looking\s+inside|look\s+inside)\b/i.test(mechanicsSummary) &&
+    /\b(?:satchel|pack|chest|bag|pouch|box|crate|barrel)\b/i.test(mechanicsSummary);
+  if (!opensContainer) {
+    return body;
+  }
+  return body.replace(
+    /(?:(?:He|She|They|The\s+\w+|\b\w+\b)\s+)?\b(?:takes?\s+in\s+(?:its|the)\s+contents|sees?\s+what\s+(?:the\s+\w+\s+)?left\s+behind|glimpses?\s+(?:what|the\s+contents)|finds?\s+(?:clues|items|goods|belongings|tools|letters|notes))\b[^.!?]*[.!?]/gi,
+    'The container opens smoothly, revealing an empty interior with no items inside.',
+  );
+}
+
+/** Ensure a closed or unlocked door is never described as wide open (HD18-19). */
+export function scrubClosedDoorCalledOpen(body: string, mechanicsSummary: string): string {
+  const closedDoor =
+    /\b(?:closed|unlocked|locked)\b/i.test(mechanicsSummary) &&
+    !/\bopened\b|\bswung wide\b/i.test(mechanicsSummary);
+  if (!closedDoor) {
+    return body;
+  }
+  return body.replace(/\ban open wooden door\b/gi, 'a closed wooden door');
+}
+
 /** Builds narration body text for the given density, without inventing state. */
 function composeNarrationBody(
   mechanicsSummary: string,
@@ -1254,6 +1287,10 @@ const DIRECTOR_SAFETY_RULES = [
   'You never change table state, move tokens, open doors, roll dice, or invent mechanical outcomes.',
   'You never invent hidden facts, secret NPC motives, or information the speaking player cannot see.',
   'Party Chat and out-of-character table talk are not available to you.',
+].join(' ');
+
+const CONSULT_SAFETY_RULES = [
+  DIRECTOR_SAFETY_RULES,
   'If the player describes a consequential action in Ask-the-DM, tell them what it would take and that they must declare it in the play channel to resolve it. Do not treat the consult as a completed command.',
 ].join(' ');
 
@@ -2409,7 +2446,7 @@ export async function answerDirectorAddress(options: {
     ? ''
     : await loadBlueprintBeatPrompt(options.firestore, options.campaignId);
   const liveBody = await tryLiveProse(options, {
-    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${
+    systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${CONSULT_SAFETY_RULES} ${
       mechanical ? ARBITER_CONSTITUTION : `${ARBITER_CONSTITUTION} Also answer scene questions without inventing unseen detail.`
     } Never cite internal grid coordinates such as c4r3 — describe doors and props by player-facing names and directions only.`,
     userPrompt: `${context.text}${beatPrompt}\n\nPlayer ask-the-DM message:\n${text}`,
@@ -2531,7 +2568,7 @@ export async function narrateVisibleBeat(options: {
   const beatPrompt = await loadBlueprintBeatPrompt(options.firestore, options.campaignId);
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.${beatPrompt}`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.\nContainer contents rule: If opening an unauthored container (satchel, pack, chest, box), its contents are unauthored and empty. Do NOT invent items, letters, tools, or clues inside it. Never promise or hint at unseen items or what someone left behind.\nDoor state rule: An unlocked door is CLOSED (leaf is shut, latch is unlocked). Never describe a closed door as open, ajar, or swung wide unless its leaf is explicitly "open".${beatPrompt}`,
   });
   const liveCandidate =
     liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;
@@ -2542,12 +2579,18 @@ export async function narrateVisibleBeat(options: {
     looksLikeTruncatedDirectorProse(liveBody) ||
     looksLikeTruncatedDirectorProse(liveCandidate);
   const body = scrubEngineCoordinates(
-    scrubExpandedInspectScope(
-      scrubFalseTrapCertainty(
-        scrubFalseSceneDeparture(
-          scrubStaleDoorCloseNarration(
-            scrubNoTouchConstraint(
-              preferSimulated ? simulated.body : liveCandidate,
+    scrubClosedDoorCalledOpen(
+      scrubInventedContainerContents(
+        scrubExpandedInspectScope(
+          scrubFalseTrapCertainty(
+            scrubFalseSceneDeparture(
+              scrubStaleDoorCloseNarration(
+                scrubNoTouchConstraint(
+                  preferSimulated ? simulated.body : liveCandidate,
+                  options.mechanicsSummary,
+                ),
+                options.mechanicsSummary,
+              ),
               options.mechanicsSummary,
             ),
             options.mechanicsSummary,

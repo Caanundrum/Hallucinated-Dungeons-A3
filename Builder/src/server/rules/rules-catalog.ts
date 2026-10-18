@@ -85,9 +85,20 @@ export function buildRulesCatalog(): RulesCatalogProjection {
         `Saving throws: ${klass.savingThrowProficiencies.join(', ')}`,
         `Armor: ${klass.armorProficiencies.join(', ') || 'none'}`,
         `Weapons: ${klass.weaponProficiencies.join(', ') || 'none'}`,
+        ...klass.features.map((feature) => `${feature.name}: ${feature.summary}`),
       ],
       source: RULES_MANIFEST_PROVENANCE.source,
     })),
+    ...CLASSES.flatMap((klass) =>
+      klass.features.map((feature) => ({
+        entryId: `class-feature:${klass.id}:${feature.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        category: 'classes' as const,
+        title: `${feature.name} (${klass.label})`,
+        summary: feature.summary,
+        details: [`Class: ${klass.label}`, feature.summary],
+        source: RULES_MANIFEST_PROVENANCE.source,
+      })),
+    ),
     ...SPECIES.map((species) => ({
       entryId: `species:${species.id}`,
       category: 'species' as const,

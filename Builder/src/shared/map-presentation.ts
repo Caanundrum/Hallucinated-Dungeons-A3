@@ -224,10 +224,17 @@ export function formatPartyDoorAdjacency(
 export function formatMapTerrainSummary(map: MapBundleProjection): string {
   const scene = map.title.trim().length > 0 ? map.title : 'Scene';
   const routes = formatMapRouteSummary(map);
-  const props = map.notableFeatures
-    .filter((feature) => feature.referenceKind !== 'exit' && feature.objectKind !== 'exit')
-    .slice(0, 4)
-    .map((feature) => feature.label);
+  const npcs = map.notableFeatures.filter(
+    (feature) => feature.referenceKind === 'npc' || feature.objectKind === 'npc',
+  );
+  const otherProps = map.notableFeatures.filter(
+    (feature) =>
+      feature.referenceKind !== 'exit' &&
+      feature.objectKind !== 'exit' &&
+      feature.referenceKind !== 'npc' &&
+      feature.objectKind !== 'npc',
+  );
+  const props = [...npcs, ...otherProps].slice(0, 6).map((feature) => feature.label);
   const party =
     map.tokens.length > 0
       ? map.tokens.map((token) => token.label).join(', ')

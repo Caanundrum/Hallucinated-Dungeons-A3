@@ -191,7 +191,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
           </div>
           <div>
             <dt>Central Tension</dt>
-            <dd>${escapeHtml(draftedBlueprint.centralTension)}</dd>
+            <dd>${escapeHtml(draftedBlueprint.centralTension ?? '')}</dd>
           </div>
           <div>
             <dt>Quest Hook</dt>
@@ -339,7 +339,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     let requirements = container.querySelector<HTMLElement>(
       '[data-testid="create-campaign-requirements"]',
     );
-    if (canSubmit()) {
+    if (missing.length === 0) {
       requirements?.remove();
       return;
     }
@@ -597,7 +597,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
           <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Tables</a>
         </div>
         ${
-          canSubmit()
+          canSubmit() || missing.length === 0
             ? ''
             : `<p class="record-meta" data-testid="create-campaign-requirements">
                  Still needed: ${escapeHtml(missing.join(', '))}.

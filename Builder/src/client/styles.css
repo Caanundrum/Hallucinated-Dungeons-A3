@@ -669,8 +669,9 @@ a.account-chip-label:focus-visible {
   right: var(--space-2);
   top: var(--space-2);
   bottom: auto;
-  width: min(320px, 42vw);
-  height: auto;
+  width: min(380px, 46vw);
+  height: min(520px, calc(100% - min(32vh, 16rem) - (var(--space-2) * 2)));
+  min-height: 340px;
   /* Leave the play dock (timeline + composer) clear below the overlay. */
   max-height: calc(100% - min(32vh, 16rem) - (var(--space-2) * 2));
   z-index: 8;
@@ -680,7 +681,6 @@ a.account-chip-label:focus-visible {
   background: color-mix(in srgb, var(--panel-surface) 96%, #000);
   display: flex;
   flex-direction: column;
-  min-height: 0;
   overflow: hidden;
   animation: tableDrawerIn var(--motion-emphasized, 220ms) cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -705,13 +705,20 @@ a.account-chip-label:focus-visible {
 
 .table-comms-rail > [data-testid='table-comms-slot'],
 .table-comms-rail .comms-cockpit,
-.table-comms-rail .comms-interactive-tier,
+.table-comms-rail .comms-interactive-tier {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .table-comms-rail .dock-viewport,
 .table-comms-rail .dock-pane {
   display: flex;
   flex-direction: column;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .table-comms-rail .dock-composer {
@@ -1562,10 +1569,17 @@ ol.record-list.dm-thread-list > li {
 
   .hero-mini-stats {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    white-space: nowrap;
     gap: 0.55rem;
     font-size: 0.85rem;
-    opacity: 0.92;
+    opacity: 0.95;
+  }
+
+  .hero-mini-copy .record-meta {
+    color: var(--text-secondary);
+    opacity: 0.95;
+    font-weight: 500;
   }
 }
 
@@ -1588,6 +1602,10 @@ ol.record-list.dm-thread-list > li {
 
 /* Task modes for phone + 768 tablet (≤900px): Map / Play / Sheet / Chat. */
 @media (max-width: 900px) {
+  .table-dashboard:not([data-mobile-task='sheet']) .table-floating-hud {
+    display: none !important;
+  }
+
   .shell-table-mode {
     height: 100dvh;
     max-height: 100dvh;

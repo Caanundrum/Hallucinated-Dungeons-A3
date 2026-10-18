@@ -301,10 +301,14 @@ export function objectVisualFamily(feature: MapNotableFeatureRecord): {
     return { family: 'family_npc', stateVariant: 'state_present' };
   }
   if (kind === 'exit' || feature.referenceKind === 'exit') {
+    const exitState =
+      state === 'closed' || state === 'locked' || state === 'unlocked'
+        ? `state_${state}`
+        : 'state_open';
     if (/\bstair|ladder|parapet\b/.test(label)) {
-      return { family: 'family_exit_vertical', stateVariant: 'state_open' };
+      return { family: 'family_exit_vertical', stateVariant: exitState };
     }
-    return { family: 'family_exit_passage', stateVariant: 'state_open' };
+    return { family: 'family_exit_passage', stateVariant: exitState };
   }
   if (kind === 'prop') {
     return {

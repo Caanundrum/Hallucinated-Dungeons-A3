@@ -57,6 +57,9 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   if (/\b(crypt|tomb|catacomb|grave)\b/.test(text)) {
     return { locationKind: 'crypt', locationPhrase: 'a stone crypt' };
   }
+  if (/\b(mill|sawmill|gristmill|windmill)\b/.test(text)) {
+    return { locationKind: 'workshop', locationPhrase: 'a riverside mill' };
+  }
   if (/\b(workshop|forge|smith|tinker)\b/.test(text)) {
     return { locationKind: 'workshop', locationPhrase: 'a working workshop' };
   }
@@ -72,11 +75,14 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   return { locationKind: null, locationPhrase: null };
 }
 
-export function detectQuestHook(premise: string): string | null {
+export function detectQuestHook(premise: string, prop?: string | null): string | null {
   const text = premise.toLowerCase();
   if (
     /\b(courier|package|missive|parcel|delivery|missing\s+(?:packet|letter|courier))\b/.test(text)
   ) {
+    if (typeof prop === 'string' && prop.trim().length > 0) {
+      return `a missing courier and the ${prop.trim()} they carried`;
+    }
     return 'a missing courier and the package they carried';
   }
   if (/\b(kidnap|abduct|ransom)\b/.test(text)) {
@@ -101,13 +107,26 @@ const LEADING_STOPWORDS = new Set([
 
 const PLACE_NOUNS = new Set([
   'inn', 'tavern', 'pub', 'alehouse', 'keep', 'tower', 'harbor', 'harbour', 'docks', 'dock',
-  'bridge', 'hall', 'market', 'warehouse', 'crypt', 'manor', 'gate', 'wharf', 'mill', 'castle',
-  'fort', 'fortress', 'forest', 'woods', 'marsh', 'temple', 'church', 'abbey', 'cathedral',
-  'library', 'guild', 'house', 'hold', 'ward', 'square', 'quay', 'pier', 'mines', 'mine', 'cave',
-  'caves', 'caverns', 'cavern', 'village', 'town', 'city', 'citadel', 'tomb', 'lair', 'bay',
-  'river', 'lake', 'hill', 'hills', 'mountain', 'mountains', 'vale', 'glen', 'fen', 'road',
-  'street', 'lane', 'alley', 'academy', 'school', 'theater', 'theatre', 'vault', 'estate', 'farm',
-  'lodge', 'port', 'shrine', 'garrison', 'barracks', 'asylum', 'observatory', 'foundry',
+  'bridge', 'hall', 'market', 'warehouse', 'crypt', 'manor', 'gate', 'wharf', 'mill', 'sawmill',
+  'gristmill', 'windmill', 'castle', 'fort', 'fortress', 'forest', 'woods', 'marsh', 'temple',
+  'church', 'abbey', 'cathedral', 'library', 'guild', 'house', 'hold', 'ward', 'square', 'quay',
+  'pier', 'mines', 'mine', 'cave', 'caves', 'caverns', 'cavern', 'village', 'town', 'city',
+  'citadel', 'tomb', 'lair', 'bay', 'river', 'lake', 'hill', 'hills', 'mountain', 'mountains',
+  'vale', 'glen', 'fen', 'road', 'street', 'lane', 'alley', 'academy', 'school', 'theater',
+  'theatre', 'vault', 'estate', 'farm', 'lodge', 'port', 'shrine', 'garrison', 'barracks',
+  'asylum', 'observatory', 'foundry', 'passage', 'passageway', 'sanctum', 'chamber', 'alcove',
+  'corridor', 'hallway', 'reach', 'threshold', 'antechamber', 'loft', 'cellar', 'gallery', 'dais',
+]);
+
+export const ARCHITECTURAL_ROOM_NOUNS = new Set([
+  'passage', 'passageway', 'sanctum', 'chamber', 'alcove', 'corridor', 'hallway', 'reach',
+  'threshold', 'antechamber', 'loft', 'cellar', 'gallery', 'dais', 'vault', 'side passage',
+  'inner sanctum',
+]);
+
+const COMMON_SURNAMES_THAT_ARE_PLACE_NOUNS = new Set([
+  'vale', 'hill', 'hills', 'wood', 'woods', 'hall', 'ford', 'stone', 'lake', 'marsh', 'field',
+  'brook', 'dale', 'cross', 'moor', 'ridge',
 ]);
 
 const NPC_TITLES = new Set([
@@ -116,7 +135,11 @@ const NPC_TITLES = new Set([
   'baron', 'baroness', 'elder', 'warden', 'sergeant', 'priest', 'priestess', 'magister', 'abbot',
   'abbess', 'chief', 'commander', 'inspector', 'constable', 'duke', 'duchess', 'count', 'countess',
   'granny', 'grandmother', 'grandfather', 'uncle', 'aunt', 'wyrm', 'lich', 'tyrant', 'horror',
-  'emperor', 'empress', 'warlord', 'archmage', 'overlord',
+  'emperor', 'empress', 'warlord', 'archmage', 'overlord', 'miller', 'courier', 'blacksmith',
+  'smith', 'innkeeper', 'tavernkeeper', 'barkeep', 'bartender', 'merchant', 'trader', 'scout',
+  'rogue', 'guard', 'guardsman', 'hunter', 'herbalist', 'alchemist', 'scholar', 'apprentice',
+  'artisan', 'baker', 'butcher', 'brewer', 'fisherman', 'farmer', 'weaver', 'miner', 'clerk',
+  'messenger', 'guide', 'detective', 'investigator',
 ]);
 
 const PLACE_PREPOSITIONS = new Set([
@@ -131,7 +154,9 @@ const MODIFIER_LEXICON = new Set([
   'dusty', 'locked', 'sealed', 'barred', 'hidden', 'secret', 'narrow', 'creaking', 'dim',
   'flickering', 'jeweled', 'leather', 'velvet', 'cursed', 'glowing', 'missing', 'stolen',
   'forgotten', 'ruined', 'abandoned', 'haunted', 'hollow', 'sunken', 'smoking', 'bloodstained',
-  'unmarked', 'half-burnt', 'burnt', 'charred',
+  'unmarked', 'half-burnt', 'burnt', 'charred', 'riverside', 'waterfront', 'coastal', 'hillside',
+  'lakeside', 'dockside', 'mountain', 'forest', 'marsh', 'cavern', 'subterranean', 'underground',
+  'upper', 'lower', 'inner', 'outer', 'water', 'wind',
 ]);
 
 /** Nouns that read as a qualifier on a door or passage ("warehouse door"). */
@@ -234,16 +259,55 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     const first = words[0]!.toLowerCase();
     const last = words[words.length - 1]!.toLowerCase();
     const hasNpcTitle = words.some((word) => NPC_TITLES.has(word.toLowerCase()));
-    if (PLACE_NOUNS.has(last)) {
+    const isArchitecturalRoom = words.some((word) =>
+      ARCHITECTURAL_ROOM_NOUNS.has(word.toLowerCase()),
+    );
+
+    if (isArchitecturalRoom) {
       pushUnique(places, label);
-    } else if (hasNpcTitle || NPC_TITLES.has(first)) {
+    } else if (hasNpcTitle || NPC_TITLES.has(first) || NPC_TITLES.has(previousWord)) {
       pushUnique(npcs, label);
+    } else if (
+      COMMON_SURNAMES_THAT_ARE_PLACE_NOUNS.has(last) &&
+      !hadThe &&
+      !PLACE_PREPOSITIONS.has(previousWord)
+    ) {
+      pushUnique(npcs, label);
+    } else if (PLACE_NOUNS.has(last)) {
+      pushUnique(places, label);
     } else if (hadThe || PLACE_PREPOSITIONS.has(previousWord)) {
       pushUnique(places, label);
     } else {
       pushUnique(npcs, label);
     }
   }
+
+  // Also extract single capitalized names preceded by an NPC role/title (e.g., "miller Orin", "the miller Orin")
+  const singleNamePattern = /\b(?:the\s+)?([a-z]+)\s+([A-Z][A-Za-z'’-]+)\b/g;
+  for (const match of premise.matchAll(singleNamePattern)) {
+    const roleWord = match[1]!.toLowerCase();
+    const candidateName = match[2]!;
+    if (
+      NPC_TITLES.has(roleWord) &&
+      !LEADING_STOPWORDS.has(candidateName.toLowerCase()) &&
+      !PLACE_NOUNS.has(candidateName.toLowerCase())
+    ) {
+      pushUnique(npcs, candidateName);
+    }
+  }
+
+  // Also extract names explicitly noted as waiting or present
+  const waitingNamePattern = /\b([A-Z][A-Za-z'’-]+)\s+(?:is\s+waiting|waits|greets|meets)\b/g;
+  for (const match of premise.matchAll(waitingNamePattern)) {
+    const candidateName = match[1]!;
+    if (
+      !LEADING_STOPWORDS.has(candidateName.toLowerCase()) &&
+      !PLACE_NOUNS.has(candidateName.toLowerCase())
+    ) {
+      pushUnique(npcs, candidateName);
+    }
+  }
+
   return { npcs, places };
 }
 
@@ -279,11 +343,42 @@ function extractModifierPhrases(
 
 export function extractPremiseEntities(premise: string): PremiseEntities {
   const { npcs, places } = extractProperNames(premise);
+  const exits = extractModifierPhrases(premise, EXIT_NOUNS, true);
+  const exitsLower = exits.map((e) => e.toLowerCase());
+
+  if (/[A-Z]/.test(premise)) {
+    const modifierPlaces = extractModifierPhrases(premise, PLACE_NOUNS, false).map(capitalizeLabel);
+    for (const mp of modifierPlaces) {
+      const lower = mp.toLowerCase();
+      if (
+        !ARCHITECTURAL_ROOM_NOUNS.has(lower) &&
+        !exitsLower.some((exit) => exit.includes(lower))
+      ) {
+        pushUnique(places, mp);
+      }
+    }
+
+    const settlementPattern =
+      /\b([A-Z][A-Za-z'’-]+)\s+(?:village|town|city|settlement|mill|sawmill|inn|tavern|keep|crypt)\b/g;
+    for (const match of premise.matchAll(settlementPattern)) {
+      const candidate = match[1]!;
+      const lower = candidate.toLowerCase();
+      if (
+        !LEADING_STOPWORDS.has(lower) &&
+        !NPC_TITLES.has(lower) &&
+        !ARCHITECTURAL_ROOM_NOUNS.has(lower) &&
+        !exitsLower.some((exit) => exit.includes(lower))
+      ) {
+        pushUnique(places, candidate);
+      }
+    }
+  }
+
   return {
     npcs,
     places,
     props: extractModifierPhrases(premise, PROP_NOUNS, false),
-    exits: extractModifierPhrases(premise, EXIT_NOUNS, true),
+    exits,
   };
 }
 
@@ -384,6 +479,17 @@ function pickSrdMonsterForLevel(level: number): {
   return { name: 'Dread Knight', srdMonsterId: 'knight' };
 }
 
+const EVOCATIVE_FALLBACK_NPCS = [
+  'Warden Elira',
+  'Corin the Scout',
+  'Bram the Wary',
+  'Elora the Herbalist',
+  'Duran the Smith',
+  'Maeve the Tracker',
+  'Kaelen the Informant',
+  'Old Greta',
+];
+
 function buildMilestoneGraph(options: {
   readonly campaignName: string;
   readonly startLevel: number;
@@ -394,6 +500,7 @@ function buildMilestoneGraph(options: {
   readonly setting: string;
   readonly openingTemplate: string;
   readonly investigationTemplate: string;
+  readonly premise?: string;
 }): readonly CampaignMilestoneBlueprint[] {
   const milestones: CampaignMilestoneBlueprint[] = [];
   const totalMilestones = Math.max(1, options.targetEndLevel - options.startLevel);
@@ -412,9 +519,24 @@ function buildMilestoneGraph(options: {
     const r3Xp = Math.max(50, xpBudgetForMilestone - r1Xp - r2Xp);
     const r3EncounterXp = Math.round(xpBudgetForMilestone * 0.4);
 
+    const openingNpcFromPremise =
+      m === 1 && typeof options.premise === 'string'
+        ? options.entities.npcs.find(
+            (name) =>
+              new RegExp(
+                `\\b${name}\\b[^.!?]*\\b(waiting|entrance|greets|meets)\\b`,
+                'i',
+              ).test(options.premise!) ||
+              new RegExp(`\\b(?:waiting|entrance)\\b[^.!?]*\\b${name}\\b`, 'i').test(
+                options.premise!,
+              ),
+          )
+        : null;
+    const fallbackNpc = EVOCATIVE_FALLBACK_NPCS[(m - 1) % EVOCATIVE_FALLBACK_NPCS.length]!;
     const npcName = sanitizeWotcProductIdentity(
-      options.entities.npcs[(m - 1) % Math.max(1, options.entities.npcs.length)] ??
-        (m === 1 ? 'Warden Elira' : `Informant #${m}`),
+      openingNpcFromPremise ??
+        options.entities.npcs[(m - 1) % Math.max(1, options.entities.npcs.length)] ??
+        fallbackNpc,
     );
     const fallbackPlaceBase =
       options.campaignName.trim().length > 0 &&
@@ -443,6 +565,44 @@ function buildMilestoneGraph(options: {
     const room1Id = `scene-m${m}-r1`;
     const room2Id = `scene-m${m}-r2`;
     const room3Id = `scene-m${m}-r3`;
+
+    const room2Title =
+      m === 1
+        ? `${capitalizeLabel(placeName)} — Side Passage`
+        : m === 2
+          ? `${capitalizeLabel(placeName)} — Subterranean Reach`
+          : `${capitalizeLabel(placeName)} — Deep Warrens ${m}`;
+    const room2Summary =
+      m === 1
+        ? sanitizeWotcProductIdentity(
+            `A shadowed passage beyond the ${exitLabel}, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
+          )
+        : m === 2
+          ? sanitizeWotcProductIdentity(
+              `A subterranean reach beneath ${placeName}, slick with runoff and littered with old freight, where danger echoes ahead.`,
+            )
+          : sanitizeWotcProductIdentity(
+              `A perilous passage in the lower depths of ${placeName}, guarding the route forward.`,
+            );
+
+    const room3Title =
+      m === 1
+        ? `${capitalizeLabel(placeName)} — Sanctum`
+        : m === 2
+          ? `${capitalizeLabel(placeName)} — Deep Vault`
+          : `${capitalizeLabel(placeName)} — Final Sanctum ${m}`;
+    const room3Summary =
+      m === 1
+        ? sanitizeWotcProductIdentity(
+            `The inner sanctum of ${placeName}, where ancient stonework and flickering braziers frame the heart of the danger.`,
+          )
+        : m === 2
+          ? sanitizeWotcProductIdentity(
+              `The sealed lower vault of ${placeName}, where the core truth of the mystery is guarded by ancient mechanisms and watchers.`,
+            )
+          : sanitizeWotcProductIdentity(
+              `The heart of the sanctum in ${placeName}, where the climax of milestone ${m} awaits.`,
+            );
 
     const room1Exits: CampaignRoomBlueprint['exits'][number][] = [
       {
@@ -519,10 +679,8 @@ function buildMilestoneGraph(options: {
         sceneId: room2Id,
         milestoneIndex: m,
         roomIndex: 2,
-        title: `${capitalizeLabel(placeName)} — Side Passage`,
-        summary: sanitizeWotcProductIdentity(
-          `A shadowed passage beyond the ${exitLabel}, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
-        ),
+        title: room2Title,
+        summary: room2Summary,
         templateId: options.investigationTemplate,
         battlemapPrompt: sanitizeWotcProductIdentity(
           `Shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east`,
@@ -545,10 +703,8 @@ function buildMilestoneGraph(options: {
         sceneId: room3Id,
         milestoneIndex: m,
         roomIndex: 3,
-        title: `${capitalizeLabel(placeName)} — Sanctum`,
-        summary: sanitizeWotcProductIdentity(
-          `The inner sanctum of ${placeName}, where ancient stonework and flickering braziers frame the heart of the danger.`,
-        ),
+        title: room3Title,
+        summary: room3Summary,
         templateId: 'interior_stone_crypt',
         battlemapPrompt: sanitizeWotcProductIdentity(
           `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework`,
@@ -617,7 +773,7 @@ export function buildCampaignBlueprint(
   const premise = sanitizeWotcProductIdentity(rawSummary);
   const entities = extractPremiseEntities(premise);
   const location = detectPremiseLocation(premise);
-  const questHook = detectQuestHook(premise);
+  const questHook = detectQuestHook(premise, entities.props[0]);
   const hints = actTemplateHints(location.locationKind);
 
   const hook = questHook ?? 'the trouble that brought the party together';
@@ -681,6 +837,7 @@ export function buildCampaignBlueprint(
     setting,
     openingTemplate: hints.opening ?? 'interior_inn_common',
     investigationTemplate: hints.investigation ?? 'interior_stone_crypt',
+    premise,
   });
 
   return {

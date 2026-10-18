@@ -530,13 +530,16 @@ export function resolveDoorIntentForMap(
     const throughStep = nextStepThroughOpenDoor(tokenAnchor, map);
     if (throughStep !== null) {
       const reversing = isOnOpenDoorPassage(tokenAnchor, map);
+      const mentionsNextRoom = /\b(?:next|another|other|new)\s+room\b/i.test(text);
       return {
         proposedCommandType: 'table.move',
         path: [throughStep],
         ...(adjacentOpen !== undefined ? { edgeId: adjacentOpen.edgeId } : {}),
         summary: reversing
           ? `Ready to step back through the open doorway in ${sceneTitle}. Confirm to commit the step.`
-          : `Ready to step through the open doorway in ${sceneTitle}. Confirm to commit the step.`,
+          : mentionsNextRoom
+            ? `Ready to step through the open doorway into the adjoining passage in ${sceneTitle} (take the stairs beyond to travel to the next room). Confirm to commit the step.`
+            : `Ready to step through the open doorway in ${sceneTitle}. Confirm to commit the step.`,
       };
     }
   }
