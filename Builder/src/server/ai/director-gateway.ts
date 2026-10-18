@@ -271,8 +271,8 @@ export function buildNpcDialogueReply(options: {
   if (/\bwhich door\b|\bleads to\b|\barchive\b/.test(q)) {
     return `${name}: "Only one door shows from here. What's beyond it isn't settled until someone opens it — I won't invent an archive for you."`;
   }
-  if (/\bwhat lies\b|\bwhat's (?:past|beyond|ahead)\b|\bwhat is past\b/.test(q)) {
-    return `${name}: "From here I can speak to ${where} — wet stone, the sconce light, that door. Beyond it stays unknown until the fiction opens it."`;
+  if (/\b(?:mira|vanished|missing|bell|stolen|last\s+see|know\s+about|what\s+happened)\b/i.test(q)) {
+    return `${name}: "Mira was carrying that copper bell when she vanished into the old mill passages. I fear she's held deeper inside — we need to find her alive and recover the bell."`;
   }
   return `${name}: "Ask plainly about what we can see here. I answer from this chamber — not from places that aren't established yet."`;
 }
@@ -650,45 +650,54 @@ async function resolveDirectorNarrateOutput(options: {
       memory?.npcs.find(
         (entry) => entry.name.toLowerCase() === name.toLowerCase() || entry.npcId === name,
       ) ?? null;
-    if (npc !== null) {
-      return buildNpcDialogueReply({
-        npc,
-        playerText: options.structured.rawText,
-        mapTitle: map?.title ?? null,
-      });
-    }
     const sceneNpc =
       map?.notableFeatures.find(
         (f) =>
           f.referenceKind === 'npc' &&
           f.label.toLowerCase().includes(name.toLowerCase()),
       ) ?? null;
-    if (sceneNpc !== null) {
-      const cleanName = sceneNpc.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || name;
-      try {
-        const director = await loadDirectorConfig(options.firestore, options.campaignId);
-        const context = await assembleDirectorVisibleContext({
-          firestore: options.firestore,
-          campaignId: options.campaignId,
-          accountId: options.accountId,
-        });
-        const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
-        const liveBody = await tryLiveProse(options, {
-          systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is speaking to ${cleanName}, who is present in the current scene. Reply in 2–4 vivid sentences in-world, including ${cleanName}'s spoken response in quotes grounded in the Visible state pack and campaign context. Do not ask what they are trying to do. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
-          userPrompt: `${context.text}\n\nPlayer addresses ${cleanName}:\n${playerAsk}`,
-        });
-        if (liveBody !== null && liveBody.trim().length > 0) {
-          return scrubEngineCoordinates(liveBody.trim());
-        }
-      } catch {
-        // Fall through to deterministic NPC reply.
-      }
-      return buildNpcDialogueReply({
-        npc: { name: cleanName, role: 'present contact', motive: 'share what is known here' },
-        playerText: options.structured.rawText,
-        mapTitle: map?.title ?? null,
-      });
+
+    // Check if the player is speaking to an established NPC who is absent/missing from this scene
+    const isMissingNpc =
+      npc !== null &&
+      (/missing/i.test(npc.role) || /awaiting rescue/i.test(npc.motive));
+    const sceneHasNpcFeatures =
+      map !== null && map.notableFeatures.some((f) => f.referenceKind === 'npc');
+
+    if (sceneNpc === null && isMissingNpc && map !== null && sceneHasNpcFeatures) {
+      const presentNames = map.notableFeatures
+        .filter((f) => f.referenceKind === 'npc')
+        .map((f) => f.label.replace(/\s+[—–-]\s+\w+$/u, '').trim())
+        .filter((l) => l.length > 0);
+      const presentNote =
+        presentNames.length > 0 ? ` ${presentNames.join(', ')} is waiting here.` : '';
+      return `${name} is not present in this room — they vanished before the party arrived and must be rescued.${presentNote}`;
     }
+
+    const cleanName = sceneNpc?.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || npc?.name || name;
+    try {
+      const director = await loadDirectorConfig(options.firestore, options.campaignId);
+      const context = await assembleDirectorVisibleContext({
+        firestore: options.firestore,
+        campaignId: options.campaignId,
+        accountId: options.accountId,
+      });
+      const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+      const liveBody = await tryLiveProse(options, {
+        systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is speaking to ${cleanName}, who is present in the current scene. Reply in 2–4 vivid sentences in-world, including ${cleanName}'s spoken response in quotes grounded in the Visible state pack and campaign context. If asked about missing persons, clues, or quest objects, have ${cleanName} share what they know from the premise and guide the player toward the next passage or investigation. Do not ask what they are trying to do. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
+        userPrompt: `${context.text}\n\nPlayer addresses ${cleanName}:\n${playerAsk}`,
+      });
+      if (liveBody !== null && liveBody.trim().length > 0) {
+        return scrubEngineCoordinates(liveBody.trim());
+      }
+    } catch {
+      // Fall through to deterministic NPC reply.
+    }
+    return buildNpcDialogueReply({
+      npc: npc ?? { name: cleanName, role: 'present contact', motive: 'share what is known here' },
+      playerText: options.structured.rawText,
+      mapTitle: map?.title ?? null,
+    });
   }
 
   return options.authority.clarificationPrompt ?? options.authority.summary;

@@ -729,38 +729,74 @@ export function parsePlayerDeclaration(
     label: npc.label,
   }));
 
+  // Strip quoted speech when looking for the addressee so mentions inside dialogue aren't mistaken for the speaker
+  const outsideQuotes = trimmed
+    .replace(/"[^"]*"/g, ' ')
+    .replace(/[“”][^“”]*[“”]/g, ' ')
+    .trim();
+  const searchScope = outsideQuotes.length > 0 ? outsideQuotes : trimmed;
+
   let addressee: string | null = null;
+  // 1. Direct speech targeting on known NPCs: "ask Orin", "speaking to Orin", "I question Orin", "@Orin,"
   for (const npc of knownNpcs) {
     const escaped = npc.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (
-      new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(trimmed) ||
-      new RegExp(`^(?:hey|hi|ask)\\s+${escaped}\\b`, 'i').test(trimmed) ||
-      new RegExp(`\\b(?:asks?|tells?)\\s+${escaped}\\b`, 'i').test(trimmed) ||
-      (new RegExp(`\\b${escaped}\\b`, 'i').test(trimmed) &&
-        /\b(?:asks?|tells?|speaks?|talking|talks?|greets?|questions?|inquires?|says?|approach(?:es|ing)?|address(?:es|ing)?)\b/i.test(
-          trimmed,
-        ))
+      new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(searchScope) ||
+      new RegExp(`^(?:hey|hi)\\s+${escaped}\\b`, 'i').test(searchScope) ||
+      new RegExp(
+        `\\b(?:asks?|tells?|speaking\\s+to|talk(?:s|ing)?\\s+(?:to|with)|speaks?\\s+(?:to|with)|question(?:s|ing)?|inquir(?:e|es|ing)\\s+of|greets?|address(?:es|ing)?|says?\\s+to)\\s+(?:the\\s+)?(?:[a-z]+\\s+)?${escaped}\\b`,
+        'i',
+      ).test(searchScope)
     ) {
       addressee = npc.label;
       break;
     }
   }
+
+  // 2. Check leading addressee format: "Orin: ...", "@Orin, ..."
   if (addressee === null) {
-    const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(trimmed);
+    const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(searchScope);
     if (leading !== null) {
-      addressee = leading[1]!;
+      const matchKnown = knownNpcs.find(
+        (n) => n.label.toLowerCase() === leading[1]!.toLowerCase(),
+      );
+      addressee = matchKnown ? matchKnown.label : leading[1]!;
     }
   }
-  // Unknown named addressee: "asks Nib", "ask Nib,", "speaking to Nib" — even when not in memory.
+
+  // 3. Unknown named addressee with explicit speech verb: "asks Nib", "ask Nib,", "speaking to Nib"
   if (addressee === null) {
-    const asked = /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to)\s+([A-Z][a-zA-Z'-]{1,24})\b/.exec(
-      trimmed,
-    );
+    const asked =
+      /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to|speaks?\s+to|question(?:s|ing)?)\s+([A-Z][a-zA-Z'-]{1,24})\b/i.exec(
+        searchScope,
+      );
     if (asked !== null) {
       const candidate = asked[1]!;
-      // Skip common false positives that are not personal names.
-      if (!/^(?:The|This|That|What|Which|Where|When|Why|How|Director|Garrick|Veyra)$/i.test(candidate)) {
-        addressee = candidate;
+      if (
+        !/^(?:The|This|That|What|Which|Where|When|Why|How|Director|Garrick|Veyra)$/i.test(
+          candidate,
+        )
+      ) {
+        const matchKnown = knownNpcs.find(
+          (n) => n.label.toLowerCase() === candidate.toLowerCase(),
+        );
+        addressee = matchKnown ? matchKnown.label : candidate;
+      }
+    }
+  }
+
+  // 4. Fallback: known NPC mentioned outside quotes alongside a speaking verb
+  if (addressee === null) {
+    for (const npc of knownNpcs) {
+      const escaped = npc.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (
+        new RegExp(`\\b${escaped}\\b`, 'i').test(searchScope) &&
+        /\b(?:speaks?|talking|talks?|greets?|questions?|inquires?|says?|approach(?:es|ing)?|address(?:es|ing)?)\b/i.test(
+          searchScope,
+        )
+      ) {
+        addressee = npc.label;
+        break;
       }
     }
   }

@@ -1557,7 +1557,14 @@ export function directorNarrationBeat(
     return `${scene.description}${inhabitantLine} ${scene.mood}`;
   }
   if (kind === 'travel') {
-    return `The party leaves ${options.priorTitle ?? 'the prior place'} behind and arrives at ${scene.title}. ${scene.description}${inhabitantLine}`;
+    const isStairs =
+      options.objectLabel !== null &&
+      options.objectLabel !== undefined &&
+      /\b(?:stairs?|steps?|cellar)\b/i.test(options.objectLabel);
+    const leaveLead = isStairs
+      ? `The party descends the cellar stairs, leaving ${options.priorTitle ?? 'the prior place'} behind and arriving at ${scene.title}.`
+      : `The party leaves ${options.priorTitle ?? 'the prior place'} behind and arrives at ${scene.title}.`;
+    return `${leaveLead} ${scene.description}${inhabitantLine}`;
   }
   if (kind === 'return') {
     const consequence =

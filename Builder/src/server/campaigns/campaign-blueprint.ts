@@ -606,7 +606,7 @@ function buildMilestoneGraph(options: {
     const room2Summary =
       m === 1
         ? sanitizeWotcProductIdentity(
-            `A shadowed passage beyond the ${exitLabel}, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
+            `A shadowed passage beyond the cellar stairs and connecting doorway, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
           )
         : m === 2
           ? sanitizeWotcProductIdentity(

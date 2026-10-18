@@ -14,8 +14,12 @@ import {
 import {
   scrubInventedContainerContents,
   scrubClosedDoorCalledOpen,
+  buildNpcDialogueReply,
 } from '../../dist/server/ai/director-gateway.js';
 import { formatMap } from '../../dist/server/ai/director-context.js';
+import { parsePlayerDeclaration } from '../../dist/shared/play-authority-contract.js';
+import { directorNarrationBeat } from '../../dist/server/table/scene-composition.js';
+import { sanitizePlayerFacingSceneText } from '../../dist/server/table/scene-commands.js';
 import { buildRulesCatalog } from '../../dist/server/rules/rules-catalog.js';
 import { combineStartingEquipment } from '../../dist/server/rules/character-rules.js';
 import { findClass, findBackground } from '../../dist/server/rules/srd-manifest.js';
@@ -319,4 +323,63 @@ test('HD18-25: Starting equipment marks armor as equipped by default', () => {
   const leatherArmor = equipment.find((item) => /leather armor/i.test(item.name));
   assert.ok(leatherArmor, 'Leather armor should be in rogue starting equipment');
   assert.equal(leatherArmor.equipped, true, 'Armor should be equipped: true by default so AC matches equipment state');
+});
+
+test('HD18-03: Asking Orin extracts Orin as addressee and answers as Orin, not Mira Vale', () => {
+  const parsed = parsePlayerDeclaration(
+    'I ask Orin, "Where did you last see Mira Vale, and what do you know about the stolen copper bell?"',
+    {
+      knownNpcs: [
+        { id: 'npc-mira-vale', label: 'Mira Vale' },
+        { id: 'npc-orin', label: 'Orin' },
+      ],
+    },
+  );
+  assert.equal(parsed.addressee, 'Orin');
+  assert.equal(parsed.actionSequence[0]?.kind, 'dialogue');
+  assert.equal(parsed.actionSequence[0]?.targetRef, 'Orin');
+
+  const reply = buildNpcDialogueReply({
+    npc: { name: 'Orin', role: 'Local contact / Guide', motive: 'Helpful' },
+    playerText: parsed.rawText,
+    mapTitle: 'Riverside mill',
+  });
+  assert.match(reply, /^Orin:/);
+  assert.doesNotMatch(reply, /^Mira Vale:/);
+  assert.match(reply, /copper bell|vanished|mill/i);
+});
+
+test('HD18-20: Stair travel chronicle and scene description maintain spatial continuity', () => {
+  const sanitized = sanitizePlayerFacingSceneText(
+    'A shadowed passage beyond the wooden door, where hidden clues and lurking hazards guard the way deeper into Riverside mill.',
+  );
+  assert.doesNotMatch(sanitized, /beyond the wooden door/i);
+  assert.match(sanitized, /beyond the cellar stairs and connecting doorway/i);
+
+  const travelChronicle = directorNarrationBeat('travel', {
+    scene: {
+      sceneId: 'scene-m1-r2',
+      templateId: 'interior_stone_crypt',
+      title: 'Riverside mill — Side Passage',
+      sceneBanner: sanitized,
+      purpose: 'exploration',
+      environment: 'interior_stone_crypt',
+      lighting: 'dim',
+      mood: 'damp and cold',
+      description: sanitized,
+      columns: 12,
+      rows: 8,
+      cells: [],
+      edges: [],
+      features: [],
+      spawn: { column: 1, row: 1 },
+      exits: [],
+      doorStates: {},
+      inhabitantObjectIds: [],
+    },
+    priorTitle: 'Riverside mill',
+    objectLabel: 'Cellar stairs',
+  });
+  assert.match(travelChronicle, /The party descends the cellar stairs/i);
+  assert.doesNotMatch(travelChronicle, /beyond the wooden door/i);
 });

@@ -53,6 +53,7 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { CampaignNotFoundError } from './errors.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import { emptyMapRuntime } from '../table/map-runtime.js';
+import { classifyNpcRoles } from './campaign-blueprint.js';
 
 export class CampaignMemoryError extends Error {
   readonly code: string;
@@ -394,6 +395,58 @@ function blankSession(campaignId: string, now: Date): StoredSessionState {
   };
 }
 
+function seedNpcsFromBlueprint(blueprint: CampaignBlueprint): CampaignNpcRecordProjection[] {
+  const premiseText = [blueprint.premiseDigest, blueprint.questHook].filter(Boolean).join('\n\n');
+  const { missingNpcs, presentNpcs } = classifyNpcRoles(blueprint.namedNpcs ?? [], premiseText);
+
+  const roomNpcRoles = new Map<string, string>();
+  for (const m of blueprint.milestones ?? []) {
+    for (const r of m.rooms ?? []) {
+      for (const n of r.npcs ?? []) {
+        if (!roomNpcRoles.has(n.name.toLowerCase())) {
+          roomNpcRoles.set(n.name.toLowerCase(), n.role);
+        }
+      }
+    }
+  }
+
+  return (blueprint.namedNpcs ?? []).map((name) => {
+    const lower = name.toLowerCase();
+    const isMissing =
+      missingNpcs.some((m) => m.toLowerCase() === lower) ||
+      roomNpcRoles.get(lower) === 'Missing person';
+    const isPresent =
+      presentNpcs.some((p) => p.toLowerCase() === lower) ||
+      roomNpcRoles.get(lower) === 'Key contact' ||
+      roomNpcRoles.get(lower) === 'Local witness';
+
+    let role = 'Encountered acquaintance';
+    let motive = 'Helpful';
+    let knowledge = blueprint.questHook ?? 'Present in the area.';
+
+    if (isMissing) {
+      role = 'Missing person / Objective';
+      motive = 'Awaiting rescue';
+      knowledge = blueprint.questHook
+        ? `Vanished alongside ${blueprint.questHook}; party seeks their rescue.`
+        : 'Missing from the area; party seeks their rescue.';
+    } else if (isPresent) {
+      role = 'Local contact / Guide';
+      motive = 'Helpful';
+      knowledge = blueprint.questHook ?? 'Present in the area.';
+    }
+
+    return {
+      npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      role,
+      motive,
+      knowledge,
+      audience: 'public',
+    };
+  });
+}
+
 /** Creates campaign memory + session-state records if they do not exist yet. */
 export async function ensureCampaignMemory(
   firestore: Firestore,
@@ -406,17 +459,38 @@ export async function ensureCampaignMemory(
   if (memorySnapshot.exists) {
     const existing = memorySnapshot.data() as StoredCampaignMemory;
     if (existing.npcs.length === 0 && blueprint && Array.isArray(blueprint.namedNpcs) && blueprint.namedNpcs.length > 0) {
-      const seededNpcs: CampaignNpcRecordProjection[] = blueprint.namedNpcs.map((name, idx) => ({
-        npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-        name,
-        role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
-        motive: 'Helpful',
-        knowledge: blueprint.questHook ?? 'Present in the area.',
-        audience: 'public',
-      }));
+      const seededNpcs = seedNpcsFromBlueprint(blueprint);
       const updated: StoredCampaignMemory = { ...existing, npcs: seededNpcs };
       await memoryRef.set(updated, { merge: true });
       return updated;
+    }
+    // Reconcile existing NPC roles if a missing person was mistakenly labeled as local contact / guide
+    if (blueprint && Array.isArray(blueprint.namedNpcs) && blueprint.namedNpcs.length > 0) {
+      const premiseText = [blueprint.premiseDigest, blueprint.questHook].filter(Boolean).join('\n\n');
+      const { missingNpcs } = classifyNpcRoles(blueprint.namedNpcs, premiseText);
+      let needsUpdate = false;
+      const reconciled = existing.npcs.map((npc) => {
+        if (
+          missingNpcs.some((m) => m.toLowerCase() === npc.name.toLowerCase()) &&
+          /guide|contact/i.test(npc.role)
+        ) {
+          needsUpdate = true;
+          return {
+            ...npc,
+            role: 'Missing person / Objective',
+            motive: 'Awaiting rescue',
+            knowledge: blueprint.questHook
+              ? `Vanished alongside ${blueprint.questHook}; party seeks their rescue.`
+              : 'Missing from the area; party seeks their rescue.',
+          };
+        }
+        return npc;
+      });
+      if (needsUpdate) {
+        const updated: StoredCampaignMemory = { ...existing, npcs: reconciled };
+        await memoryRef.set(updated, { merge: true });
+        return updated;
+      }
     }
     return existing;
   }
@@ -425,14 +499,7 @@ export async function ensureCampaignMemory(
   let created =
     starterPack === undefined ? blankMemory(campaignId, now) : seededMemory(campaignId, starterPack, now);
   if (starterPack === undefined && blueprint) {
-    const seededNpcs: CampaignNpcRecordProjection[] = (blueprint.namedNpcs ?? []).map((name, idx) => ({
-      npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-      name,
-      role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
-      motive: 'Helpful',
-      knowledge: blueprint.questHook ?? 'Present in the area.',
-      audience: 'public',
-    }));
+    const seededNpcs = seedNpcsFromBlueprint(blueprint);
     const seededQuests: CampaignQuestProjection[] = blueprint.questHook
       ? [
           {
@@ -470,14 +537,7 @@ async function loadStoredMemory(firestore: Firestore, campaignId: string): Promi
         const campData = campSnap.data() as { campaignBlueprint?: CampaignBlueprint };
         const bp = campData.campaignBlueprint;
         if (bp && Array.isArray(bp.namedNpcs) && bp.namedNpcs.length > 0) {
-          const seededNpcs: CampaignNpcRecordProjection[] = bp.namedNpcs.map((name, idx) => ({
-            npcId: `npc-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-            name,
-            role: idx === 0 ? 'Local contact / Guide' : 'Encountered acquaintance',
-            motive: 'Helpful',
-            knowledge: bp.questHook ?? 'Present in the area.',
-            audience: 'public',
-          }));
+          const seededNpcs = seedNpcsFromBlueprint(bp);
           const updated: StoredCampaignMemory = { ...memory, npcs: seededNpcs };
           await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(updated, { merge: true });
           return updated;

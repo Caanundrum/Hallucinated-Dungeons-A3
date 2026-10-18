@@ -361,7 +361,8 @@ export function buildAuthoritativeMapBundle(options: {
         : 'procedural_local_placeholder',
       sceneBanner: directorScene.sceneBanner
         .replace(/^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i, '')
-        .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the')
+        .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the cellar stairs and connecting doorway')
+        .replace(/beyond the wooden door\b/i, 'beyond the cellar stairs and connecting doorway')
         .replace(/\s*Clues and hazards test the party before the Milestone \d+ climax\./i, ' Hidden clues and lurking hazards guard the way forward.')
         .replace(/^Climax chamber for Milestone \d+\.\s*Resolving the threat here elevates the party to Level \d+\./i, 'The inner sanctum, where ancient stonework and flickering braziers frame the heart of the danger.')
         .trim() || directorScene.sceneBanner,
