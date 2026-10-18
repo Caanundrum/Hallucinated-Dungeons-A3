@@ -64,3 +64,7 @@ env:
     value: "true"
     availability:
       - RUNTIME
+  - variable: HD_CLIENT_ORIGIN
+    value: "https://hd.chaosstandard.com"
+    availability:
+      - RUNTIME

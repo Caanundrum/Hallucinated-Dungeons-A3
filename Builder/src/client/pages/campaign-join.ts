@@ -474,6 +474,15 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
           seatedCampaignName: seatedNames[0] ?? null,
         };
       });
+      if (characterId.length === 0 && characters.length > 0) {
+        const seatFromQuery = new URLSearchParams(window.location.search).get('seatCharacter');
+        const matchedQuery =
+          seatFromQuery !== null
+            ? characters.find((entry) => entry.characterId === seatFromQuery)
+            : undefined;
+        const firstUnseated = characters.find((entry) => !entry.seatedElsewhere);
+        characterId = (matchedQuery ?? firstUnseated ?? characters[0]!).characterId;
+      }
     } catch {
       characters = [];
       draftCount = 0;

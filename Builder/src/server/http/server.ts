@@ -229,18 +229,18 @@ function contentSecurityPolicy(env: ServerEnvironment): string {
       "script-src 'self' https://accounts.google.com/gsi/client",
       // GIS applies inline style attributes when sizing the button (e.g. width).
       // Without 'unsafe-inline', the iframe collapses to 0×0 and only the fallback G shows.
-      "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
-      "img-src 'self' data: https://www.gstatic.com",
-      "font-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com",
+      "img-src 'self' data: https://www.gstatic.com https://*.googleusercontent.com",
+      "font-src 'self' https://fonts.gstatic.com",
       "connect-src 'self' https://accounts.google.com/gsi/",
       "frame-src https://accounts.google.com/gsi/",
       "base-uri 'none'",
-      "form-action 'none'",
+      "form-action 'self' https://accounts.google.com/gsi/",
       "frame-ancestors 'none'",
       "object-src 'none'",
     ].join('; ');
   }
-  return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
+  return "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 }
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
@@ -395,7 +395,14 @@ function parseCookies(header: string | undefined): Map<string, string> {
 function applySecurityHeadersFor(response: ServerResponse, env: ServerEnvironment): void {
   response.setHeader('content-security-policy', contentSecurityPolicy(env));
   response.setHeader('x-frame-options', 'DENY');
-  response.setHeader('referrer-policy', 'no-referrer');
+  // Google Identity Services (/gsi/button) requires the origin Referer header to validate
+  // the OAuth client origin; 'no-referrer' causes /gsi/button to return HTTP 400.
+  response.setHeader(
+    'referrer-policy',
+    isHostedEnvironmentClass(env.environmentClass)
+      ? 'strict-origin-when-cross-origin'
+      : 'no-referrer',
+  );
   response.setHeader('x-content-type-options', 'nosniff');
 }
 
@@ -774,7 +781,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const profile = await exchangeGoogleIdToken({
           webApiKey: env.firebaseWebApiKey,
           googleIdToken,
-          requestUri: env.clientOrigin,
+          requestUri: headerOrigin(request) ?? env.clientOrigin,
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);

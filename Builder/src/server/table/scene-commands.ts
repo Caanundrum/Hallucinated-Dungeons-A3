@@ -189,17 +189,28 @@ export async function loadCampaignPremise(
   return name.length > 0 ? name : 'an unfolding adventure';
 }
 
+export function sanitizePlayerFacingSceneText(text: string): string {
+  return text
+    .replace(/^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i, '')
+    .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the')
+    .replace(/\s*Clues and hazards test the party before the Milestone \d+ climax\./i, ' Hidden clues and lurking hazards guard the way forward.')
+    .replace(/^Climax chamber for Milestone \d+\.\s*Resolving the threat here elevates the party to Level \d+\./i, 'The inner sanctum, where ancient stonework and flickering braziers frame the heart of the danger.')
+    .trim();
+}
+
 function instanceToComposed(prior: NonNullable<ReturnType<typeof activeSceneInstance>>): ComposedScene {
+  const cleanedBanner = sanitizePlayerFacingSceneText(prior.sceneBanner);
+  const cleanedDescription = sanitizePlayerFacingSceneText(prior.description ?? prior.mood);
   return {
     sceneId: prior.sceneId,
     templateId: prior.templateId,
     title: prior.title,
-    sceneBanner: prior.sceneBanner,
+    sceneBanner: cleanedBanner.length > 0 ? cleanedBanner : prior.sceneBanner,
     purpose: prior.purpose,
     environment: prior.environment,
     lighting: prior.lighting,
     mood: prior.mood,
-    description: prior.description ?? prior.mood,
+    description: cleanedDescription.length > 0 ? cleanedDescription : (prior.description ?? prior.mood),
     columns: prior.columns,
     rows: prior.rows,
     cells: prior.cells,

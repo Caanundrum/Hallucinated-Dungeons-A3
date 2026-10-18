@@ -702,7 +702,11 @@ export function parsePlayerDeclaration(
     if (
       new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(trimmed) ||
       new RegExp(`^(?:hey|hi|ask)\\s+${escaped}\\b`, 'i').test(trimmed) ||
-      new RegExp(`\\b(?:asks?|tells?)\\s+${escaped}\\b`, 'i').test(trimmed)
+      new RegExp(`\\b(?:asks?|tells?)\\s+${escaped}\\b`, 'i').test(trimmed) ||
+      (new RegExp(`\\b${escaped}\\b`, 'i').test(trimmed) &&
+        /\b(?:asks?|tells?|speaks?|talking|talks?|greets?|questions?|inquires?|says?|approach(?:es|ing)?|address(?:es|ing)?)\b/i.test(
+          trimmed,
+        ))
     ) {
       addressee = npc.label;
       break;

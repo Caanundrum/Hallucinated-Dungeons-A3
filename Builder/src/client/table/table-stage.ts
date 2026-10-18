@@ -594,6 +594,8 @@ function paintSemanticSvg(
             : 'map-poi-marker';
     const boundDoor = isExit ? doorBoundToExitFeature(map, feature) : null;
     const doorOwnedExit = boundDoor !== null;
+    const boundEdgeAttr =
+      boundDoor !== null ? ` data-bound-edge="${escapeHtml(boundDoor.edgeId)}"` : '';
     const accessibleName = doorOwnedExit
       ? `Exit marker for ${formatEdgeAccessibleLabel(boundDoor, map.edges)}`
       : feature.label;
@@ -601,7 +603,7 @@ function paintSemanticSvg(
     const interactiveAttrs = doorOwnedExit
       ? `role="img" aria-label="${escapeHtml(accessibleName)}"`
       : `tabindex="0" role="button" aria-label="${escapeHtml(accessibleName)}"`;
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}" data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -1234,20 +1236,37 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     host.querySelectorAll<SVGGElement>('g[data-notable-feature]').forEach((group) => {
       const label = group.getAttribute('data-notable-feature') ?? 'Point of interest';
       const kind = group.getAttribute('data-reference-kind') ?? 'prop';
+      const boundEdge = group.getAttribute('data-bound-edge');
       group.onmouseenter = (event) => show(label, kind, event.clientX, event.clientY);
       group.onmousemove = (event) => show(label, kind, event.clientX, event.clientY);
       group.onmouseleave = () => hide();
       group.onclick = (event) => {
         event.stopPropagation();
         show(label, kind, event.clientX, event.clientY);
+        if (boundEdge !== null && boundEdge.length > 0) {
+          edgeClickHandler?.(boundEdge);
+        }
       };
       group.onkeydown = (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           const box = group.getBoundingClientRect();
           show(label, kind, box.left + box.width / 2, box.top);
+          if (boundEdge !== null && boundEdge.length > 0) {
+            edgeClickHandler?.(boundEdge);
+          }
         }
       };
+    });
+    host.querySelectorAll<SVGGElement>('g.map-label-chip[data-label-id^="door:"]').forEach((chip) => {
+      const labelId = chip.getAttribute('data-label-id') ?? '';
+      const edgeId = labelId.startsWith('door:') ? labelId.slice(5) : '';
+      if (edgeId.length > 0) {
+        chip.onclick = (event) => {
+          event.stopPropagation();
+          edgeClickHandler?.(edgeId);
+        };
+      }
     });
   }
 

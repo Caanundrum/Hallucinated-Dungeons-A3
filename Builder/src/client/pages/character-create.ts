@@ -2108,15 +2108,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
               draftId: current.draft.draftId,
             });
             shell.announce(`${character.identity.name} created.`);
-            const returnCampaign = new URLSearchParams(window.location.search).get('returnCampaign');
+            const params = new URLSearchParams(window.location.search);
+            const returnCampaign = params.get('returnCampaign');
+            const returnTo = params.get('returnTo');
             if (
               returnCampaign !== null &&
               /^[A-Za-z0-9-]{1,64}$/.test(returnCampaign) &&
               returnCampaign !== 'new'
             ) {
-              navigate(
-                `/campaigns/${returnCampaign}?seatCharacter=${encodeURIComponent(character.characterId)}`,
-              );
+              const targetPath =
+                returnTo === 'join'
+                  ? `/campaigns/${returnCampaign}/join?seatCharacter=${encodeURIComponent(character.characterId)}`
+                  : `/campaigns/${returnCampaign}?seatCharacter=${encodeURIComponent(character.characterId)}`;
+              navigate(targetPath);
               return;
             }
             navigate(`/characters/${character.characterId}`);

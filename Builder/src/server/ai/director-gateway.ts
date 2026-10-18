@@ -630,18 +630,61 @@ async function resolveDirectorNarrateOutput(options: {
         // Fall through to decline fiction.
       }
     }
+    if (map !== null) {
+      const mapNpcs = map.notableFeatures
+        .filter((f) => f.referenceKind === 'npc')
+        .map((f) => f.label.replace(/\s+[—–-]\s+\w+$/u, '').trim())
+        .filter((label) => label.length > 0);
+      if (mapNpcs.length > 0) {
+        return mapNpcs.length === 1
+          ? `${mapNpcs[0]} is here with you. Address them by name if you want to speak.`
+          : `${mapNpcs.slice(0, -1).join(', ')} and ${mapNpcs[mapNpcs.length - 1]} are here. Address someone by name if you want to speak.`;
+      }
+    }
     return buildPresenceDeclineNarration(map);
   }
 
-  if (isDialogue && options.structured.addressee !== null && memory !== null) {
+  if (isDialogue && options.structured.addressee !== null) {
     const name = options.structured.addressee;
     const npc =
-      memory.npcs.find(
+      memory?.npcs.find(
         (entry) => entry.name.toLowerCase() === name.toLowerCase() || entry.npcId === name,
       ) ?? null;
     if (npc !== null) {
       return buildNpcDialogueReply({
         npc,
+        playerText: options.structured.rawText,
+        mapTitle: map?.title ?? null,
+      });
+    }
+    const sceneNpc =
+      map?.notableFeatures.find(
+        (f) =>
+          f.referenceKind === 'npc' &&
+          f.label.toLowerCase().includes(name.toLowerCase()),
+      ) ?? null;
+    if (sceneNpc !== null) {
+      const cleanName = sceneNpc.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || name;
+      try {
+        const director = await loadDirectorConfig(options.firestore, options.campaignId);
+        const context = await assembleDirectorVisibleContext({
+          firestore: options.firestore,
+          campaignId: options.campaignId,
+          accountId: options.accountId,
+        });
+        const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+        const liveBody = await tryLiveProse(options, {
+          systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is speaking to ${cleanName}, who is present in the current scene. Reply in 2–4 vivid sentences in-world, including ${cleanName}'s spoken response in quotes grounded in the Visible state pack and campaign context. Do not ask what they are trying to do. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
+          userPrompt: `${context.text}\n\nPlayer addresses ${cleanName}:\n${playerAsk}`,
+        });
+        if (liveBody !== null && liveBody.trim().length > 0) {
+          return scrubEngineCoordinates(liveBody.trim());
+        }
+      } catch {
+        // Fall through to deterministic NPC reply.
+      }
+      return buildNpcDialogueReply({
+        npc: { name: cleanName, role: 'present contact', motive: 'share what is known here' },
         playerText: options.structured.rawText,
         mapTitle: map?.title ?? null,
       });
@@ -1526,6 +1569,29 @@ export async function interpretNaturalLanguageIntent(options: {
   } catch {
     knownNpcs = [];
   }
+  try {
+    const { loadMapRuntime } = await import('../table/map-runtime.js');
+    const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+    const activeScene =
+      runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+        ? runtime.sceneInstances?.[runtime.activeSceneId]
+        : undefined;
+    if (activeScene !== undefined) {
+      for (const feature of activeScene.features) {
+        if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
+          const cleanLabel = feature.label.replace(/\s+[—–-]\s+\w+$/u, '').trim();
+          if (
+            cleanLabel.length > 0 &&
+            !knownNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())
+          ) {
+            knownNpcs.push({ id: feature.objectId, label: cleanLabel });
+          }
+        }
+      }
+    }
+  } catch {
+    // Active scene NPC lookup is best-effort.
+  }
 
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
@@ -1604,7 +1670,7 @@ export async function interpretNaturalLanguageIntent(options: {
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head (out|outside|onward|for|to)|go (outside|outdoors|onward|through|to|toward)|step (out|outside)|climb|enter the|follow the|make for|seek)\b/i.test(
+    (/\b(leave|travel|head (out|outside|onward|for|to|down)|go (outside|outdoors|onward|through|to|toward|down)|step (out|outside)|climb|descend|ascend|walk down|take the stairs|down the stairs|up the stairs|enter the|follow the|make for|seek)\b/i.test(
       text,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(

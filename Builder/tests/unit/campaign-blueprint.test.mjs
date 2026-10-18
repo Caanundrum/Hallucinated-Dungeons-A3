@@ -144,3 +144,53 @@ test('isTrustedAvatarUrl and resolveSceneArtUrl accept /api/assets/<assetId>', (
   assert.equal(isTrustedAvatarUrl('/api/assets/asset_abc-123'), true);
   assert.equal(resolveSceneArtUrl('/api/assets/asset_abc-123'), '/api/assets/asset_abc-123');
 });
+
+test('QA Report Fix #1: room summaries and exits stay in-world and multi-word NPC titles never leak into namedPlaces', () => {
+  const blueprint = buildCampaignBlueprint({
+    summary: 'Stop Tiamat and the Five-Headed Serpent Queen Vaelkora in Waterdeep.',
+    name: 'Scourge of the Wyrm',
+    startLevel: 1,
+    targetEndLevel: 3,
+    campaignTone: 'dark_fantasy',
+  });
+  assert.ok(
+    blueprint.namedNpcs.some((npc) => /Serpent Queen Vaelkora/i.test(npc)),
+    'Serpent Queen Vaelkora should be classified as an NPC',
+  );
+  assert.ok(
+    blueprint.namedNpcs.some((npc) => /Five-Crowned Wyrm/i.test(npc)),
+    'Five-Crowned Wyrm should be classified as an NPC',
+  );
+  assert.ok(
+    !blueprint.namedPlaces.some((place) => /Serpent Queen Vaelkora|Five-Crowned Wyrm/i.test(place)),
+    'Boss/NPC names must never be classified as a place',
+  );
+  for (const milestone of blueprint.milestones ?? []) {
+    for (const room of milestone.rooms) {
+      assert.doesNotMatch(
+        room.summary,
+        /\bMilestone\s+\d+\b|\bclimax\b|\bside-trek\b|elevates the party to Level/i,
+      );
+      assert.doesNotMatch(room.title, /Serpent Queen Vaelkora\s+—|Five-Crowned Wyrm\s+—/i);
+      for (const exit of room.exits) {
+        assert.doesNotMatch(exit.edgeLabel, /\bMilestone\s+\d+\b/i);
+      }
+    }
+  }
+});
+
+test('QA Report Fix #4: natural approach + ask phrasing resolves to NPC dialogue when NPC is present', async () => {
+  const { parsePlayerDeclaration, resolveIntentAuthority } = await import(
+    '../../dist/shared/play-authority-contract.js'
+  );
+  const parsed = parsePlayerDeclaration(
+    'I approach Warden Elira and ask what she has discovered about the dragon cult',
+    { knownNpcs: [{ id: 'bp-npc-m1-r1-1', label: 'Warden Elira' }] },
+  );
+  assert.equal(parsed.addressee, 'Warden Elira');
+  const authority = resolveIntentAuthority(parsed);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.actionSequence[0]?.kind, 'dialogue');
+  assert.equal(authority.actionSequence[0]?.targetRef, 'Warden Elira');
+});
+

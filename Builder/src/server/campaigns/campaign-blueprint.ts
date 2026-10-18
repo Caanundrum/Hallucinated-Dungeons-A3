@@ -115,7 +115,8 @@ const NPC_TITLES = new Set([
   'sister', 'madam', 'madame', 'doctor', 'dr', 'professor', 'king', 'queen', 'prince', 'princess',
   'baron', 'baroness', 'elder', 'warden', 'sergeant', 'priest', 'priestess', 'magister', 'abbot',
   'abbess', 'chief', 'commander', 'inspector', 'constable', 'duke', 'duchess', 'count', 'countess',
-  'granny', 'grandmother', 'grandfather', 'uncle', 'aunt',
+  'granny', 'grandmother', 'grandfather', 'uncle', 'aunt', 'wyrm', 'lich', 'tyrant', 'horror',
+  'emperor', 'empress', 'warlord', 'archmage', 'overlord',
 ]);
 
 const PLACE_PREPOSITIONS = new Set([
@@ -232,9 +233,10 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     hadThe = hadThe || previousWord === 'the';
     const first = words[0]!.toLowerCase();
     const last = words[words.length - 1]!.toLowerCase();
+    const hasNpcTitle = words.some((word) => NPC_TITLES.has(word.toLowerCase()));
     if (PLACE_NOUNS.has(last)) {
       pushUnique(places, label);
-    } else if (NPC_TITLES.has(first)) {
+    } else if (hasNpcTitle || NPC_TITLES.has(first)) {
       pushUnique(npcs, label);
     } else if (hadThe || PLACE_PREPOSITIONS.has(previousWord)) {
       pushUnique(places, label);
@@ -414,9 +416,14 @@ function buildMilestoneGraph(options: {
       options.entities.npcs[(m - 1) % Math.max(1, options.entities.npcs.length)] ??
         (m === 1 ? 'Warden Elira' : `Informant #${m}`),
     );
+    const fallbackPlaceBase =
+      options.campaignName.trim().length > 0 &&
+      !/^untitled\s+campaign$/i.test(options.campaignName.trim())
+        ? options.campaignName.trim()
+        : capitalizeLabel(options.setting.replace(/^(?:a|an)\s+/i, 'The '));
     const placeName = sanitizeWotcProductIdentity(
       options.entities.places[(m - 1) % Math.max(1, options.entities.places.length)] ??
-        (m === 1 ? options.setting : `TheLowerReachM${m}`.replace(/M(\d+)/, ' Tier $1')),
+        (m === 1 ? fallbackPlaceBase : `${fallbackPlaceBase} — Lower Reach ${m}`),
     );
     const propLabel = sanitizeWotcProductIdentity(
       options.entities.props[(m - 1) % Math.max(1, options.entities.props.length)] ??
@@ -446,7 +453,7 @@ function buildMilestoneGraph(options: {
     ];
     if (m > 1) {
       room1Exits.push({
-        edgeLabel: 'Stairway back to previous tier',
+        edgeLabel: 'Stairway back to the upper reach',
         targetSceneId: `scene-m${m - 1}-r3`,
         direction: 'west',
       });
@@ -467,14 +474,14 @@ function buildMilestoneGraph(options: {
 
     const room3Exits: CampaignRoomBlueprint['exits'][number][] = [
       {
-        edgeLabel: 'Archway back to investigation hall',
+        edgeLabel: 'Archway back to the outer passage',
         targetSceneId: room2Id,
         direction: 'west',
       },
     ];
     if (m < totalMilestones) {
       room3Exits.push({
-        edgeLabel: 'Descending gate to next milestone',
+        edgeLabel: 'Descending stone archway to the deeper reaches',
         targetSceneId: `scene-m${m + 1}-r1`,
         direction: 'east',
       });
@@ -487,7 +494,7 @@ function buildMilestoneGraph(options: {
         roomIndex: 1,
         title: m === 1 ? capitalizeLabel(placeName) : `${capitalizeLabel(placeName)} — Threshold`,
         summary: sanitizeWotcProductIdentity(
-          `Entry threshold for Milestone ${m} (${toneLabel}). ${npcName} watches over ${placeName} where ${options.hook} begins to surface.`,
+          `${npcName} keeps watch over ${placeName} where ${options.hook} begins to surface.`,
         ),
         templateId: m === 1 ? options.openingTemplate : options.investigationTemplate,
         battlemapPrompt: sanitizeWotcProductIdentity(
@@ -514,7 +521,7 @@ function buildMilestoneGraph(options: {
         roomIndex: 2,
         title: `${capitalizeLabel(placeName)} — Side Passage`,
         summary: sanitizeWotcProductIdentity(
-          `Investigation and side-trek hall beyond the ${exitLabel}. Clues and hazards test the party before the Milestone ${m} climax.`,
+          `A shadowed passage beyond the ${exitLabel}, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
         ),
         templateId: options.investigationTemplate,
         battlemapPrompt: sanitizeWotcProductIdentity(
@@ -540,7 +547,7 @@ function buildMilestoneGraph(options: {
         roomIndex: 3,
         title: `${capitalizeLabel(placeName)} — Sanctum`,
         summary: sanitizeWotcProductIdentity(
-          `Climax chamber for Milestone ${m}. Resolving the threat here elevates the party to Level ${targetLevel}.`,
+          `The inner sanctum of ${placeName}, where ancient stonework and flickering braziers frame the heart of the danger.`,
         ),
         templateId: 'interior_stone_crypt',
         battlemapPrompt: sanitizeWotcProductIdentity(

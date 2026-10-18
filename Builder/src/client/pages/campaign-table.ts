@@ -592,7 +592,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const adjacent =
       ownToken !== undefined && isAdjacentToDoorEdge(ownToken.footprint.anchor, edge);
     const canOpen =
-      adjacent && edge.doorState !== 'locked' && seated && !sessionIsSuspended();
+      (adjacent || explorationMode()) &&
+      edge.doorState !== 'locked' &&
+      seated &&
+      !sessionIsSuspended();
     return { edge, adjacent, canOpen };
   }
 
@@ -5388,6 +5391,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           error = null;
           render();
           try {
+            if (!affordance.adjacent && explorationMode()) {
+              await resumeCompoundDeclarationAfterBuild(
+                `open the ${affordance.edge.orientation} door`,
+                { narrateSteps: true, stopAfterOpenDoor: true },
+              );
+              selectedEdgeId = affordance.edge.edgeId;
+              shell.announce('Door opened on the table.');
+              return;
+            }
             const accepted = await submitTableCommand({
               candidateId: candidate.candidateId,
               campaignId,
