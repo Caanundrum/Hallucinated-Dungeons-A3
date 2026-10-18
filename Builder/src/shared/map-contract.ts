@@ -239,7 +239,15 @@ export function resolveSceneArtUrl(templateId: string | null | undefined): strin
   if (templateId === null || templateId === undefined || templateId.trim().length === 0) {
     return null;
   }
-  const id = templateId.trim().toLowerCase();
+  const raw = templateId.trim();
+  if (
+    /^\/api\/assets\/[a-zA-Z0-9_-]{1,120}$/.test(raw) ||
+    /^\/assets\/maps\/[A-Za-z0-9_.-]+\.(?:jpg|png|webp|svg)$/.test(raw) ||
+    /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(raw)
+  ) {
+    return raw;
+  }
+  const id = raw.toLowerCase();
   const warmInterior = new Set([
     'interior_inn_common',
     'interior_cottage',

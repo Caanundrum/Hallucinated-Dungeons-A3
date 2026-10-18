@@ -46,6 +46,7 @@ export interface StoredSceneExit {
   readonly label: string;
   readonly destinationHint: string;
   readonly returnToSceneId?: string | null;
+  readonly targetSceneId?: string | null;
 }
 
 export interface StoredSceneInstance {
@@ -72,6 +73,11 @@ export interface StoredSceneInstance {
   readonly tokenPositions: StoredTokenPosition[];
   readonly exploredByAccount: Record<string, string[]>;
   readonly revision: number;
+  readonly sceneArtUrl?: string | null;
+  readonly xpAwardOnDiscovery?: number;
+  readonly isMilestoneClimax?: boolean;
+  readonly milestoneIndex?: number;
+  readonly visited?: boolean;
 }
 
 export interface StoredMapRuntime {

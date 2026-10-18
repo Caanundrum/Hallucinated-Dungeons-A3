@@ -25,9 +25,11 @@ import type {
 } from '../shared/character-contract.js';
 import type {
   ActiveSeatedTableProjection,
+  CampaignBlueprint,
   CampaignDetailProjection,
   CampaignListProjection,
   CampaignProjection,
+  CampaignTone,
   DirectorCatalog,
   InvitationCreatedProjection,
   InvitationPreview,
@@ -367,6 +369,28 @@ export async function fetchActiveSeatedTable(): Promise<ActiveSeatedTableProject
   return await request<ActiveSeatedTableProjection | null>('/api/tables/active-seat');
 }
 
+export async function draftCampaignBlueprint(options: {
+  readonly candidateId: string;
+  readonly premise: string;
+  readonly startLevel: number;
+  readonly targetEndLevel: number;
+  readonly campaignTone: CampaignTone;
+}): Promise<{ readonly blueprint: CampaignBlueprint }> {
+  return (await request<{ readonly blueprint: CampaignBlueprint }>(
+    '/api/campaigns/draft-blueprint',
+    {
+      method: 'POST',
+      candidateId: options.candidateId,
+      body: JSON.stringify({
+        premise: options.premise,
+        startLevel: options.startLevel,
+        targetEndLevel: options.targetEndLevel,
+        campaignTone: options.campaignTone,
+      }),
+    },
+  )) as { readonly blueprint: CampaignBlueprint };
+}
+
 export async function createCampaign(options: {
   readonly candidateId: string;
   readonly name: string;
@@ -375,6 +399,12 @@ export async function createCampaign(options: {
   readonly directorPersonality: string;
   readonly visibility?: string;
   readonly joinPassword?: string;
+  readonly premise?: string;
+  readonly startLevel?: number;
+  readonly targetEndLevel?: number;
+  readonly campaignTone?: CampaignTone;
+  readonly approvedBlueprint?: CampaignBlueprint;
+  readonly forgeWorldAssets?: boolean;
 }): Promise<CampaignProjection> {
   return (await request<CampaignProjection>('/api/campaigns', {
     method: 'POST',
@@ -388,6 +418,16 @@ export async function createCampaign(options: {
       ...(options.visibility !== undefined ? { visibility: options.visibility } : {}),
       ...(options.joinPassword !== undefined && options.joinPassword.length > 0
         ? { joinPassword: options.joinPassword }
+        : {}),
+      ...(options.premise !== undefined ? { premise: options.premise } : {}),
+      ...(options.startLevel !== undefined ? { startLevel: options.startLevel } : {}),
+      ...(options.targetEndLevel !== undefined ? { targetEndLevel: options.targetEndLevel } : {}),
+      ...(options.campaignTone !== undefined ? { campaignTone: options.campaignTone } : {}),
+      ...(options.approvedBlueprint !== undefined
+        ? { approvedBlueprint: options.approvedBlueprint }
+        : {}),
+      ...(options.forgeWorldAssets !== undefined
+        ? { forgeWorldAssets: options.forgeWorldAssets }
         : {}),
     }),
   })) as CampaignProjection;

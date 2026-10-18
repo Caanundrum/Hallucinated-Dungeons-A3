@@ -20,7 +20,7 @@ import {
   type MapNotableFeatureRecord,
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
-import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
+import { archetypePortraitUrl, isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
@@ -356,7 +356,7 @@ export function buildAuthoritativeMapBundle(options: {
         currentChapterId: null,
         spawnOverride: directorScene.spawn,
       }),
-      artProvenance: resolveSceneArtUrl(directorScene.templateId)
+      artProvenance: (directorScene.sceneArtUrl ?? resolveSceneArtUrl(directorScene.templateId))
         ? 'original_phase5_starter_v1'
         : 'procedural_local_placeholder',
       sceneBanner: directorScene.sceneBanner,
@@ -366,7 +366,7 @@ export function buildAuthoritativeMapBundle(options: {
       scenePurpose: directorScene.purpose,
       sceneMood: directorScene.mood,
       sceneTemplateId: directorScene.templateId,
-      sceneArtUrl: resolveSceneArtUrl(directorScene.templateId),
+      sceneArtUrl: directorScene.sceneArtUrl ?? resolveSceneArtUrl(directorScene.templateId),
       viewerSeatId: null,
       exploredSquareIds: [],
       visibleSquareIds: [],
@@ -470,10 +470,28 @@ export async function loadCampaignSeats(
           .collection(COLLECTIONS.characters)
           .doc(seat.characterId)
           .get();
-        const avatarUrl = characterSnap.exists
-          ? (characterSnap.data() as { avatarUrl?: unknown }).avatarUrl
-          : null;
-        return { ...seat, avatarUrl: isTrustedAvatarUrl(avatarUrl) ? avatarUrl : null };
+        if (!characterSnap.exists) {
+          return { ...seat, avatarUrl: null };
+        }
+        const data = characterSnap.data() as {
+          avatarUrl?: unknown;
+          choices?: { speciesId?: string | null; classId?: string | null };
+        };
+        const avatarUrl = data.avatarUrl;
+        if (isTrustedAvatarUrl(avatarUrl)) {
+          return { ...seat, avatarUrl };
+        }
+        if ((avatarUrl === undefined || avatarUrl === null) && data.choices !== undefined) {
+          return {
+            ...seat,
+            avatarUrl: archetypePortraitUrl({
+              ancestryId: data.choices.speciesId ?? null,
+              classId: data.choices.classId ?? null,
+              name: seat.characterName,
+            }),
+          };
+        }
+        return { ...seat, avatarUrl: null };
       } catch {
         return { ...seat, avatarUrl: null };
       }

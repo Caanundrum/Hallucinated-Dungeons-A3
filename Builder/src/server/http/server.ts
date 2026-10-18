@@ -130,6 +130,9 @@ import {
   revokeInvitation,
   updateCampaign,
 } from '../campaigns/campaigns.js';
+import { isCampaignTone } from '../../shared/campaign-contract.js';
+import { draftCampaignBlueprintWithAi } from '../campaigns/campaign-blueprint.js';
+import { loadCampaignAsset } from '../assets/campaign-assets.js';
 import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
@@ -505,9 +508,12 @@ class PayloadTooLargeError extends Error {
   }
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+async function readJsonBody(
+  request: IncomingMessage,
+  maxBytes = MAX_REQUEST_BODY_BYTES,
+): Promise<unknown> {
   const declaredLength = Number(request.headers['content-length'] ?? '0');
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     throw new PayloadTooLargeError();
   }
 
@@ -516,7 +522,7 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = chunk as Buffer;
     total += buffer.length;
-    if (total > MAX_REQUEST_BODY_BYTES) {
+    if (total > maxBytes) {
       throw new PayloadTooLargeError();
     }
     chunks.push(buffer);
@@ -1429,6 +1435,28 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       return;
     }
 
+    const assetMatch = /^\/api\/assets\/([a-zA-Z0-9_-]{1,120})$/.exec(path);
+    if (assetMatch !== null) {
+      if (method !== 'GET') {
+        sendError(response, ERROR_CODES.METHOD_NOT_ALLOWED);
+        return;
+      }
+      const asset = await loadCampaignAsset(firestore, assetMatch[1]!);
+      if (asset === null) {
+        sendError(response, ERROR_CODES.NOT_FOUND);
+        return;
+      }
+      const buffer = Buffer.from(asset.base64Data, 'base64');
+      applySecurityHeadersFor(response, env);
+      response.writeHead(200, {
+        'content-type': asset.mimeType,
+        'content-length': buffer.byteLength,
+        'cache-control': 'public, max-age=86400',
+      });
+      response.end(buffer);
+      return;
+    }
+
     if (path === '/api/characters' || path.startsWith('/api/characters/')) {
       await handleCharacterRequest(request, response, method, path);
       return;
@@ -1875,9 +1903,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
     method: string,
     path: string,
   ): Promise<void> {
-    const readBody = async (): Promise<unknown | typeof BODY_REJECTED> => {
+    const readBody = async (maxBytes = MAX_REQUEST_BODY_BYTES): Promise<unknown | typeof BODY_REJECTED> => {
       try {
-        return await readJsonBody(request);
+        return await readJsonBody(request, maxBytes);
       } catch (error) {
         if (error instanceof PayloadTooLargeError) {
           refuseOversizedBody(request, response);
@@ -1972,11 +2000,54 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
 
+      if (path === '/api/campaigns/draft-blueprint' && method === 'POST') {
+        if (!(await requireLegalForPlay())) {
+          return;
+        }
+        const body = await readBody(64 * 1024);
+        if (body === BODY_REJECTED) {
+          return;
+        }
+        const payload = (body ?? {}) as {
+          premise?: unknown;
+          startLevel?: unknown;
+          targetEndLevel?: unknown;
+          campaignTone?: unknown;
+        };
+        const premise = typeof payload.premise === 'string' ? payload.premise.trim() : '';
+        if (premise.length === 0) {
+          sendJson(response, 400, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: 'Enter a campaign premise before drafting a skeleton.',
+          } satisfies ApiErrorBody);
+          return;
+        }
+        const startLevel =
+          typeof payload.startLevel === 'number' && Number.isFinite(payload.startLevel)
+            ? Math.max(1, Math.min(20, Math.round(payload.startLevel)))
+            : 1;
+        const targetEndLevel =
+          typeof payload.targetEndLevel === 'number' && Number.isFinite(payload.targetEndLevel)
+            ? Math.max(startLevel, Math.min(20, Math.round(payload.targetEndLevel)))
+            : Math.max(startLevel, 3);
+        const campaignTone = isCampaignTone(payload.campaignTone)
+          ? payload.campaignTone
+          : 'heroic_fantasy';
+        const blueprint = await draftCampaignBlueprintWithAi({
+          summary: premise,
+          startLevel,
+          targetEndLevel,
+          campaignTone,
+        });
+        sendJson(response, 200, { blueprint });
+        return;
+      }
+
       if (path === '/api/campaigns' && method === 'POST') {
         if (!(await requireLegalForPlay())) {
           return;
         }
-        const body = await readBody();
+        const body = await readBody(64 * 1024);
         if (body === BODY_REJECTED) {
           return;
         }
@@ -1988,6 +2059,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           adventureTemplate?: unknown;
           visibility?: unknown;
           joinPassword?: unknown;
+          premise?: unknown;
+          startLevel?: unknown;
+          targetEndLevel?: unknown;
+          campaignTone?: unknown;
+          approvedBlueprint?: unknown;
+          forgeWorldAssets?: unknown;
         };
         const campaign = await createCampaign({
           firestore,
@@ -2000,6 +2077,12 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           adventureTemplate: payload.adventureTemplate,
           visibility: payload.visibility,
           joinPassword: payload.joinPassword,
+          premise: payload.premise,
+          startLevel: payload.startLevel,
+          targetEndLevel: payload.targetEndLevel,
+          campaignTone: payload.campaignTone,
+          approvedBlueprint: payload.approvedBlueprint,
+          forgeWorldAssets: payload.forgeWorldAssets,
         });
         sendJson(response, 201, campaign);
         return;

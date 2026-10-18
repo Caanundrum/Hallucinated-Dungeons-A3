@@ -37,6 +37,7 @@ import {
   formatDoorPlayerFacingLabel,
   canonicalDoorFeatureKey,
 } from '../../shared/play-authority-contract.js';
+import { archetypePortraitUrl } from '../../shared/portrait-contract.js';
 import {
   objectVisualFamily,
   resolveSceneVisuals,
@@ -442,7 +443,7 @@ function paintSemanticSvg(
       const avatarUrl =
         typeof token.avatarUrl === 'string' && token.avatarUrl.trim().length > 0
           ? token.avatarUrl.trim()
-          : null;
+          : archetypePortraitUrl({ name: token.label });
       const face =
         avatarUrl !== null
           ? `<clipPath id="token-avatar-clip-${tokenIndex}"><circle cx="${cx}" cy="${cy}" r="${Math.max(4, radius - 3.5)}" /></clipPath>
@@ -516,12 +517,14 @@ function paintSemanticSvg(
                 : isBroken
                   ? '#6a5844'
                   : '#e0c070';
-    const dampWash = isDampHazard || (isHazard && /damp|wet|slick/i.test(feature.label))
-      ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
+    const dampWash =
+      !hasPaintedArt && (isDampHazard || (isHazard && /damp|wet|slick/i.test(feature.label)))
+        ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
          <ellipse class="map-damp-sheen" cx="${x - 4}" cy="${y + 2}" rx="7" ry="3" fill="#8ab8b0" opacity="0.22" pointer-events="none" aria-hidden="true" />`
-      : '';
-    const rubbleChips = isCover
-      ? `<g class="map-rubble-detail${isBroken ? ' is-broken' : ''}" pointer-events="none" aria-hidden="true">
+        : '';
+    const rubbleChips =
+      !hasPaintedArt && isCover
+        ? `<g class="map-rubble-detail${isBroken ? ' is-broken' : ''}" pointer-events="none" aria-hidden="true">
           <ellipse class="map-rubble-wash" cx="${x}" cy="${y + 7}" rx="${pixelsPerSquare * (isBroken ? 0.85 : 0.7)}" ry="${pixelsPerSquare * 0.38}" fill="#1a1410" opacity="${isBroken ? '0.7' : '0.55'}" />
           <rect class="map-rubble-chip" x="${x - 14}" y="${y + 2}" width="7" height="4.5" rx="0.8" fill="#5a4a38" transform="rotate(-18 ${x - 10} ${y + 4})" />
           <rect class="map-rubble-chip" x="${x - 4}" y="${y + 6}" width="8" height="3.5" rx="0.6" fill="#3a3028" transform="rotate(12 ${x} ${y + 8})" />
@@ -533,13 +536,13 @@ function paintSemanticSvg(
               : `<rect class="map-rubble-chip" x="${x + 1}" y="${y + 8}" width="5" height="3" rx="0.5" fill="#4a4034" transform="rotate(-8 ${x + 3} ${y + 9.5})" />`
           }
         </g>`
-      : '';
+        : '';
     const torchGlow =
-      isTorch && !isUnlit
+      !hasPaintedArt && isTorch && !isUnlit
         ? `<ellipse class="map-sconce-pool" cx="${x}" cy="${y}" rx="${pixelsPerSquare * 2.4}" ry="${pixelsPerSquare * 2.1}" fill="url(#map-sconce-pool)" pointer-events="none" aria-hidden="true" />
          <circle class="map-torch-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 1.45}" fill="url(#map-torch-glow)" aria-hidden="true" />
          <circle class="map-torch-core-glow" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.6}" fill="url(#map-torch-core)" aria-hidden="true" />`
-        : isTorch && isUnlit
+        : !hasPaintedArt && isTorch && isUnlit
           ? `<circle class="map-torch-unlit" cx="${x}" cy="${y}" r="${pixelsPerSquare * 0.55}" fill="#2a241c" stroke="#6a5844" stroke-width="1" opacity="0.85" aria-hidden="true" />`
           : '';
     const isNpcPortrait = feature.objectKind === 'npc' || visual.family === 'family_npc';
@@ -563,18 +566,21 @@ function paintSemanticSvg(
            </g>`
         : `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
       : '';
-    // Quiet markers: light = disc, container = rounded pouch, generic prop = diamond (VDM-002).
-    const containerMark = isContainer
+    // Quiet markers: when painted battlemap art is active, avoid drawing opaque geometric prop icons over the art.
+    const containerMark = !hasPaintedArt && isContainer
       ? `<g class="map-container-mark" pointer-events="none" aria-hidden="true">
            <rect class="map-poi-core" x="${x - 7}" y="${y - 5}" width="14" height="11" rx="3.5" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
            <path d="M ${x - 4} ${y - 5} Q ${x} ${y - 9} ${x + 4} ${y - 5}" fill="none" stroke="#1a1208" stroke-width="1.25" />
          </g>`
       : '';
-    const propDiamond = isProp && !isContainer
+    const propDiamond = !hasPaintedArt && isProp && !isContainer
       ? `<polygon class="map-poi-core map-prop-diamond" points="${x},${y - 7} ${x + 6},${y} ${x},${y + 7} ${x - 6},${y}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
       : '';
-    const coreDisc =
-      !isContainer && !isProp && !isNpcPortrait
+    const coreDisc = hasPaintedArt
+      ? !isNpcPortrait
+        ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="8" fill="${isExit || isActor ? fill : 'transparent'}" fill-opacity="${isExit || isActor ? '0.85' : '0'}" stroke="rgba(248, 231, 176, 0.28)" stroke-width="1" />`
+        : ''
+      : !isContainer && !isProp && !isNpcPortrait
         ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
         : '';
     const testId = isExit
@@ -1390,6 +1396,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const isActor = visual.family === 'family_creature' || visual.family === 'family_npc';
       const isExit =
         visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
+      if (sceneArtUrl !== null && !isActor && !isExit) {
+        continue;
+      }
       const isContainer = visual.family === 'family_container';
       const isProp = visual.family === 'family_prop';
       const isUnlit = visual.stateVariant === 'state_unlit';

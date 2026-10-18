@@ -42,6 +42,7 @@ export const COLLECTIONS = {
   campaignMemory: 'campaignMemory',
   campaignSessions: 'campaignSessions',
   legalAcceptances: 'legalAcceptances',
+  campaignAssets: 'campaignAssets',
 } as const;
 
 export interface CanonicalStore {

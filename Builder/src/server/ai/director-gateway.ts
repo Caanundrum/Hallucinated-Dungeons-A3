@@ -1265,7 +1265,7 @@ async function loadDirectorConfig(
   };
 }
 
-/** Active chapter beat (goal / clue / next trigger) for the Director prompt; empty when unavailable. */
+/** Active chapter beat (goal / clue / next trigger + leveling curve pacing) for the Director prompt; empty when unavailable. */
 async function loadBlueprintBeatPrompt(
   firestore: Firestore,
   campaignId: string,
@@ -1278,15 +1278,52 @@ async function loadBlueprintBeatPrompt(
       return '';
     }
     let sceneDepth = 0;
+    let activeSceneId: string | null = null;
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
       const runtime = await loadMapRuntime(firestore, campaignId);
       sceneDepth = runtime.sceneStack?.length ?? 0;
+      activeSceneId = runtime.activeSceneId ?? null;
     } catch {
       sceneDepth = 0;
     }
+    let currentLevel = blueprint.startLevel ?? 1;
+    let currentXp = 0;
+    try {
+      const seatsSnap = await firestore
+        .collection(COLLECTIONS.campaignSeats)
+        .where('campaignId', '==', campaignId)
+        .get();
+      const firstCharacterId = (
+        seatsSnap.docs[0]?.data() as { characterId?: string } | undefined
+      )?.characterId;
+      if (typeof firstCharacterId === 'string' && firstCharacterId.length > 0) {
+        const progSnap = await firestore
+          .collection(COLLECTIONS.characterProgressions)
+          .doc(firstCharacterId)
+          .get();
+        const progData = progSnap.data() as
+          | { level?: number; experiencePoints?: number }
+          | undefined;
+        if (typeof progData?.level === 'number') {
+          currentLevel = progData.level;
+        }
+        if (typeof progData?.experiencePoints === 'number') {
+          currentXp = progData.experiencePoints;
+        }
+      }
+    } catch {
+      // Best-effort party progression lookup.
+    }
     const beat = selectActiveBlueprintBeat(blueprint, sceneDepth);
-    return beat === null ? '' : `\n\n${formatBlueprintBeatPrompt(beat)}`;
+    return beat === null
+      ? ''
+      : `\n\n${formatBlueprintBeatPrompt(beat, {
+          blueprint,
+          currentLevel,
+          currentXp,
+          activeSceneId,
+        })}`;
   } catch {
     return '';
   }
@@ -1493,11 +1530,36 @@ export async function interpretNaturalLanguageIntent(options: {
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
   const utterance = understandUtterance(rawText);
+  const hasDedicatedGatewayBranch =
+    !utterance.constraints.prepareWithoutAttack &&
+    !utterance.constraints.forbidCombat &&
+    (/(end (the )?(encounter|fight|combat)|stop (the )?fight|withdraw from (combat|the fight))/i.test(
+      text,
+    ) ||
+      /arcane recovery/i.test(text) ||
+      /(short\s*rest|take a short rest|rest briefly|catch my breath|recover.*(second wind|action surge|short.?rest))/i.test(
+        text,
+      ) ||
+      /(long\s*rest|take a long rest|camp for the night|sleep until morning)/i.test(text) ||
+      /(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative|initiative)/i.test(
+        text,
+      ) ||
+      (/hostile|guardian|foe|enemy/.test(text) && /initiative|encounter|combat/.test(text)) ||
+      /(potion|drink.*heal|use.*heal|healing potion)/.test(text) ||
+      /\b(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)\b/.test(
+        text,
+      ));
+  const emptyClarifyYieldsToGateway =
+    authority.disposition === 'clarify' &&
+    authority.actionSequence.length === 0 &&
+    structured.addressee === null &&
+    !structured.isInterrogative &&
+    hasDedicatedGatewayBranch;
   // Clarify / narrate-only must never fall into the keyword combat/travel cascade.
   const authorityShortCircuit =
     authority.disposition === 'director_narrate_only' ||
     authority.disposition === 'reject_world_authorship' ||
-    authority.disposition === 'clarify' ||
+    (authority.disposition === 'clarify' && !emptyClarifyYieldsToGateway) ||
     utterance.speechAct === 'question' ||
     utterance.speechAct === 'rules_query' ||
     utterance.wantsKnowledgeRecap ||
@@ -2300,7 +2362,7 @@ export async function answerDirectorAddress(options: {
   }
   const understanding = understandUtterance(text);
   let body = scrubEngineCoordinates(liveBody ?? simulatorBody);
-  if (understanding.wantsKnowledgeRecap || understanding.speechAct === 'rules_query') {
+  if (understanding.wantsKnowledgeRecap || (!mechanical && understanding.speechAct === 'rules_query')) {
     const extras = await loadScenePremiseExtras({
       firestore: options.firestore,
       campaignId: options.campaignId,

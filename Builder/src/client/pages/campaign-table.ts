@@ -107,7 +107,7 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
 import { clearPendingJoin, readPendingJoin } from '../pending-join.js';
-import { isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
+import { archetypePortraitUrl, isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
 import { mountTableStage, type TableStageHandle } from '../table/table-stage.js';
 import { findWalkPathToTarget, ownTokenAnchor } from '../table/walk-path.js';
 import { bindModalChrome } from '../modal-engine.js';
@@ -1364,7 +1364,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const heroAvatarUrl =
       typeof ownToken?.avatarUrl === 'string' && isTrustedAvatarUrl(ownToken.avatarUrl)
         ? ownToken.avatarUrl
-        : null;
+        : archetypePortraitUrl({
+            classId: progression.classId ?? null,
+            name: label,
+          });
     const classLabel = (progression.classId ?? 'adventurer')
       .replace(/[-_]+/g, ' ')
       .replace(/\b\w/g, (ch) => ch.toUpperCase());

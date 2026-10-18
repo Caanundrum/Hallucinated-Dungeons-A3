@@ -11,10 +11,16 @@
  * other premise.
  */
 
+import { GoogleGenAI } from '@google/genai';
 import type {
   CampaignBlueprint,
   CampaignBlueprintBeat,
+  CampaignMilestoneBlueprint,
+  CampaignRoomBlueprint,
+  CampaignTone,
 } from '../../shared/campaign-contract.js';
+import { CAMPAIGN_TONE_LABELS, isCampaignTone } from '../../shared/campaign-contract.js';
+import { XP_THRESHOLDS } from '../rules/engine/xp-progression.js';
 
 export type PremiseLocationKind =
   | 'canal_waterfront'
@@ -318,7 +324,290 @@ function actTemplateHints(kind: PremiseLocationKind | null): {
   }
 }
 
-export function buildCampaignBlueprint(premise: string): CampaignBlueprint {
+const WOTC_PRODUCT_IDENTITY_REPLACEMENTS: readonly [RegExp, string][] = [
+  [/\bbeholders?\b/gi, 'Aberrant Eye Tyrant'],
+  [/\bmind\s*flayers?\b/gi, 'Psychic Tentacle Horror'],
+  [/\billithids?\b/gi, 'Psychic Tentacle Horror'],
+  [/\bgithyanki\b/gi, 'Astral Raider'],
+  [/\bgithzerai\b/gi, 'Limbo Ascetic'],
+  [/\byuan[- ]ti\b/gi, 'Serpentfolk'],
+  [/\bcarrion\s+crawlers?\b/gi, 'Chitinous Scavenger'],
+  [/\bdisplacer\s+beasts?\b/gi, 'Shadow-Panther'],
+  [/\bumber\s+hulks?\b/gi, 'Chitinous Burrower'],
+  [/\bslaad(?:i|s)?\b/gi, 'Chaos Toad'],
+  [/\bkuo[- ]toa\b/gi, 'Deep-Gilled Zealot'],
+  [/\bvecna\b/gi, 'The Whispering Lich'],
+  [/\bstrahd\b/gi, 'The Crimson Count'],
+  [/\btiamat\b/gi, 'The Five-Crowned Wyrm'],
+  [/\bwaterdeep\b/gi, 'Crownport'],
+  [/\bbaldur'?s\s+gate\b/gi, 'Ironhaven'],
+  [/\bneverwinter\b/gi, 'Frostford'],
+  [/\bunderdark\b/gi, 'The Sunless Depths'],
+  [/\bfaer[uû]n\b/gi, 'The Shattered Realm'],
+  [/\bforgotten\s+realms\b/gi, 'The Old Kingdom'],
+  [/\beberron\b/gi, 'The Shardlands'],
+  [/\bravenloft\b/gi, 'The Mist Barony'],
+];
+
+/** Scrubs WotC Product Identity terms into CC-BY-4.0 SRD 5.2.1-safe equivalents. */
+export function sanitizeWotcProductIdentity(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of WOTC_PRODUCT_IDENTITY_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+export interface BuildCampaignBlueprintOptions {
+  readonly summary: string;
+  readonly name?: string;
+  readonly startLevel?: number;
+  readonly targetEndLevel?: number;
+  readonly campaignTone?: CampaignTone;
+}
+
+function pickSrdMonsterForLevel(level: number): {
+  readonly name: string;
+  readonly srdMonsterId: string;
+} {
+  if (level <= 2) {
+    return { name: 'Goblin Scout', srdMonsterId: 'goblin' };
+  }
+  if (level <= 4) {
+    return { name: 'Restless Skeleton', srdMonsterId: 'skeleton' };
+  }
+  if (level <= 8) {
+    return { name: 'Cult Fanatic', srdMonsterId: 'cult-fanatic' };
+  }
+  return { name: 'Dread Knight', srdMonsterId: 'knight' };
+}
+
+function buildMilestoneGraph(options: {
+  readonly campaignName: string;
+  readonly startLevel: number;
+  readonly targetEndLevel: number;
+  readonly campaignTone: CampaignTone;
+  readonly hook: string;
+  readonly entities: PremiseEntities;
+  readonly setting: string;
+  readonly openingTemplate: string;
+  readonly investigationTemplate: string;
+}): readonly CampaignMilestoneBlueprint[] {
+  const milestones: CampaignMilestoneBlueprint[] = [];
+  const totalMilestones = Math.max(1, options.targetEndLevel - options.startLevel);
+  const toneLabel = CAMPAIGN_TONE_LABELS[options.campaignTone];
+
+  for (let m = 1; m <= totalMilestones; m += 1) {
+    const fromLevel = options.startLevel + m - 1;
+    const targetLevel = options.startLevel + m;
+    const prevXp = XP_THRESHOLDS[fromLevel - 1] ?? 0;
+    const requiredXpThreshold = XP_THRESHOLDS[targetLevel - 1] ?? prevXp + 300;
+    const xpBudgetForMilestone = Math.max(100, requiredXpThreshold - prevXp);
+
+    const r1Xp = Math.round(xpBudgetForMilestone * 0.25);
+    const r2Xp = Math.round(xpBudgetForMilestone * 0.35);
+    const r2EncounterXp = Math.round(xpBudgetForMilestone * 0.25);
+    const r3Xp = Math.max(50, xpBudgetForMilestone - r1Xp - r2Xp);
+    const r3EncounterXp = Math.round(xpBudgetForMilestone * 0.4);
+
+    const npcName = sanitizeWotcProductIdentity(
+      options.entities.npcs[(m - 1) % Math.max(1, options.entities.npcs.length)] ??
+        (m === 1 ? 'Warden Elira' : `Informant #${m}`),
+    );
+    const placeName = sanitizeWotcProductIdentity(
+      options.entities.places[(m - 1) % Math.max(1, options.entities.places.length)] ??
+        (m === 1 ? options.setting : `TheLowerReachM${m}`.replace(/M(\d+)/, ' Tier $1')),
+    );
+    const propLabel = sanitizeWotcProductIdentity(
+      options.entities.props[(m - 1) % Math.max(1, options.entities.props.length)] ??
+        'iron lantern',
+    );
+    const secondPropLabel = sanitizeWotcProductIdentity(
+      options.entities.props[m % Math.max(1, options.entities.props.length)] ??
+        'sealed ledger',
+    );
+    const exitLabel = sanitizeWotcProductIdentity(
+      options.entities.exits[(m - 1) % Math.max(1, options.entities.exits.length)] ??
+        'wooden door',
+    );
+    const monster = pickSrdMonsterForLevel(fromLevel);
+    const bossMonster = pickSrdMonsterForLevel(targetLevel);
+
+    const room1Id = `scene-m${m}-r1`;
+    const room2Id = `scene-m${m}-r2`;
+    const room3Id = `scene-m${m}-r3`;
+
+    const room1Exits: CampaignRoomBlueprint['exits'][number][] = [
+      {
+        edgeLabel: capitalizeLabel(exitLabel),
+        targetSceneId: room2Id,
+        direction: 'east',
+      },
+    ];
+    if (m > 1) {
+      room1Exits.push({
+        edgeLabel: 'Stairway back to previous tier',
+        targetSceneId: `scene-m${m - 1}-r3`,
+        direction: 'west',
+      });
+    }
+
+    const room2Exits: CampaignRoomBlueprint['exits'][number][] = [
+      {
+        edgeLabel: `Passage back to ${placeName}`,
+        targetSceneId: room1Id,
+        direction: 'west',
+      },
+      {
+        edgeLabel: 'Sanctum archway',
+        targetSceneId: room3Id,
+        direction: 'east',
+      },
+    ];
+
+    const room3Exits: CampaignRoomBlueprint['exits'][number][] = [
+      {
+        edgeLabel: 'Archway back to investigation hall',
+        targetSceneId: room2Id,
+        direction: 'west',
+      },
+    ];
+    if (m < totalMilestones) {
+      room3Exits.push({
+        edgeLabel: 'Descending gate to next milestone',
+        targetSceneId: `scene-m${m + 1}-r1`,
+        direction: 'east',
+      });
+    }
+
+    const rooms: CampaignRoomBlueprint[] = [
+      {
+        sceneId: room1Id,
+        milestoneIndex: m,
+        roomIndex: 1,
+        title: m === 1 ? capitalizeLabel(placeName) : `${capitalizeLabel(placeName)} — Threshold`,
+        summary: sanitizeWotcProductIdentity(
+          `Entry threshold for Milestone ${m} (${toneLabel}). ${npcName} watches over ${placeName} where ${options.hook} begins to surface.`,
+        ),
+        templateId: m === 1 ? options.openingTemplate : options.investigationTemplate,
+        battlemapPrompt: sanitizeWotcProductIdentity(
+          `${placeName} entry chamber in a ${toneLabel.toLowerCase()} setting, warm lantern light, stone and timber floor, doorway leading east`,
+        ),
+        exits: room1Exits,
+        npcs: [
+          {
+            name: npcName,
+            role: m === 1 ? 'Key contact' : 'Local witness',
+            portraitPrompt: sanitizeWotcProductIdentity(
+              `${npcName}, ${m === 1 ? 'key contact' : 'local witness'} in ${placeName}, ${toneLabel.toLowerCase()} fantasy portrait`,
+            ),
+          },
+        ],
+        encounters: [],
+        props: [propLabel],
+        xpAwardOnDiscovery: r1Xp,
+        isMilestoneClimax: false,
+      },
+      {
+        sceneId: room2Id,
+        milestoneIndex: m,
+        roomIndex: 2,
+        title: `${capitalizeLabel(placeName)} — Side Passage`,
+        summary: sanitizeWotcProductIdentity(
+          `Investigation and side-trek hall beyond the ${exitLabel}. Clues and hazards test the party before the Milestone ${m} climax.`,
+        ),
+        templateId: options.investigationTemplate,
+        battlemapPrompt: sanitizeWotcProductIdentity(
+          `Shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east`,
+        ),
+        exits: room2Exits,
+        npcs: [],
+        encounters: [
+          {
+            name: monster.name,
+            srdMonsterId: monster.srdMonsterId,
+            count: 2,
+            xpAward: r2EncounterXp,
+          },
+        ],
+        props: [secondPropLabel],
+        xpAwardOnDiscovery: r2Xp,
+        isMilestoneClimax: false,
+      },
+      {
+        sceneId: room3Id,
+        milestoneIndex: m,
+        roomIndex: 3,
+        title: `${capitalizeLabel(placeName)} — Sanctum`,
+        summary: sanitizeWotcProductIdentity(
+          `Climax chamber for Milestone ${m}. Resolving the threat here elevates the party to Level ${targetLevel}.`,
+        ),
+        templateId: 'interior_stone_crypt',
+        battlemapPrompt: sanitizeWotcProductIdentity(
+          `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework`,
+        ),
+        exits: room3Exits,
+        npcs: [],
+        encounters: [
+          {
+            name: bossMonster.name,
+            srdMonsterId: bossMonster.srdMonsterId,
+            count: 1,
+            xpAward: r3EncounterXp,
+          },
+        ],
+        props: ['ancient altar', propLabel],
+        xpAwardOnDiscovery: r3Xp,
+        isMilestoneClimax: true,
+      },
+    ];
+
+    milestones.push({
+      milestoneIndex: m,
+      targetLevelAfterCompletion: targetLevel,
+      requiredXpThreshold,
+      xpBudgetForMilestone,
+      title: sanitizeWotcProductIdentity(
+        `Milestone ${m}: Level ${fromLevel} → Level ${targetLevel} (${capitalizeLabel(placeName)})`,
+      ),
+      summary: sanitizeWotcProductIdentity(
+        `Earn ${xpBudgetForMilestone} XP across ${placeName} (reaching ${requiredXpThreshold} total XP) to unlock the Level ${targetLevel} milestone.`,
+      ),
+      climaxObjective: sanitizeWotcProductIdentity(
+        `Uncover the truth behind ${options.hook} in ${placeName} and overcome the sanctum guardian.`,
+      ),
+      rooms,
+    });
+  }
+
+  return milestones;
+}
+
+export function buildCampaignBlueprint(
+  premiseOrOptions: string | BuildCampaignBlueprintOptions,
+  maybeName?: string,
+): CampaignBlueprint {
+  const rawSummary =
+    typeof premiseOrOptions === 'string' ? premiseOrOptions : premiseOrOptions.summary;
+  const campaignName =
+    typeof premiseOrOptions === 'string'
+      ? (maybeName ?? 'Campaign')
+      : (premiseOrOptions.name ?? 'Campaign');
+  const rawStart =
+    typeof premiseOrOptions === 'string' ? 1 : (premiseOrOptions.startLevel ?? 1);
+  const startLevel = Math.max(1, Math.min(19, Math.floor(Number.isFinite(rawStart) ? rawStart : 1)));
+  const rawEnd =
+    typeof premiseOrOptions === 'string' ? startLevel + 2 : (premiseOrOptions.targetEndLevel ?? startLevel + 2);
+  const targetEndLevel = Math.max(
+    startLevel + 1,
+    Math.min(20, Math.floor(Number.isFinite(rawEnd) ? rawEnd : startLevel + 2)),
+  );
+  const campaignTone: CampaignTone =
+    typeof premiseOrOptions !== 'string' && isCampaignTone(premiseOrOptions.campaignTone)
+      ? premiseOrOptions.campaignTone
+      : 'heroic_fantasy';
+
+  const premise = sanitizeWotcProductIdentity(rawSummary);
   const entities = extractPremiseEntities(premise);
   const location = detectPremiseLocation(premise);
   const questHook = detectQuestHook(premise);
@@ -375,15 +664,122 @@ export function buildCampaignBlueprint(premise: string): CampaignBlueprint {
     templateIdHint: null,
   };
 
+  const milestones = buildMilestoneGraph({
+    campaignName: sanitizeWotcProductIdentity(campaignName),
+    startLevel,
+    targetEndLevel,
+    campaignTone,
+    hook,
+    entities,
+    setting,
+    openingTemplate: hints.opening ?? 'interior_inn_common',
+    investigationTemplate: hints.investigation ?? 'interior_stone_crypt',
+  });
+
   return {
     premiseDigest: digestPremise(premise),
-    namedNpcs: entities.npcs,
-    namedPlaces: entities.places,
-    namedProps: entities.props,
-    namedExits: entities.exits,
+    startLevel,
+    targetEndLevel,
+    campaignTone,
+    centralTension: sanitizeWotcProductIdentity(
+      `Resolve ${hook} across ${setting} (${CAMPAIGN_TONE_LABELS[campaignTone]}).`,
+    ),
+    milestones,
+    namedNpcs: entities.npcs.map(sanitizeWotcProductIdentity),
+    namedPlaces: entities.places.map(sanitizeWotcProductIdentity),
+    namedProps: entities.props.map(sanitizeWotcProductIdentity),
+    namedExits: entities.exits.map(sanitizeWotcProductIdentity),
     questHook,
     acts: [act1, act2, act3],
   };
+}
+
+/**
+ * Generates an AI-assisted CampaignBlueprint when Gemini / Vertex AI is configured,
+ * falling back cleanly to the deterministic `buildCampaignBlueprint`.
+ */
+export async function draftCampaignBlueprintWithAi(
+  options: BuildCampaignBlueprintOptions & {
+    readonly env?: Record<string, string | undefined>;
+  },
+): Promise<CampaignBlueprint> {
+  const base = buildCampaignBlueprint(options);
+  const env = options.env ?? process.env;
+  const apiKey = (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY ?? '').trim();
+  const project = (
+    env.HD_FIREBASE_PROJECT_ID ??
+    env.GOOGLE_CLOUD_PROJECT ??
+    env.GCLOUD_PROJECT ??
+    ''
+  ).trim();
+  const canUseVertex = env.HD_ENVIRONMENT_CLASS === 'milestone' && project.length > 0;
+  if (apiKey.length < 20 && !canUseVertex) {
+    return base;
+  }
+
+  try {
+    const ai =
+      apiKey.length >= 20
+        ? new GoogleGenAI({ apiKey })
+        : new GoogleGenAI({
+            vertexai: true,
+            project,
+            location: (env.GOOGLE_CLOUD_LOCATION ?? 'us-central1').trim() || 'us-central1',
+          });
+    const model = (env.HD_GEMINI_MODEL ?? 'gemini-2.5-flash').trim() || 'gemini-2.5-flash';
+    const prompt = [
+      'You are an expert tabletop RPG campaign architect designing an original CC-BY-4.0 SRD 5.2.1 campaign skeleton.',
+      'Never use Wizards of the Coast Product Identity (no Beholder, Mind Flayer, Illithid, Underdark, Waterdeep, Baldur\'s Gate, Forgotten Realms, Vecna, Strahd, Tiamat).',
+      `Campaign Title: ${sanitizeWotcProductIdentity(options.name ?? 'Campaign')}`,
+      `Tone: ${CAMPAIGN_TONE_LABELS[base.campaignTone ?? 'heroic_fantasy']}`,
+      `Level Range: Level ${base.startLevel ?? 1} to Level ${base.targetEndLevel ?? 3}`,
+      `Premise: ${sanitizeWotcProductIdentity(options.summary)}`,
+      'Return JSON only with shape: {"centralTension": string, "milestoneTitles": string[], "climaxObjectives": string[]}',
+    ].join('\n');
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        temperature: 0.4,
+        maxOutputTokens: 600,
+        responseMimeType: 'application/json',
+      },
+    });
+    const rawText = (response.text ?? '').trim();
+    if (rawText.length === 0) {
+      return base;
+    }
+    const parsed = JSON.parse(rawText) as {
+      centralTension?: unknown;
+      milestoneTitles?: unknown;
+      climaxObjectives?: unknown;
+    };
+    const centralTension =
+      typeof parsed.centralTension === 'string' && parsed.centralTension.trim().length > 0
+        ? sanitizeWotcProductIdentity(parsed.centralTension.trim())
+        : base.centralTension;
+    const titles = Array.isArray(parsed.milestoneTitles) ? parsed.milestoneTitles : [];
+    const objectives = Array.isArray(parsed.climaxObjectives) ? parsed.climaxObjectives : [];
+    const milestones = (base.milestones ?? []).map((m, idx) => ({
+      ...m,
+      title:
+        typeof titles[idx] === 'string' && titles[idx].trim().length > 0
+          ? sanitizeWotcProductIdentity(titles[idx].trim())
+          : m.title,
+      climaxObjective:
+        typeof objectives[idx] === 'string' && objectives[idx].trim().length > 0
+          ? sanitizeWotcProductIdentity(objectives[idx].trim())
+          : m.climaxObjective,
+    }));
+    return {
+      ...base,
+      ...(centralTension !== undefined ? { centralTension } : {}),
+      milestones,
+    };
+  } catch {
+    return base;
+  }
 }
 
 /** Act 1 until the party has left a scene, then Act 2, then Act 3. */
@@ -417,14 +813,62 @@ export function isCampaignBlueprint(value: unknown): value is CampaignBlueprint 
   );
 }
 
-/** Prompt block that gives the Director a chapter pointer without scripting the table. */
-export function formatBlueprintBeatPrompt(beat: CampaignBlueprintBeat): string {
-  return [
+export interface BlueprintPacingContext {
+  readonly blueprint?: CampaignBlueprint;
+  readonly act?: 1 | 2 | 3;
+  readonly currentLevel?: number;
+  readonly currentXp?: number;
+  readonly activeSceneId?: string | null;
+}
+
+/** Prompt block that gives the Director a chapter pointer and internal leveling curve pacing without scripting the table. */
+export function formatBlueprintBeatPrompt(
+  beatOrBlueprint: CampaignBlueprintBeat | CampaignBlueprint,
+  contextOrAct?: 1 | 2 | 3 | BlueprintPacingContext,
+): string {
+  const isFullBlueprint = 'acts' in beatOrBlueprint;
+  const ctx: BlueprintPacingContext =
+    typeof contextOrAct === 'number'
+      ? { act: contextOrAct }
+      : (contextOrAct ?? {});
+  const blueprint: CampaignBlueprint | undefined = isFullBlueprint
+    ? beatOrBlueprint
+    : ctx.blueprint;
+  const beat: CampaignBlueprintBeat = isFullBlueprint
+    ? (beatOrBlueprint.acts.find((entry) => entry.act === (ctx.act ?? 1)) ??
+        beatOrBlueprint.acts[0]!)
+    : beatOrBlueprint;
+
+  const lines = [
     `Chapter beat (Act ${beat.act} — ${beat.title}):`,
     `- Current act goal: ${beat.currentActGoal}`,
     `- Key clue: ${beat.keyClue}`,
     `- Next scene trigger: ${beat.nextSceneTrigger}`,
     'Players have full freedom: honor what they declare and the mechanics summary first, and never force this beat.',
     'When it fits naturally, weave the narration back toward the chapter clue or exit by pointing attention at things already present in the visible scene state. Do not state the clue as established fact unless the scene has already shown it.',
-  ].join('\n');
+  ];
+
+  if (blueprint?.milestones !== undefined && blueprint.milestones.length > 0) {
+    const level = Math.max(1, ctx.currentLevel ?? blueprint.startLevel ?? 1);
+    const xp = Math.max(0, ctx.currentXp ?? XP_THRESHOLDS[level - 1] ?? 0);
+    const activeMilestone =
+      blueprint.milestones.find((m) => m.targetLevelAfterCompletion > level) ??
+      blueprint.milestones[blueprint.milestones.length - 1]!;
+    const activeRoom =
+      ctx.activeSceneId
+        ? activeMilestone.rooms.find((r) => r.sceneId === ctx.activeSceneId)
+        : undefined;
+    const pacingDirective =
+      xp < activeMilestone.requiredXpThreshold
+        ? `If party XP is below ${activeMilestone.requiredXpThreshold}, steer toward exploration, clues, and side-treks before unlocking the Milestone Climax.`
+        : `Party has reached ${activeMilestone.requiredXpThreshold} XP and is ready for the Milestone Climax (${activeMilestone.climaxObjective}).`;
+    lines.push(
+      `LEVELING CURVE PACING (INTERNAL — NEVER CITE IN PROSE): Party is Level ${level} (${xp} / ${activeMilestone.requiredXpThreshold} XP toward Level ${activeMilestone.targetLevelAfterCompletion}). Current Milestone: ${activeMilestone.title} — ${activeMilestone.climaxObjective}.${
+        activeRoom !== undefined ? ` Current Room: ${activeRoom.title} (${activeRoom.summary}).` : ''
+      } ${pacingDirective}`,
+    );
+  }
+
+  return lines.join('\n');
 }
+

@@ -30,6 +30,7 @@ import {
   type CampaignListProjection,
   type CampaignMemberRole,
   type CampaignProjection,
+  type CampaignTone,
   type CampaignVisibility,
   type DirectorIdentity,
   type DirectorPersonality,
@@ -42,11 +43,15 @@ import {
   type SeatProjection,
   type TablesHubProjection,
   isAdventureTemplate,
+  isCampaignTone,
   isCampaignVisibility,
   isDirectorIdentity,
   isDirectorPersonality,
 } from '../../shared/campaign-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { generateAndStoreCampaignAsset } from '../assets/campaign-assets.js';
+import { buildMapRuntimeFromBlueprint } from '../table/scene-commands.js';
+import { mergeExplored, upsertTokenPosition, type StoredMapRuntime } from '../table/map-runtime.js';
 import { CharacterNotFoundError, readCharacter, readVault } from '../characters/characters.js';
 import type { SessionState } from '../../shared/campaign-memory-contract.js';
 import {
@@ -576,6 +581,12 @@ export async function createCampaign(options: {
   readonly adventureTemplate?: unknown;
   readonly visibility?: unknown;
   readonly joinPassword?: unknown;
+  readonly premise?: unknown;
+  readonly startLevel?: unknown;
+  readonly targetEndLevel?: unknown;
+  readonly campaignTone?: unknown;
+  readonly approvedBlueprint?: unknown;
+  readonly forgeWorldAssets?: unknown;
 }): Promise<CampaignProjection> {
   const { firestore, accountId, displayLabel } = options;
   const name = validateName(options.name);
@@ -600,6 +611,72 @@ export async function createCampaign(options: {
   const starterPack = resolveStarterPackForTemplate(adventureTemplate);
 
   const campaignId = randomUUID();
+  const premiseText =
+    typeof options.premise === 'string' && options.premise.trim().length > 0
+      ? options.premise.trim()
+      : summary;
+  const startLevel =
+    typeof options.startLevel === 'number' && Number.isFinite(options.startLevel)
+      ? Math.max(1, Math.min(20, Math.round(options.startLevel)))
+      : 1;
+  const targetEndLevel =
+    typeof options.targetEndLevel === 'number' && Number.isFinite(options.targetEndLevel)
+      ? Math.max(startLevel, Math.min(20, Math.round(options.targetEndLevel)))
+      : Math.max(startLevel, 3);
+  const campaignTone: CampaignTone = isCampaignTone(options.campaignTone)
+    ? options.campaignTone
+    : 'heroic_fantasy';
+
+  const baseBlueprint = buildCampaignBlueprint({
+    summary: premiseText || summary || name,
+    name,
+    startLevel,
+    targetEndLevel,
+    campaignTone,
+  });
+  const approvedObj =
+    typeof options.approvedBlueprint === 'object' && options.approvedBlueprint !== null
+      ? (options.approvedBlueprint as Partial<CampaignBlueprint>)
+      : null;
+  let campaignBlueprint: CampaignBlueprint =
+    approvedObj !== null &&
+    (Array.isArray(approvedObj.acts) || Array.isArray(approvedObj.milestones))
+      ? {
+          ...baseBlueprint,
+          ...approvedObj,
+          milestones:
+            Array.isArray(approvedObj.milestones) && approvedObj.milestones.length > 0
+              ? approvedObj.milestones
+              : (baseBlueprint.milestones ?? []),
+        }
+      : baseBlueprint;
+
+  const shouldForgeWorld =
+    options.forgeWorldAssets === true || options.approvedBlueprint !== undefined;
+  if (shouldForgeWorld && (campaignBlueprint.milestones?.length ?? 0) > 0) {
+    const firstMilestone = campaignBlueprint.milestones![0]!;
+    const firstRoom = firstMilestone.rooms[0];
+    if (firstRoom !== undefined && options.forgeWorldAssets === true) {
+      const assetResult = await generateAndStoreCampaignAsset({
+        firestore,
+        campaignId,
+        kind: 'battlemap',
+        prompt: `${firstRoom.title}. ${firstRoom.summary} (${campaignTone})`,
+        fallbackTemplateId: firstRoom.templateId,
+      });
+      const updatedRooms = firstMilestone.rooms.map((r, idx) =>
+        idx === 0 ? { ...r, sceneArtUrl: assetResult.assetUrl } : r,
+      );
+      const updatedMilestones = campaignBlueprint.milestones!.map((m, idx) =>
+        idx === 0 ? { ...m, rooms: updatedRooms } : m,
+      );
+      campaignBlueprint = {
+        ...campaignBlueprint,
+        milestones: updatedMilestones,
+      };
+    }
+  }
+
   const campaign: StoredCampaign = {
     campaignId,
     ownerAccountId: accountId,
@@ -612,7 +689,7 @@ export async function createCampaign(options: {
     directorLockedAt: director.lockedAt,
     adventureTemplateId: starterPack?.packId ?? null,
     adventurePackVersion: starterPack?.packVersion ?? null,
-    campaignBlueprint: buildCampaignBlueprint(summary),
+    campaignBlueprint,
     visibility,
     joinPasswordHash,
     createdAt: now,
@@ -634,6 +711,21 @@ export async function createCampaign(options: {
     firestore.collection(COLLECTIONS.campaignMemberships).doc(membership.membershipId),
     membership,
   );
+  if (shouldForgeWorld && (campaignBlueprint.milestones?.length ?? 0) > 0) {
+    const initialRuntime = buildMapRuntimeFromBlueprint({
+      campaignId,
+      blueprint: campaignBlueprint,
+      accountIds: [accountId],
+      activateFirstScene: true,
+    });
+    batch.set(firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId), {
+      ...initialRuntime,
+      stateVersion: 1,
+      lastEventSequence: 0,
+      lastEventId: null,
+      updatedAt: now,
+    });
+  }
   await batch.commit();
 
   await seedCampaignSettings(firestore, campaignId, now);
@@ -1102,6 +1194,48 @@ export async function createSeat(options: {
     lastAcknowledgedEventSequence: 0,
   };
   await firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).set(seat);
+  const projectionRef = firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId);
+  const projectionSnap = await projectionRef.get();
+  if (projectionSnap.exists) {
+    const proj = projectionSnap.data() as StoredMapRuntime;
+    const activeId = proj.activeSceneId;
+    const activeScene = activeId ? proj.sceneInstances?.[activeId] : undefined;
+    if (activeScene !== undefined) {
+      const nextTokens = upsertTokenPosition(
+        proj.tokenPositions ?? [],
+        seat.seatId,
+        activeScene.spawn,
+      );
+      const squares: { column: number; row: number }[] = [];
+      for (let row = activeScene.spawn.row - 2; row <= activeScene.spawn.row + 2; row += 1) {
+        for (let col = activeScene.spawn.column - 2; col <= activeScene.spawn.column + 2; col += 1) {
+          if (col >= 0 && row >= 0) {
+            squares.push({ column: col, row });
+          }
+        }
+      }
+      const nextExplored = {
+        ...(proj.exploredByAccount ?? {}),
+        [accountId]: mergeExplored(proj.exploredByAccount?.[accountId], squares),
+      };
+      await projectionRef.set(
+        {
+          ...proj,
+          tokenPositions: nextTokens,
+          exploredByAccount: nextExplored,
+          sceneInstances: {
+            ...(proj.sceneInstances ?? {}),
+            [activeScene.sceneId]: {
+              ...activeScene,
+              tokenPositions: nextTokens,
+              exploredByAccount: nextExplored,
+            },
+          },
+        },
+        { merge: true },
+      );
+    }
+  }
   await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).update({ updatedAt: now });
   await appendChronicleEntry({
     firestore,
@@ -1269,6 +1403,7 @@ export async function deleteCampaign(options: {
     COLLECTIONS.campaignEvents,
     COLLECTIONS.campaignEncounters,
     COLLECTIONS.campaignPresence,
+    COLLECTIONS.campaignAssets,
   ] as const;
   for (const collectionName of queryCollections) {
     await deleteQueryDocs(firestore, collectionName, campaignId);

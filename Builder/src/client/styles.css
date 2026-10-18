@@ -739,15 +739,15 @@ a.account-chip-label:focus-visible {
 }
 
 .table-focus-restore {
-  /* Sit opposite the map zoom pill so chips stay clickable and quiet. */
+  /* Sit below header / opposite the map zoom pill so chips never collide with zoom controls. */
   position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  right: auto;
+  top: 3.5rem;
+  left: auto;
+  right: var(--space-2);
   z-index: 12;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: var(--space-1);
   margin: 0;
   pointer-events: none;

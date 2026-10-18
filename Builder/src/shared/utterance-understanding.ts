@@ -197,6 +197,7 @@ export function classifyUtteranceSpeechAct(text: string): UtteranceSpeechAct {
   }
 
   if (
+    !/\b(?:short\s*rest|long\s*rest|arcane\s+recovery)\b/i.test(trimmed) &&
     /\b(?:can\s+i\s+cast|do\s+i\s+have|am\s+i\s+able|spell\s+slot|action\s+economy|is\s+that\s+legal|rules\s+as\s+written)\b/i.test(
       trimmed,
     )

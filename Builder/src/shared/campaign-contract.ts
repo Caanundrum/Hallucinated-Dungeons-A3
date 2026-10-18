@@ -353,6 +353,75 @@ export interface CampaignDetailProjection {
   readonly settings: CampaignSettingsProjection;
 }
 
+/** Campaign tones for the Campaign World Forge. */
+export const CAMPAIGN_TONES = [
+  'heroic_fantasy',
+  'gothic_horror',
+  'political_intrigue',
+  'gritty_dungeon_crawl',
+  'mystery_investigation',
+] as const;
+export type CampaignTone = (typeof CAMPAIGN_TONES)[number];
+
+export const CAMPAIGN_TONE_LABELS: Record<CampaignTone, string> = {
+  heroic_fantasy: 'Heroic Fantasy',
+  gothic_horror: 'Gothic Horror',
+  political_intrigue: 'Political Intrigue',
+  gritty_dungeon_crawl: 'Gritty Dungeon Crawl',
+  mystery_investigation: 'Mystery & Investigation',
+};
+
+export function isCampaignTone(value: unknown): value is CampaignTone {
+  return typeof value === 'string' && (CAMPAIGN_TONES as readonly string[]).includes(value);
+}
+
+/** Maximum length of a detailed campaign premise. */
+export const CAMPAIGN_PREMISE_MAX_LENGTH = 2000;
+
+/** One room node in the pre-generated Campaign World Forge scene graph. */
+export interface CampaignRoomBlueprint {
+  readonly sceneId: string;
+  readonly milestoneIndex: number;
+  readonly roomIndex: number;
+  readonly title: string;
+  readonly summary: string;
+  readonly templateId: string;
+  readonly battlemapPrompt: string;
+  readonly sceneArtUrl?: string | null;
+  readonly exits: readonly {
+    readonly edgeLabel: string;
+    readonly targetSceneId: string;
+    readonly direction: 'north' | 'east' | 'south' | 'west';
+  }[];
+  readonly npcs: readonly {
+    readonly name: string;
+    readonly role: string;
+    readonly portraitPrompt: string;
+    readonly avatarUrl?: string | null;
+  }[];
+  readonly encounters: readonly {
+    readonly name: string;
+    readonly srdMonsterId: string;
+    readonly count: number;
+    readonly xpAward: number;
+  }[];
+  readonly props: readonly string[];
+  readonly xpAwardOnDiscovery: number;
+  readonly isMilestoneClimax: boolean;
+}
+
+/** One milestone (level transition) in the Campaign World Forge outline. */
+export interface CampaignMilestoneBlueprint {
+  readonly milestoneIndex: number;
+  readonly targetLevelAfterCompletion: number;
+  readonly requiredXpThreshold: number;
+  readonly xpBudgetForMilestone: number;
+  readonly title: string;
+  readonly summary: string;
+  readonly climaxObjective: string;
+  readonly rooms: readonly CampaignRoomBlueprint[];
+}
+
 /** One act of the structured outline derived from the authored premise. */
 export interface CampaignBlueprintBeat {
   readonly act: 1 | 2 | 3;
@@ -366,10 +435,16 @@ export interface CampaignBlueprintBeat {
 
 /**
  * Structured campaign outline extracted generally from the premise text
- * (named NPCs / places / props / exits plus a three-act beat list).
+ * (named NPCs / places / props / exits plus a three-act beat list and optional
+ * multi-milestone leveling curve).
  */
 export interface CampaignBlueprint {
   readonly premiseDigest: string;
+  readonly startLevel?: number;
+  readonly targetEndLevel?: number;
+  readonly campaignTone?: CampaignTone;
+  readonly centralTension?: string;
+  readonly milestones?: readonly CampaignMilestoneBlueprint[];
   readonly namedNpcs: readonly string[];
   readonly namedPlaces: readonly string[];
   readonly namedProps: readonly string[];
@@ -377,3 +452,4 @@ export interface CampaignBlueprint {
   readonly questHook: string | null;
   readonly acts: readonly CampaignBlueprintBeat[];
 }
+

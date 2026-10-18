@@ -6,6 +6,7 @@
  * empty response) resolves to the curated archetype portrait, never an error.
  */
 
+import { GoogleGenAI } from '@google/genai';
 import {
   archetypePortraitUrl,
   type GeneratePortraitResponse,
@@ -88,6 +89,51 @@ async function tryImagen(options: {
   }
 }
 
+async function tryVertexPortraitAdc(options: {
+  readonly env: PortraitEnvironment;
+  readonly model: string;
+  readonly prompt: string;
+}): Promise<string | null> {
+  if (options.env.HD_PORTRAIT_GENERATION === 'off') {
+    return null;
+  }
+  const project = (
+    options.env.HD_FIREBASE_PROJECT_ID ??
+    options.env.GOOGLE_CLOUD_PROJECT ??
+    options.env.GCLOUD_PROJECT ??
+    ''
+  ).trim();
+  if (options.env.HD_ENVIRONMENT_CLASS !== 'milestone' || project.length === 0) {
+    return null;
+  }
+  const location = (options.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1').trim() || 'us-central1';
+  try {
+    const ai = new GoogleGenAI({ vertexai: true, project, location });
+    const response = await ai.models.generateImages({
+      model: options.model,
+      prompt: options.prompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/jpeg',
+        aspectRatio: '1:1',
+      },
+    });
+    const first = response.generatedImages?.[0]?.image;
+    const bytes = first?.imageBytes;
+    if (typeof bytes !== 'string' || bytes.length === 0) {
+      return null;
+    }
+    const mime =
+      first?.mimeType === 'image/png' || first?.mimeType === 'image/webp'
+        ? first.mimeType
+        : 'image/jpeg';
+    const dataUrl = `data:${mime};base64,${bytes}`;
+    return dataUrl.length <= PORTRAIT_MAX_DATA_URL_LENGTH ? dataUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolvePortrait(options: {
   readonly appearancePrompt: string;
   readonly ancestryId?: string | null;
@@ -97,16 +143,27 @@ export async function resolvePortrait(options: {
   readonly fetchImpl?: typeof fetch;
 }): Promise<Pick<GeneratePortraitResponse, 'avatarUrl' | 'source'>> {
   const env = options.env ?? process.env;
+  const model = (env.HD_PORTRAIT_IMAGE_MODEL ?? '').trim() || PORTRAIT_IMAGE_MODEL_DEFAULT;
+  const prompt = buildPortraitPrompt(options);
   const apiKey = portraitApiKey(env);
   if (apiKey !== null) {
     const generated = await tryImagen({
       apiKey,
-      model: (env.HD_PORTRAIT_IMAGE_MODEL ?? '').trim() || PORTRAIT_IMAGE_MODEL_DEFAULT,
-      prompt: buildPortraitPrompt(options),
+      model,
+      prompt,
       fetchImpl: options.fetchImpl ?? fetch,
     });
     if (generated !== null) {
       return { avatarUrl: generated, source: 'generated' };
+    }
+  } else {
+    const vertexGenerated = await tryVertexPortraitAdc({
+      env,
+      model,
+      prompt,
+    });
+    if (vertexGenerated !== null) {
+      return { avatarUrl: vertexGenerated, source: 'generated' };
     }
   }
   return {

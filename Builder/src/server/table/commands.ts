@@ -149,6 +149,7 @@ import {
   projectProgression,
   type StoredProgression,
 } from '../rules/engine/encounter-runtime.js';
+import { levelForExperience } from '../rules/engine/xp-progression.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 import { requireTableCommandTimingAuthority, TimingAuthorityError } from './timing-authority.js';
 
@@ -892,6 +893,19 @@ export async function acceptTableCommand(options: {
         ? destinationHint.trim()
         : trimmedDeclaration ?? 'travel onward';
     try {
+      let priorProgression: StoredProgression | null = null;
+      try {
+        const source = await loadCharacterRulesSource(firestore, seat.characterId);
+        const progressionSnap = await firestore
+          .collection(COLLECTIONS.characterProgressions)
+          .doc(seat.characterId)
+          .get();
+        priorProgression = progressionSnap.exists
+          ? (progressionSnap.data() as StoredProgression)
+          : initialStoredProgression(source);
+      } catch {
+        priorProgression = null;
+      }
       const result = travelSceneRuntime({
         runtime: mapContext.runtime,
         campaignId,
@@ -901,11 +915,21 @@ export async function acceptTableCommand(options: {
         seatTokens: mapContext.runtime.tokenPositions.length
           ? mapContext.runtime.tokenPositions
           : [{ seatId: seat.seatId, column: 2, row: 2 }],
+        ...(priorProgression !== null ? { partyXp: priorProgression.experiencePoints } : {}),
       });
       nextSceneRuntime = result.runtime;
       buildSceneTitle = result.composed?.title ?? activeSceneInstance(result.runtime)?.title ?? null;
       sceneChronicleBody = result.chronicle;
       eventType = 'table.scene_traveled';
+      if (priorProgression !== null && (result.xpAwarded ?? 0) > 0) {
+        const nextXp = priorProgression.experiencePoints + (result.xpAwarded ?? 0);
+        nextProgression = {
+          ...priorProgression,
+          experiencePoints: nextXp,
+          level: levelForExperience(nextXp),
+          updatedAt: new Date().toISOString(),
+        };
+      }
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
       if (code === 'NO_ACTIVE_SCENE') {

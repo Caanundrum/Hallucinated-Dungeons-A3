@@ -84,6 +84,9 @@ const WIPE_COLLECTIONS = [
   'partyChatMessages',
   'chronicleEntries',
   'timingAuthorities',
+  'characterProgressions',
+  'campaignAssets',
+  'mapRuntimes',
 ];
 
 const TEST_CHARACTER_NAME_PATTERNS = [
@@ -104,6 +107,7 @@ function parseArgs(argv) {
     dryRun: false,
     emulator: false,
     keepCharacters: false,
+    wipeOnly: false,
     confirmLive: false,
     project: process.env.GCLOUD_PROJECT ?? null,
     ownerAccountId: process.env.HD_SEED_OWNER_ACCOUNT_ID ?? null,
@@ -120,6 +124,9 @@ function parseArgs(argv) {
         break;
       case '--keep-characters':
         options.keepCharacters = true;
+        break;
+      case '--wipe-only':
+        options.wipeOnly = true;
         break;
       case '--confirm-live':
         options.confirmLive = true;
@@ -260,7 +267,8 @@ function hasLiveCredentials() {
   return (
     (process.env.GOOGLE_APPLICATION_CREDENTIALS ?? '').trim() !== '' ||
     (process.env.FIREBASE_SERVICE_ACCOUNT ?? '').trim() !== '' ||
-    (process.env.GOOGLE_CLOUD_KEYFILE_JSON ?? '').trim() !== ''
+    (process.env.GOOGLE_CLOUD_KEYFILE_JSON ?? '').trim() !== '' ||
+    (process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '').trim() !== ''
   );
 }
 
@@ -272,11 +280,19 @@ function initFirestore(target) {
     } else {
       delete process.env.FIRESTORE_EMULATOR_HOST;
       const inline = (process.env.FIREBASE_SERVICE_ACCOUNT ?? process.env.GOOGLE_CLOUD_KEYFILE_JSON ?? '').trim();
+      const accessToken = (process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '').trim();
       const credential = inline.startsWith('{')
         ? cert(JSON.parse(inline))
         : (process.env.GOOGLE_APPLICATION_CREDENTIALS ?? '').trim() !== ''
           ? cert(process.env.GOOGLE_APPLICATION_CREDENTIALS)
-          : applicationDefault();
+          : accessToken !== ''
+            ? {
+                getAccessToken: async () => ({
+                  access_token: accessToken,
+                  expires_in: 3600,
+                }),
+              }
+            : applicationDefault();
       initializeApp({ projectId: target.projectId, credential });
     }
   }
@@ -374,7 +390,7 @@ async function main() {
     if (!hasLiveCredentials() && (process.env.GOOGLE_CLOUD_PROJECT ?? '') === '') {
       console.warn('warn: no explicit credentials found; falling back to application default credentials.');
     }
-    if (ownerAccountId === null) {
+    if (ownerAccountId === null && !options.wipeOnly) {
       throw new Error('Live runs need --owner-account-id <uid> so the seeded character lands in your vault.');
     }
   }
@@ -386,7 +402,18 @@ async function main() {
   }
   console.log('Wiped:', JSON.stringify(wiped));
   if (!options.keepCharacters) {
-    console.log('Wiped test characters:', JSON.stringify(await wipeTestCharacters(firestore)));
+    if (options.wipeOnly) {
+      const allChars = await wipeCollection(firestore, 'characters');
+      const allDrafts = await wipeCollection(firestore, 'characterDrafts');
+      console.log('Wiped all characters & drafts:', JSON.stringify({ characters: allChars, drafts: allDrafts }));
+    } else {
+      console.log('Wiped test characters:', JSON.stringify(await wipeTestCharacters(firestore)));
+    }
+  }
+
+  if (options.wipeOnly) {
+    console.log('Wipe-only complete; zero tables or characters seeded.');
+    return;
   }
 
   const batch = firestore.batch();

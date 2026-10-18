@@ -124,6 +124,9 @@ export function isTrustedAvatarUrl(value: unknown): value is string {
   if (value.startsWith(`${PORTRAIT_ASSET_BASE}/`) && !value.includes('..')) {
     return /^[A-Za-z0-9_./-]{1,200}$/.test(value);
   }
+  if (/^\/api\/assets\/[a-zA-Z0-9_-]{1,120}$/.test(value)) {
+    return true;
+  }
   return value.length <= 800_100 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
 }
 

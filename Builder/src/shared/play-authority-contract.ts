@@ -1010,6 +1010,7 @@ export function parsePlayerDeclaration(
   // Named spell cast — capability check owns refusal (not empty clarify).
   if (
     actionSequence.length === 0 &&
+    !/\b(?:arcane\s+recovery|short\s*rest|long\s*rest|spell\s+slots?)\b/i.test(trimmed) &&
     /\b(?:cast|spell|fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds)\b/i.test(
       trimmed,
     )
@@ -1067,7 +1068,13 @@ export function parsePlayerDeclaration(
       understanding.wantsContentsQuery ||
       understanding.speechAct === 'question' ||
       understanding.speechAct === 'rules_query') &&
-    !bounded.some((step) => step.kind === 'inspect' || step.kind === 'dialogue')
+    !bounded.some(
+      (step) =>
+        step.kind === 'inspect' ||
+        step.kind === 'dialogue' ||
+        step.kind === 'open_door' ||
+        step.kind === 'unlock_door',
+    )
   ) {
     bounded = [
       {
