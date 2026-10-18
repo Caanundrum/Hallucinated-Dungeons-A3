@@ -803,7 +803,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         });
         const minted = await issueHostedGoogleSession({ env, firestore, profile });
         setSessionCookie(response, minted.sessionToken, minted.identity.expiresAt);
-        writeRedirect(response, env, '/campaigns');
+        writeRedirect(response, env, '/');
       } catch (error) {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
         process.stderr.write(`[auth/google-login] Google sign-in exchange failed: ${detail}\n`);
