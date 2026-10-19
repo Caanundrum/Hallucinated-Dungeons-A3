@@ -1,17 +1,40 @@
 /**
- * Chaos Standard Studio Splash Reveal → Hallucinated Dungeons Title Card.
+ * Chaos Standard Studio Splash Reveal.
+ *
+ * Exact replication of the Chaos Standard studio splash reveal
+ * (Chaos-Standard-Home StudioSplashReveal.tsx):
  *
  * Symmetrical 70/30 studio aesthetic:
  * 70% Prestige Gaming Studio (A24 meets CERN laboratory, obsidian voids, CRT telemetry)
  * 30% Controlled Anomaly & 4th-Wall sentience.
  *
- * Audio: Procedural Web Audio synthesis (zero external audio assets).
- * Skippable via Space, Escape, Enter, or Click.
+ * Timeline:
+ *  - 0ms: Pitch black void, initial CRT warmup telemetry
+ *  - 200ms: Horizontal electron beam ignites with glitch chirp
+ *  - 650ms: Deflection coils open, beam blooms vertically into Bewildered Terminal monitor
+ *  - 1250ms: Terminal stabilized, AI interface online
+ *  - 1650ms: Master Chaos Standard wordmark smoothly glides up with electric studio chord
+ *  - 2450ms: Settled calibration complete
+ *  - 3850ms: Smooth cinematic fadeout to the sign-in page
+ *  - 4450ms: Sequence complete / dismissed
+ *
+ * Controls:
+ *  - Click anywhere, press Space, Escape, or Enter, or click "SKIP INTRO" to skip.
+ *  - Sound toggle with procedural Web Audio synthesis.
  */
 
 import { sound } from './sound.js';
 
-const SESSION_KEY = 'hd.chaosBoot.seen.v2';
+const SESSION_KEY = 'hd.chaosBoot.seen.v3';
+
+type AnimationStep =
+  | 'idle'
+  | 'beam'
+  | 'blossom'
+  | 'stabilize'
+  | 'wordmark'
+  | 'complete'
+  | 'fadeout';
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -41,9 +64,29 @@ export function resetChaosBootSeen(): void {
   }
 }
 
+const VOLUME_ON_SVG = `
+  <svg class="chaos-boot-vol-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF6A00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+  </svg>`;
+
+const VOLUME_MUTED_SVG = `
+  <svg class="chaos-boot-vol-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <line x1="23" y1="9" x2="17" y2="15"></line>
+    <line x1="17" y1="9" x2="23" y2="15"></line>
+  </svg>`;
+
+const FAST_FORWARD_SVG = `
+  <svg class="chaos-boot-ff-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="13 19 22 12 13 5 13 19"></polygon>
+    <polygon points="2 19 11 12 2 5 2 19"></polygon>
+  </svg>`;
+
 /**
- * Plays the official Chaos Standard Studio Reveal followed by the
- * Hallucinated Dungeons game splash card. Resolves when finished or skipped.
+ * Plays the official Chaos Standard Studio Reveal.
+ * Transitions directly to the sign-in / welcome page without a second splash screen.
  */
 export async function playChaosBootSequence(options?: {
   readonly force?: boolean;
@@ -53,90 +96,78 @@ export async function playChaosBootSequence(options?: {
   }
 
   const reduced = prefersReducedMotion();
-  const phase1Duration = reduced ? 300 : 2200;
-  const phase2Duration = reduced ? 300 : 2400;
 
   await new Promise<void>((resolve) => {
+    let finished = false;
+    const timers: number[] = [];
+
     const root = document.createElement('div');
     root.className = 'chaos-boot-root';
     root.setAttribute('data-testid', 'chaos-boot-root');
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
-    root.setAttribute('aria-label', 'Chaos Standard presents Hallucinated Dungeons');
+    root.setAttribute('aria-label', 'Chaos Standard Reveal');
 
     root.innerHTML = `
-      <div class="chaos-boot-backdrop">
-        <div class="chaos-boot-crt-scanlines" aria-hidden="true"></div>
-        <div class="chaos-boot-vignette" aria-hidden="true"></div>
-      </div>
-
-      <!-- Controls -->
-      <div class="chaos-boot-controls">
-        <button type="button" class="chaos-boot-sound-toggle" data-testid="chaos-boot-sound" aria-label="Toggle sound">
-          <span class="chaos-boot-sound-icon">${sound.isMuted() ? '🔇' : '🔊'}</span>
-          <span class="chaos-boot-sound-text">${sound.isMuted() ? 'Unmute' : 'Audio On'}</span>
-        </button>
-        <button type="button" class="chaos-boot-skip" data-testid="chaos-boot-skip" data-testid-alias="skip-intro">
-          Skip <kbd aria-hidden="true">Space</kbd>
-        </button>
-      </div>
-
-      <!-- Phase 1: Chaos Standard Studio Reveal -->
-      <div class="chaos-boot-layer chaos-boot-studio is-active" data-testid="chaos-boot-chaos" data-boot-phase="chaos">
-        <div class="chaos-boot-studio-inner">
-          <div class="chaos-boot-terminal-mark-wrapper">
-            <div class="chaos-boot-beam-line" aria-hidden="true"></div>
-            <img
-              src="/brand/chaos-mark-symbol.png"
-              alt="The Bewildered Terminal - Chaos Standard Mascot"
-              class="chaos-boot-terminal-img"
-              width="140"
-              height="140"
-            />
-          </div>
-          <div class="chaos-boot-wordmark-wrapper">
-            <h1 class="chaos-boot-studio-wordmark">
-              <span class="chaos-word-chaos">CHAOS</span>
-              <span class="chaos-word-standard">STANDARD</span>
-            </h1>
-            <p class="chaos-boot-studio-tagline">We take making ridiculous things extremely seriously.</p>
-          </div>
-          <div class="chaos-boot-telemetry" data-testid="chaos-boot-telemetry">
-            <span class="telemetry-tick">SYS.BOOT_SEQUENCE // CRT_WARMUP</span>
-            <span class="telemetry-dot"></span>
-            <span class="telemetry-host">chaosstandard.com</span>
-          </div>
+      <!-- Top Telemetry Bar -->
+      <div class="chaos-boot-topbar">
+        <div class="chaos-boot-topbar-title">CHAOS_STANDARD // REVEAL_SEQUENCE</div>
+        <div class="chaos-boot-topbar-actions">
+          <button type="button" class="chaos-boot-sound-toggle" data-testid="chaos-boot-sound" title="Toggle Audio">
+            <span class="chaos-boot-sound-icon">${sound.isMuted() ? VOLUME_MUTED_SVG : VOLUME_ON_SVG}</span>
+            <span class="chaos-boot-sound-label">${sound.isMuted() ? 'MUTED' : 'AUDIO ACTIVE'}</span>
+          </button>
+          <button type="button" class="chaos-boot-skip" data-testid="chaos-boot-skip" title="Skip Intro">
+            <span>SKIP INTRO</span>
+            ${FAST_FORWARD_SVG}
+          </button>
         </div>
       </div>
 
-      <!-- Phase 2: Hallucinated Dungeons Game Title Card -->
-      <div class="chaos-boot-layer chaos-boot-game" data-testid="chaos-boot-game" data-boot-phase="game" hidden>
-        <div class="chaos-boot-game-inner">
-          <div class="chaos-boot-dungeon-portal">
-            <svg class="chaos-boot-dungeon-arch" width="100" height="100" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-              <path class="arch-keystone" d="M48 16 L54 26 L42 26 Z" fill="#F5A623" />
-              <path class="arch-vault" d="M20 88 V48 A28 28 0 0 1 76 48 V88" stroke="#8B5CF6" stroke-width="4.5" stroke-linecap="round" />
-              <path class="arch-base" d="M12 88 H84" stroke="#94A3B8" stroke-width="4" stroke-linecap="round" />
-              <path class="arch-pillar left" d="M30 88 V56" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round" opacity="0.75" />
-              <path class="arch-pillar right" d="M66 88 V56" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round" opacity="0.75" />
-              <circle class="arch-core" cx="48" cy="48" r="8" fill="#F5A623" opacity="0.85" />
-            </svg>
+      <!-- Bottom Telemetry Bar -->
+      <div class="chaos-boot-bottombar">
+        <div class="chaos-boot-bottombar-status" data-testid="chaos-boot-telemetry">
+          &gt; <span class="chaos-boot-telemetry-text">SYS.BOOT_SEQUENCE // CRT_WARMUP</span>
+        </div>
+        <div class="chaos-boot-bottombar-hint">
+          PRESS [ESC] OR CLICK ANYWHERE
+        </div>
+      </div>
+
+      <!-- Ambient Orange Radial Backlight -->
+      <div class="chaos-boot-backlight step-idle" aria-hidden="true"></div>
+
+      <!-- Unified Reveal Stage -->
+      <div class="chaos-boot-stage" data-testid="chaos-boot-chaos">
+        <!-- Terminal Monitor Unit -->
+        <div class="chaos-boot-monitor-unit">
+          <div class="chaos-boot-monitor-graphic step-idle">
+            <img
+              src="/brand/chaos-mark-symbol.png"
+              alt="The Bewildered Terminal - Chaos Standard Mascot"
+              class="chaos-boot-monitor-img"
+              width="224"
+              height="224"
+            />
           </div>
-          <div class="chaos-boot-game-eyebrow">
-            <span class="brand-pill">A CHAOS STANDARD TABLETOP EXPERIENCE</span>
-          </div>
-          <h2 class="chaos-boot-game-title">Hallucinated Dungeons</h2>
-          <p class="chaos-boot-game-subtitle">Tabletop RPG Soul × Generative Fantasy Intelligence</p>
-          <p class="chaos-boot-game-desc">
-            Where the Dungeon Master never sleeps, never runs out of dice, and occasionally has questionable sanity.
-          </p>
-          <div class="chaos-boot-game-meta">
-            <span class="meta-tag">SRD 5.2.1 AUTHENTIC RULES</span>
-            <span class="meta-sep">·</span>
-            <span class="meta-tag">AUTONOMOUS AI DIRECTOR</span>
-            <span class="meta-sep">·</span>
-            <span class="meta-tag">ZERO INSTALL</span>
-          </div>
+          <!-- CRT Deflection Electron Beam -->
+          <div class="chaos-boot-electron-beam step-idle" aria-hidden="true"></div>
+        </div>
+
+        <!-- Wordmark Unit -->
+        <div class="chaos-boot-wordmark-unit step-idle">
+          <img
+            src="/brand/chaos-wordmark.png"
+            alt="Chaos Standard Wordmark"
+            class="chaos-boot-wordmark-img"
+            width="384"
+            height="56"
+          />
+        </div>
+
+        <!-- Subtitle Telemetry Line -->
+        <div class="chaos-boot-subtitle step-idle">
+          BROWSER-NATIVE EXPERIENCES
         </div>
       </div>
     `;
@@ -144,91 +175,138 @@ export async function playChaosBootSequence(options?: {
     document.body.appendChild(root);
     document.body.classList.add('chaos-boot-active');
 
-    const studioLayer = root.querySelector<HTMLElement>('[data-testid="chaos-boot-chaos"]');
-    const gameLayer = root.querySelector<HTMLElement>('[data-testid="chaos-boot-game"]');
-    const skipButton = root.querySelector<HTMLButtonElement>('[data-testid="chaos-boot-skip"]');
-    const soundButton = root.querySelector<HTMLButtonElement>('[data-testid="chaos-boot-sound"]');
-    const telemetryText = root.querySelector<HTMLElement>('.telemetry-tick');
+    const soundToggle = root.querySelector<HTMLButtonElement>('[data-testid="chaos-boot-sound"]');
+    const skipBtn = root.querySelector<HTMLButtonElement>('[data-testid="chaos-boot-skip"]');
+    const telemetryEl = root.querySelector<HTMLElement>('.chaos-boot-telemetry-text');
+    const backlight = root.querySelector<HTMLElement>('.chaos-boot-backlight');
+    const monitorGraphic = root.querySelector<HTMLElement>('.chaos-boot-monitor-graphic');
+    const electronBeam = root.querySelector<HTMLElement>('.chaos-boot-electron-beam');
+    const wordmarkUnit = root.querySelector<HTMLElement>('.chaos-boot-wordmark-unit');
+    const subtitle = root.querySelector<HTMLElement>('.chaos-boot-subtitle');
 
-    let finished = false;
-    let timerIds: number[] = [];
+    function applyStep(step: AnimationStep): void {
+      if (finished) return;
 
-    // Trigger audio reveal on splash open (if not muted)
-    if (!reduced) {
-      sound.playStudioReveal();
+      // Update Backlight
+      if (backlight) {
+        backlight.className = `chaos-boot-backlight step-${step}`;
+      }
+
+      // Update Monitor Graphic
+      if (monitorGraphic) {
+        monitorGraphic.className = `chaos-boot-monitor-graphic step-${step}`;
+      }
+
+      // Update Electron Beam
+      if (electronBeam) {
+        electronBeam.className = `chaos-boot-electron-beam step-${step}`;
+      }
+
+      // Update Wordmark
+      if (wordmarkUnit) {
+        wordmarkUnit.className = `chaos-boot-wordmark-unit step-${step}`;
+      }
+
+      // Update Subtitle
+      if (subtitle) {
+        subtitle.className = `chaos-boot-subtitle step-${step}`;
+      }
+
+      // Step-specific effects & audio
+      switch (step) {
+        case 'beam':
+          if (telemetryEl) telemetryEl.textContent = 'ELECTRON_BEAM // STABILIZING HORIZONTAL SWEEP';
+          if (!reduced) sound.playGlitch();
+          break;
+        case 'blossom':
+          if (telemetryEl) telemetryEl.textContent = 'DEFLECTION_COILS // RASTER EXPANSION NOMINAL';
+          break;
+        case 'stabilize':
+          if (telemetryEl) telemetryEl.textContent = 'BEWILDERED_AI_INTERFACE // ONLINE';
+          if (!reduced) sound.playHover();
+          break;
+        case 'wordmark':
+          if (telemetryEl) telemetryEl.textContent = 'CHAOS_STANDARD // COGNITIVE_DISSONANCE_NOMINAL';
+          if (!reduced) sound.playStudioReveal();
+          break;
+        case 'complete':
+          if (telemetryEl) telemetryEl.textContent = 'CHAOS_STANDARD // CALIBRATION_COMPLETE';
+          break;
+        case 'fadeout':
+          root.classList.add('is-exiting');
+          break;
+      }
     }
 
     function cleanup(): void {
       if (finished) return;
       finished = true;
-      for (const id of timerIds) {
+
+      for (const id of timers) {
         window.clearTimeout(id);
       }
-      timerIds = [];
+      timers.length = 0;
+
+      window.removeEventListener('keydown', handleKeyDown);
+
       markChaosBootSeen();
       root.classList.add('is-exiting');
+
       window.setTimeout(() => {
         root.remove();
         document.body.classList.remove('chaos-boot-active');
+        // Trigger welcome screen animated entrance if present
+        const welcomeScreen = document.querySelector<HTMLElement>('.welcome-screen');
+        if (welcomeScreen) {
+          welcomeScreen.classList.add('welcome-entrance-active');
+        }
         resolve();
-      }, reduced ? 40 : 350);
+      }, reduced ? 40 : 450);
     }
 
-    function showGame(): void {
-      if (finished || studioLayer === null || gameLayer === null) return;
-      studioLayer.classList.remove('is-active');
-      studioLayer.hidden = true;
-      gameLayer.hidden = false;
-      // Force layout reflow so animations play cleanly
-      void gameLayer.offsetWidth;
-      gameLayer.classList.add('is-active');
-      if (!reduced) {
-        sound.playHover();
-      }
-      timerIds.push(window.setTimeout(cleanup, phase2Duration));
-    }
+    // Interactive controls
+    soundToggle?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nextMuted = sound.toggleMute();
+      const icon = soundToggle.querySelector('.chaos-boot-sound-icon');
+      const label = soundToggle.querySelector('.chaos-boot-sound-label');
+      if (icon) icon.innerHTML = nextMuted ? VOLUME_MUTED_SVG : VOLUME_ON_SVG;
+      if (label) label.textContent = nextMuted ? 'MUTED' : 'AUDIO ACTIVE';
+      if (!nextMuted) sound.playClick();
+    });
 
-    // Interactive skip controls
-    skipButton?.addEventListener('click', (e) => {
+    skipBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       cleanup();
     });
 
-    soundButton?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const nextMuted = sound.toggleMute();
-      const icon = soundButton.querySelector('.chaos-boot-sound-icon');
-      const text = soundButton.querySelector('.chaos-boot-sound-text');
-      if (icon) icon.textContent = nextMuted ? '🔇' : '🔊';
-      if (text) text.textContent = nextMuted ? 'Unmute' : 'Audio On';
-      if (!nextMuted) {
-        sound.playClick();
-      }
+    // Click anywhere on root to dismiss
+    root.addEventListener('click', () => {
+      cleanup();
     });
 
-    const keyListener = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' || event.key === ' ' || event.key === 'Enter') {
-        event.preventDefault();
+    // Keyboard dismissal
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
         cleanup();
       }
     };
-    window.addEventListener('keydown', keyListener, { once: true });
+    window.addEventListener('keydown', handleKeyDown);
 
-    // Telemetry updates
-    if (!reduced && telemetryText) {
-      timerIds.push(
-        window.setTimeout(() => {
-          if (!finished) telemetryText.textContent = 'DEFLECTION_COILS // RASTER NOMINAL';
-        }, 700),
-      );
-      timerIds.push(
-        window.setTimeout(() => {
-          if (!finished) telemetryText.textContent = 'CHAOS STANDARD // CALIBRATION COMPLETE';
-        }, 1400),
-      );
+    if (reduced) {
+      applyStep('complete');
+      timers.push(window.setTimeout(cleanup, 400));
+      return;
     }
 
-    // Schedule phase 2 transition
-    timerIds.push(window.setTimeout(showGame, phase1Duration));
+    // Coordinated Continuous Timeline matching StudioSplashReveal.tsx
+    timers.push(window.setTimeout(() => applyStep('beam'), 200));
+    timers.push(window.setTimeout(() => applyStep('blossom'), 650));
+    timers.push(window.setTimeout(() => applyStep('stabilize'), 1250));
+    timers.push(window.setTimeout(() => applyStep('wordmark'), 1650));
+    timers.push(window.setTimeout(() => applyStep('complete'), 2450));
+    timers.push(window.setTimeout(() => applyStep('fadeout'), 3850));
+    timers.push(window.setTimeout(cleanup, 4450));
   });
 }

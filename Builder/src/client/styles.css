@@ -6192,7 +6192,7 @@ html.hd-low-effects [data-testid="table-page-shell"].table-combat-active::after 
   color: var(--text-primary);
 }
 
-/* --- Chaos Standard Master Studio Reveal & Hallucinated Dungeons Boot Sequence --- */
+/* --- Chaos Standard Master Studio Reveal Sequence (Single Splash) --- */
 body.chaos-boot-active {
   overflow: hidden;
 }
@@ -6201,286 +6201,427 @@ body.chaos-boot-active {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: grid;
-  place-items: center;
-  background: var(--cs-pitch-black, #05070a);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #05070a;
   color: #fff;
   font-family: var(--font-sans);
   user-select: none;
-}
-
-.chaos-boot-backdrop {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.chaos-boot-crt-scanlines {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%,
-    rgba(0, 0, 0, 0.4) 50%
-  );
-  background-size: 100% 4px;
-  opacity: 0.65;
-}
-
-.chaos-boot-vignette {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.85) 100%);
+  cursor: pointer;
+  transition: opacity 700ms ease;
+  opacity: 1;
+  overflow: hidden;
 }
 
 .chaos-boot-root.is-exiting {
   opacity: 0;
-  transition: opacity var(--motion-emphasized) ease;
+  pointer-events: none;
 }
 
-.chaos-boot-controls {
+/* Top Telemetry Bar */
+.chaos-boot-topbar {
   position: absolute;
-  top: max(1.25rem, env(safe-area-inset-top));
-  right: max(1.25rem, env(safe-area-inset-right));
+  top: 0;
+  left: 0;
+  right: 0;
+  height: clamp(3rem, 7vh, 4rem);
+  background: rgba(3, 4, 6, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 20;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  z-index: 10;
+  justify-content: space-between;
+  padding: 0 max(1.25rem, env(safe-area-inset-right));
 }
 
-.chaos-boot-sound-toggle,
-.chaos-boot-skip {
+.chaos-boot-topbar-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.chaos-boot-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.chaos-boot-sound-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.85rem;
-  border-radius: var(--radius-control);
-  background: rgba(17, 19, 27, 0.75);
-  border: 1px solid var(--cs-border-subtle, #232736);
-  color: var(--cs-slate-standard, #94a3b8);
+  gap: 0.4rem;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 11px;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: all var(--motion-ordinary) ease;
+  transition: color 150ms ease;
+  padding: 0.25rem 0.5rem;
 }
 
 .chaos-boot-sound-toggle:hover,
-.chaos-boot-skip:hover,
-.chaos-boot-sound-toggle:focus-visible,
-.chaos-boot-skip:focus-visible {
-  color: #fff;
-  border-color: var(--cs-hazard-orange, #ff6a00);
-  background: rgba(255, 106, 0, 0.12);
+.chaos-boot-sound-toggle:focus-visible {
+  color: #ff6a00;
   outline: none;
 }
 
-.chaos-boot-skip kbd {
-  display: inline-block;
-  padding: 0.1rem 0.35rem;
-  background: rgba(255, 255, 255, 0.1);
+.chaos-boot-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
   border-radius: 4px;
-  font-size: 0.7rem;
-  color: var(--cs-slate-standard, #94a3b8);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #f8fafc;
+  cursor: pointer;
+  transition: all 150ms ease;
 }
 
-.chaos-boot-layer {
+.chaos-boot-skip:hover,
+.chaos-boot-skip:focus-visible {
+  background: #ff6a00;
+  color: #05070a;
+  outline: none;
+}
+
+/* Bottom Telemetry Bar */
+.chaos-boot-bottombar {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: clamp(3rem, 7vh, 4rem);
+  background: rgba(3, 4, 6, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 20;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(1.25rem, env(safe-area-inset-right));
+}
+
+.chaos-boot-bottombar-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #ff6a00;
+}
+
+.chaos-boot-bottombar-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+/* Ambient Orange Radial Backlight */
+.chaos-boot-backlight {
+  position: absolute;
+  width: min(720px, 90vw);
+  height: min(720px, 90vw);
+  border-radius: 9999px;
+  filter: blur(140px);
+  background: #ff6a00;
+  pointer-events: none;
+  transition: all 1000ms ease;
+  transform-origin: center;
+}
+
+.chaos-boot-backlight.step-idle {
   opacity: 0;
-  transform: scale(0.96);
-  transition:
-    opacity var(--motion-cinematic) cubic-bezier(0.16, 1, 0.3, 1),
-    transform var(--motion-cinematic) cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2;
+  transform: scale(0.5);
 }
 
-.chaos-boot-layer.is-active {
-  opacity: 1;
+.chaos-boot-backlight.step-beam {
+  opacity: 0.4;
+  transform: scale(0.75);
+  background: rgba(255, 106, 0, 0.1);
+}
+
+.chaos-boot-backlight.step-blossom {
+  opacity: 0.7;
+  transform: scale(0.95);
+  background: rgba(255, 106, 0, 0.25);
+}
+
+.chaos-boot-backlight.step-stabilize {
+  opacity: 0.8;
   transform: scale(1);
+  background: rgba(255, 106, 0, 0.25);
 }
 
-.chaos-boot-studio-inner,
-.chaos-boot-game-inner {
+.chaos-boot-backlight.step-wordmark {
+  opacity: 0.9;
+  transform: scale(1.1);
+  background: rgba(255, 106, 0, 0.35);
+}
+
+.chaos-boot-backlight.step-complete {
+  opacity: 0.8;
+  transform: scale(1);
+  background: rgba(255, 106, 0, 0.2);
+}
+
+.chaos-boot-backlight.step-fadeout {
+  opacity: 0;
+  transform: scale(1);
+  transition: opacity 700ms ease;
+}
+
+/* Unified Reveal Stage */
+.chaos-boot-stage {
+  position: relative;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: var(--space-4);
-  padding: var(--space-6);
-  max-width: 52rem;
-}
-
-/* Studio Reveal (Phase 1) */
-.chaos-boot-terminal-mark-wrapper {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.chaos-boot-beam-line {
-  position: absolute;
-  width: 280px;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--cs-hazard-orange, #ff6a00), #fff, var(--cs-hazard-orange, #ff6a00), transparent);
-  box-shadow: 0 0 16px var(--cs-hazard-orange, #ff6a00);
-  animation: chaos-beam-sweep 1.2s ease-out forwards;
-}
-
-@keyframes chaos-beam-sweep {
-  0% { transform: scaleX(0); opacity: 0; }
-  40% { transform: scaleX(1.4); opacity: 1; }
-  100% { transform: scaleX(1); opacity: 0.45; }
-}
-
-.chaos-boot-terminal-img {
-  display: block;
-  filter: drop-shadow(0 0 24px rgba(255, 106, 0, 0.45));
-  animation: chaos-terminal-float 3s ease-in-out infinite;
-}
-
-@keyframes chaos-terminal-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-.chaos-boot-studio-wordmark {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  display: flex;
-  gap: 0.65rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.chaos-word-chaos {
-  color: var(--cs-hazard-orange, #ff6a00);
-  text-shadow: 0 0 25px rgba(255, 106, 0, 0.6);
-}
-
-.chaos-word-standard {
-  color: var(--cs-slate-standard, #94a3b8);
-  font-weight: 500;
-  letter-spacing: 0.22em;
-}
-
-.chaos-boot-studio-tagline {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: clamp(0.95rem, 2vw, 1.2rem);
-  font-style: italic;
-  color: var(--cs-slate-standard, #94a3b8);
-  letter-spacing: 0.04em;
-}
-
-.chaos-boot-telemetry {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.35rem 0.95rem;
-  border-radius: 9999px;
-  background: rgba(30, 34, 42, 0.6);
-  border: 1px solid var(--cs-border-subtle, #232736);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  color: var(--emerald-heal, #3dcf9a);
-}
-
-.telemetry-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--emerald-heal, #3dcf9a);
-  box-shadow: 0 0 8px var(--emerald-heal, #3dcf9a);
-  animation: blink 1.2s ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.telemetry-host {
-  color: var(--cs-slate-dim, #64748b);
-}
-
-/* Game Title Card (Phase 2) */
-.chaos-boot-dungeon-portal {
-  filter: drop-shadow(0 0 30px var(--cs-violet-glow));
-}
-
-.chaos-boot-game-eyebrow .brand-pill {
-  display: inline-block;
-  padding: 0.25rem 0.85rem;
-  border-radius: 9999px;
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.4);
-  color: var(--cs-violet, #8b5cf6);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.chaos-boot-game-title {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(2.2rem, 6vw, 3.8rem);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: #fff;
-  text-shadow: 0 0 35px rgba(245, 166, 35, 0.35);
-}
-
-.chaos-boot-game-subtitle {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(1.05rem, 2.5vw, 1.4rem);
-  color: var(--cs-gold, #f5a623);
-  letter-spacing: 0.06em;
-}
-
-.chaos-boot-game-desc {
-  margin: 0;
+  padding: 0 1rem;
+  width: 100%;
   max-width: 36rem;
-  font-size: 1.05rem;
-  line-height: 1.55;
-  color: var(--text-muted);
 }
 
-.chaos-boot-game-meta {
+/* Terminal Monitor Unit */
+.chaos-boot-monitor-unit {
+  position: relative;
+  width: clamp(12rem, 30vw, 14rem);
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  color: var(--cs-slate-standard, #94a3b8);
+  justify-content: center;
 }
 
-.meta-sep {
-  color: var(--cs-border-subtle, #232736);
+.chaos-boot-monitor-graphic {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 15px 35px rgba(255, 106, 0, 0.35));
+  transition: clip-path 650ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms ease-out;
+}
+
+.chaos-boot-monitor-graphic.step-idle {
+  clip-path: inset(49.2% 0% 49.2% 0%);
+  opacity: 0;
+}
+
+.chaos-boot-monitor-graphic.step-beam {
+  clip-path: inset(49.2% 0% 49.2% 0%);
+  opacity: 0.35;
+}
+
+.chaos-boot-monitor-graphic.step-blossom,
+.chaos-boot-monitor-graphic.step-stabilize,
+.chaos-boot-monitor-graphic.step-wordmark,
+.chaos-boot-monitor-graphic.step-complete,
+.chaos-boot-monitor-graphic.step-fadeout {
+  clip-path: inset(0% 0% 0% 0%);
+  opacity: 1;
+}
+
+.chaos-boot-monitor-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* CRT Deflection Electron Beam */
+.chaos-boot-electron-beam {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #ff6a00;
+  pointer-events: none;
+  box-shadow: 0 0 25px #ff6a00, 0 0 50px #ff6a00;
+  border-radius: 8px;
+}
+
+.chaos-boot-electron-beam.step-idle {
+  transform: translateY(-50%) scaleX(0);
+  opacity: 0;
+  height: 3px;
+}
+
+.chaos-boot-electron-beam.step-beam {
+  transform: translateY(-50%) scaleX(1);
+  opacity: 1;
+  height: 3px;
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease;
+}
+
+.chaos-boot-electron-beam.step-blossom {
+  transform: translateY(-50%) scaleX(1);
+  opacity: 0.4;
+  height: 92%;
+  transition: height 620ms cubic-bezier(0.16, 1, 0.3, 1), opacity 700ms ease-out;
+}
+
+.chaos-boot-electron-beam.step-stabilize,
+.chaos-boot-electron-beam.step-wordmark,
+.chaos-boot-electron-beam.step-complete,
+.chaos-boot-electron-beam.step-fadeout {
+  transform: translateY(-50%) scaleX(1);
+  opacity: 0;
+  height: 92%;
+  transition: opacity 400ms ease-out;
+}
+
+/* Wordmark Unit */
+.chaos-boot-wordmark-unit {
+  margin-top: 0.75rem;
+  width: clamp(18rem, 50vw, 24rem);
+  transition: transform 750ms cubic-bezier(0.16, 1, 0.3, 1), opacity 650ms ease-out;
+}
+
+.chaos-boot-wordmark-unit.step-idle,
+.chaos-boot-wordmark-unit.step-beam,
+.chaos-boot-wordmark-unit.step-blossom,
+.chaos-boot-wordmark-unit.step-stabilize {
+  transform: translateY(24px) scale(0.95);
+  opacity: 0;
+}
+
+.chaos-boot-wordmark-unit.step-wordmark,
+.chaos-boot-wordmark-unit.step-complete,
+.chaos-boot-wordmark-unit.step-fadeout {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.chaos-boot-wordmark-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.9));
+}
+
+/* Subtitle Telemetry Line */
+.chaos-boot-subtitle {
+  margin-top: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #94a3b8;
+  transition: opacity 600ms ease-out;
+}
+
+.chaos-boot-subtitle.step-idle,
+.chaos-boot-subtitle.step-beam,
+.chaos-boot-subtitle.step-blossom,
+.chaos-boot-subtitle.step-stabilize,
+.chaos-boot-subtitle.step-wordmark {
+  opacity: 0;
+}
+
+.chaos-boot-subtitle.step-complete,
+.chaos-boot-subtitle.step-fadeout {
+  opacity: 1;
+}
+
+/* --- Animated Welcome & Sign-In Page Entrance --- */
+.welcome-screen {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 30%, rgba(139, 92, 246, 0.12), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 50% 25%, rgba(245, 166, 35, 0.08), transparent 50%),
+    linear-gradient(180deg, #05080e 0%, var(--abyss-bg, #090c15) 55%, #0a121c 100%);
+}
+
+.welcome-logo-stage {
+  box-shadow: 0 0 48px rgba(139, 92, 246, 0.25), 0 0 24px rgba(245, 166, 35, 0.2);
+  animation: welcome-arch-pulse 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes welcome-arch-pulse {
+  0% {
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.2), 0 0 16px rgba(245, 166, 35, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 56px rgba(139, 92, 246, 0.4), 0 0 30px rgba(245, 166, 35, 0.3);
+    border-color: rgba(245, 166, 35, 0.5);
+  }
+}
+
+.welcome-screen.welcome-entrance-active .welcome-logo-stage {
+  animation: welcome-logo-pop 800ms cubic-bezier(0.16, 1, 0.3, 1) both, welcome-arch-pulse 3.5s ease-in-out 800ms infinite alternate;
+}
+
+@keyframes welcome-logo-pop {
+  0% { opacity: 0; transform: scale(0.85) translateY(16px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.welcome-screen.welcome-entrance-active .welcome-cs-badge {
+  animation: welcome-rise 600ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+.welcome-screen.welcome-entrance-active .welcome-title {
+  animation: welcome-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) 220ms both;
+}
+
+.welcome-screen.welcome-entrance-active .welcome-subtitle {
+  animation: welcome-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) 320ms both;
+}
+
+.welcome-screen.welcome-entrance-active .welcome-lead {
+  animation: welcome-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) 420ms both;
+}
+
+.welcome-screen.welcome-entrance-active .welcome-feature-pills {
+  animation: welcome-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both;
+}
+
+.welcome-screen.welcome-entrance-active .welcome-actions {
+  animation: welcome-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) 620ms both;
+}
+
+.welcome-actions {
+  position: relative;
+}
+
+.welcome-actions::before {
+  content: '';
+  position: absolute;
+  inset: -8px -20px;
+  border-radius: 12px;
+  background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.16), transparent 70%);
+  pointer-events: none;
+  animation: welcome-button-halo 3s ease-in-out infinite alternate;
+}
+
+@keyframes welcome-button-halo {
+  0% { opacity: 0.5; transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1.02); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chaos-boot-layer {
-    transition: none;
+  .chaos-boot-root,
+  .chaos-boot-root.is-exiting,
+  .chaos-boot-backlight,
+  .chaos-boot-monitor-graphic,
+  .chaos-boot-electron-beam,
+  .chaos-boot-wordmark-unit,
+  .chaos-boot-subtitle {
+    transition: none !important;
   }
-  .chaos-boot-root.is-exiting {
-    transition: none;
-  }
-  .chaos-boot-beam-line,
-  .chaos-boot-terminal-img {
-    animation: none;
+  .welcome-logo-stage,
+  .welcome-screen.welcome-entrance-active *,
+  .welcome-actions::before {
+    animation: none !important;
   }
 }
 

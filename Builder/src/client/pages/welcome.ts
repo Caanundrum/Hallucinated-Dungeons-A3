@@ -8,6 +8,7 @@
 
 import { LEGAL_ROUTES } from '../../shared/routes.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
+import { hasSeenChaosBoot } from '../chaos-boot-sequence.js';
 import { mountHostedGoogleSignInButton } from '../hosted-google-sign-in.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
@@ -70,7 +71,7 @@ export function mountWelcomePage(host: PageHost): void {
     const googleMountToken = ++googleButtonMount;
 
     container.innerHTML = `
-      <div class="welcome-screen" data-testid="welcome-screen">
+      <div class="welcome-screen ${hasSeenChaosBoot() ? 'welcome-entrance-active' : ''}" data-testid="welcome-screen">
         <div class="welcome-screen-inner">
           <div class="welcome-cs-badge" data-testid="welcome-cs-badge">
             <img src="/brand/chaos-mark-symbol.png" alt="Chaos Standard" class="welcome-cs-logo" width="28" height="28" />

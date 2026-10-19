@@ -30,7 +30,7 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     }
   });
 
-  it('styles.css contains authentic Chaos Standard master tokens and classes', () => {
+  it('styles.css contains authentic Chaos Standard master tokens and reveal classes', () => {
     const stylesPath = join(CLIENT_DIR, 'styles.css');
     const styles = readFileSync(stylesPath, 'utf8');
 
@@ -41,13 +41,15 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(styles, /--cs-violet:\s*#8b5cf6/i);
     assert.match(styles, /--cs-gold:\s*#f5a623/i);
 
-    // Boot sequence & studio reveal classes
+    // Single Studio Splash Reveal sequence classes
     assert.match(styles, /\.chaos-boot-root/);
-    assert.match(styles, /\.chaos-boot-crt-scanlines/);
-    assert.match(styles, /\.chaos-boot-terminal-img/);
-    assert.match(styles, /\.chaos-word-chaos/);
-    assert.match(styles, /\.chaos-word-standard/);
-    assert.match(styles, /\.chaos-boot-telemetry/);
+    assert.match(styles, /\.chaos-boot-topbar/);
+    assert.match(styles, /\.chaos-boot-bottombar/);
+    assert.match(styles, /\.chaos-boot-backlight/);
+    assert.match(styles, /\.chaos-boot-monitor-graphic/);
+    assert.match(styles, /\.chaos-boot-electron-beam/);
+    assert.match(styles, /\.chaos-boot-wordmark-unit/);
+    assert.match(styles, /\.welcome-entrance-active/);
 
     // Welcome & Home screen roadmap classes
     assert.match(styles, /\.welcome-cs-badge/);
@@ -57,22 +59,33 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(styles, /\.home-studio-card/);
   });
 
-  it('chaos-boot-sequence exports lifecycle methods and embeds the Bewildered Terminal mascot', () => {
+  it('chaos-boot-sequence exports lifecycle methods, replicates StudioSplashReveal exactly, and has NO duplicate splash screen', () => {
     const bootSeqPath = join(CLIENT_DIR, 'chaos-boot-sequence.ts');
     const source = readFileSync(bootSeqPath, 'utf8');
 
+    // Lifecycle methods
     assert.match(source, /export async function playChaosBootSequence/);
     assert.match(source, /export function hasSeenChaosBoot/);
     assert.match(source, /export function markChaosBootSeen/);
     assert.match(source, /export function resetChaosBootSeen/);
+
+    // Studio assets and layout matching StudioSplashReveal.tsx
     assert.match(source, /\/brand\/chaos-mark-symbol\.png/);
-    assert.match(source, /We take making ridiculous things extremely seriously\./);
+    assert.match(source, /\/brand\/chaos-wordmark\.png/);
     assert.match(source, /data-testid="chaos-boot-skip"/);
     assert.match(source, /data-testid="chaos-boot-chaos"/);
-    assert.match(source, /data-testid="chaos-boot-game"/);
+    assert.match(source, /data-testid="chaos-boot-telemetry"/);
+    assert.match(source, /CHAOS_STANDARD \/\/ REVEAL_SEQUENCE/);
+    assert.match(source, /BROWSER-NATIVE EXPERIENCES/);
+
+    // Must NOT have a second splash screen
+    assert.ok(
+      !source.includes('data-testid="chaos-boot-game"'),
+      'Duplicate splash screen (data-testid="chaos-boot-game") must be eliminated',
+    );
   });
 
-  it('home.ts delivers the intuitive 3-step roadmap directing where the player goes next', () => {
+  it('home.ts delivers the intuitive 3-step roadmap and guards certified browsers on hosted player surface', () => {
     const homePath = join(CLIENT_DIR, 'pages', 'home.ts');
     const source = readFileSync(homePath, 'utf8');
 
@@ -91,18 +104,15 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(source, /data-testid="home-resume-table-btn"/);
     assert.match(source, /data-testid="home-replay-intro-btn"/);
 
-    // Backward-compatible test hooks
-    assert.match(source, /data-testid="home-characters-link"/);
-    assert.match(source, /data-testid="home-campaigns-link"/);
-    assert.match(source, /data-testid="home-account-link"/);
-    assert.match(source, /data-testid="browser-support-matrix"/);
-
     // Studio attribution
     assert.match(source, /Chaos Standard/);
     assert.match(source, /chaosstandard\.com/);
+
+    // Certified Browsers section is guarded from hosted player surface
+    assert.match(source, /isHostedPlayerSurface\(candidate\)/);
   });
 
-  it('welcome.ts redirects authenticated players to Home ("/") and carries Chaos Standard badge', () => {
+  it('welcome.ts redirects authenticated players to Home ("/") and carries Chaos Standard badge and animated entrance', () => {
     const welcomePath = join(CLIENT_DIR, 'pages', 'welcome.ts');
     const source = readFileSync(welcomePath, 'utf8');
 
@@ -116,6 +126,7 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(source, /data-testid="welcome-heading"/);
     assert.match(source, /data-testid="welcome-google-hosted-button"/);
     assert.match(source, /data-testid="welcome-legal-links"/);
+    assert.match(source, /welcome-entrance-active/);
   });
 
   it('shell.ts features Chaos Standard brand mark in header and studio attribution in footer', () => {

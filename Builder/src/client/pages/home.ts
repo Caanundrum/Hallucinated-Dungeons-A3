@@ -291,8 +291,11 @@ export function mountHomePage(host: PageHost): void {
           </div>
         </section>
 
-        <!-- Certified Browsers Panel -->
-        <section class="panel" aria-labelledby="browser-support-heading">
+        <!-- Certified Browsers Panel (Local Arena only for compliance testing) -->
+        ${
+          isHostedPlayerSurface(candidate) || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+            ? ''
+            : `<section class="panel" aria-labelledby="browser-support-heading">
           <h2 id="browser-support-heading">Certified Browsers &amp; Hardware</h2>
           <p class="record-meta">
             Tactical table support is verified through automated Playwright and live browser regression suites.
@@ -306,7 +309,8 @@ export function mountHomePage(host: PageHost): void {
               </li>`,
             ).join('')}
           </ul>
-        </section>
+        </section>`
+        }
 
         <!-- Account & Candidate Information -->
         <section class="home-footer-actions">
