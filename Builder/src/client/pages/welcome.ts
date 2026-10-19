@@ -113,7 +113,8 @@ export function mountWelcomePage(host: PageHost): void {
 
           <div class="welcome-studio-attribution">
             <a href="https://chaosstandard.com" target="_blank" rel="noopener noreferrer" class="welcome-studio-link">
-              Chaos Standard &mdash; <em>"We take making ridiculous things extremely seriously."</em>
+              <img src="/brand/chaos-mark-symbol.png" alt="" width="16" height="16" class="welcome-studio-icon" />
+              <span>A Chaos Standard Game &middot; chaosstandard.com</span>
             </a>
           </div>
 

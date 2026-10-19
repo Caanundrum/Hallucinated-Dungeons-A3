@@ -137,7 +137,6 @@ export function mountShell(root: HTMLElement, candidate: CandidateIdentity | nul
               <img src="/brand/chaos-mark-symbol.png" alt="" width="16" height="16" class="shell-studio-icon" />
               <span>A Chaos Standard Game</span>
             </a>
-            <span class="shell-studio-motto">&mdash; <em>"We take making ridiculous things extremely seriously."</em></span>
           </div>
           <ul class="footer-legal-links" data-testid="footer-legal-links">${legalLinks}</ul>
           <p class="footer-build-info" data-testid="footer-build-info">

@@ -271,19 +271,15 @@ export function mountHomePage(host: PageHost): void {
         <!-- Chaos Standard Studio Card -->
         <section class="home-studio-card" data-testid="home-studio-card">
           <div class="studio-card-left">
-            <img src="/brand/chaos-mark-symbol.png" alt="The Bewildered Terminal" class="studio-mascot-img" width="72" height="72" />
+            <img src="/brand/chaos-mark-symbol.png" alt="Chaos Standard" class="studio-mascot-img" width="56" height="56" />
             <div class="studio-copy">
               <h3 class="studio-name">Chaos Standard</h3>
-              <p class="studio-motto">"We take making ridiculous things extremely seriously."</p>
-              <p class="studio-bio">
-                Pioneering browser-native gaming with museum-grade artistic fidelity, unconventional mechanics,
-                and an intentional streak of controlled chaos.
-              </p>
+              <p class="studio-bio">Unconventional browser games made with AI.</p>
             </div>
           </div>
           <div class="studio-card-actions">
             <button type="button" class="btn btn-secondary" data-testid="home-replay-intro-btn">
-              🎬 Replay Studio Intro
+              Replay Intro
             </button>
             <a href="https://chaosstandard.com" target="_blank" rel="noopener noreferrer" class="btn btn-outline">
               chaosstandard.com &rarr;
