@@ -49,7 +49,6 @@ export function mountHomePage(host: PageHost): void {
 
   const mountToken = beginPageMount(container);
   const account = getAccount();
-  const playerLabel = account?.displayLabel ?? 'Adventurer';
 
   // Initial skeleton render while asynchronous user telemetry is fetched
   render({
@@ -112,13 +111,8 @@ export function mountHomePage(host: PageHost): void {
           </div>
 
           <h1 class="home-title" data-testid="home-heading">Hallucinated Dungeons</h1>
-          <p class="home-greeting">
-            Welcome to the table, <strong class="player-accent">${escapeHtml(playerLabel)}</strong>.
-          </p>
           <p class="home-lead">
-            An AI-moderated multiplayer tabletop roleplaying universe. Powered by official
-            <strong>D&amp;D 5e SRD 5.2.1</strong> rules, dynamic battlemaps with Fog of War, physical 3D dice rolls,
-            and an intelligent Game Director who authors every room in response to your party's choices.
+            Shape a hero in the Character Vault, create or join a table, and play with an AI Game Director.
           </p>
         </header>
 
@@ -145,7 +139,7 @@ export function mountHomePage(host: PageHost): void {
         <section class="home-roadmap-section" aria-labelledby="roadmap-heading">
           <div class="section-title-wrap">
             <h2 id="roadmap-heading" class="section-title">Where to Go Next</h2>
-            <p class="section-subtitle">Your step-by-step path from creating a hero to conquering living dungeons.</p>
+            <p class="section-subtitle">Your path from creating a hero to playing at the table.</p>
           </div>
 
           <div class="home-step-cards">

@@ -108,6 +108,10 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(source, /Chaos Standard/);
     assert.match(source, /chaosstandard\.com/);
 
+    // No confusing table welcome before joining a table
+    assert.ok(!source.includes('Welcome to the table'), 'Must not greet with "Welcome to the table" on home');
+    assert.ok(!source.includes('tabletop roleplaying universe'), 'Must not contain purple universe copy');
+
     // Certified Browsers section is guarded from hosted player surface
     assert.match(source, /isHostedPlayerSurface\(candidate\)/);
   });
