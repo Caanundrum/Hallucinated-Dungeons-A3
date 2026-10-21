@@ -86,11 +86,11 @@ export function mountWelcomePage(host: PageHost): void {
           <p class="welcome-subtitle">Tabletop RPG Soul × Generative Fantasy Intelligence</p>
           <p class="welcome-lead">
             Step into an unscripted fantasy world moderated by an autonomous AI Dungeon Master.
-            Forge a hero, gather your party, and play together in the browser with full SRD 5.2.1 mechanics &mdash; no download, no install.
+            Forge a hero, gather your party, and play together in the browser with full 5.5e (SRD 5.2.1) mechanics &mdash; no download, no install.
           </p>
 
           <div class="welcome-feature-pills">
-            <span class="welcome-pill">🎲 SRD 5.2.1 Rules Foundation</span>
+            <span class="welcome-pill">🎲 5.5e / SRD 5.2.1 Rules</span>
             <span class="welcome-pill">🧠 Autonomous AI Director</span>
             <span class="welcome-pill">🌐 Browser-Native Multiplayer</span>
           </div>

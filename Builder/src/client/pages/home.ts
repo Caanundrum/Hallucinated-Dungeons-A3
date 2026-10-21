@@ -151,7 +151,7 @@ export function mountHomePage(host: PageHost): void {
               <div class="step-card-icon">🛡️</div>
               <h3 class="step-card-title">Forge Your Hero</h3>
               <p class="step-card-desc">
-                Create a custom Level 1 adventurer using authentic 5e SRD 5.2.1 rules. Choose from classic ancestries,
+                Create a custom Level 1 adventurer using authentic 5.5e (SRD 5.2.1) rules. Choose from classic ancestries,
                 classes, rolled ability scores, and equip starting gear &mdash; with an AI-painted fantasy oil portrait.
               </p>
               <p class="step-card-humor">
@@ -214,7 +214,7 @@ export function mountHomePage(host: PageHost): void {
                 <em>Remember: inspecting every suspicious barrel for forgotten cheese wheels is an honored tabletop rite of passage.</em>
               </p>
               <div class="step-card-meta">
-                <span>Rules Engine: <strong>SRD 5.2.1 Core</strong></span>
+                <span>Rules Engine: <strong>5.5e Core (SRD 5.2.1)</strong></span>
               </div>
               <div class="step-card-actions">
                 ${
@@ -233,7 +233,7 @@ export function mountHomePage(host: PageHost): void {
             <div class="section-title-wrap">
               <h2 id="guide-heading" class="section-title">How Play Works</h2>
               <p class="section-subtitle">
-                An AI-directed tabletop roleplaying engine built on authentic 5e rules. Describe your actions in natural English without memorizing 300 pages of manuals, while tabletop veterans get full tactical combat, real modifier math, and dynamic battlemaps.
+                An AI-directed tabletop roleplaying engine built on authentic 5.5e rules. Describe your actions in natural English without memorizing 300 pages of manuals, while tabletop veterans get full tactical combat, real modifier math, and dynamic battlemaps.
               </p>
             </div>
             <div class="home-guide-cta-wrap">
@@ -265,11 +265,11 @@ export function mountHomePage(host: PageHost): void {
                 <span class="guide-box-num">02</span>
                 <div>
                   <span class="guide-audience-badge badge-veteran">FOR TABLETOP VETERANS</span>
-                  <h4>Real 5e Rules &amp; Physical 3D Dice</h4>
+                  <h4>Real 5.5e Rules &amp; Physical 3D Dice</h4>
                 </div>
               </div>
               <p>
-                Under the hood runs a deterministic SRD 5.2.1 rules engine tracking ability modifiers, skill proficiencies, spell slots, and saving throws vs. target DCs. When stakes demand it, roll simulated 3D d20s with real-time physics.
+                Under the hood runs a deterministic 5.5e / SRD 5.2.1 rules engine tracking ability modifiers, skill proficiencies, spell slots, and saving throws vs. target DCs. When stakes demand it, roll simulated 3D d20s with real-time physics.
               </p>
               <div class="guide-humor-note">
                 🎲 The dice tray is 100% physically simulated. Your natural 1 on an easy DC 10 check is strictly between you and fate.
@@ -350,10 +350,10 @@ export function mountHomePage(host: PageHost): void {
                     </div>
                   </div>
                   <p class="tour-pillar-desc">
-                    Build a custom Level 1 adventurer using authentic 5e rules &mdash; ancestry, class, rolled ability scores, and equipment. The AI paints a bespoke oil portrait for your character sheet and map token.
+                    Build a custom Level 1 adventurer using authentic 5.5e rules &mdash; ancestry, class, rolled ability scores, and equipment. The AI paints a bespoke oil portrait for your character sheet and map token.
                   </p>
                   <div class="tour-pillar-takeaway">
-                    <span class="pillar-label-vet">Veterans:</span> Full SRD 5.2.1 modifier math &amp; spell slots.
+                    <span class="pillar-label-vet">Veterans:</span> Full 5.5e / SRD 5.2.1 modifier math &amp; spell slots.
                     <br />
                     <span class="pillar-label-new">Newcomers:</span> Zero manual math required &mdash; sheet handles the numbers.
                   </div>
