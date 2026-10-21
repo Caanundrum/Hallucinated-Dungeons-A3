@@ -102,7 +102,16 @@ describe('Chaos Standard Studio Branding & Navigation Architecture', () => {
     assert.match(source, /data-testid="home-create-character-btn"/);
     assert.match(source, /data-testid="home-create-table-btn"/);
     assert.match(source, /data-testid="home-resume-table-btn"/);
-    assert.match(source, /data-testid="home-replay-intro-btn"/);
+
+    // Replay intro button was removed per feedback
+    assert.ok(!source.includes('home-replay-intro-btn'), 'home-replay-intro-btn must be removed');
+
+    // High-level 2-minute tour modal and trigger
+    assert.match(source, /data-testid="home-open-tour-btn"/);
+    assert.match(source, /data-testid="home-tour-backdrop"/);
+    assert.match(source, /data-testid="home-tour-close-btn"/);
+    assert.match(source, /data-testid="home-tour-dismiss-btn"/);
+    assert.match(source, /data-testid="home-tour-start-btn"/);
 
     // Studio attribution
     assert.match(source, /Chaos Standard/);

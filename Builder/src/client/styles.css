@@ -6960,11 +6960,22 @@ body.chaos-boot-active {
 }
 
 .step-card-desc {
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
   font-size: 0.92rem;
   line-height: 1.55;
   color: var(--text-muted);
   flex-grow: 1;
+}
+
+.step-card-humor {
+  margin: 0 0 var(--space-3);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--cs-slate-dim, #64748b);
+}
+
+.step-card-humor em {
+  font-style: italic;
 }
 
 .step-card-meta {
@@ -7035,11 +7046,42 @@ body.chaos-boot-active {
   background: rgba(255, 106, 0, 0.12);
 }
 
-/* How Play Works Grid */
+/* How Play Works Header & Grid */
 .home-guide-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.home-guide-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.home-guide-header-bar .section-title-wrap {
+  flex: 1 1 24rem;
+}
+
+.home-guide-cta-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.home-tour-btn {
+  font-size: 0.88rem;
+  padding: 0.55rem 1.1rem;
+  border-color: var(--cs-hazard-orange, #ff6a00);
+  color: var(--cs-hazard-orange, #ff6a00);
+  background: rgba(255, 106, 0, 0.08);
+}
+
+.home-tour-btn:hover {
+  background: rgba(255, 106, 0, 0.16);
+  border-color: var(--cs-warm-amber, #ffa040);
+  color: #fff;
 }
 
 .home-guide-grid {
@@ -7053,11 +7095,13 @@ body.chaos-boot-active {
   border-radius: var(--radius-panel);
   background: var(--cs-surface-carbon, #11131b);
   border: 1px solid var(--cs-border-subtle, #232736);
+  display: flex;
+  flex-direction: column;
 }
 
 .guide-box-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
   margin-bottom: var(--space-2);
 }
@@ -7074,6 +7118,43 @@ body.chaos-boot-active {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.guide-audience-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-bottom: 3px;
+}
+
+.badge-newcomer {
+  background: rgba(139, 92, 246, 0.18);
+  color: var(--cs-violet, #8b5cf6);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.badge-veteran {
+  background: rgba(245, 166, 35, 0.18);
+  color: var(--cs-gold, #f5a623);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+}
+
+.badge-tactical {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.badge-director {
+  background: rgba(255, 106, 0, 0.18);
+  color: var(--cs-hazard-orange, #ff6a00);
+  border: 1px solid rgba(255, 106, 0, 0.35);
 }
 
 .guide-box h4 {
@@ -7088,11 +7169,207 @@ body.chaos-boot-active {
   font-size: 0.88rem;
   line-height: 1.55;
   color: var(--text-muted);
+  flex-grow: 1;
 }
 
 .guide-box p em {
   color: var(--cs-gold, #f5a623);
   font-style: normal;
+}
+
+.guide-humor-note {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--cs-slate-standard, #94a3b8);
+}
+
+/* High-Level 2-Minute Tour Modal */
+.home-tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(5, 7, 10, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  place-items: center;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.home-tour-backdrop.is-open {
+  display: grid !important;
+}
+
+.home-tour-dialog {
+  width: min(58rem, 100%);
+  max-height: min(90vh, 52rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--cs-surface-carbon, #11131b);
+  border: 1px solid var(--cs-border-subtle, #232736);
+  border-radius: var(--radius-panel, 12px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(255, 106, 0, 0.1);
+  overflow: hidden;
+  padding: 0;
+}
+
+.home-tour-header {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--cs-border-subtle, #232736);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.home-tour-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--cs-hazard-orange, #ff6a00);
+  background: rgba(255, 106, 0, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 106, 0, 0.3);
+  display: inline-block;
+  margin-bottom: var(--space-2);
+}
+
+.home-tour-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+  color: #fff;
+}
+
+.home-tour-subtitle {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.home-tour-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.75rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: color var(--motion-ordinary) ease;
+}
+
+.home-tour-close-btn:hover {
+  color: #fff;
+}
+
+.home-tour-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.tour-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.tour-pillar-card {
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--cs-border-subtle, #232736);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tour-pillar-card:hover {
+  border-color: rgba(255, 106, 0, 0.3);
+  background: rgba(255, 106, 0, 0.02);
+}
+
+.tour-pillar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tour-pillar-icon {
+  font-size: 1.85rem;
+  flex-shrink: 0;
+}
+
+.tour-pillar-step {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cs-hazard-orange, #ff6a00);
+  margin-bottom: 2px;
+}
+
+.tour-pillar-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.08rem;
+  color: #fff;
+}
+
+.tour-pillar-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  flex-grow: 1;
+}
+
+.tour-pillar-takeaway {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--cs-slate-standard, #94a3b8);
+}
+
+.pillar-label-vet {
+  color: var(--cs-gold, #f5a623);
+  font-weight: 600;
+}
+
+.pillar-label-new {
+  color: var(--cs-violet, #8b5cf6);
+  font-weight: 600;
+}
+
+.pillar-label-note {
+  color: var(--cs-hazard-orange, #ff6a00);
+  font-weight: 600;
+}
+
+.pillar-label-humor {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.home-tour-footer {
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--cs-border-subtle, #232736);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  background: rgba(0, 0, 0, 0.28);
 }
 
 /* Chaos Standard Studio Card */
