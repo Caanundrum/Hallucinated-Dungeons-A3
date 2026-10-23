@@ -156,7 +156,7 @@ export function buildNarrationSeedFromReceipt(options: {
 
   if (options.commandType === 'table.move') {
     if (options.openCross && options.namedDoorOpenAfter) {
-      return `Stepped through the open doorway (${options.targetLabel})${inScene} and paused just past the frame.${sameScene} No authored destination beyond this threshold.`;
+      return `Stepped through the open doorway (${options.targetLabel})${inScene} and paused just past the frame.${sameScene} The passage ahead continues into the shadows — declare where you proceed next.`;
     }
     // Never claim crossing when the door is still closed.
     if (

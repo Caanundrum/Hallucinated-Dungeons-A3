@@ -58,7 +58,7 @@ export function buildSkillCheckDraftSummary(
     readonly candidateLabels?: readonly string[];
   } = {},
 ): string {
-  const wantsStealth = /\b(?:hide|conceal|take\s+cover|stealth|crouch\s+behind|duck\s+behind)\b/i.test(text);
+  const wantsStealth = /\b(?:hide|hiding|conceal|take\s+cover|stealth|crouch\s+behind|duck\s+behind|sneak(?:s|ing)?|slip(?:s|ping)?)\b/i.test(text);
   const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(text);
   const wantsTrap = /(trap|disarm)/.test(text);
   // "pick up" is inventory — never force a lock draft (VDM-005).
@@ -107,11 +107,12 @@ export function buildSkillCheckDraftSummary(
     }
     const sanitized = text.replace(/[.,;!?]+$/, '');
     const hideBehind = sanitized.match(
-      /\b(?:behind|near|under|by|in)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:and|to|while|for)\b|[.,;!?]|$)/i,
+      /\b(?:behind|near|under|by|in|past|around)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:and|to|while|for|without)\b|[.,;!?]|$)/i,
     );
     if (hideBehind !== null && hideBehind[1]?.trim()) {
       const candidate = hideBehind[1].trim();
-      if (!/^(?:me|myself|it|them|here|shadows)$/i.test(candidate)) {
+      if (/^shadows$/i.test(candidate)) { return 'the shadows'; }
+      if (!/^(?:me|myself|it|them|here)$/i.test(candidate)) {
         return candidate;
       }
     }
@@ -147,7 +148,10 @@ export function buildSkillCheckDraftSummary(
 
   if (wantsStealth) {
     const stealth = skillBonus(sheet, 'stealth');
-    return `Ready to hide behind the ${namedTarget} (Stealth ${stealth.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(stealth.bonus)}; DC 12). Confirm to roll the check on the table.`;
+    const targetPhrase = namedTarget === 'named target' ? 'the shadows' : namedTarget;
+    const verb = /\bsneak/i.test(text) ? 'sneak past' : 'hide behind';
+    const targetWithArticle = targetPhrase.startsWith('the ') ? targetPhrase : `the ${targetPhrase}`;
+    return `Ready to ${verb} ${targetWithArticle} (Stealth ${stealth.proficient ? 'proficient' : 'not proficient'}, ${formatBonus(stealth.bonus)}; DC 12). Confirm to roll the check on the table.`;
   }
 
   const investigation = skillBonus(sheet, 'investigation');
@@ -196,7 +200,7 @@ function formatBonus(bonus: number): string {
 
 /** Pull the named inspect target from a Ready-to draft summary (FQA-003). */
 export function namedInspectTargetFromDraft(draftSummary: string): string {
-  const hide = /Ready to hide behind (?:the\s+)?(.+?)\s*\(/i.exec(draftSummary);
+  const hide = /Ready to (?:hide behind|sneak past|hide in)\s+(?:the\s+)?(.+?)\s*\(/i.exec(draftSummary);
   if (hide?.[1]?.trim()) {
     return hide[1].trim().replace(/\s+/g, ' ');
   }
@@ -229,7 +233,7 @@ export function resolveSkillAttemptFromSummary(
     return null;
   }
   const text = draftSummary.toLowerCase();
-  const wantsStealth = /ready to hide|stealth/.test(text);
+  const wantsStealth = /ready to hide|ready to sneak|stealth/.test(text);
   const wantsTrap = /trap|search|inspect|investigat/.test(text);
   const wantsLock = /lock|sleight|thieves/.test(text);
   if (!wantsStealth && !wantsTrap && !wantsLock) {
@@ -255,11 +259,13 @@ export function resolveSkillAttemptFromSummary(
     const roll = rollD20('normal', skill.bonus);
     rolls.push(roll.natural);
     const success = roll.total >= 12;
+    const verb = /sneak/i.test(draftSummary) ? 'sneak past' : 'hide behind';
+    const targetWithArticle = namedTarget.startsWith('the ') ? namedTarget : `the ${namedTarget}`;
     parts.push(
-      `Stealth check to hide behind the ${namedTarget} (Stealth ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC 12 — ${
+      `Stealth check to ${verb} ${targetWithArticle} (Stealth ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC 12 — ${
         success
-          ? `you are hidden in the shadows behind the ${namedTarget}`
-          : `cover behind the ${namedTarget} is insufficient to stay fully hidden`
+          ? `you succeed in using cover and stay unseen by those nearby`
+          : `cover is insufficient to stay fully hidden`
       }.`,
     );
   }

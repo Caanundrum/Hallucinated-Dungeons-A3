@@ -216,7 +216,7 @@ export function classifyUtteranceSpeechAct(text: string): UtteranceSpeechAct {
   const constraints = extractUtteranceConstraints(trimmed);
   const looksQuestion = utteranceLooksLikeQuestion(trimmed);
   const hasActionVerb =
-    /\b(?:i\s+)?(?:open|close|move|walk|step|attack|cast|search|inspect|examine|take|hide|wait|listen|draw|unlock|pick|rest|strike|hit)\b/i.test(
+    /\b(?:i\s+)?(?:open|close|move|walk|step|attack|cast|search|inspect|examine|take|hide|wait|listen|draw|unlock|pick|rest|strike|hit|sneak|sneaks|sneaking|slip|slips|slipping|return|returns|returning|retreat|retreats)\b/i.test(
       trimmed,
     );
 

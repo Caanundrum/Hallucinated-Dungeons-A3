@@ -654,12 +654,12 @@ function buildMilestoneGraph(options: {
       {
         edgeLabel: `Passage back to ${placeName}`,
         targetSceneId: room1Id,
-        direction: 'west',
+        direction: 'east',
       },
       {
         edgeLabel: 'Sanctum archway',
         targetSceneId: room3Id,
-        direction: 'east',
+        direction: 'north',
       },
     ];
 

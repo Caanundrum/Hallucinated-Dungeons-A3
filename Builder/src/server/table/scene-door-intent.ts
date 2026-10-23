@@ -249,10 +249,9 @@ function pathBesideClosedDoor(
   return path.length > 0 ? path : null;
 }
 
-function wantsBesideDoorIntent(text: string): boolean {
-  return (
-    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\b/i.test(text) &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text)
+export function wantsBesideDoorIntent(text: string): boolean {
+  return /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b/i.test(
+    text,
   );
 }
 
@@ -465,7 +464,8 @@ export function resolveDoorIntentForMap(
     };
   }
 
-  if (adjacentClosed !== undefined) {
+  // Only open an adjacent door when the declaration specifically wants to open or cross it.
+  if (adjacentClosed !== undefined && (wantsOpen || wantsCross || wantsOpenDoorAction(text) || wantsDoorPassage(text))) {
     if (adjacentClosed.doorState === 'locked') {
       return {
         proposedCommandType: 'table.sync',
@@ -582,8 +582,11 @@ export function resolveDoorIntentForMap(
         };
       }
     }
-    // Free exploration: walk the full approach path (not one square), then open.
-    if (nearestClosed !== null && (wantsOpen || wantsBesideDoorIntent(text) || mentionsMovementIntent(text))) {
+    // Free exploration: only route to a closed door when the player's text actually mentions the door.
+    if (
+      nearestClosed !== null &&
+      (wantsOpen || wantsBesideDoorIntent(text) || (/\\b(?:door|doorway|gate|entry(?:way)?)\\b/i.test(text) && mentionsMovementIntent(text)))
+    ) {
       const besidePath =
         pathBesideClosedDoor(tokenAnchor, map, 12, preferredCompass) ??
         (() => {
@@ -616,13 +619,15 @@ export function resolveDoorIntentForMap(
         summary: `A closed wooden door stands in ${sceneTitle}. Move adjacent to inspect it up close, then open it or declare a careful trap or lock check.`,
       };
     }
-    return {
-      proposedCommandType: 'table.sync',
-      edgeId: door.edgeId,
-      summary: wantsOpen
-        ? `There is a ${doorApproachLabel(door)} on this scene, but you are not next to it yet. Move adjacent, then declare open / step through again to finish.`
-        : 'There is a closed door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
-    };
+    if (wantsOpen || wantsCross || wantsOpenDoorAction(text) || wantsDoorPassage(text)) {
+      return {
+        proposedCommandType: 'table.sync',
+        edgeId: door.edgeId,
+        summary: wantsOpen
+          ? `There is a ${doorApproachLabel(door)} on this scene, but you are not next to it yet. Move adjacent, then declare open / step through again to finish.`
+          : 'There is a closed door on this scene, but you are not next to it yet. Move adjacent, then declare opening it again.',
+      };
+    }
   }
 
   if (openDoors.length > 0) {
@@ -636,7 +641,7 @@ export function resolveDoorIntentForMap(
           : `An open wooden door is on this scene (${sceneTitle}). Move adjacent to test it, or declare your next action through the doorway.`,
       };
     }
-    if (wantsCross) {
+    if (wantsCross || wantsDoorPassage(text)) {
       const throughStep = nextStepThroughOpenDoor(tokenAnchor, map);
       if (throughStep !== null) {
         return {
@@ -646,16 +651,15 @@ export function resolveDoorIntentForMap(
         };
       }
     }
-    return {
-      proposedCommandType: 'table.sync',
-      summary: `The doorway in ${sceneTitle} is already open. Move on the map or declare your next action.`,
-    };
+    if (wantsOpen || wantsOpenDoorAction(text)) {
+      return {
+        proposedCommandType: 'table.sync',
+        summary: `The doorway in ${sceneTitle} is already open. Move on the map or declare your next action.`,
+      };
+    }
   }
 
-  return {
-    proposedCommandType: 'table.sync',
-    summary: `${sceneTitle} already has walls and structural edges on the table. Declare your next action.`,
-  };
+  return null;
 }
 
 /** Blank-table door placement when no geometry exists yet. */
@@ -675,4 +679,56 @@ export function resolveBlankTableDoorBuild(
       ? 'Ready to raise a wall and wooden door ahead on this blank table, then you can walk to it and enter. Confirm to build the scene first.'
       : 'Ready to raise a wall and wooden door ahead of you on this blank table. Confirm to build the scene and open the door.',
   };
+}
+
+/**
+ * Compute path from anchor to an open square adjacent to a notable map feature (counter, lamp, bench, etc.).
+ */
+export function pathBesideFeature(
+  anchor: MapSquareCoordinate,
+  featureCoord: MapSquareCoordinate,
+  map: MapBundleProjection,
+  maxSteps = 6,
+): MapSquareCoordinate[] | null {
+  const adjacent: MapSquareCoordinate[] = [
+    { column: featureCoord.column - 1, row: featureCoord.row },
+    { column: featureCoord.column + 1, row: featureCoord.row },
+    { column: featureCoord.column, row: featureCoord.row - 1 },
+    { column: featureCoord.column, row: featureCoord.row + 1 },
+  ].filter(
+    (sq) =>
+      sq.column >= 0 &&
+      sq.column < map.coordinateSpace.columns &&
+      sq.row >= 0 &&
+      sq.row < map.coordinateSpace.rows &&
+      !isBlockedSquare(map, sq),
+  );
+  if (adjacent.length === 0) {
+    return null;
+  }
+  // Check if anchor is already adjacent
+  if (adjacent.some((sq) => sq.column === anchor.column && sq.row === anchor.row)) {
+    return null;
+  }
+  adjacent.sort(
+    (a, b) =>
+      Math.abs(a.column - anchor.column) +
+      Math.abs(a.row - anchor.row) -
+      (Math.abs(b.column - anchor.column) + Math.abs(b.row - anchor.row)),
+  );
+  const destination = adjacent[0]!;
+  const path: MapSquareCoordinate[] = [];
+  let cursor = anchor;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (adjacent.some((sq) => sq.column === cursor.column && sq.row === cursor.row)) {
+      break;
+    }
+    const next = nextStepTowardSquare(cursor, destination, map);
+    if (next === null) {
+      break;
+    }
+    path.push(next);
+    cursor = next;
+  }
+  return path.length > 0 ? path : null;
 }

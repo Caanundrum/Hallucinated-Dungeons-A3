@@ -737,20 +737,30 @@ export function parsePlayerDeclaration(
   const searchScope = outsideQuotes.length > 0 ? outsideQuotes : trimmed;
 
   let addressee: string | null = null;
-  // 1. Direct speech targeting on known NPCs: "ask Orin", "speaking to Orin", "I question Orin", "@Orin,"
+  // 1. Direct speech targeting on known NPCs: "ask Warden Elira", "speaking to Elira", "@Elira,"
   for (const npc of knownNpcs) {
-    const escaped = npc.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (
-      new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(searchScope) ||
-      new RegExp(`^(?:hey|hi)\\s+${escaped}\\b`, 'i').test(searchScope) ||
-      new RegExp(
-        `\\b(?:asks?|tells?|speaking\\s+to|talk(?:s|ing)?\\s+(?:to|with)|speaks?\\s+(?:to|with)|question(?:s|ing)?|inquir(?:e|es|ing)\\s+of|greets?|address(?:es|ing)?|says?\\s+to)\\s+(?:the\\s+)?(?:[a-z]+\\s+)?${escaped}\\b`,
-        'i',
-      ).test(searchScope)
-    ) {
-      addressee = npc.label;
-      break;
+    const nameVariants = [npc.label];
+    const parts = npc.label.split(/\s+/).filter((p) => p.length >= 3);
+    for (const part of parts) {
+      if (!nameVariants.includes(part)) {
+        nameVariants.push(part);
+      }
     }
+    for (const variant of nameVariants) {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (
+        new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(searchScope) ||
+        new RegExp(`^(?:hey|hi)\\s+${escaped}\\b`, 'i').test(searchScope) ||
+        new RegExp(
+          `\\b(?:asks?|tells?|speaking\\s+to|talk(?:s|ing)?\\s+(?:to|with)|speaks?\\s+(?:to|with)|question(?:s|ing)?|inquir(?:e|es|ing)\\s+of|greets?|address(?:es|ing)?|says?\\s+to)\\s+(?:the\\s+)?(?:[a-z]+\\s+)?${escaped}\\b`,
+          'i',
+        ).test(searchScope)
+      ) {
+        addressee = npc.label;
+        break;
+      }
+    }
+    if (addressee !== null) break;
   }
 
   // 2. Check leading addressee format: "Orin: ...", "@Orin, ..."
@@ -765,20 +775,28 @@ export function parsePlayerDeclaration(
   }
 
   // 3. Unknown named addressee with explicit speech verb: "asks Nib", "ask Nib,", "speaking to Nib"
+  // Multi-word support; NO /i flag so lowercase words like "in", "softly", "about" are never treated as NPC names.
+  const NPC_CANDIDATE_STOP_WORDS =
+    /^(?:The|This|That|What|Which|Where|When|Why|How|Who|Whom|Whose|Director|Garrick|Veyra|In|At|On|For|From|With|By|About|Of|A|An|If|Whether|Then|First|Softly|Quietly|Loudly|Low|Now)$/i;
+
   if (addressee === null) {
+    // Strip adverbial or prepositional speech phrases like "in a low voice", "in a whisper", "softly", "quietly"
+    const cleanedSearch = searchScope.replace(
+      /\b(?:in\s+a\s+(?:low|quiet|hushed|soft)\s+voice|in\s+a\s+whisper|softly|quietly|aloud)\b/gi,
+      '',
+    );
     const asked =
-      /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to|speaks?\s+to|question(?:s|ing)?)\s+([A-Z][a-zA-Z'-]{1,24})\b/i.exec(
-        searchScope,
+      /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to|speaks?\s+to|question(?:s|ing)?)\s+(?:the\s+)?([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)*)\b/.exec(
+        cleanedSearch,
       );
     if (asked !== null) {
-      const candidate = asked[1]!;
-      if (
-        !/^(?:The|This|That|What|Which|Where|When|Why|How|Director|Garrick|Veyra)$/i.test(
-          candidate,
-        )
-      ) {
+      const candidate = asked[1]!.trim();
+      if (!NPC_CANDIDATE_STOP_WORDS.test(candidate)) {
         const matchKnown = knownNpcs.find(
-          (n) => n.label.toLowerCase() === candidate.toLowerCase(),
+          (n) =>
+            n.label.toLowerCase() === candidate.toLowerCase() ||
+            n.label.toLowerCase().startsWith(candidate.toLowerCase() + ' ') ||
+            n.label.toLowerCase().endsWith(' ' + candidate.toLowerCase()),
         );
         addressee = matchKnown ? matchKnown.label : candidate;
       }
@@ -921,9 +939,11 @@ export function parsePlayerDeclaration(
     (doorSenseVerb || (negatesOpen && !explicitMoveVerb));
 
   // Approach / stand beside a doorway is door-adjacent movement, not free mark-square.
+  // Preposition must bind directly to the door so "beside the counter watching the doorway" is NOT a door approach.
   const wantsBesideDoor =
-    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\b/i.test(trimmed) &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed);
+    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b/i.test(
+      trimmed,
+    );
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
@@ -948,11 +968,23 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'close_door', targetRef: null, outcomeHint: null });
   }
 
-  // Compound sensory staging: hide/wait + listen is one narratable perception beat.
-  const wantsHide = /\b(?:hide|conceal(?:\s+myself)?|crouch(?:\s+behind)?|kneel(?:\s+behind)?|hunker(?:\s+down)?|duck\s+behind|take\s+cover(?:\s+behind)?)\b/i.test(trimmed);
+  // Compound sensory staging: hide / sneak / wait / listen
+  const wantsSneak =
+    /\b(?:sneak(?:s|ing)?|slip(?:s|ping)?|slink(?:s|ing)?)\b/i.test(trimmed);
+  const wantsHide =
+    /\b(?:hide|hiding|conceal(?:\s+myself)?|crouch(?:\s+behind)?|kneel(?:\s+behind)?|hunker(?:\s+down)?|duck\s+behind|take\s+cover(?:\s+behind)?)\b/i.test(
+      trimmed,
+    );
   const wantsWait = /\b(?:wait|hold\s+(?:still|position)|pause)\b/i.test(trimmed);
   const wantsListen = /\blisten\b/i.test(trimmed);
-  if ((wantsHide || wantsWait) && wantsListen) {
+
+  if (wantsSneak) {
+    actionSequence.push({
+      kind: 'inspect',
+      targetRef: null,
+      outcomeHint: 'stealth_hide',
+    });
+  } else if ((wantsHide || wantsWait) && wantsListen) {
     const withoutMove = actionSequence.filter((step) => step.kind !== 'move');
     actionSequence.length = 0;
     actionSequence.push({
@@ -1117,7 +1149,7 @@ export function parsePlayerDeclaration(
   }
 
   const wantsMove =
-    (/(\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b)/i.test(
+    (/(\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b|\breturns?\b|\bretreats?\b|\bhead\s+back\b|\bgo\s+back\b)/i.test(
       trimmed,
     ) ||
       wantsBesideDoor) &&

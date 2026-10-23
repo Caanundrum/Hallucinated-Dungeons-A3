@@ -207,7 +207,7 @@ export function formatPartyDoorAdjacency(
     const leaf = door.doorState === 'open' ? 'open ' : '';
     if (side === 'far') {
       parts.push(
-        `${token.label} is just past the ${leaf}${facing} doorway (same scene — no authored destination beyond)`,
+        `${token.label} is just past the ${leaf}${facing} doorway`,
       );
     } else if (side === 'threshold') {
       parts.push(`${token.label} is on the threshold of the ${leaf}${facing} doorway`);

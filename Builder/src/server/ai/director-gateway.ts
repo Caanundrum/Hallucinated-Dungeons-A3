@@ -59,7 +59,7 @@ import { findClass } from '../rules/srd-manifest.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
-import { resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
+import { pathBesideFeature, resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
 import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
 import {
   applyDmNpcDirective,
@@ -674,6 +674,13 @@ async function resolveDirectorNarrateOutput(options: {
       return `${name} is not present in this room — they vanished before the party arrived and must be rescued.${presentNote}`;
     }
 
+    // If the NPC is known in campaign memory but not present in this room
+    if (sceneNpc === null && npc !== null) {
+      const locationNote = /tavern/i.test(memory?.chapters[0]?.title ?? '')
+        ? 'in the tavern'
+        : 'in the previous area';
+      return `${npc.name} is not in this room right now — she remains ${locationNote} and out of earshot.`;
+    }
     const cleanName = sceneNpc?.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || npc?.name || name;
     try {
       const director = await loadDirectorConfig(options.firestore, options.campaignId);
@@ -1708,8 +1715,10 @@ export async function interpretNaturalLanguageIntent(options: {
       'Ready to begin the adventure. Confirm so the Game Director establishes the opening scene from your premise.';
     sceneLoopResolved = true;
   } else if (
-    /\b(return|go back|head back|retreat)\b/i.test(text) &&
-    /\b(scene|chamber|room|inn|path|way|earlier|previous)\b/i.test(text)
+    (/\b(return|go back|head back|retreat|back to|passage back)\b/i.test(text) &&
+      /\b(scene|chamber|room|inn|tavern|cellar|stairs|upstairs|path|way|earlier|previous)\b/i.test(text)) ||
+    /\b(?:return|head\s+back|go\s+back)\s+(?:up|down|to|through)\b/i.test(text) ||
+    /\bpassage\s+back\b/i.test(text)
   ) {
     proposedCommandType = 'table.travel_scene';
     returnToPrevious = true;
@@ -1880,7 +1889,7 @@ export async function interpretNaturalLanguageIntent(options: {
           summary = `${summary} Player-authored places were ignored — only the Game Director establishes those.`;
         }
       } else {
-        // Prefer doorway geometry (including reverse cross / already-through) over mark-square.
+        // Prefer feature/prop movement (e.g. service counter, hearth) or doorway geometry over mark-square.
         let doorResolved = false;
         try {
           const map = await fetchCampaignMap({
@@ -1892,6 +1901,27 @@ export async function interpretNaturalLanguageIntent(options: {
             map.viewerSeatId === null
               ? map.tokens[0]
               : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+
+          if (ownToken !== undefined && !mentionsDoorIntent(text)) {
+            const targetFeature = map.notableFeatures.find((f) => {
+              const label = f.label.toLowerCase();
+              if (text.toLowerCase().includes(label)) return true;
+              const parts = label.split(/\s+/).filter((p) => p.length >= 4);
+              return parts.some((p) => text.toLowerCase().includes(p));
+            });
+            if (targetFeature !== undefined) {
+              const featureSquare = { column: targetFeature.column, row: targetFeature.row };
+              const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
+              if (featurePath !== null && featurePath.length > 0) {
+                proposedCommandType = 'table.move';
+                path = featurePath;
+                const steps = featurePath.length;
+                const feet = steps * map.coordinateSpace.feetPerSquare;
+                summary = `Walk beside the ${targetFeature.label} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
+                doorResolved = true;
+              }
+            }
+          }
           if (ownToken !== undefined && map.edges.length > 0) {
             const gated = await gateDoorDeclarationAgainstLiveTruth({
               firestore: options.firestore,
