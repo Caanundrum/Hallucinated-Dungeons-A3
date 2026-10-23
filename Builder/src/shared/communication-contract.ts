@@ -163,7 +163,7 @@ export const DIRECTOR_ADDRESS_MESSAGE_MAX_LENGTH = 500;
 /** Player-facing label for the declaration composer (PQA-163). */
 export const PLAY_CHANNEL_LABEL = 'play channel';
 
-/** Strip lightweight Markdown from Director prose before HTML escape (PQA-162). */
+/** Strip lightweight Markdown and legacy stage-direction leaks from Director prose before HTML escape (PQA-162). */
 export function formatDirectorProse(body: string): string {
   return body
     .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
@@ -171,6 +171,9 @@ export function formatDirectorProse(body: string): string {
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/^[-*]\s+/gm, '• ')
+    .replace(/\s*A lightly knowing beat lands,\s*then control returns to the table\./gi, '')
+    .replace(/\s*The Director adds a light jab at the furniture,\s*not the party\./gi, '')
+    .replace(/\s*The Director lets the moment breathe before the table presses on\./gi, '')
     .trim();
 }
 
@@ -225,6 +228,17 @@ export function collapseDuplicateDmMessages(
   for (const message of messages) {
     if (message.speaker !== 'dm') {
       collapsed.push(message);
+      continue;
+    }
+    // If the immediately preceding entry is a Table system message with the same beat
+    // (e.g. scene_built followed by DM narration of the same arrival), replace the system duplicate.
+    const immediatePrior = collapsed[collapsed.length - 1];
+    if (
+      immediatePrior !== undefined &&
+      immediatePrior.speaker === 'system' &&
+      storyBodiesEquivalent(immediatePrior.body, message.body)
+    ) {
+      collapsed[collapsed.length - 1] = message;
       continue;
     }
     // Only collapse against the most recent DM body with no player turn between.

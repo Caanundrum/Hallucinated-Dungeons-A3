@@ -59,9 +59,9 @@ export const DIRECTOR_PERSONALITY_SUMMARIES: Record<DirectorPersonality, string>
 
 export const DIRECTOR_IDENTITY_SUMMARIES: Record<DirectorIdentity, string> = {
   veyra:
-    'Woman; mid-thirties; warm olive complexion; dark hair half-up; amber eyes; lean build; traveler\'s coat, high collar, silver ear cuff. One player-facing name: Veyra.',
+    'Perceptive, measured, and atmospheric — a seasoned chronicler of shadowed roads, hidden motives, and lantern-lit intrigue.',
   garrick:
-    'Man; early forties; fair weathered skin; short salt-and-pepper hair and trimmed beard; grey-blue eyes; solid build; waistcoat, rolled sleeves, leather bracer. One player-facing name: Garrick.',
+    'Grounded, direct, and battle-tested — a veteran table host who frames clear stakes, tactile grit, and decisive action.',
 };
 
 /** Seasoned Host may be visually recommended; never auto-committed. */

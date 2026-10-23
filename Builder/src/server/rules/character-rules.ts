@@ -1775,7 +1775,12 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
           },
     originFeatOptions:
       speciesRecord?.id === 'human'
-        ? ORIGIN_FEAT_OPTIONS.map((option) => ({
+        ? ORIGIN_FEAT_OPTIONS.filter(
+            (option) =>
+              backgroundRecord === null ||
+              option.id !== backgroundRecord.originFeat ||
+              option.id === 'Skilled',
+          ).map((option) => ({
             id: option.id,
             label: option.label,
             summary: option.summary,

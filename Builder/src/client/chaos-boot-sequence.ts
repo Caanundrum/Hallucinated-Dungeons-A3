@@ -23,9 +23,12 @@
  *  - Sound toggle with procedural Web Audio synthesis.
  */
 
+import {
+  hasSeenChaosBootPreference,
+  markChaosBootSeenPreference,
+  resetChaosBootSeenPreference,
+} from './browser-preferences.js';
 import { sound } from './sound.js';
-
-const SESSION_KEY = 'hd.chaosBoot.seen.v3';
 
 type AnimationStep =
   | 'idle'
@@ -41,27 +44,15 @@ function prefersReducedMotion(): boolean {
 }
 
 export function hasSeenChaosBoot(): boolean {
-  try {
-    return sessionStorage.getItem(SESSION_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return hasSeenChaosBootPreference();
 }
 
 export function markChaosBootSeen(): void {
-  try {
-    sessionStorage.setItem(SESSION_KEY, '1');
-  } catch {
-    // sessionStorage may be unavailable in restricted contexts; ignore.
-  }
+  markChaosBootSeenPreference();
 }
 
 export function resetChaosBootSeen(): void {
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    // ignore
-  }
+  resetChaosBootSeenPreference();
 }
 
 const VOLUME_ON_SVG = `

@@ -6,8 +6,8 @@
  * Local Arena never constructs this client.
  */
 
-export const GEMINI_DIRECTOR_MODEL = 'gemini-3.7-flash';
-export const GEMINI_DIRECTOR_LOCATION = 'global';
+export const GEMINI_DIRECTOR_MODEL = 'gemini-2.5-flash';
+export const GEMINI_DIRECTOR_LOCATION = 'us-central1';
 
 /**
  * Gemini 3.x counts thinking tokens against maxOutputTokens. A low cap (e.g. 400)
@@ -96,35 +96,48 @@ export function createGeminiDirectorClient(options: {
 }): DirectorLlmClient {
   const location =
     (process.env.GOOGLE_CLOUD_LOCATION ?? '').trim() || GEMINI_DIRECTOR_LOCATION;
+  const model =
+    (process.env.HD_GEMINI_MODEL ?? '').trim() || GEMINI_DIRECTOR_MODEL;
   return {
     async generateText(input) {
-      const { GoogleGenAI, ThinkingLevel } = await import('@google/genai');
-      const client = new GoogleGenAI({
-        enterprise: true,
-        project: options.projectId,
-        location,
-      });
-      const response = await client.models.generateContent({
-        model: GEMINI_DIRECTOR_MODEL,
-        contents: input.userPrompt,
-        config: {
-          systemInstruction: input.systemInstruction,
-          temperature: 0.8,
-          maxOutputTokens: GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
-          // Director Address / narration do not need deep reasoning.
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
+      const { GoogleGenAI } = await import('@google/genai');
+      const apiKey = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? '').trim();
+      const client =
+        apiKey.length >= 20
+          ? new GoogleGenAI({ apiKey })
+          : new GoogleGenAI({
+              vertexai: true,
+              project: options.projectId,
+              location,
+            });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const generatePromise = client.models.generateContent({
+          model,
+          contents: input.userPrompt,
+          config: {
+            systemInstruction: input.systemInstruction,
+            temperature: 0.8,
+            maxOutputTokens: GEMINI_DIRECTOR_MAX_OUTPUT_TOKENS,
           },
-        },
-      });
-      const finishReason = response.candidates?.[0]?.finishReason;
-      if (finishReason === 'MAX_TOKENS') {
-        process.stderr.write(
-          '[gemini-director] Response hit MAX_TOKENS; rejecting truncated prose.\n',
-        );
-        throw new Error('Gemini narration truncated at max tokens.');
+        });
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Gemini Director timeout')), 6000);
+        });
+        const response = await Promise.race([generatePromise, timeoutPromise]);
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          process.stderr.write(
+            '[gemini-director] Response hit MAX_TOKENS; rejecting truncated prose.\n',
+          );
+          throw new Error('Gemini narration truncated at max tokens.');
+        }
+        return sanitizeDirectorProse(response.text ?? '');
+      } finally {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
       }
-      return sanitizeDirectorProse(response.text ?? '');
     },
   };
 }

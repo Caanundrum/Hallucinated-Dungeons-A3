@@ -630,7 +630,7 @@ export async function createCampaign(options: {
     : 'heroic_fantasy';
 
   const baseBlueprint = buildCampaignBlueprint({
-    summary: premiseText || summary || name,
+    summary: premiseText || summary,
     name,
     startLevel,
     targetEndLevel,

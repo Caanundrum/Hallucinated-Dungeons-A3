@@ -26,6 +26,43 @@ export function resolvedSummaryAfterTableConfirm(options: {
   readonly namedDoorOpenAfter?: boolean;
   readonly targetLabel?: string;
 }): string {
+  // When callers omit post-state, treat a successful open_door/openCross as open
+  // (legacy Confirm path). Explicit false blocks crossing claims.
+  const hasReceipt = options.receipt !== null && options.receipt !== undefined;
+  const doorOpenKnown = options.namedDoorOpenAfter !== undefined || hasReceipt;
+  const namedDoorOpenAfter =
+    options.namedDoorOpenAfter !== undefined
+      ? options.namedDoorOpenAfter === true
+      : hasReceipt
+        ? options.receipt!.namedDoorOpenAfter === true
+        : options.commandType === 'table.open_door' || options.openCross === true;
+  const scene =
+    options.sceneTitle !== undefined && options.sceneTitle.trim().length > 0
+      ? options.sceneTitle.trim()
+      : null;
+  const inScene = scene !== null ? ` in ${scene}` : '';
+  const sameSceneNote =
+    scene !== null ? ` Same scene — ${scene} remains current; no location change.` : '';
+  const draftAndDeclaration = `${options.draftSummary} ${options.declaration ?? ''}`;
+
+  if (options.openCross === true && namedDoorOpenAfter) {
+    return `Opened the door and stepped through the doorway${inScene}.${sameSceneNote}`;
+  }
+  if (
+    options.commandType === 'table.move' &&
+    /\b(step(?:s|ped)?\s+through|open doorway|through the (?:open )?door|cross the doorway|step back through)\b/i.test(
+      draftAndDeclaration,
+    )
+  ) {
+    if (doorOpenKnown && !namedDoorOpenAfter) {
+      return `Moved on the table toward the doorway${inScene}. The doorway remains closed — no crossing.`;
+    }
+    const reversing = /\bstep back through|back through\b/i.test(draftAndDeclaration);
+    return reversing
+      ? `Stepped back through the open doorway${inScene}.${sameSceneNote}`
+      : `Stepped through the open doorway${inScene}.${sameSceneNote}`;
+  }
+
   if (
     options.receipt !== null &&
     options.receipt !== undefined &&
@@ -34,12 +71,6 @@ export function resolvedSummaryAfterTableConfirm(options: {
     return options.receipt.narrationSeed.trim();
   }
 
-  // When callers omit post-state, treat a successful open_door/openCross as open
-  // (legacy Confirm path). Explicit false blocks crossing claims.
-  const doorOpenKnown = options.namedDoorOpenAfter !== undefined;
-  const namedDoorOpenAfter = doorOpenKnown
-    ? options.namedDoorOpenAfter === true
-    : options.commandType === 'table.open_door' || options.openCross === true;
   const targetLabel =
     typeof options.targetLabel === 'string' && options.targetLabel.trim().length > 0
       ? options.targetLabel.trim()
@@ -68,13 +99,6 @@ export function resolvedSummaryAfterTableConfirm(options: {
   ) {
     return options.eventSummary.trim();
   }
-  const scene =
-    options.sceneTitle !== undefined && options.sceneTitle.trim().length > 0
-      ? options.sceneTitle.trim()
-      : null;
-  const inScene = scene !== null ? ` in ${scene}` : '';
-  const sameSceneNote =
-    scene !== null ? ` Same scene — ${scene} remains current; no location change.` : '';
   if (options.commandType === 'table.begin_adventure') {
     return scene !== null
       ? `The Game Director established ${scene} as the opening scene.`
@@ -120,21 +144,7 @@ export function resolvedSummaryAfterTableConfirm(options: {
   if (options.commandType === 'table.close_door') {
     return `Closed the door${inScene}. The leaf is now closed; the lock stays unlocked.`;
   }
-  const draftAndDeclaration = `${options.draftSummary} ${options.declaration ?? ''}`;
   if (options.commandType === 'table.move') {
-    if (
-      /\b(step(?:s|ped)?\s+through|open doorway|through the (?:open )?door|cross the doorway|step back through)\b/i.test(
-        draftAndDeclaration,
-      )
-    ) {
-      if (doorOpenKnown && !namedDoorOpenAfter) {
-        return `Moved on the table toward the doorway${inScene}. The doorway remains closed — no crossing.`;
-      }
-      const reversing = /\bstep back through|back through\b/i.test(draftAndDeclaration);
-      return reversing
-        ? `Stepped back through the open doorway${inScene}.${sameSceneNote}`
-        : `Stepped through the open doorway${inScene}.${sameSceneNote}`;
-    }
     const event = options.eventSummary?.trim() ?? '';
     if (event.length > 0 && !isIntentDraftConfirmCopy(event)) {
       return event;

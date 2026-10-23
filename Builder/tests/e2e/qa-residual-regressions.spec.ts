@@ -67,8 +67,17 @@ test.describe('PQA residual regressions', () => {
     await page.goto(`/campaigns/${match![1]}`);
     await expect(page.getByTestId('own-seat')).toBeVisible();
     await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('dm-play-thread')).toBeVisible({ timeout: 30_000 });
+    const expandComms = page.getByTestId('expand-comms-rail');
+    if (await expandComms.isVisible().catch(() => false)) {
+      await expandComms.click();
+    }
     await page.getByTestId('dock-tab-director_address').click();
     await expect(page.getByTestId('dock-tab-director_address')).toContainText('Ask the Director');
+    const expandInfo = page.getByTestId('expand-info-rail');
+    if (await expandInfo.isVisible().catch(() => false)) {
+      await expandInfo.click();
+    }
     await page.getByTestId('table-info-tab-rules').scrollIntoViewIfNeeded();
     await page.getByTestId('table-info-tab-rules').click();
     await expect(page.getByTestId('rules-catalog-meta')).toHaveText('SRD 5.2.1 reference');

@@ -59,7 +59,7 @@ import {
   renderLegalPlayGatePage,
   type LegalAcceptanceProjection,
 } from '../legal-play-gate.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
@@ -206,6 +206,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let legalGateError: string | null = null;
   let legalGateLoading = false;
   const mountToken = beginPageMount(container);
+  let identityDebounceTimer: number | null = null;
+  let activeSavePromise: Promise<void> | null = null;
+  registerPageCleanup(container, mountToken, () => {
+    if (identityDebounceTimer !== null) {
+      window.clearTimeout(identityDebounceTimer);
+      identityDebounceTimer = null;
+    }
+  });
 
   function draftHasProgress(): boolean {
     if (current === null) {
@@ -303,6 +311,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   async function commitChoices(next: CharacterChoices): Promise<void> {
+    const p = commitChoicesInner(next);
+    activeSavePromise = p;
+    return p;
+  }
+
+  async function commitChoicesInner(next: CharacterChoices): Promise<void> {
     if (candidate === null || current === null) {
       return;
     }
@@ -2006,22 +2020,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
       // Merge against in-flight / pending choices so a Pronouns blur cannot wipe a
       // Name save that is still round-tripping (HD-A3-PQA-001 / 051).
       const persistIdentity = (): void => {
-        if (current === null) {
+        if (identityDebounceTimer !== null) {
+          window.clearTimeout(identityDebounceTimer);
+          identityDebounceTimer = null;
+        }
+        if (current === null || !isPageMountCurrent(container, mountToken)) {
           return;
         }
         const field = input.dataset.identity as keyof CharacterChoices['identity'];
         const foundation = latestChoices();
+        if (foundation.identity[field] === input.value) {
+          return;
+        }
         void commitChoices({
           ...foundation,
           identity: { ...foundation.identity, [field]: input.value },
         });
       };
       input.addEventListener('input', () => {
-        window.clearTimeout((input as HTMLInputElement & { _hdIdentityTimer?: number })._hdIdentityTimer);
-        (input as HTMLInputElement & { _hdIdentityTimer?: number })._hdIdentityTimer = window.setTimeout(
-          persistIdentity,
-          300,
-        );
+        if (identityDebounceTimer !== null) {
+          window.clearTimeout(identityDebounceTimer);
+        }
+        identityDebounceTimer = window.setTimeout(persistIdentity, 300);
       });
       input.addEventListener('change', persistIdentity);
     });
@@ -2053,6 +2073,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="create-character"]')
       ?.addEventListener('click', () => {
         void (async () => {
+          if (identityDebounceTimer !== null) {
+            window.clearTimeout(identityDebounceTimer);
+            identityDebounceTimer = null;
+          }
+          if (activeSavePromise !== null) {
+            await activeSavePromise;
+          }
           if (candidate === null || current === null || busy) {
             return;
           }
@@ -2107,6 +2134,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
               candidateId: candidate.candidateId,
               draftId: current.draft.draftId,
             });
+            if (!isPageMountCurrent(container, mountToken)) {
+              return;
+            }
             shell.announce(`${character.identity.name} created.`);
             const params = new URLSearchParams(window.location.search);
             const returnCampaign = params.get('returnCampaign');
@@ -2156,6 +2186,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           render();
           try {
             await discardDraft({ candidateId: candidate.candidateId, draftId: current.draft.draftId });
+            if (!isPageMountCurrent(container, mountToken)) {
+              return;
+            }
             shell.announce('Draft discarded.');
             navigate('/characters');
             return;
@@ -2387,7 +2420,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   render();
 
-  subscribeAccount(() => {
+  const unsubscribeAccount = subscribeAccount(() => {
     if (!isPageMountCurrent(container, mountToken)) {
       return;
     }
@@ -2403,6 +2436,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       void loadLegalThenDraft();
     }
   });
+  registerPageCleanup(container, mountToken, unsubscribeAccount);
 
   void loadLegalThenDraft();
 }

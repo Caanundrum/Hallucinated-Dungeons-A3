@@ -1057,7 +1057,13 @@ export function parsePlayerDeclaration(
   }
 
   const wantsInvestigation =
-    /\b(?:investigat(?:e|es|ing)?|using\s+(?:my\s+)?investigation)\b/i.test(trimmed);
+    /\b(?:investigat(?:e|es|ing)?|using\s+(?:my\s+)?investigation)\b/i.test(trimmed) ||
+    (/\b(?:inspect(?:s|ing)?|examin(?:e|es|ing)?|check(?:s|ing)?|feel(?:s|ing)?|probe|probing)\b/i.test(
+      trimmed,
+    ) &&
+      /\b(?:hidden|secret|false|concealed|latches?|compartments?|panels?|mechanisms?|hollow|seams?)\b/i.test(
+        trimmed,
+      ));
   const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed) && !observingScene;
 
   // Targeted prop examine / listen (lantern, window, shutters) — Director narrates.

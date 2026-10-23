@@ -145,3 +145,30 @@ export {
   parseRestorableIntentDraft,
   shouldPersistIntentDraftState,
 } from '../shared/intent-draft-contract.js';
+
+const CHAOS_BOOT_SEEN_SESSION_KEY = 'hd.chaosBoot.seen.v3';
+
+/** Non-authoritative UI preference: whether the studio splash animation played this tab session. */
+export function hasSeenChaosBootPreference(): boolean {
+  try {
+    return sessionStorage.getItem(CHAOS_BOOT_SEEN_SESSION_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markChaosBootSeenPreference(): void {
+  try {
+    sessionStorage.setItem(CHAOS_BOOT_SEEN_SESSION_KEY, '1');
+  } catch {
+    // Non-authoritative UI preference — ignore storage failures.
+  }
+}
+
+export function resetChaosBootSeenPreference(): void {
+  try {
+    sessionStorage.removeItem(CHAOS_BOOT_SEEN_SESSION_KEY);
+  } catch {
+    // Non-authoritative UI preference — ignore storage failures.
+  }
+}

@@ -43,6 +43,7 @@ import {
   doorAuthorityFromStored,
   formatDoorAuthorityStateSuffix,
 } from '../../shared/play-authority-contract.js';
+import { declarationIsDoorOpenOrPassage } from '../../shared/resolved-action-receipt.js';
 import type {
   PresentationCueKind,
   PresentationCuePlanProjection,
@@ -133,7 +134,6 @@ function isSyncClarificationOnly(
 ): boolean {
   return (
     interpreted.proposedCommandType === 'table.sync' &&
-    interpreted.edgeId === undefined &&
     interpreted.path === undefined &&
     !/^Ready to /i.test(scrubbedSummary)
   );
@@ -151,8 +151,7 @@ function isRoutineExplorationDraft(
     type !== 'table.move' &&
     type !== 'table.open_door' &&
     type !== 'table.close_door' &&
-    type !== 'table.interact_object' &&
-    type !== 'table.take_scene_prop'
+    type !== 'table.interact_object'
   ) {
     return false;
   }
@@ -744,6 +743,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       readonly stopAfterFirstMove?: boolean;
       /** When true (open-only), stop as soon as table.open_door succeeds. */
       readonly stopAfterOpenDoor?: boolean;
+      /** True when the caller already opened the door in the immediately preceding step. */
+      readonly initialOpenedDoor?: boolean;
     } = {},
   ): Promise<{ readonly finalSummary: string | null }> {
     if (
@@ -764,7 +765,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       options.stopAfterFirstMove === true || (wantsCross && !stopAfterOpenDoor);
     const maxSteps = 12;
     let finalSummary: string | null = null;
-    let openedDoor = false;
+    let openedDoor = options.initialOpenedDoor === true;
     for (let step = 0; step < maxSteps; step += 1) {
       if (candidate === null || tableState === null) {
         break;
@@ -813,13 +814,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             : { timingAuthorityId: timingAuthority.timingAuthorityId }),
           ...(interpreted.path !== undefined ? { path: interpreted.path } : {}),
           ...(interpreted.edgeId !== undefined ? { edgeId: interpreted.edgeId } : {}),
+          ...(declaration.trim().length > 0 ? { declaration: declaration.trim() } : {}),
         });
         tableState = accepted.table;
         mapBundle = await fetchCampaignMap(campaignId);
         stageHandle?.renderMap(mapBundle);
-        const summary =
-          accepted.event.summary?.trim() ||
-          'Action committed on the table.';
+        const isCompoundOpenCrossMove =
+          openedDoor && wantsCross && interpreted.proposedCommandType === 'table.move';
+        const summary = isCompoundOpenCrossMove
+          ? resolvedSummaryAfterTableConfirm({
+              commandType: 'table.open_door',
+              draftSummary: interpreted.summary,
+              declaration,
+              openCross: true,
+              namedDoorOpenAfter: true,
+              ...(mapBundle?.title !== undefined ? { sceneTitle: mapBundle.title } : {}),
+            })
+          : accepted.event.summary?.trim() || 'Action committed on the table.';
         finalSummary = summary;
         appendDmThread('system', 'Table', playerFacingMechanicsCopy(summary), 'mechanics');
         if (narrateSteps && shouldAutoNarrateRulesCommand(interpreted.proposedCommandType)) {
@@ -2758,13 +2769,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       stageHandle?.renderMap(mapBundle);
       const receipt = accepted.receipt ?? accepted.event.receipt ?? null;
       const doorOpenAfterConfirm =
-        receipt !== null
-          ? receipt.namedDoorOpenAfter
-          : draft.edgeId !== undefined &&
-            (mapBundle?.edges.some(
-              (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
-            ) ??
-              false);
+        receipt?.namedDoorOpenAfter === true ||
+        (receipt !== null &&
+          Object.values(receipt.doorStatesAfter ?? {}).some((state) => state === 'open')) ||
+        (draft.edgeId !== undefined &&
+          (mapBundle?.edges.some(
+            (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
+          ) ??
+            false)) ||
+        (mapBundle?.edges.some((edge) => edge.kind === 'door' && edge.doorState === 'open') ??
+          false);
       const resolvedSummary = resolvedSummaryAfterTableConfirm({
         commandType: draft.proposedCommandType,
         draftSummary: draft.summary,
@@ -2800,6 +2814,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         const resumed = await resumeCompoundDeclarationAfterBuild(declarationText, {
           narrateSteps: false,
           stopAfterFirstMove: true,
+          initialOpenedDoor: true,
         });
         if (resumed.finalSummary !== null && resumed.finalSummary.trim().length > 0) {
           narrationSummary = resumed.finalSummary;
@@ -2809,7 +2824,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
         /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
       ) {
-        await narrateIntoDmThread(narrationSummary, accepted.event.rolls ?? []);
+        enqueueNarration(narrationSummary, accepted.event.rolls ?? []);
       } else {
         patchDmPlayThread();
       }
@@ -5007,7 +5022,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
           try {
             const moveTargetForInterpret =
-              moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+              moveTarget !== null && !declarationIsDoorOpenOrPassage(declaration)
                 ? moveTarget
                 : undefined;
             const interpreted = await interpretNaturalLanguage({
@@ -5403,7 +5418,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           try {
             const declaration = lastSubmittedDeclaration.trim();
             const moveTargetForInterpret =
-              moveTarget !== null && !/\b(door|gate|entryway|entry|room beyond)\b/i.test(declaration)
+              moveTarget !== null && !declarationIsDoorOpenOrPassage(declaration)
                 ? moveTarget
                 : undefined;
             const interpreted = await interpretNaturalLanguage({
@@ -5573,13 +5588,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             stageHandle?.renderMap(mapBundle);
             const receipt = accepted.receipt ?? accepted.event.receipt ?? null;
             const doorOpenAfterConfirm =
-              receipt !== null
-                ? receipt.namedDoorOpenAfter
-                : draft.edgeId !== undefined &&
-                  (mapBundle?.edges.some(
-                    (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
-                  ) ??
-                    false);
+              receipt?.namedDoorOpenAfter === true ||
+              (receipt !== null &&
+                Object.values(receipt.doorStatesAfter ?? {}).some((state) => state === 'open')) ||
+              (draft.edgeId !== undefined &&
+                (mapBundle?.edges.some(
+                  (edge) => edge.edgeId === draft.edgeId && edge.doorState === 'open',
+                ) ??
+                  false)) ||
+              (mapBundle?.edges.some(
+                (edge) => edge.kind === 'door' && edge.doorState === 'open',
+              ) ??
+                false);
             const resolvedSummary = resolvedSummaryAfterTableConfirm({
               commandType: draft.proposedCommandType,
               draftSummary: draft.summary,
@@ -5618,6 +5638,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 stopAfterFirstMove:
                   (shouldResumeOpenCross && !resumeApproachThenOpen) ||
                   (resumeApproachThenOpen && wantsCross),
+                initialOpenedDoor: shouldResumeOpenCross,
               });
               if (resumed.finalSummary !== null && resumed.finalSummary.trim().length > 0) {
                 narrationSummary = resumed.finalSummary;
@@ -5626,7 +5647,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
                 /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
               ) {
-                await narrateIntoDmThread(narrationSummary, accepted.event.rolls ?? []);
+                enqueueNarration(narrationSummary, accepted.event.rolls ?? []);
               } else {
                 patchDmPlayThread();
               }
@@ -5634,7 +5655,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
               /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
             ) {
-              await narrateIntoDmThread(resolvedSummary, accepted.event.rolls ?? []);
+              enqueueNarration(resolvedSummary, accepted.event.rolls ?? []);
             } else {
               patchDmPlayThread();
             }

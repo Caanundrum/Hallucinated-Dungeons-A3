@@ -83,7 +83,7 @@ export function directorAvatarMarkup(options: {
   if (assetPath === null) {
     return `<span class="${className} director-avatar-fallback" data-testid="${options.testId}-fallback">${escapeAttribute(options.label)}</span>`;
   }
-  return `<img class="${className}" data-testid="${options.testId}" src="${escapeAttribute(assetPath)}" alt="${escapeAttribute(options.label)}" width="128" height="128" loading="lazy" decoding="async" />`;
+  return `<img class="${className}" data-testid="${options.testId}" src="${escapeAttribute(assetPath)}" alt="${escapeAttribute(options.label)}" width="128" height="128" decoding="async" />`;
 }
 
 /** Compact portrait chip for lobby rows and identity radio cards. */

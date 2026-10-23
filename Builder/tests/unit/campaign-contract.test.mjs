@@ -32,8 +32,8 @@ test('director catalog exposes both identities and six personalities', () => {
   assert.equal(recommended.length, 1);
   assert.equal(recommended[0].id, RECOMMENDED_DIRECTOR_PERSONALITY);
   assert.equal(recommended[0].id, 'seasoned_host');
-  assert.ok(catalog.identities.find((entry) => entry.id === 'veyra')?.summary.includes('Woman'));
-  assert.ok(catalog.identities.find((entry) => entry.id === 'garrick')?.summary.includes('Man'));
+  assert.ok(catalog.identities.find((entry) => entry.id === 'veyra')?.summary.includes('chronicler'));
+  assert.ok(catalog.identities.find((entry) => entry.id === 'garrick')?.summary.includes('veteran table host'));
 });
 
 test('every personality has creation preview copy for sample scene and rhythm', () => {

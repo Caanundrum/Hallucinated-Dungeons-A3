@@ -116,7 +116,7 @@ export async function listTrackedFiles() {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '')
-    .map((line) => relative('.', line));
+    .map((line) => relative('.', line).replaceAll('\\', '/'));
   if (fromGit.length > 0) {
     return fromGit;
   }
@@ -142,7 +142,7 @@ async function walkFiles(root, current) {
       continue;
     }
     if (entry.isFile()) {
-      files.push(relative(root, absolute));
+      files.push(relative(root, absolute).replaceAll('\\', '/'));
     }
   }
   return files.sort();

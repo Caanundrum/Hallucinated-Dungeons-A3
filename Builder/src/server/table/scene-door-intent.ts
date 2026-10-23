@@ -487,13 +487,12 @@ export function resolveDoorIntentForMap(
       if (crossing.kind === 'already_through') {
         return {
           proposedCommandType: 'table.sync',
-          edgeId: passageDoor.edgeId,
           summary: `${describeDoorPosition({
             relation: 'far',
             doorLabel: doorApproachLabel(passageDoor),
             leaf: 'open',
             sceneTitle,
-          })} ${crossing.summary}`,
+          })} Look around or choose another exit from your current position.`,
         };
       }
     } else if (!wantsReverseCross && /(enter|room beyond|beyond)/.test(text)) {

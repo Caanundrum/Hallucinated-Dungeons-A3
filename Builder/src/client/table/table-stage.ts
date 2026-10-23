@@ -618,7 +618,7 @@ function paintSemanticSvg(
           ? 'closed, locked'
           : 'closed'
         : visual.stateVariant.replace(/^state_/, '');
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -640,7 +640,7 @@ function paintSemanticSvg(
       const leader =
         placement.leader === null
           ? ''
-          : `<line class="map-label-leader" x1="${placement.leader.x1}" y1="${placement.leader.y1}" x2="${placement.leader.x2}" y2="${placement.leader.y2}" stroke="#c4a574" stroke-opacity="0.55" stroke-width="1" />`;
+          : `<line class="map-label-leader" x1="${placement.leader.x1}" y1="${placement.leader.y1}" x2="${placement.leader.x2}" y2="${placement.leader.y2}" stroke="#c4a574" stroke-opacity="0.55" stroke-width="1" pointer-events="none" />`;
       return `<g class="map-label-chip" tabindex="0" role="img" aria-label="${escapeHtml(placement.fullLabel)}" data-label-id="${escapeHtml(placement.id)}" data-label-kind="${placement.kind}" data-full-label="${escapeHtml(placement.fullLabel)}" data-testid="map-label-chip">
         ${leader}
         <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="4" class="map-label-plate" fill="#16110c" fill-opacity="0.92" stroke="#c4a574" stroke-opacity="0.7" />
@@ -1251,14 +1251,18 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       tip.dataset.testid = 'map-poi-tooltip';
       tip.hidden = true;
       host.appendChild(tip);
+    } else {
+      tip.hidden = true;
     }
     const show = (label: string, kind: string, clientX: number, clientY: number): void => {
       if (tip === null) return;
       const hostBox = host.getBoundingClientRect();
       tip.hidden = false;
       tip.textContent = `${label} · ${kind.replace(/_/g, ' ')}`;
-      tip.style.left = `${Math.max(8, clientX - hostBox.left + 12)}px`;
-      tip.style.top = `${Math.max(8, clientY - hostBox.top + 12)}px`;
+      const leftPx = Math.max(8, clientX - hostBox.left + 12);
+      const minTopPx = leftPx < 240 ? 58 : 8;
+      tip.style.left = `${leftPx}px`;
+      tip.style.top = `${Math.max(minTopPx, clientY - hostBox.top + 12)}px`;
     };
     const hide = (): void => {
       if (tip !== null) tip.hidden = true;
@@ -1267,6 +1271,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const label = group.getAttribute('data-notable-feature') ?? 'Point of interest';
       const kind = group.getAttribute('data-reference-kind') ?? 'prop';
       const boundEdge = group.getAttribute('data-bound-edge');
+      const colAttr = group.getAttribute('data-feature-column');
+      const rowAttr = group.getAttribute('data-feature-row');
       group.onmouseenter = (event) => show(label, kind, event.clientX, event.clientY);
       group.onmousemove = (event) => show(label, kind, event.clientX, event.clientY);
       group.onmouseleave = () => hide();
@@ -1275,6 +1281,12 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         show(label, kind, event.clientX, event.clientY);
         if (boundEdge !== null && boundEdge.length > 0) {
           edgeClickHandler?.(boundEdge);
+        } else if (colAttr !== null && rowAttr !== null) {
+          const column = Number(colAttr);
+          const row = Number(rowAttr);
+          if (Number.isInteger(column) && Number.isInteger(row)) {
+            squareClickHandler?.({ column, row });
+          }
         }
       };
       group.onkeydown = (event) => {
@@ -1284,6 +1296,12 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           show(label, kind, box.left + box.width / 2, box.top);
           if (boundEdge !== null && boundEdge.length > 0) {
             edgeClickHandler?.(boundEdge);
+          } else if (colAttr !== null && rowAttr !== null) {
+            const column = Number(colAttr);
+            const row = Number(rowAttr);
+            if (Number.isInteger(column) && Number.isInteger(row)) {
+              squareClickHandler?.({ column, row });
+            }
           }
         }
       };
@@ -1295,6 +1313,18 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         chip.onclick = (event) => {
           event.stopPropagation();
           edgeClickHandler?.(edgeId);
+        };
+      }
+    });
+    host.querySelectorAll<SVGGElement>('g.map-label-chip[data-label-id^="marker:"]').forEach((chip) => {
+      const labelId = chip.getAttribute('data-label-id') ?? '';
+      const parts = labelId.split(':');
+      const column = Number(parts[1]);
+      const row = Number(parts[2]);
+      if (Number.isInteger(column) && Number.isInteger(row)) {
+        chip.onclick = (event) => {
+          event.stopPropagation();
+          squareClickHandler?.({ column, row });
         };
       }
     });

@@ -51,16 +51,23 @@ export function buildStoredSceneFromRoomBlueprint(
     readonly visited?: boolean;
   },
 ): StoredSceneInstance {
-  const kind: SceneComposeKind =
-    room.templateId === 'starter_crypt_sanctum'
-      ? 'landmark'
-      : room.templateId === 'starter_trail_crossroads'
-        ? 'exterior'
-        : 'interior';
+  const isSanctumRoom =
+    room.templateId === 'starter_crypt_sanctum' ||
+    room.isMilestoneClimax === true ||
+    room.roomIndex >= 3;
+  const isPassageRoom = !isSanctumRoom && room.roomIndex === 2;
+  const kind: SceneComposeKind = isSanctumRoom
+    ? 'landmark'
+    : room.templateId === 'starter_trail_crossroads'
+      ? 'exterior'
+      : 'interior';
+  const composePremise = isPassageRoom
+    ? 'crypt catacomb subterranean stone passage'
+    : room.summary;
   const composed = composeDirectorScene({
     kind,
     sceneId: room.sceneId,
-    premise: room.summary,
+    premise: composePremise,
     destinationHint: room.title,
     seedKey: `${campaignId}:${room.sceneId}:${room.title}`,
   });
@@ -104,18 +111,30 @@ export function buildStoredSceneFromRoomBlueprint(
     rows: composed.rows,
     cells: composed.cells,
     edges: composed.edges,
-    features: composed.features.map((feature) => ({
-      ...feature,
-      label: featureLabelWithState(feature),
-    })),
+    features: composed.features
+      .filter(
+        (feature) =>
+          room.npcs.length > 0 ||
+          (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc'),
+      )
+      .map((feature) => ({
+        ...feature,
+        label: featureLabelWithState(feature),
+      })),
     doorStates: { ...composed.doorStates },
     spawn: composed.spawn,
     exits,
-    inhabitantObjectIds: [...composed.inhabitantObjectIds],
+    inhabitantObjectIds: room.npcs.length > 0 ? [...composed.inhabitantObjectIds] : [],
     tokenPositions,
     exploredByAccount,
     revision: 1,
-    sceneArtUrl: room.sceneArtUrl ?? resolveSceneArtUrl(room.templateId),
+    sceneArtUrl:
+      room.sceneArtUrl ??
+      resolveSceneArtUrl(
+        room.roomIndex >= 2 && room.templateId === 'starter_stone_chamber'
+          ? 'interior_stone_crypt'
+          : room.templateId,
+      ),
     xpAwardOnDiscovery: room.xpAwardOnDiscovery,
     isMilestoneClimax: room.isMilestoneClimax,
     milestoneIndex: room.milestoneIndex,
@@ -180,13 +199,13 @@ export async function loadCampaignPremise(
   if (!snap.exists) {
     return 'an unfolding adventure';
   }
-  const data = snap.data() as { summary?: string; name?: string };
-  const summary = typeof data.summary === 'string' ? data.summary.trim() : '';
-  if (summary.length > 0) {
-    return summary;
+  const data = snap.data() as { summary?: string; premise?: string };
+  const premise = typeof data.premise === 'string' ? data.premise.trim() : '';
+  if (premise.length > 0) {
+    return premise;
   }
-  const name = typeof data.name === 'string' ? data.name.trim() : '';
-  return name.length > 0 ? name : 'an unfolding adventure';
+  const summary = typeof data.summary === 'string' ? data.summary.trim() : '';
+  return summary.length > 0 ? summary : 'an unfolding adventure';
 }
 
 export function sanitizePlayerFacingSceneText(text: string): string {

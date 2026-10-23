@@ -52,6 +52,11 @@ export interface DeterministicIntentFallbackInput {
   readonly seatedSheet: DerivedCharacterSheet | null;
   readonly rulesProgressionClassLabel: string | null;
   readonly knownNpcs: readonly { readonly id: string; readonly label: string }[];
+  readonly absentRoomNpcs?: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly roomTitle: string;
+  }[];
 }
 
 export interface DeterministicIntentFallbackResult {
@@ -259,43 +264,55 @@ function mentionsDoorIntent(text: string): boolean {
   ) {
     return false;
   }
+  // Strip subordinate observation clauses ("keeping an eye on the closed east doorway", "while watching the door")
+  // before testing whether the action itself targets a door.
+  const withoutSubordinateObservation = text.replace(
+    /,?\s*\b(?:keeping\s+an\s+eye\s+on|watching|glancing\s+(?:at|toward)|eyeing|mindful\s+of|staying\s+clear\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?)\b/gi,
+    '',
+  );
+  if (!/\b(?:door|doorway|gate|entry(?:way)?|beyond)\b/i.test(withoutSubordinateObservation)) {
+    return false;
+  }
   // Adjectival "open wooden door" is door state, not an open-door verb.
-  const withoutOpenNoun = stripAdjectivalOpenDoor(text);
+  const withoutOpenNoun = stripAdjectivalOpenDoor(withoutSubordinateObservation);
   const openVerb = /\b(?:opens?|opening|push(?:es|ing)?|swings?|swinging)\b/i.test(withoutOpenNoun);
-  const closeVerb = /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(text);
-  const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(text);
+  const closeVerb = /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(withoutSubordinateObservation);
+  const passageVerb = /\b(?:enter(?:s|ing)?|steps?|stepping|through)\b/i.test(withoutSubordinateObservation);
   if (
-    textReferencesUnlockedDoorState(text) &&
+    textReferencesUnlockedDoorState(withoutSubordinateObservation) &&
     !openVerb &&
     !closeVerb &&
     !passageVerb &&
-    !/\bbeyond\b/i.test(text)
+    !/\bbeyond\b/i.test(withoutSubordinateObservation)
   ) {
     // Bare unlocked-state reference — not a door action (A1).
     return false;
   }
-  if (textReferencesUnlockedDoorState(text) && (openVerb || passageVerb || /\bbeyond\b/i.test(text))) {
-    return !textRequestsLockPicking(text);
+  if (
+    textReferencesUnlockedDoorState(withoutSubordinateObservation) &&
+    (openVerb || passageVerb || /\bbeyond\b/i.test(withoutSubordinateObservation))
+  ) {
+    return !textRequestsLockPicking(withoutSubordinateObservation);
   }
   return (
-    mentionsDoorStateIntent(text) ||
+    mentionsDoorStateIntent(withoutSubordinateObservation) ||
     closeVerb ||
     (/(opens?|opening|push(?:es|ing)?|swings?).*(door|doorway|gate|entry)/.test(withoutOpenNoun) &&
-      !textRequestsLockPicking(text)) ||
+      !textRequestsLockPicking(withoutSubordinateObservation)) ||
     (/(door|doorway|gate|entryway).*(opens?|opening|ahead|beyond|enter)/.test(withoutOpenNoun) &&
-      !textRequestsLockPicking(text)) ||
+      !textRequestsLockPicking(withoutSubordinateObservation)) ||
     // Through / step / enter a door or doorway (including reverse crossing from the far side).
     (/\b(?:door|doorway|gate|entryway)\b/.test(withoutOpenNoun) &&
       passageVerb &&
-      !textRequestsLockPicking(text)) ||
+      !textRequestsLockPicking(withoutSubordinateObservation)) ||
     // "Enter the room beyond" is doorway transit, not free-form mark-square movement.
-    (/\bbeyond\b/.test(text) &&
-      /\b(?:enter|room|chamber|door|doorway)\b/.test(text) &&
-      !textRequestsLockPicking(text)) ||
+    (/\bbeyond\b/.test(withoutSubordinateObservation) &&
+      /\b(?:enter|room|chamber|door|doorway)\b/.test(withoutSubordinateObservation) &&
+      !textRequestsLockPicking(withoutSubordinateObservation)) ||
     // Catch-all for explicit door/gate/doorway nouns with no unlock / passage language.
-    (/\b(door|doorway|gate|entryway)\b/.test(text) &&
-      !textRequestsLockPicking(text) &&
-      !textReferencesUnlockedDoorState(text) &&
+    (/\b(door|doorway|gate|entryway)\b/.test(withoutSubordinateObservation) &&
+      !textRequestsLockPicking(withoutSubordinateObservation) &&
+      !textReferencesUnlockedDoorState(withoutSubordinateObservation) &&
       !passageVerb)
   );
 }
@@ -425,6 +442,15 @@ export async function resolveDeterministicIntentFallback(
 
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
+  const absentRoomNpcs = options.absentRoomNpcs ?? [];
+  const matchedAbsentNpc =
+    structured.addressee !== null
+      ? absentRoomNpcs.find((npc) => {
+          const target = structured.addressee!.toLowerCase();
+          const label = npc.label.toLowerCase();
+          return label === target || label.includes(target) || target.includes(label);
+        }) ?? null
+      : null;
   const utterance = understandUtterance(rawText);
   const hasDedicatedGatewayBranch =
     !utterance.constraints.prepareWithoutAttack &&
@@ -738,6 +764,10 @@ export async function resolveDeterministicIntentFallback(
               : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
         }
       }
+    } else if (matchedAbsentNpc !== null) {
+      proposedCommandType = 'table.sync';
+      deferDirectorNarrate = false;
+      summary = `${matchedAbsentNpc.label} is not in this chamber right now — they remain back in ${matchedAbsentNpc.roomTitle}, out of earshot from here.`;
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
       deferDirectorNarrate = true;

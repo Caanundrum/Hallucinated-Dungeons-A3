@@ -784,18 +784,18 @@ function buildManifest(input: {
 function humorLine(personality: DirectorPersonality): string {
   switch (personality) {
     case 'sassy_companion':
-      return ' The Director adds a light jab at the furniture, not the party.';
+      return ' Floorboards creak in wry commentary as the silence returns.';
     case 'dry_storyteller':
-      return ' A dry aside notes that luck remains undetermined.';
+      return ' Torchlight settles; whatever fortune awaits here remains unspoken.';
     case 'dramatic_chronicler':
-      return ' The moment hangs a beat longer than comfort.';
+      return ' Long shadows stretch across the room as the tension holds.';
     case 'friendly_adventurer':
-      return ' A warm aside keeps the table invited in.';
+      return ' A warm draft stirs the lantern glow, inviting the next bold step.';
     case 'encouraging_guide':
-      return ' A patient reminder names the safe options still open.';
+      return ' The chamber lies steady, leaving clear paths open ahead.';
     case 'seasoned_host':
     default:
-      return ' A lightly knowing beat lands, then control returns to the table.';
+      return ' Lantern light glints across the worn timber as the quiet settles in.';
   }
 }
 
@@ -807,18 +807,18 @@ function humorLine(personality: DirectorPersonality): string {
 function cinematicLine(personality: DirectorPersonality): string {
   switch (personality) {
     case 'sassy_companion':
-      return ' The room holds its breath just long enough to be dramatic about it.';
+      return ' The air holds its breath just long enough to feel deliberate.';
     case 'dry_storyteller':
-      return ' Dust settles, torchlight flickers, and the scene resets around the result.';
+      return ' Dust settles, torchlight flickers, and the chamber steadies around you.';
     case 'dramatic_chronicler':
-      return ' Shadows stretch across the stone as the consequence settles into the scene.';
+      return ' Shadows coil along the stonework as the consequence sinks into the room.';
     case 'friendly_adventurer':
-      return ' The party trades a glance, already imagining what happens next.';
+      return ' The quiet between heartbeats leaves room for what comes next.';
     case 'encouraging_guide':
-      return ' The scene settles, giving everyone a clear beat to plan the next move.';
+      return ' The stillness offers a clear moment to weigh the next move.';
     case 'seasoned_host':
     default:
-      return ' The Director lets the moment breathe before the table presses on.';
+      return ' Drafts whisper past the threshold while the chamber waits.';
   }
 }
 
@@ -1056,6 +1056,7 @@ export async function interpretNaturalLanguageIntent(options: {
   }
 
   let knownNpcs: { id: string; label: string }[] = [];
+  let absentRoomNpcs: { id: string; label: string; roomTitle: string }[] = [];
   try {
     const memory = await loadCampaignMemory(
       options.firestore,
@@ -1073,15 +1074,33 @@ export async function interpretNaturalLanguageIntent(options: {
       runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
         ? runtime.sceneInstances?.[runtime.activeSceneId]
         : undefined;
+    const activeNpcNames = new Set<string>();
     if (activeScene !== undefined) {
       for (const feature of activeScene.features) {
         if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
           const cleanLabel = feature.label.replace(/\s+[—–-]\s+\w+$/u, '').trim();
-          if (
-            cleanLabel.length > 0 &&
-            !knownNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())
-          ) {
-            knownNpcs.push({ id: feature.objectId, label: cleanLabel });
+          if (cleanLabel.length > 0) {
+            activeNpcNames.add(cleanLabel.toLowerCase());
+            if (!knownNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())) {
+              knownNpcs.push({ id: feature.objectId, label: cleanLabel });
+            }
+          }
+        }
+      }
+      for (const [sceneId, sceneInst] of Object.entries(runtime.sceneInstances ?? {})) {
+        if (sceneId === runtime.activeSceneId || !sceneInst) continue;
+        for (const feature of sceneInst.features ?? []) {
+          if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
+            const cleanLabel = feature.label.replace(/\s+[—–-]\s+\w+$/u, '').trim();
+            if (cleanLabel.length > 0 && !activeNpcNames.has(cleanLabel.toLowerCase())) {
+              if (!absentRoomNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())) {
+                absentRoomNpcs.push({
+                  id: feature.objectId,
+                  label: cleanLabel,
+                  roomTitle: sceneInst.title || 'the previous chamber',
+                });
+              }
+            }
           }
         }
       }
@@ -1167,6 +1186,7 @@ export async function interpretNaturalLanguageIntent(options: {
       seatedSheet,
       rulesProgressionClassLabel,
       knownNpcs,
+      absentRoomNpcs,
     });
     proposedCommandType = fallback.proposedCommandType;
     summary = fallback.summary;
@@ -1231,7 +1251,6 @@ export async function interpretNaturalLanguageIntent(options: {
   const chronicleImmediately =
     declaration.length > 0 &&
     proposedCommandType === 'table.sync' &&
-    edgeId === undefined &&
     path === undefined &&
     !/^Ready to /i.test(summary);
   if (chronicleImmediately) {

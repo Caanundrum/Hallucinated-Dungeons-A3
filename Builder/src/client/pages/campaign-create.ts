@@ -159,7 +159,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     if (parts.length > 0) {
       return parts.join('\n\n').slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
     }
-    return name.trim().slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
+    return '';
   }
 
   function canSubmit(): boolean {

@@ -221,16 +221,12 @@ export function buildResolvedActionReceipt(options: {
   const namedDoorOpenAfter =
     options.edgeId !== undefined
       ? options.doorStatesAfter[options.edgeId] === 'open'
-      : Object.values(options.doorStatesAfter).some((state) => state === 'open') &&
-        options.targetKind === 'door';
+      : Object.values(options.doorStatesAfter).some((state) => state === 'open');
   const narrationSeed = buildNarrationSeedFromReceipt({
     commandType: options.commandType,
     targetLabel: options.targetLabel,
     mutations,
-    namedDoorOpenAfter:
-      options.edgeId !== undefined
-        ? options.doorStatesAfter[options.edgeId] === 'open'
-        : namedDoorOpenAfter,
+    namedDoorOpenAfter,
     openCross: options.openCross === true,
     ...(options.sceneTitle !== undefined ? { sceneTitle: options.sceneTitle } : {}),
     ...(options.eventSummary !== undefined ? { eventSummary: options.eventSummary } : {}),
@@ -254,10 +250,7 @@ export function buildResolvedActionReceipt(options: {
     },
     mutations,
     doorStatesAfter: { ...options.doorStatesAfter },
-    namedDoorOpenAfter:
-      options.edgeId !== undefined
-        ? options.doorStatesAfter[options.edgeId] === 'open'
-        : false,
+    namedDoorOpenAfter,
     narrationSeed,
     blockedReason: options.blockedReason ?? null,
   };
