@@ -62,6 +62,10 @@ import { fetchCampaignMap } from '../table/map-projection.js';
 import { pathBesideFeature, resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
 import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
 import {
+  queryDirectorMechanicsArbiter,
+  applyDirectorDispatchToMap,
+} from './director-mechanics-dispatcher.js';
+import {
   applyDmNpcDirective,
   applyDmSceneDirective,
   loadCampaignMemory,
@@ -1646,6 +1650,72 @@ export async function interpretNaturalLanguageIntent(options: {
     // Active scene NPC lookup is best-effort.
   }
 
+   // 1. Attempt AI Director Mechanics Dispatcher (Arbiter) first
+  let aiDispatched = false;
+  try {
+    const map = await fetchCampaignMap({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      campaignId: options.campaignId,
+    });
+    const ownToken =
+      map.viewerSeatId === null
+        ? map.tokens[0]
+        : (map.tokens.find((t) => t.seatId === map.viewerSeatId) ?? map.tokens[0]);
+    const visibleFeatures = map.notableFeatures.map((f) => f.label);
+    const doors = map.edges
+      .filter((e) => e.kind === 'door')
+      .map((e) =>
+        formatDoorPlayerFacingLabel(
+          doorAuthorityFromStored(e.doorState),
+          e.orientation,
+        ),
+      );
+    const presentNpcs = map.notableFeatures
+      .filter((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
+      .map((f) => f.label);
+
+    const dispatch = await queryDirectorMechanicsArbiter({
+      rawText,
+      sceneTitle: map.title,
+      sceneDescription: map.sceneBanner ?? undefined,
+      visibleFeatures,
+      doors,
+      presentNpcs,
+      knownNpcs: knownNpcs.map((n) => n.label),
+      characterName: ownToken?.label ?? 'Adventurer',
+      characterClass: rulesProgressionClassLabel ?? undefined,
+      characterLevel: seatedSheet?.level ?? 1,
+      llm: options.llm,
+      env: {
+        HD_ENVIRONMENT_CLASS: options.environmentClass,
+        HD_FIREBASE_PROJECT_ID: options.firebaseProjectId,
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+      },
+    });
+
+    if (dispatch !== null) {
+      const applied = applyDirectorDispatchToMap({
+        dispatch,
+        map,
+        seatedSheet,
+        knownNpcs,
+      });
+      if (applied !== null) {
+        proposedCommandType = applied.proposedCommandType;
+        summary = applied.summary;
+        if (applied.path) path = applied.path;
+        if (applied.edgeId) edgeId = applied.edgeId;
+        if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
+        if (applied.destinationHint) destinationHint = applied.destinationHint;
+        aiDispatched = true;
+      }
+    }
+  } catch {
+    // Graceful fallback to deterministic parsing
+  }
+
   const structured = parsePlayerDeclaration(rawText, { knownNpcs });
   const authority = resolveIntentAuthority(structured);
   const utterance = understandUtterance(rawText);
@@ -1703,6 +1773,7 @@ export async function interpretNaturalLanguageIntent(options: {
   /** Defer Director fiction until after the player declaration is chronicled. */
   let deferDirectorNarrate = false;
 
+  if (!aiDispatched) {
   // Batch 2/3 — reusable Director scene loop (begin / object / travel / landmark / return).
   let sceneLoopResolved = false;
   if (
@@ -2296,8 +2367,10 @@ export async function interpretNaturalLanguageIntent(options: {
     }
     }
   }
+  } // end if (!aiDispatched)
 
   const skipLiveRewrite =
+    aiDispatched ||
     proposedCommandType === 'table.build_scene' ||
     proposedCommandType === 'table.sync' ||
     proposedCommandType === 'table.move' ||

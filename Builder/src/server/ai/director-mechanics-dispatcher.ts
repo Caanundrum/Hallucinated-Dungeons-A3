@@ -1,0 +1,349 @@
+/**
+ * Director Mechanics Dispatcher — AI-First Rules & Intent Arbiter.
+ *
+ * Implements the core D&D 5e / SRD 5.2.1 DM principle:
+ * The Dungeon Master evaluates the player's natural language declaration in context
+ * of the active scene and decides IF and WHAT mechanics/checks are triggered,
+ * replacing fragile keyword/regex catch-phrase libraries with semantic adjudication.
+ *
+ * The rules engine still strictly owns character sheet arithmetic, dice rolling,
+ * and state mutations.
+ */
+
+import { GoogleGenAI } from '@google/genai';
+import type { DerivedCharacterSheet } from '../../shared/character-contract.js';
+import type { MapBundleProjection } from '../../shared/map-contract.js';
+import type { DirectorLlmClient } from './gemini-director.js';
+import { pathBesideFeature } from '../table/scene-door-intent.js';
+import type { IntentDraftCommandType } from '../../shared/intent-draft-contract.js';
+import {
+  doorAuthorityFromStored,
+  formatDoorPlayerFacingLabel,
+} from '../../shared/play-authority-contract.js';
+
+export type DispatchActionType =
+  | 'skill_check'
+  | 'move_feature'
+  | 'door_action'
+  | 'travel_scene'
+  | 'dialogue'
+  | 'narrate_only'
+  | 'combat_action';
+
+export interface DirectorDispatchOutput {
+  readonly actionType: DispatchActionType;
+  readonly reasoning?: string | undefined;
+  readonly skillCheck?: {
+    readonly skill: string; // e.g. 'stealth', 'investigation', 'athletics', 'perception', 'sleight_of_hand'
+    readonly ability?: string | undefined;
+    readonly dc: number; // e.g. 12 or 13
+    readonly targetNoun?: string | undefined; // e.g. 'past Warden Elira', 'service counter'
+  } | undefined;
+  readonly moveFeature?: {
+    readonly featureLabel: string;
+  } | undefined;
+  readonly doorAction?: {
+    readonly doorLabel: string;
+    readonly operation: 'open' | 'close' | 'unlock';
+  } | undefined;
+  readonly travelScene?: {
+    readonly destinationHint?: string | undefined;
+    readonly returnToPrevious?: boolean | undefined;
+  } | undefined;
+  readonly dialogue?: {
+    readonly addressee?: string | null | undefined;
+    readonly topic?: string | undefined;
+  } | undefined;
+}
+
+export const DM_DISPATCHER_SYSTEM_INSTRUCTION = `You are the Game Director (Dungeon Master) in an official tabletop D&D 5e / SRD 5.2.1 roleplaying campaign.
+Your responsibility is to listen to the player's natural language declaration in the active scene and adjudicate whether game mechanics or checks are triggered.
+
+Core D&D 5e Adjudication Rules:
+1. Intent Priority over Incidental Focus:
+   - When a player says "I walk up beside the service counter, keeping an eye on the closed east doorway", the player's physical destination is the "service counter". The doorway is merely observational focus. Choose "move_feature" for "service counter". Never choose "door_action" unless the player explicitly declares opening, closing, unlocking, or crossing the door.
+2. Natural Speech is Not an NPC:
+   - Phrases like "ask in a low voice", "whisper", or "speak quietly" describe vocal delivery. The preposition "in" or "in a low voice" is NEVER an NPC name.
+   - If an NPC is addressed by name (e.g. "Warden Elira"), capture their name in addressee.
+3. Ability Checks (The DM's Call):
+   - The DM calls for an ability check only when an action has uncertainty and a meaningful consequence of failure.
+   - Routine, safe actions (walking across an empty room, leaning on a counter, asking a friendly question, listening in a quiet room) do NOT require checks (use "move_feature", "dialogue", or "narrate_only").
+   - Sneaking, slipping, or hiding past watchful NPCs or guards requires an active Dexterity (Stealth) check (default DC 12).
+   - Thoroughly searching furniture, compartments, or floorboards for hidden items or clues requires an Intelligence (Investigation) check (default DC 13).
+   - Picking locks or disarming traps requires a Dexterity (Thieves' Tools) check.
+4. Scene Travel & Return:
+   - Declarations like "I return up the cellar stairs to Drowned Crow Tavern", "I head back through the passage", or "I retreat to the previous room" trigger scene travel (use "travel_scene" with returnToPrevious: true).
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "actionType": "skill_check" | "move_feature" | "door_action" | "travel_scene" | "dialogue" | "narrate_only" | "combat_action",
+  "reasoning": string,
+  "skillCheck": {
+    "skill": string,
+    "ability": string,
+    "dc": number,
+    "targetNoun": string
+  },
+  "moveFeature": {
+    "featureLabel": string
+  },
+  "doorAction": {
+    "doorLabel": string,
+    "operation": "open" | "close" | "unlock"
+  },
+  "travelScene": {
+    "destinationHint": string,
+    "returnToPrevious": boolean
+  },
+  "dialogue": {
+    "addressee": string | null,
+    "topic": string
+  }
+}`;
+
+export interface QueryDirectorMechanicsOptions {
+  readonly rawText: string;
+  readonly sceneTitle: string;
+  readonly sceneDescription?: string | undefined;
+  readonly visibleFeatures: readonly string[];
+  readonly doors: readonly string[];
+  readonly presentNpcs: readonly string[];
+  readonly knownNpcs: readonly string[];
+  readonly characterName: string;
+  readonly characterClass?: string | undefined;
+  readonly characterLevel?: number | undefined;
+  readonly env?: Record<string, string | undefined> | undefined;
+  readonly llm?: DirectorLlmClient | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+export async function queryDirectorMechanicsArbiter(
+  options: QueryDirectorMechanicsOptions,
+): Promise<DirectorDispatchOutput | null> {
+  const userPrompt = [
+    `Player Character: ${options.characterName} (Level ${options.characterLevel ?? 1} ${options.characterClass ?? 'Adventurer'})`,
+    `Current Scene: ${options.sceneTitle}`,
+    options.sceneDescription ? `Scene Context: ${options.sceneDescription}` : '',
+    `Visible Features / Props: ${options.visibleFeatures.length > 0 ? options.visibleFeatures.join(', ') : 'none'}`,
+    `Known Doors / Exits: ${options.doors.length > 0 ? options.doors.join(', ') : 'none'}`,
+    `Present NPCs in Room: ${options.presentNpcs.length > 0 ? options.presentNpcs.join(', ') : 'none'}`,
+    `Other Known Campaign NPCs: ${options.knownNpcs.length > 0 ? options.knownNpcs.join(', ') : 'none'}`,
+    '',
+    `Player Declaration: "${options.rawText}"`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  // 1. If a test override / custom LLM client is supplied:
+  if (options.llm !== undefined) {
+    try {
+      const raw = await options.llm.generateText({
+        systemInstruction: DM_DISPATCHER_SYSTEM_INSTRUCTION,
+        userPrompt,
+      });
+      return parseDispatchJson(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  // 2. Production / Milestone Gemini via @google/genai
+  const env = options.env ?? process.env;
+  const apiKey = (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY ?? '').trim();
+  const project = (
+    env.HD_FIREBASE_PROJECT_ID ??
+    env.GOOGLE_CLOUD_PROJECT ??
+    env.GCLOUD_PROJECT ??
+    ''
+  ).trim();
+  const isMilestone = env.HD_ENVIRONMENT_CLASS === 'milestone';
+
+  if (apiKey.length < 20 && (!isMilestone || project.length === 0)) {
+    return null; // Local offline arena without live API key falls back to deterministic engine
+  }
+
+  try {
+    const ai =
+      apiKey.length >= 20
+        ? new GoogleGenAI({ apiKey })
+        : new GoogleGenAI({
+            enterprise: true,
+            project,
+            location: (env.GOOGLE_CLOUD_LOCATION ?? 'us-central1').trim() || 'us-central1',
+          });
+
+    const model = (env.HD_GEMINI_MODEL ?? 'gemini-2.5-flash').trim() || 'gemini-2.5-flash';
+    const timeoutMs = options.timeoutMs ?? 2500;
+
+    const generatePromise = ai.models.generateContent({
+      model,
+      contents: userPrompt,
+      config: {
+        systemInstruction: DM_DISPATCHER_SYSTEM_INSTRUCTION,
+        temperature: 0.1,
+        maxOutputTokens: 600,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DM Dispatcher timeout')), timeoutMs),
+    );
+
+    const response = await Promise.race([generatePromise, timeoutPromise]);
+    const rawText = (response.text ?? '').trim();
+    return parseDispatchJson(rawText);
+  } catch {
+    return null; // Gracefully fall back to deterministic engine on timeout or network error
+  }
+}
+
+function parseDispatchJson(raw: string): DirectorDispatchOutput | null {
+  try {
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    if (typeof parsed.actionType !== 'string') {
+      return null;
+    }
+    return parsed as unknown as DirectorDispatchOutput;
+  } catch {
+    return null;
+  }
+}
+
+export interface AppliedDispatchResult {
+  readonly proposedCommandType: IntentDraftCommandType;
+  readonly summary: string;
+  readonly path?: readonly { readonly column: number; readonly row: number }[] | undefined;
+  readonly returnToPrevious?: boolean | undefined;
+  readonly destinationHint?: string | undefined;
+  readonly edgeId?: string | undefined;
+}
+
+export function applyDirectorDispatchToMap(options: {
+  readonly dispatch: DirectorDispatchOutput;
+  readonly map: MapBundleProjection;
+  readonly seatedSheet: DerivedCharacterSheet | null;
+  readonly knownNpcs: readonly { readonly id: string; readonly label: string }[];
+}): AppliedDispatchResult | null {
+  const { dispatch, map, seatedSheet, knownNpcs } = options;
+  const ownToken =
+    map.viewerSeatId === null
+      ? map.tokens[0]
+      : (map.tokens.find((t) => t.seatId === map.viewerSeatId) ?? map.tokens[0]);
+
+  // 1. Skill check (Stealth, Investigation, Athletics, etc.)
+  if (dispatch.actionType === 'skill_check' && dispatch.skillCheck) {
+    const skillName = dispatch.skillCheck.skill.toLowerCase().trim();
+    const skillRecord = seatedSheet?.skills.find(
+      (s) => s.id.toLowerCase() === skillName || s.label.toLowerCase() === skillName,
+    );
+    const abilityName = dispatch.skillCheck.ability?.toLowerCase() ?? skillRecord?.ability ?? 'dexterity';
+    const abilityMod =
+      seatedSheet?.abilityModifiers[abilityName as keyof typeof seatedSheet.abilityModifiers] ?? 0;
+    const bonusVal = skillRecord?.bonus.value ?? abilityMod;
+    const bonusStr = bonusVal >= 0 ? `+${bonusVal}` : `${bonusVal}`;
+    const profLabel = skillRecord?.proficient
+      ? `${skillRecord.label} proficient, ${bonusStr}`
+      : `${skillName} ${bonusStr}`;
+    const dc = dispatch.skillCheck.dc || (skillName === 'stealth' ? 12 : 13);
+    const target = dispatch.skillCheck.targetNoun || 'the challenge';
+
+    let actionVerb = 'Ready to';
+    if (skillName === 'stealth') {
+      actionVerb = `Ready to sneak past ${target} using cover`;
+    } else if (skillName === 'investigation') {
+      actionVerb = `Ready to search ${target} for hidden clues`;
+    } else {
+      actionVerb = `Ready to attempt ${skillName} on ${target}`;
+    }
+
+    const summary = `${actionVerb} (${profLabel}; DC ${dc}). Confirm to commit this check.`;
+    return {
+      proposedCommandType: 'table.sync',
+      summary,
+    };
+  }
+
+  // 2. Feature / Prop Movement (e.g. Service Counter)
+  if (dispatch.actionType === 'move_feature' && dispatch.moveFeature && ownToken) {
+    const targetLabel = dispatch.moveFeature.featureLabel.toLowerCase().trim();
+    const targetFeature = map.notableFeatures.find((f) => {
+      const fl = f.label.toLowerCase();
+      return fl.includes(targetLabel) || targetLabel.includes(fl);
+    });
+
+    if (targetFeature) {
+      const featureSquare = { column: targetFeature.column, row: targetFeature.row };
+      const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
+      if (featurePath !== null && featurePath.length > 0) {
+        const steps = featurePath.length;
+        const feet = steps * map.coordinateSpace.feetPerSquare;
+        return {
+          proposedCommandType: 'table.move',
+          path: featurePath,
+          summary: `Walk beside the ${targetFeature.label} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`,
+        };
+      }
+      return {
+        proposedCommandType: 'table.sync',
+        summary: `You are already standing beside the ${targetFeature.label} in ${map.title}.`,
+      };
+    }
+  }
+
+  // 3. Travel Scene (Return or Advance)
+  if (dispatch.actionType === 'travel_scene') {
+    const returnToPrevious = dispatch.travelScene?.returnToPrevious ?? true;
+    const hint = dispatch.travelScene?.destinationHint ?? (returnToPrevious ? 'the earlier scene' : 'the next scene');
+    return {
+      proposedCommandType: 'table.travel_scene',
+      returnToPrevious,
+      destinationHint: hint,
+      summary: `Ready to return to ${hint}. Confirm to restore it with prior consequences.`,
+    };
+  }
+
+  // 4. Dialogue (NPC interaction)
+  if (dispatch.actionType === 'dialogue' && dispatch.dialogue) {
+    const addressee = dispatch.dialogue.addressee?.trim() ?? null;
+    if (addressee && addressee.length > 0) {
+      const presentNpc = map.notableFeatures.find(
+        (f) =>
+          (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+          f.label.toLowerCase().includes(addressee.toLowerCase()),
+      );
+      const isKnownNpc = knownNpcs.find((n) =>
+        n.label.toLowerCase().includes(addressee.toLowerCase()),
+      );
+
+      if (!presentNpc && isKnownNpc) {
+        return {
+          proposedCommandType: 'table.sync',
+          summary: `${isKnownNpc.label} is not in this room right now — she remains in the previous area and out of earshot.`,
+        };
+      }
+    }
+  }
+
+  // 5. Door Action (Open / Close Door)
+  if (dispatch.actionType === 'door_action' && dispatch.doorAction) {
+    const targetDoor = dispatch.doorAction.doorLabel.toLowerCase();
+    const matchedEdge = map.edges.find((e) => {
+      if (e.kind !== 'door') return false;
+      const label = formatDoorPlayerFacingLabel(doorAuthorityFromStored(e.doorState), e.orientation).toLowerCase();
+      return label.includes(targetDoor) || targetDoor.includes(e.orientation);
+    });
+    if (matchedEdge) {
+      const op = dispatch.doorAction.operation;
+      const label = formatDoorPlayerFacingLabel(doorAuthorityFromStored(matchedEdge.doorState), matchedEdge.orientation);
+      return {
+        proposedCommandType: op === 'close' ? 'table.close_door' : 'table.open_door',
+        edgeId: matchedEdge.edgeId,
+        summary: `${op === 'close' ? 'Close' : 'Open'} ${label} on the table. Confirm to commit.`,
+      };
+    }
+  }
+
+  return null;
+}
