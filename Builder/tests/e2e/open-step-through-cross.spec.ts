@@ -153,7 +153,6 @@ test.describe('Open + step-through doorway cross', () => {
     await seatBlankCampaign(page, 'ReverseCross');
     await page.getByTestId('open-campaign-table').click();
     await awaitAdventureReady(page);
-    const activeRoomTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
 
     await crossToFarSideOfDoorway(page);
 
@@ -163,6 +162,8 @@ test.describe('Open + step-through doorway cross', () => {
         return Number(await el.getAttribute('data-anchor-column'));
       }, { timeout: 20_000 })
       .toBeGreaterThanOrEqual(7);
+
+    const activeRoomTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
 
     // Far-side reverse: through open door / west through doorway — not re-open, not mark-square.
     await advanceDoorCrossStep(page, 'I step through the open wooden door.');

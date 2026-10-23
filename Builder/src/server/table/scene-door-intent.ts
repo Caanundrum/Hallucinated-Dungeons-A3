@@ -63,8 +63,8 @@ function wantsCloseDoorAction(text: string): boolean {
 }
 
 function wantsDoorPassage(text: string): boolean {
-  // Negated open + passage language is not a crossing intent against a closed door.
-  if (declarationNegatesDoorOpen(text)) {
+  // Negated open/cross + beside-door stop language is not a crossing intent.
+  if (declarationNegatesDoorOpen(text) || wantsBesideDoorIntent(text)) {
     return false;
   }
   return (
@@ -231,8 +231,14 @@ function pathBesideClosedDoor(
 }
 
 export function wantsBesideDoorIntent(text: string): boolean {
-  return /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b/i.test(
-    text,
+  return (
+    /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b/i.test(
+      text,
+    ) ||
+    (/\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text) &&
+      /\b(?:(?:stop|stand|halt|wait|pause)s?\s+(?:right\s+)?(?:beside|next\s+to|by|at|before|in\s+front\s+of)\s+it|(?:move|walk|step|go|head)s?\s+(?:[a-z0-9-]+\s+){0,4}to\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b[\s\S]{0,40}\bwithout\s+(?:opening|crossing|entering|stepping\s+through))\b/i.test(
+        text,
+      ))
   );
 }
 
@@ -534,16 +540,6 @@ export function resolveDoorIntentForMap(
   }
 
   if (mentionsMovementIntent(text) || wantsOpen || wantsBesideDoorIntent(text)) {
-    const approachOpen = nextStepThroughOpenDoor(tokenAnchor, map);
-    if (approachOpen !== null && !isOnOpenDoorPassage(tokenAnchor, map)) {
-      return {
-        proposedCommandType: 'table.move',
-        path: [approachOpen],
-        summary: wantsOpen
-          ? `Ready to step toward the open doorway in ${sceneTitle}. Confirm moves you closer only — when you are beside it, declare step through / enter again to continue.`
-          : `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
-      };
-    }
     const nearestClosed = nearestClosedDoor(tokenAnchor, map, preferredCompass);
     if (wantsBesideDoorIntent(text) && nearestClosed !== null) {
       const besidePath = pathBesideClosedDoor(tokenAnchor, map, 12, preferredCompass);
@@ -561,6 +557,18 @@ export function resolveDoorIntentForMap(
           ),
         };
       }
+    }
+    const approachOpen = !wantsBesideDoorIntent(text)
+      ? nextStepThroughOpenDoor(tokenAnchor, map)
+      : null;
+    if (approachOpen !== null && !isOnOpenDoorPassage(tokenAnchor, map)) {
+      return {
+        proposedCommandType: 'table.move',
+        path: [approachOpen],
+        summary: wantsOpen
+          ? `Ready to step toward the open doorway in ${sceneTitle}. Confirm moves you closer only — when you are beside it, declare step through / enter again to continue.`
+          : `Ready to step toward the open doorway in ${sceneTitle}. Confirm to commit the step.`,
+      };
     }
     // Free exploration: only route to a closed door when the player's text actually targets the door.
     if (
@@ -686,21 +694,30 @@ export function pathBesideFeature(
   if (adjacent.length === 0) {
     return null;
   }
-  // Check if anchor is already adjacent
-  if (adjacent.some((sq) => sq.column === anchor.column && sq.row === anchor.row)) {
+  // If anchor is already on one of the adjacent squares, step to another adjacent square along the feature
+  const candidates = adjacent.some((sq) => sq.column === anchor.column && sq.row === anchor.row)
+    ? adjacent.filter((sq) => sq.column !== anchor.column || sq.row !== anchor.row)
+    : adjacent;
+  if (candidates.length === 0) {
     return null;
   }
-  adjacent.sort(
+  candidates.sort(
     (a, b) =>
       Math.abs(a.column - anchor.column) +
       Math.abs(a.row - anchor.row) -
       (Math.abs(b.column - anchor.column) + Math.abs(b.row - anchor.row)),
   );
-  const destination = adjacent[0]!;
+  const destination = candidates[0]!;
   const path: MapSquareCoordinate[] = [];
   let cursor = anchor;
   for (let step = 0; step < maxSteps; step += 1) {
-    if (adjacent.some((sq) => sq.column === cursor.column && sq.row === cursor.row)) {
+    if (cursor.column === destination.column && cursor.row === destination.row) {
+      break;
+    }
+    if (
+      candidates === adjacent &&
+      adjacent.some((sq) => sq.column === cursor.column && sq.row === cursor.row)
+    ) {
       break;
     }
     const next = nextStepTowardSquare(cursor, destination, map);

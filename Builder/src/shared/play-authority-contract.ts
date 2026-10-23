@@ -681,7 +681,13 @@ export function textReferencesUnlockedDoorState(text: string): boolean {
 
 export function textRequestsLockPicking(text: string): boolean {
   // "Pick up / picking up" is inventory language — never a lock attempt (VDM-005).
-  const withoutPickUp = text.replace(/\bpick(?:ing|ed)?\s+up\b/gi, ' ');
+  // Also strip negated lock/unlock clauses ("without opening or unlocking it", "not unlocking") (R26-02).
+  const withoutPickUp = text
+    .replace(/\bpick(?:ing|ed)?\s+up\b/gi, ' ')
+    .replace(
+      /\b(?:without|not|never|do\s+not|don't|dont)\s+(?:(?:opening|touching|forcing|breaking|disturbing)\s+(?:or|and)\s+)?(?:unlock(?:ing)?|pick(?:ing)?(?:\s+(?:the\s+)?lock)?)\b/gi,
+      ' ',
+    );
   const picksLockOrDoor =
     /\bpick(?:ing|ed)?\s+(?:the\s+)?(?:lock|door|doorway|gate|entry(?:way)?)\b/i.test(
       withoutPickUp,
@@ -711,6 +717,7 @@ export function textIsInterrogative(text: string): boolean {
 
 export interface ParsePlayerDeclarationOptions {
   readonly knownNpcs?: readonly { readonly id: string; readonly label: string }[];
+  readonly presentNpcs?: readonly { readonly id: string; readonly label: string }[];
 }
 
 /**
@@ -733,6 +740,7 @@ export function parsePlayerDeclaration(
   const outsideQuotes = trimmed
     .replace(/"[^"]*"/g, ' ')
     .replace(/[“”][^“”]*[“”]/g, ' ')
+    .replace(/(?:^|[\s,;:()])'[^']*'(?=$|[\s.,!?;:)])/g, ' ')
     .trim();
   const searchScope = outsideQuotes.length > 0 ? outsideQuotes : trimmed;
 
@@ -825,6 +833,28 @@ export function parsePlayerDeclaration(
     }
   }
 
+  // 5. Fallback: interpersonal speech / question directed at the present room NPC without naming them explicitly (F26-02)
+  // e.g. "I lean across the counter and ask in a low voice, 'Who was the last patron seen entering the backroom with the masked courier?'"
+  if (addressee === null) {
+    const presentTargets = options.presentNpcs ?? (knownNpcs.length === 1 ? knownNpcs : []);
+    if (
+      presentTargets.length > 0 &&
+      !/\b(?:director|dm|game\s*master)\b/i.test(searchScope) &&
+      /\b(?:asks?|tells?|says?\s+to|speaks?\s+(?:to|with)|talk(?:s|ing)?\s+(?:to|with)|whispers?(?:\s+to)?|inquir(?:e|es|ing)|question(?:s|ing)?|greets?|address(?:es|ing)?)\b/i.test(
+        searchScope,
+      ) &&
+      (/"[^"]+"|[“”][^“”]+[“”]|'[A-Z][^']*'/u.test(trimmed) ||
+        /\b(?:counter|bar|barkeep|tavernkeep(?:er)?|innkeep(?:er)?|warden|guard|patron|host|merchant|keeper|clerk|stranger|her|him|them)\b/i.test(
+          searchScope,
+        ) ||
+        /\b(?:asks?|inquir(?:e|es|ing)|question(?:s|ing)?)\b[\s\S]{0,40}\b(?:who|what|where|when|why|how|which|whether|if)\b/i.test(
+          trimmed,
+        ))
+    ) {
+      addressee = presentTargets[0]!.label;
+    }
+  }
+
   const isInterrogative = textIsInterrogative(trimmed);
   const actionSequence: DeclarationActionStep[] = [];
   const playerAssertedWorldFacts: PlayerAssertedWorldFact[] = [];
@@ -885,61 +915,72 @@ export function parsePlayerDeclaration(
       !/\b(?:door|doorway|gate|lock|lamp|bench|crate|counter|trap)\b/i.test(trimmed) &&
       !/\b(?:unlock|attack|strike|cast|open|opens|opening)\b/i.test(trimmed));
 
-  const wantsUnlock = textRequestsLockPicking(trimmed);
-  const refsUnlocked = textReferencesUnlockedDoorState(trimmed);
+  // Strip subordinate observation clauses mentioning a door/doorway ("keeping an eye on the closed east doorway",
+  // "while watching the doorway") so primary movement/prop intent is not hijacked by door state/approach (F26-01).
+  const primaryActionText = trimmed
+    .replace(
+      /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
+      '',
+    )
+    .trim();
+  const doorScopeText = primaryActionText.length > 0 ? primaryActionText : trimmed;
+
+  const wantsUnlock = textRequestsLockPicking(doorScopeText);
+  const refsUnlocked = textReferencesUnlockedDoorState(doorScopeText);
   // Negation / exclusion: "without opening", "do not open" — never draft open_door.
-  const negatesOpen = declarationNegatesDoorOpen(trimmed);
+  const negatesOpen = declarationNegatesDoorOpen(doorScopeText);
   // Adjectival "open/opened wooden door" is door state, not an open-door verb.
-  const withoutOpenDoorNoun = trimmed.replace(
+  const withoutOpenDoorNoun = doorScopeText.replace(
     /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
     'doorway',
   );
   const stepThroughPassage =
-    /\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(trimmed) ||
-    /\bthrough\s+(?:the\s+)?(?:open(?:ed)?\s+)?(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)\b/i.test(
-      trimmed,
-    ) ||
-    /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(trimmed) ||
-    /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(trimmed);
+    !negatesOpen &&
+    (/\b(?:steps?|stepping|walks?|walking|goes?|going)\s+through\b/i.test(doorScopeText) ||
+      /\bthrough\s+(?:the\s+)?(?:open(?:ed)?\s+)?(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)\b/i.test(
+        doorScopeText,
+      ) ||
+      /\b(?:into|enter(?:s|ing)?)\s+(?:the\s+)?(?:room|chamber)\s+beyond\b/i.test(doorScopeText) ||
+      /\benter(?:s|ing)?\s+(?:the\s+)?(?:room|chamber|passage)\b/i.test(doorScopeText));
   const openDoorVerb =
     !negatesOpen &&
     /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(withoutOpenDoorNoun) &&
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenDoorNoun) &&
     // "already open" / "is open" is state description, not an open action.
-    !/\b(?:already\s+open|is\s+open|says?\s+closed|still\s+closed)\b/i.test(trimmed);
+    !/\b(?:already\s+open|is\s+open|says?\s+closed|still\s+closed)\b/i.test(doorScopeText);
   const wantsOpenDoor =
     !wantsUnlock &&
     !negatesOpen &&
     (openDoorVerb ||
       // Passage language against an already-unlocked doorway is open/transit, not lock-picking.
-      (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(trimmed))));
+      (refsUnlocked && (stepThroughPassage || /\benter(?:s|ing)?\b/i.test(doorScopeText))));
 
   const wantsCloseDoor =
     !wantsUnlock &&
     !wantsOpenDoor &&
-    /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(trimmed) &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed);
+    /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(doorScopeText) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(doorScopeText);
 
   // Door state / listen / lock-check without opening — Perception/fiction, not move/open.
   // Bare negation with an explicit move verb is movement only (not inspect+move).
   // Trap / disarm / careful search is a skill check — never a casual door-state read.
   const wantsTrapOrHazardSearch =
-    /\b(?:traps?|disarm|search\s+for|look\s+for\s+traps?)\b/i.test(trimmed);
+    /\b(?:traps?|disarm|search\s+for|look\s+for\s+traps?)\b/i.test(doorScopeText);
   const doorSenseVerb =
     /\b(?:listen(?:s|ing)?|check(?:s|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)|look(?:s|ing)?\s+at|study)\b/i.test(
-      trimmed,
+      doorScopeText,
     ) ||
-    (/\block(?:ed)?\b/i.test(trimmed) &&
-      /\b(?:check|see|whether|if|inspect|examin)\b/i.test(trimmed)) ||
-    /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/i.test(trimmed) ||
+    (/\block(?:ed)?\b/i.test(doorScopeText) &&
+      /\b(?:check|see|whether|if|inspect|examin)\b/i.test(doorScopeText)) ||
+    /\b(?:whether|if)\s+(?:the\s+)?(?:door|doorway|gate|lock)/i.test(doorScopeText) ||
     // "Is the door locked?" / "Is it locked?" — state query, not open.
-    /\bis\s+(?:the\s+)?(?:door|doorway|gate|lock)\s+locked\b/i.test(trimmed) ||
-    /\bis\s+it\s+locked\b/i.test(trimmed);
+    /\bis\s+(?:the\s+)?(?:door|doorway|gate|lock)\s+locked\b/i.test(doorScopeText) ||
+    /\bis\s+it\s+locked\b/i.test(doorScopeText);
   const explicitMoveVerb =
-    /\b(?:walks?|walking|moves?|moving|goes?|going|steps?|stepping|approaches?)\b/i.test(trimmed);
+    /\b(?:walks?|walking|moves?|moving|goes?|going|steps?|stepping|approaches?)\b/i.test(doorScopeText);
   const wantsDoorStateRead =
     !wantsTrapOrHazardSearch &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(doorScopeText) &&
     !wantsUnlock &&
     !wantsOpenDoor &&
     (doorSenseVerb || (negatesOpen && !explicitMoveVerb));
@@ -948,8 +989,12 @@ export function parsePlayerDeclaration(
   // Preposition must bind directly to the door so "beside the counter watching the doorway" is NOT a door approach.
   const wantsBesideDoor =
     /\b(?:beside|next\s+to|adjacent\s+to|up\s+to)\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b/i.test(
-      trimmed,
-    );
+      doorScopeText,
+    ) ||
+    (/\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(doorScopeText) &&
+      /\b(?:(?:stop|stand|halt|wait|pause)s?\s+(?:right\s+)?(?:beside|next\s+to|by|at|before|in\s+front\s+of)\s+it|(?:move|walk|step|go|head)s?\s+(?:[a-z0-9-]+\s+){0,4}to\s+(?:the\s+)?(?:[a-z-]+\s+){0,3}(?:door|doorway|gate|entry(?:way)?)\b[\s\S]{0,40}\bwithout\s+(?:opening|crossing|entering|stepping\s+through))\b/i.test(
+        doorScopeText,
+      ));
 
   if (wantsUnlock) {
     actionSequence.push({ kind: 'unlock_door', targetRef: null, outcomeHint: null });
@@ -1019,7 +1064,7 @@ export function parsePlayerDeclaration(
   if (
     addressee === null &&
     isInterrogative &&
-    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(trimmed) &&
+    /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(doorScopeText) &&
     !wantsUnlock &&
     !wantsOpenDoor &&
     !wantsDoorStateRead &&

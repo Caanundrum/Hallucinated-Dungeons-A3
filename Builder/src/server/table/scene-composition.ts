@@ -923,6 +923,21 @@ function composeInterior(options: {
       interactable: true,
     },
   ];
+  if (
+    family.templateId === 'interior_inn_common' &&
+    !/\bservice\s+counter\b/i.test(family.poiLabel)
+  ) {
+    features.push({
+      objectId: `${options.sceneId}:service-counter`,
+      column: 4,
+      row: 2,
+      label: 'Service counter',
+      referenceKind: 'prop',
+      objectKind: 'container',
+      state: 'closed',
+      interactable: true,
+    });
+  }
   if (family.npcLabel !== null && family.npcLabel !== undefined && family.npcLabel.trim().length > 0) {
     features.push({
       objectId: `${options.sceneId}:npc-premise`,

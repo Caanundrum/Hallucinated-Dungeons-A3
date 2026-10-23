@@ -365,10 +365,27 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function stepIsComplete(step: WizardStep): boolean {
+    if (
+      step === 'background' &&
+      current?.draft.choices.classId !== null &&
+      current?.draft.choices.backgroundId !== null &&
+      current?.draft.unresolved.some((item) => item.step === 'class') === true
+    ) {
+      return false;
+    }
     return current?.draft.unresolved.every((item) => item.step !== step) === true;
   }
 
   function blockersForStep(step: WizardStep): readonly string[] {
+    if (
+      step === 'background' &&
+      current?.draft.choices.classId !== null &&
+      current?.draft.choices.backgroundId !== null
+    ) {
+      return (current?.draft.unresolved ?? [])
+        .filter((item) => item.step === 'background' || item.step === 'class')
+        .map((item) => item.message);
+    }
     return (current?.draft.unresolved ?? [])
       .filter((item) => item.step === step)
       .map((item) => item.message);
@@ -672,6 +689,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
             Grants ${escapeHtml(detail.skillLabels.join(' and '))}, ${escapeHtml(detail.toolProficiency)},
             and the ${escapeHtml(detail.originFeat)} feat.
           </p>
+          ${
+            state.options.classDetail !== null &&
+            classSkillIds.length < state.options.classDetail.skillChoiceCount
+              ? `
+          <div class="replacement-skill-box" data-testid="background-replacement-skills">
+            <h3>Replacement ${escapeHtml(state.options.classDetail.label)} Skills (${classSkillIds.length} of ${state.options.classDetail.skillChoiceCount})</h3>
+            <p class="wizard-coach">
+              ${escapeHtml(detail.label)} grants ${escapeHtml(detail.skillLabels.join(' and '))} automatically.
+              Choose ${state.options.classDetail.skillChoiceCount - classSkillIds.length} replacement ${escapeHtml(state.options.classDetail.label)} skill${
+                state.options.classDetail.skillChoiceCount - classSkillIds.length === 1 ? '' : 's'
+              } below so you keep all ${state.options.classDetail.skillChoiceCount} class skill picks.
+            </p>
+            ${checkboxList({
+              name: 'class-skill',
+              testId: 'class-skill-options',
+              entries: state.options.classDetail.skillOptions.filter(
+                (skill) => !detail.skillIds.includes(skill.id),
+              ),
+              selected: classSkillIds,
+              maxChoose: state.options.classDetail.skillChoiceCount,
+            })}
+          </div>`
+              : ''
+          }
           <h3>Ability increases</h3>
           <p>
             Choose one legal pattern only — either +2 and +1 on two of these abilities, or +1 on each

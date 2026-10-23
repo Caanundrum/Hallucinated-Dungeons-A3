@@ -45,11 +45,11 @@ export function declarationNegatesDoorOpen(text: string): boolean {
     return false;
   }
   return (
-    /\b(?:do(?:es)?\s+not|don't|dont|without|never)\s+(?:open(?:ing)?|push(?:ing)?\s+open|swing(?:ing)?\s+open)\b/i.test(
+    /\b(?:do(?:es)?\s+not|don't|dont|without|never)\s+(?:open(?:ing)?|cross(?:ing)?|enter(?:ing)?|step(?:ping)?\s+through|go(?:ing)?\s+through|push(?:ing)?\s+open|swing(?:ing)?\s+open)\b/i.test(
       trimmed,
     ) ||
-    /\bbut\s+i\s+(?:do\s+not|don't|dont)\s+open\b/i.test(trimmed) ||
-    /\bwithout\s+(?:open(?:ing)?\s+)?(?:it|them|the\s+door)\b/i.test(trimmed)
+    /\bbut\s+i\s+(?:do\s+not|don't|dont)\s+(?:open|cross|enter|step\s+through)\b/i.test(trimmed) ||
+    /\bwithout\s+(?:open(?:ing)?\s+|cross(?:ing)?\s+|enter(?:ing)?\s+)?(?:it|them|the\s+door(?:way)?)\b/i.test(trimmed)
   );
 }
 

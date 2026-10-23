@@ -43,7 +43,10 @@ import {
   doorAuthorityFromStored,
   formatDoorAuthorityStateSuffix,
 } from '../../shared/play-authority-contract.js';
-import { declarationIsDoorOpenOrPassage } from '../../shared/resolved-action-receipt.js';
+import {
+  declarationIsDoorOpenOrPassage,
+  declarationNegatesDoorOpen,
+} from '../../shared/resolved-action-receipt.js';
 import type {
   PresentationCueKind,
   PresentationCuePlanProjection,
@@ -2728,6 +2731,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const resumeAfterOpenCross =
         draft.proposedCommandType === 'table.open_door' &&
         declarationText.length > 0 &&
+        !declarationNegatesDoorOpen(declarationText) &&
         /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
       const nonAdjectivalDeclaration = declarationText.replace(
         /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
@@ -2736,6 +2740,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       const resumeApproachThenOpen =
         draft.proposedCommandType === 'table.move' &&
         draft.edgeId !== undefined &&
+        !declarationNegatesDoorOpen(declarationText) &&
         /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
           nonAdjectivalDeclaration,
         );

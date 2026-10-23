@@ -278,7 +278,7 @@ export function buildNpcDialogueReply(options: {
   if (/\b(?:mira|bell)\b/i.test(q)) {
     return `${name}: "Mira was carrying that copper bell when she vanished into the old mill passages. I fear she's held deeper inside — we need to find her alive and recover the bell."`;
   }
-  if (/\b(?:vanished|missing|stolen|last\s+see|know\s+about|what\s+happened)\b/i.test(q)) {
+  if (/\b(?:vanished|missing|stolen|last\s+see|seen|patron|courier|backroom|cellar|masked|entered|entering|know\s+about|what\s+happened|who\s+was)\b/i.test(q)) {
     if (
       knowledge.length > 0 &&
       knowledge !== 'Present in the area.' &&
@@ -618,12 +618,23 @@ async function resolveDirectorNarrateOutput(options: {
       return `${name} is not present in this room — they vanished before the party arrived and must be rescued.${presentNote}`;
     }
 
-    // If the NPC is known in campaign memory but not present in this room
-    if (sceneNpc === null && npc !== null) {
-      const locationNote = /tavern/i.test(memory?.chapters[0]?.title ?? '')
-        ? 'in the tavern'
-        : 'in the previous area';
-      return `${npc.name} is not in this room right now — they remain ${locationNote} and out of earshot.`;
+    // If the NPC is known in campaign memory or in a previous room but not present in this room
+    const returnExitFeature = map?.notableFeatures.find(
+      (f) =>
+        (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
+        /\b(?:passage\s+back\s+to|return\s+to|back\s+to)\b/i.test(f.label),
+    );
+    if (sceneNpc === null && (npc !== null || returnExitFeature !== undefined)) {
+      const returnRoomMatch = returnExitFeature?.label.match(
+        /\b(?:passage\s+back\s+to|return\s+to|back\s+to)\s+(.+)$/i,
+      );
+      const locationNote = returnRoomMatch?.[1]
+        ? `back in ${returnRoomMatch[1].trim()}`
+        : /tavern/i.test(memory?.chapters[0]?.title ?? '')
+          ? 'in the tavern'
+          : 'in the previous area';
+      const displayNpc = npc?.name ?? name;
+      return `${displayNpc} is not in this room right now — they remain ${locationNote}, out of earshot from here.`;
     }
     const cleanName = sceneNpc?.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || npc?.name || name;
     try {
@@ -1056,6 +1067,7 @@ export async function interpretNaturalLanguageIntent(options: {
   }
 
   let knownNpcs: { id: string; label: string }[] = [];
+  let presentNpcRecords: { id: string; label: string }[] = [];
   let absentRoomNpcs: { id: string; label: string; roomTitle: string }[] = [];
   try {
     const memory = await loadCampaignMemory(
@@ -1078,20 +1090,33 @@ export async function interpretNaturalLanguageIntent(options: {
     if (activeScene !== undefined) {
       for (const feature of activeScene.features) {
         if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
-          const cleanLabel = feature.label.replace(/\s+[—–-]\s+\w+$/u, '').trim();
+          const cleanLabel = feature.label
+            .replace(/\s+[—–-]\s+.*$/u, '')
+            .replace(/\s*\([^)]*\)\s*$/u, '')
+            .trim();
           if (cleanLabel.length > 0) {
             activeNpcNames.add(cleanLabel.toLowerCase());
+            if (!presentNpcRecords.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())) {
+              presentNpcRecords.push({ id: feature.objectId, label: cleanLabel });
+            }
             if (!knownNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())) {
               knownNpcs.push({ id: feature.objectId, label: cleanLabel });
             }
           }
         }
       }
+      let previousRoomTitle = 'the previous chamber';
       for (const [sceneId, sceneInst] of Object.entries(runtime.sceneInstances ?? {})) {
         if (sceneId === runtime.activeSceneId || !sceneInst) continue;
+        if (sceneId === 'scene-m1-r1' || (runtime.sceneStack ?? []).includes(sceneId)) {
+          previousRoomTitle = sceneInst.title || previousRoomTitle;
+        }
         for (const feature of sceneInst.features ?? []) {
           if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
-            const cleanLabel = feature.label.replace(/\s+[—–-]\s+\w+$/u, '').trim();
+            const cleanLabel = feature.label
+              .replace(/\s+[—–-]\s+.*$/u, '')
+              .replace(/\s*\([^)]*\)\s*$/u, '')
+              .trim();
             if (cleanLabel.length > 0 && !activeNpcNames.has(cleanLabel.toLowerCase())) {
               if (!absentRoomNpcs.some((entry) => entry.label.toLowerCase() === cleanLabel.toLowerCase())) {
                 absentRoomNpcs.push({
@@ -1101,6 +1126,45 @@ export async function interpretNaturalLanguageIntent(options: {
                 });
               }
             }
+          }
+        }
+        const bannerText = `${sceneInst.sceneBanner ?? ''} ${sceneInst.description ?? ''}`;
+        const bannerMatch = /\b([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)+)\s+is\s+(?:waiting|here)\b/.exec(
+          bannerText,
+        );
+        if (bannerMatch !== null) {
+          const bannerNpc = bannerMatch[1]!.trim();
+          if (
+            bannerNpc.length > 0 &&
+            !activeNpcNames.has(bannerNpc.toLowerCase()) &&
+            !absentRoomNpcs.some((entry) => entry.label.toLowerCase() === bannerNpc.toLowerCase())
+          ) {
+            absentRoomNpcs.push({
+              id: `${sceneId}:npc-banner`,
+              label: bannerNpc,
+              roomTitle: sceneInst.title || 'the previous chamber',
+            });
+          }
+        }
+      }
+      // Also mark any memory NPCs who are not in the active room when the party is in a secondary room
+      const isSecondaryRoom =
+        (runtime.sceneStack?.length ?? 0) > 0 ||
+        (runtime.activeSceneId !== null &&
+          runtime.activeSceneId !== undefined &&
+          runtime.activeSceneId !== 'scene-m1-r1' &&
+          Object.keys(runtime.sceneInstances ?? {}).length > 1);
+      if (isSecondaryRoom) {
+        for (const memNpc of knownNpcs) {
+          if (
+            !activeNpcNames.has(memNpc.label.toLowerCase()) &&
+            !absentRoomNpcs.some((entry) => entry.label.toLowerCase() === memNpc.label.toLowerCase())
+          ) {
+            absentRoomNpcs.push({
+              id: memNpc.id,
+              label: memNpc.label,
+              roomTitle: previousRoomTitle,
+            });
           }
         }
       }
@@ -1160,6 +1224,7 @@ export async function interpretNaturalLanguageIntent(options: {
         map,
         seatedSheet,
         knownNpcs,
+        absentRoomNpcs,
       });
       if (applied !== null) {
         proposedCommandType = applied.proposedCommandType;
@@ -1186,6 +1251,7 @@ export async function interpretNaturalLanguageIntent(options: {
       seatedSheet,
       rulesProgressionClassLabel,
       knownNpcs,
+      presentNpcs: presentNpcRecords,
       absentRoomNpcs,
     });
     proposedCommandType = fallback.proposedCommandType;

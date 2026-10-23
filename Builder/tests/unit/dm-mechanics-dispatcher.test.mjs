@@ -326,3 +326,91 @@ test('DM Dispatcher [F26-10]: Addressing absent NPC in another room explains in-
   assert.match(applied.summary, /Warden Elira is not in this room right now/i);
   assert.match(applied.summary, /out of earshot/i);
 });
+
+test('Codex Retest [F26-01, R26-03, F26-02, R26-02]: deterministic parsing and door/feature resolution honor exact retest declarations', async () => {
+  const {
+    parsePlayerDeclaration,
+    resolveIntentAuthority,
+    textRequestsLockPicking,
+  } = await import('../../dist/shared/play-authority-contract.js');
+  const {
+    pathBesideFeature,
+    resolveDoorIntentForMap,
+    wantsBesideDoorIntent,
+  } = await import('../../dist/server/table/scene-door-intent.js');
+  const { buildNpcDialogueReply } = await import('../../dist/server/ai/director-gateway.js');
+
+  // F26-01: Subordinate observation clause ("keeping an eye on the closed east doorway") must not hijack movement
+  const f2601 = 'I walk up beside the service counter, keeping an eye on the closed east doorway.';
+  const parsedF2601 = parsePlayerDeclaration(f2601, {
+    knownNpcs: [{ id: 'npc-elira', label: 'Warden Elira' }],
+  });
+  const authF2601 = resolveIntentAuthority(parsedF2601);
+  assert.equal(authF2601.disposition, 'propose_command');
+  assert.equal(authF2601.actionSequence[0]?.kind, 'move');
+  assert.notEqual(authF2601.actionSequence[0]?.outcomeHint, 'beside_door');
+  // Even if token starts at (3,4) adjacent to (4,4), pathBesideFeature steps along the counter
+  const mapAtSpawn = {
+    ...mockTavernMap(),
+    tokens: [
+      {
+        tokenId: 'token-kaelen',
+        seatId: 'seat-kaelen',
+        label: 'Kaelen Vance',
+        footprint: { anchor: { column: 3, row: 4 } },
+      },
+    ],
+  };
+  const stepPath = pathBesideFeature({ column: 3, row: 4 }, { column: 4, row: 4 }, mapAtSpawn);
+  assert.ok(stepPath && stepPath.length >= 1);
+
+  // R26-03: Both negated beside-door movement prompts propose table.move without opening or crossing
+  const r2603a = 'I move three squares east to stand beside the doorway without opening it.';
+  const r2603b = 'I move east to the closed wooden doorway and stop beside it without crossing.';
+  assert.equal(wantsBesideDoorIntent(r2603a), true);
+  assert.equal(wantsBesideDoorIntent(r2603b), true);
+  const doorResA = resolveDoorIntentForMap(mapAtSpawn, { column: 3, row: 4 }, r2603a);
+  const doorResB = resolveDoorIntentForMap(mapAtSpawn, { column: 3, row: 4 }, r2603b);
+  assert.ok(doorResA);
+  assert.equal(doorResA.proposedCommandType, 'table.move');
+  assert.doesNotMatch(doorResA.summary, /and open it/i);
+  assert.ok(doorResB);
+  assert.equal(doorResB.proposedCommandType, 'table.move');
+  assert.doesNotMatch(doorResB.summary, /and open it/i);
+
+  // F26-02: Delivery-phrase dialogue without naming NPC binds to present room NPC and ignores verbs inside quotes
+  const f2602 =
+    "I lean across the counter and ask in a low voice, 'Who was the last patron seen entering the backroom with the masked courier?'";
+  const parsedF2602 = parsePlayerDeclaration(f2602, {
+    knownNpcs: [{ id: 'npc-elira', label: 'Warden Elira' }],
+    presentNpcs: [{ id: 'npc-elira', label: 'Warden Elira' }],
+  });
+  assert.equal(parsedF2602.addressee, 'Warden Elira');
+  const authF2602 = resolveIntentAuthority(parsedF2602);
+  assert.equal(authF2602.disposition, 'director_narrate_only');
+  assert.equal(authF2602.actionSequence[0]?.kind, 'dialogue');
+  const replyF2602 = buildNpcDialogueReply({
+    npc: {
+      name: 'Warden Elira',
+      role: 'contact',
+      motive: 'find courier',
+      knowledge: 'The masked courier slipped down the cellar stairs.',
+    },
+    playerText: f2602,
+    mapTitle: 'Drowned Crow Tavern',
+  });
+  assert.match(replyF2602, /Warden Elira:/);
+  assert.match(replyF2602, /masked courier|passages beyond/i);
+
+  // R26-02: Negated lock clause on chest Investigation does not trigger lock-picking
+  const r2602 = 'Quietly, I investigate the sturdy oak chest for clues without opening or unlocking it.';
+  assert.equal(textRequestsLockPicking(r2602), false);
+  const parsedR2602 = parsePlayerDeclaration(r2602, {
+    knownNpcs: [{ id: 'npc-elira', label: 'Warden Elira' }],
+  });
+  assert.equal(parsedR2602.addressee, null);
+  const authR2602 = resolveIntentAuthority(parsedR2602);
+  assert.equal(authR2602.disposition, 'propose_command');
+  assert.equal(authR2602.actionSequence[0]?.kind, 'inspect');
+  assert.equal(authR2602.actionSequence[0]?.outcomeHint, 'investigate_mark');
+});

@@ -97,6 +97,32 @@ export function buildStoredSceneFromRoomBlueprint(
           targetSceneId: exit.targetSceneId,
         }))
       : composed.exits;
+  const baseFeatures = composed.features
+    .filter(
+      (feature) =>
+        room.npcs.length > 0 ||
+        (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc'),
+    )
+    .map((feature) => ({
+      ...feature,
+      label: featureLabelWithState(feature),
+    }));
+  if (
+    room.npcs.length > 0 &&
+    !baseFeatures.some((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
+  ) {
+    const primaryNpc = room.npcs[0]!;
+    baseFeatures.push({
+      objectId: `${room.sceneId}:npc-premise`,
+      column: 2,
+      row: 3,
+      label: `${primaryNpc.name} — present`,
+      referenceKind: 'npc',
+      objectKind: 'npc',
+      state: 'present',
+      interactable: true,
+    });
+  }
   return {
     sceneId: room.sceneId,
     templateId: room.templateId,
@@ -111,16 +137,7 @@ export function buildStoredSceneFromRoomBlueprint(
     rows: composed.rows,
     cells: composed.cells,
     edges: composed.edges,
-    features: composed.features
-      .filter(
-        (feature) =>
-          room.npcs.length > 0 ||
-          (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc'),
-      )
-      .map((feature) => ({
-        ...feature,
-        label: featureLabelWithState(feature),
-      })),
+    features: baseFeatures,
     doorStates: { ...composed.doorStates },
     spawn: composed.spawn,
     exits,

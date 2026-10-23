@@ -36,7 +36,12 @@ import {
 import { isAdjacentToDoorEdge } from '../../shared/map-presentation.js';
 import { rejectUnsupportedPremiseClaim } from '../../shared/campaign-facts.js';
 import { containerLabelHintFromText } from '../../shared/container-contents.js';
-import { pathBesideFeature, resolveBlankTableDoorBuild, resolveDoorIntentForMap } from '../table/scene-door-intent.js';
+import {
+  pathBesideFeature,
+  resolveBlankTableDoorBuild,
+  resolveDoorIntentForMap,
+  wantsBesideDoorIntent,
+} from '../table/scene-door-intent.js';
 import { buildSkillCheckDraftSummary } from '../table/skill-check-resolve.js';
 import { SPELL_EFFECTS } from '../rules/engine/spell-effects.js';
 import { dedupeInspectCandidateLabels } from './director-prose-scrubbers.js';
@@ -52,6 +57,7 @@ export interface DeterministicIntentFallbackInput {
   readonly seatedSheet: DerivedCharacterSheet | null;
   readonly rulesProgressionClassLabel: string | null;
   readonly knownNpcs: readonly { readonly id: string; readonly label: string }[];
+  readonly presentNpcs?: readonly { readonly id: string; readonly label: string }[];
   readonly absentRoomNpcs?: readonly {
     readonly id: string;
     readonly label: string;
@@ -440,7 +446,10 @@ export async function resolveDeterministicIntentFallback(
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
-  const structured = parsePlayerDeclaration(rawText, { knownNpcs });
+  const structured = parsePlayerDeclaration(rawText, {
+    knownNpcs,
+    ...(options.presentNpcs !== undefined ? { presentNpcs: options.presentNpcs } : {}),
+  });
   const authority = resolveIntentAuthority(structured);
   const absentRoomNpcs = options.absentRoomNpcs ?? [];
   const matchedAbsentNpc =
@@ -570,9 +579,12 @@ export async function resolveDeterministicIntentFallback(
   if (sceneLoopResolved) {
     // Skip combat/door branches — scene loop owns this declaration.
   } else if (authorityShortCircuit) {
-    // Cast / take must not die in the generic clarify short-circuit — capability and
-    // authored-contents answers are table truth, not optional keyword branches.
-    if (/(cast|spell|fireball|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
+    // Absent campaign NPCs must be caught before generic clarify / world-authorship bounce (F26-10).
+    if (matchedAbsentNpc !== null) {
+      proposedCommandType = 'table.sync';
+      deferDirectorNarrate = false;
+      summary = `${matchedAbsentNpc.label} is not in this room right now — they remain back in ${matchedAbsentNpc.roomTitle}, out of earshot from here.`;
+    } else if (/(cast|spell|fireball|fire bolt|firebolt|burning hands|sacred flame|guiding bolt|cure wounds)/.test(text)) {
       const matchedSpell = matchSpellFromText(text);
       const spellLabelFromText =
         matchedSpell?.label ??
@@ -703,13 +715,29 @@ export async function resolveDeterministicIntentFallback(
               : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
 
           if (ownToken !== undefined && !mentionsDoorIntent(text)) {
-            const targetFeature = map.notableFeatures.find((f) => {
+            let targetFeature = map.notableFeatures.find((f) => {
               const label = f.label.toLowerCase();
               if (text.toLowerCase().includes(label)) return true;
               const parts = label.split(/\s+/).filter((p) => p.length >= 4);
               return parts.some((p) => text.toLowerCase().includes(p));
             });
-            if (targetFeature !== undefined) {
+            let featureDisplayLabel = targetFeature?.label ?? null;
+            if (
+              targetFeature === undefined &&
+              /\b(?:service\s+counter|counter|bar)\b/i.test(text)
+            ) {
+              targetFeature = map.notableFeatures.find(
+                (f) =>
+                  f.column === 4 &&
+                  (f.row === 2 || f.row === 4) &&
+                  f.objectKind !== 'npc' &&
+                  f.objectKind !== 'exit',
+              );
+              if (targetFeature !== undefined) {
+                featureDisplayLabel = 'Service counter';
+              }
+            }
+            if (targetFeature !== undefined && featureDisplayLabel !== null) {
               const featureSquare = { column: targetFeature.column, row: targetFeature.row };
               const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
               if (featurePath !== null && featurePath.length > 0) {
@@ -717,17 +745,30 @@ export async function resolveDeterministicIntentFallback(
                 path = featurePath;
                 const steps = featurePath.length;
                 const feet = steps * map.coordinateSpace.feetPerSquare;
-                summary = `Walk beside the ${targetFeature.label} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
+                summary = `Walk beside the ${featureDisplayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
                 doorResolved = true;
               }
             }
           }
-          if (ownToken !== undefined && map.edges.length > 0) {
+          const primaryMoveText = text
+            .replace(
+              /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
+              '',
+            )
+            .trim();
+          if (
+            !doorResolved &&
+            ownToken !== undefined &&
+            map.edges.length > 0 &&
+            /\b(?:door|doorway|gate|entry(?:way)?|threshold|through|beyond|west|east|north|south)\b/i.test(
+              primaryMoveText,
+            )
+          ) {
             const gated = await gateDoorDeclarationAgainstLiveTruth({
               firestore: options.firestore,
               campaignId: options.campaignId,
               accountId: options.accountId,
-              text,
+              text: primaryMoveText,
               seatedSheet,
               map,
             });
@@ -739,17 +780,40 @@ export async function resolveDeterministicIntentFallback(
               }
               doorResolved = true;
             } else {
-              const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
+              const persisted = resolveDoorIntentForMap(
+                map,
+                ownToken.footprint.anchor,
+                primaryMoveText,
+              );
               if (persisted !== null) {
-                proposedCommandType = persisted.proposedCommandType;
-                summary = persisted.summary;
-                if (persisted.path !== undefined) {
-                  path = [...persisted.path];
+                const hasReturnExit = map.notableFeatures.some(
+                  (f) =>
+                    (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
+                    /\b(?:passage\s+back|return\s+to|back\s+to)\b/i.test(f.label),
+                );
+                const isCrossingStep =
+                  persisted.proposedCommandType === 'table.move' &&
+                  /\b(?:step(?:s|ping)?\s+(?:back\s+)?through|walk(?:s|ing)?\s+through|go(?:es|ing)?\s+through|through\s+the\s+open|enter(?:s|ing)?)\b/i.test(
+                    primaryMoveText,
+                  );
+                if (hasReturnExit && isCrossingStep) {
+                  proposedCommandType = 'table.travel_scene';
+                  returnToPrevious = true;
+                  destinationHint = 'return to the earlier scene';
+                  summary =
+                    'Ready to return through the open doorway to the earlier scene. Confirm to restore it with prior consequences.';
+                  doorResolved = true;
+                } else {
+                  proposedCommandType = persisted.proposedCommandType;
+                  summary = persisted.summary;
+                  if (persisted.path !== undefined) {
+                    path = [...persisted.path];
+                  }
+                  if (persisted.edgeId !== undefined) {
+                    edgeId = persisted.edgeId;
+                  }
+                  doorResolved = true;
                 }
-                if (persisted.edgeId !== undefined) {
-                  edgeId = persisted.edgeId;
-                }
-                doorResolved = true;
               }
             }
           }
@@ -764,10 +828,6 @@ export async function resolveDeterministicIntentFallback(
               : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
         }
       }
-    } else if (matchedAbsentNpc !== null) {
-      proposedCommandType = 'table.sync';
-      deferDirectorNarrate = false;
-      summary = `${matchedAbsentNpc.label} is not in this chamber right now — they remain back in ${matchedAbsentNpc.roomTitle}, out of earshot from here.`;
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';
       deferDirectorNarrate = true;
@@ -779,7 +839,10 @@ export async function resolveDeterministicIntentFallback(
   } else if (
     (authority.disposition === 'propose_command' &&
       (authority.actionSequence[0]?.kind === 'open_door' ||
-        authority.actionSequence[0]?.kind === 'close_door')) ||
+        authority.actionSequence[0]?.kind === 'close_door' ||
+        (authority.actionSequence[0]?.kind === 'move' &&
+          authority.actionSequence[0]?.outcomeHint === 'beside_door'))) ||
+    wantsBesideDoorIntent(text) ||
     (mentionsDoorIntent(text) &&
       !/(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative)/i.test(
         text,
@@ -814,13 +877,31 @@ export async function resolveDeterministicIntentFallback(
         } else {
           const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
           if (persisted !== null) {
-            proposedCommandType = persisted.proposedCommandType;
-            summary = persisted.summary;
-            if (persisted.path !== undefined) {
-              path = [...persisted.path];
-            }
-            if (persisted.edgeId !== undefined) {
-              edgeId = persisted.edgeId;
+            const hasReturnExit = map.notableFeatures.some(
+              (f) =>
+                (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
+                /\b(?:passage\s+back|return\s+to|back\s+to)\b/i.test(f.label),
+            );
+            const isCrossingStep =
+              persisted.proposedCommandType === 'table.move' &&
+              /\b(?:step(?:s|ping)?\s+(?:back\s+)?through|walk(?:s|ing)?\s+through|go(?:es|ing)?\s+through|through\s+the\s+open|enter(?:s|ing)?)\b/i.test(
+                text,
+              );
+            if (hasReturnExit && isCrossingStep) {
+              proposedCommandType = 'table.travel_scene';
+              returnToPrevious = true;
+              destinationHint = 'return to the earlier scene';
+              summary =
+                'Ready to return through the open doorway to the earlier scene. Confirm to restore it with prior consequences.';
+            } else {
+              proposedCommandType = persisted.proposedCommandType;
+              summary = persisted.summary;
+              if (persisted.path !== undefined) {
+                path = [...persisted.path];
+              }
+              if (persisted.edgeId !== undefined) {
+                edgeId = persisted.edgeId;
+              }
             }
           } else {
             const blankBuild = resolveBlankTableDoorBuild(map, ownToken.footprint.anchor, text);

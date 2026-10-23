@@ -231,8 +231,13 @@ export function applyDirectorDispatchToMap(options: {
   readonly map: MapBundleProjection;
   readonly seatedSheet: DerivedCharacterSheet | null;
   readonly knownNpcs: readonly { readonly id: string; readonly label: string }[];
+  readonly absentRoomNpcs?: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly roomTitle: string;
+  }[];
 }): AppliedDispatchResult | null {
-  const { dispatch, map, seatedSheet, knownNpcs } = options;
+  const { dispatch, map, seatedSheet, knownNpcs, absentRoomNpcs = [] } = options;
   const ownToken =
     map.viewerSeatId === null
       ? map.tokens[0]
@@ -274,12 +279,28 @@ export function applyDirectorDispatchToMap(options: {
   // 2. Feature / Prop Movement (e.g. Service Counter)
   if (dispatch.actionType === 'move_feature' && dispatch.moveFeature && ownToken) {
     const targetLabel = dispatch.moveFeature.featureLabel.toLowerCase().trim();
-    const targetFeature = map.notableFeatures.find((f) => {
+    let targetFeature = map.notableFeatures.find((f) => {
       const fl = f.label.toLowerCase();
       return fl.includes(targetLabel) || targetLabel.includes(fl);
     });
+    let displayLabel = targetFeature?.label ?? null;
+    if (
+      targetFeature === undefined &&
+      /\b(?:service\s+counter|counter|bar)\b/i.test(targetLabel)
+    ) {
+      targetFeature = map.notableFeatures.find(
+        (f) =>
+          f.column === 4 &&
+          (f.row === 2 || f.row === 4) &&
+          f.objectKind !== 'npc' &&
+          f.objectKind !== 'exit',
+      );
+      if (targetFeature !== undefined) {
+        displayLabel = 'Service counter';
+      }
+    }
 
-    if (targetFeature) {
+    if (targetFeature && displayLabel !== null) {
       const featureSquare = { column: targetFeature.column, row: targetFeature.row };
       const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
       if (featurePath !== null && featurePath.length > 0) {
@@ -288,12 +309,12 @@ export function applyDirectorDispatchToMap(options: {
         return {
           proposedCommandType: 'table.move',
           path: featurePath,
-          summary: `Walk beside the ${targetFeature.label} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`,
+          summary: `Walk beside the ${displayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`,
         };
       }
       return {
         proposedCommandType: 'table.sync',
-        summary: `You are already standing beside the ${targetFeature.label} in ${map.title}.`,
+        summary: `You are already standing beside the ${displayLabel} in ${map.title}.`,
       };
     }
   }
@@ -318,6 +339,17 @@ export function applyDirectorDispatchToMap(options: {
   if (dispatch.actionType === 'dialogue' && dispatch.dialogue) {
     const addressee = dispatch.dialogue.addressee?.trim() ?? null;
     if (addressee && addressee.length > 0) {
+      const absentNpc = absentRoomNpcs.find((n) => {
+        const target = addressee.toLowerCase();
+        const label = n.label.toLowerCase();
+        return label === target || label.includes(target) || target.includes(label);
+      });
+      if (absentNpc) {
+        return {
+          proposedCommandType: 'table.sync',
+          summary: `${absentNpc.label} is not in this room right now — they remain back in ${absentNpc.roomTitle}, out of earshot from here.`,
+        };
+      }
       const presentNpc = map.notableFeatures.find(
         (f) =>
           (f.objectKind === 'npc' || f.referenceKind === 'npc') &&

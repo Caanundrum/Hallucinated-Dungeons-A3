@@ -596,6 +596,7 @@ a.account-chip-label:focus-visible {
   display: grid;
   /* Default: single column — map + bottom story dock. Desktop widens into a right dock. */
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     'play'
     'story';
@@ -1350,24 +1351,54 @@ ol.record-list.dm-thread-list > li {
   padding-left: var(--space-2);
 }
 
-@media (max-width: 1100px) and (min-width: 901px) {
+@media (min-width: 901px) {
+  .table-floating-hud {
+    position: absolute;
+    left: var(--space-2);
+    top: var(--space-2);
+    z-index: 6;
+    max-width: min(22rem, 46%);
+  }
+
+  .table-floating-hud .hero-mini-sheet {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-weight) solid var(--panel-border);
+    border-radius: var(--radius-panel);
+    background: color-mix(in srgb, var(--panel-surface) 92%, #000);
+    box-shadow: var(--shadow-card);
+  }
+
+  .table-floating-hud .hp-bar,
+  .table-floating-hud .hero-mini-actions {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) and (min-width: 901px) {
   /*
-   * Mid tablet: same map-first column as desktop — no stacked Chat/Reference strips.
+   * Mid tablet: map stage in upper track ('play') and content-sized story dock in lower track ('story').
    * Drawers overlay the stage; keep the play dock composer inside overflow:clip.
    */
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: none;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'play'
+      'story';
   }
 
   .table-play-column {
-    grid-column: 1;
+    grid-area: play;
     min-height: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .table-map-chrome {
+    position: relative;
   }
 
   .table-info-rail:not(.is-collapsed) {
@@ -1459,6 +1490,7 @@ ol.record-list.dm-thread-list > li {
 @media (min-width: 1024px) {
   .table-dashboard-body {
     grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 0.95fr);
+    grid-template-rows: minmax(0, 1fr);
     grid-template-areas: 'play story';
   }
 
@@ -1539,28 +1571,6 @@ ol.record-list.dm-thread-list > li {
   .table-player-turn-composer {
     flex: 0 0 auto;
     margin-top: auto;
-  }
-
-  .table-floating-hud {
-    position: absolute;
-    left: var(--space-2);
-    top: var(--space-2);
-    z-index: 6;
-    max-width: min(22rem, 46%);
-  }
-
-  .table-floating-hud .hero-mini-sheet {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    border: var(--border-weight) solid var(--panel-border);
-    border-radius: var(--radius-panel);
-    background: color-mix(in srgb, var(--panel-surface) 92%, #000);
-    box-shadow: var(--shadow-card);
-  }
-
-  .table-floating-hud .hp-bar,
-  .table-floating-hud .hero-mini-actions {
-    display: none;
   }
 }
 
