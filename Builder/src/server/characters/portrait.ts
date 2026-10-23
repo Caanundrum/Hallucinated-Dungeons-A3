@@ -1,9 +1,10 @@
 /**
  * Character portrait generation with a clean curated fallback.
  *
- * Imagen is attempted only when a Gemini API key is clearly present in the
- * environment. Any failure (no key, timeout, HTTP error, oversize image,
- * empty response) resolves to the curated archetype portrait, never an error.
+ * Uses Gemini Enterprise Agent Platform (`gemini-3.1-flash-image` /
+ * `gemini-3.1-flash-image-preview` / `gemini-2.5-flash-image` via `generateContent`)
+ * or Imagen REST when a Gemini API key is present. Any failure resolves cleanly
+ * to the curated archetype portrait, never an error.
  */
 
 import { GoogleGenAI } from '@google/genai';
@@ -12,10 +13,16 @@ import {
   type GeneratePortraitResponse,
 } from '../../shared/portrait-contract.js';
 
-export const PORTRAIT_IMAGE_MODEL_DEFAULT = 'imagen-4.0-fast-generate-001';
+export const PORTRAIT_IMAGE_MODEL_DEFAULT = 'gemini-3.1-flash-image';
+export const GEMINI_IMAGE_MODELS = [
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-image-preview',
+  'gemini-2.5-flash-image',
+] as const;
 const PORTRAIT_TIMEOUT_MS = 25_000;
-/** Firestore documents cap at 1 MiB; keep the inline image safely below it. */
+/** Firestore documents cap at 1 MiB; chunked assets support up to 4 MB base64. */
 export const PORTRAIT_MAX_DATA_URL_LENGTH = 800_000;
+const PORTRAIT_MAX_GENERATED_BASE64_LENGTH = 4_000_000;
 
 export interface PortraitEnvironment {
   readonly [key: string]: string | undefined;
@@ -89,49 +96,154 @@ async function tryImagen(options: {
   }
 }
 
-async function tryVertexPortraitAdc(options: {
+function extractInlineImageFromResponse(response: unknown): {
+  readonly mimeType: string;
+  readonly base64Data: string;
+} | null {
+  const candidates = (
+    response as {
+      candidates?: readonly {
+        content?: {
+          parts?: readonly {
+            inlineData?: { data?: unknown; mimeType?: unknown };
+          }[];
+        };
+      }[];
+    }
+  )?.candidates;
+  const parts = candidates?.[0]?.content?.parts ?? [];
+  for (const part of parts) {
+    const data = part?.inlineData?.data;
+    if (typeof data === 'string' && data.length > 0 && data.length <= PORTRAIT_MAX_GENERATED_BASE64_LENGTH) {
+      const rawMime = part?.inlineData?.mimeType;
+      const mimeType =
+        rawMime === 'image/png' || rawMime === 'image/webp' || rawMime === 'image/jpeg'
+          ? rawMime
+          : 'image/jpeg';
+      return { mimeType, base64Data: data };
+    }
+  }
+  return null;
+}
+
+export async function tryGeminiImageGeneration(options: {
   readonly env: PortraitEnvironment;
-  readonly model: string;
+  readonly model?: string;
   readonly prompt: string;
-}): Promise<string | null> {
+  readonly aspectRatio?: '1:1' | '16:9' | '4:3';
+}): Promise<{ readonly mimeType: string; readonly base64Data: string } | null> {
   if (options.env.HD_PORTRAIT_GENERATION === 'off') {
     return null;
   }
+  const apiKey = portraitApiKey(options.env);
   const project = (
     options.env.HD_FIREBASE_PROJECT_ID ??
     options.env.GOOGLE_CLOUD_PROJECT ??
     options.env.GCLOUD_PROJECT ??
     ''
   ).trim();
-  if (options.env.HD_ENVIRONMENT_CLASS !== 'milestone' || project.length === 0) {
+  const isHostedMilestone =
+    options.env.HD_ENVIRONMENT_CLASS === 'milestone' && project.length > 0;
+  if (apiKey === null && !isHostedMilestone) {
     return null;
   }
-  const location = (options.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1').trim() || 'us-central1';
-  try {
-    const ai = new GoogleGenAI({ vertexai: true, project, location });
-    const response = await ai.models.generateImages({
-      model: options.model,
-      prompt: options.prompt,
-      config: {
-        numberOfImages: 1,
-        outputMimeType: 'image/jpeg',
-        aspectRatio: '1:1',
-      },
-    });
-    const first = response.generatedImages?.[0]?.image;
-    const bytes = first?.imageBytes;
-    if (typeof bytes !== 'string' || bytes.length === 0) {
+
+  const aspectRatio = options.aspectRatio ?? '1:1';
+  const configuredModel = (options.model ?? '').trim();
+  const candidateModels: string[] = [];
+  if (
+    configuredModel.length > 0 &&
+    !configuredModel.startsWith('imagen-') &&
+    !candidateModels.includes(configuredModel)
+  ) {
+    candidateModels.push(configuredModel);
+  }
+  for (const fallbackModel of GEMINI_IMAGE_MODELS) {
+    if (!candidateModels.includes(fallbackModel)) {
+      candidateModels.push(fallbackModel);
+    }
+  }
+
+  for (const candidateModel of candidateModels) {
+    try {
+      const location = candidateModel.startsWith('gemini-3')
+        ? 'global'
+        : (options.env.GOOGLE_CLOUD_LOCATION ?? 'global').trim() || 'global';
+      const ai =
+        apiKey !== null
+          ? new GoogleGenAI({ apiKey })
+          : new GoogleGenAI({ vertexai: true, project, location });
+      const response = await ai.models.generateContent({
+        model: candidateModel,
+        contents: options.prompt,
+        config: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: {
+            aspectRatio,
+            outputMimeType: 'image/jpeg',
+            outputCompressionQuality: 78,
+          },
+        },
+      });
+      const extracted = extractInlineImageFromResponse(response);
+      if (extracted !== null) {
+        return extracted;
+      }
+    } catch {
+      // Try next candidate model.
+    }
+  }
+
+  if (isHostedMilestone) {
+    try {
+      const ai = new GoogleGenAI({ vertexai: true, project, location: 'us-central1' });
+      const imagenModel = configuredModel.startsWith('imagen-')
+        ? configuredModel
+        : 'imagen-3.0-generate-002';
+      const response = await ai.models.generateImages({
+        model: imagenModel,
+        prompt: options.prompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio,
+        },
+      });
+      const first = response.generatedImages?.[0]?.image;
+      const bytes = first?.imageBytes;
+      if (
+        typeof bytes === 'string' &&
+        bytes.length > 0 &&
+        bytes.length <= PORTRAIT_MAX_GENERATED_BASE64_LENGTH
+      ) {
+        const mimeType =
+          first?.mimeType === 'image/png' || first?.mimeType === 'image/webp'
+            ? first.mimeType
+            : 'image/jpeg';
+        return { mimeType, base64Data: bytes };
+      }
+    } catch {
       return null;
     }
-    const mime =
-      first?.mimeType === 'image/png' || first?.mimeType === 'image/webp'
-        ? first.mimeType
-        : 'image/jpeg';
-    const dataUrl = `data:${mime};base64,${bytes}`;
-    return dataUrl.length <= PORTRAIT_MAX_DATA_URL_LENGTH ? dataUrl : null;
-  } catch {
+  }
+  return null;
+}
+
+async function tryVertexPortraitAdc(options: {
+  readonly env: PortraitEnvironment;
+  readonly model: string;
+  readonly prompt: string;
+}): Promise<string | null> {
+  const generated = await tryGeminiImageGeneration({
+    env: options.env,
+    model: options.model,
+    prompt: options.prompt,
+    aspectRatio: '1:1',
+  });
+  if (generated === null) {
     return null;
   }
+  return `data:${generated.mimeType};base64,${generated.base64Data}`;
 }
 
 export async function resolvePortrait(options: {
@@ -155,6 +267,16 @@ export async function resolvePortrait(options: {
     });
     if (generated !== null) {
       return { avatarUrl: generated, source: 'generated' };
+    }
+    if (options.fetchImpl === undefined) {
+      const sdkGenerated = await tryVertexPortraitAdc({
+        env,
+        model,
+        prompt,
+      });
+      if (sdkGenerated !== null) {
+        return { avatarUrl: sdkGenerated, source: 'generated' };
+      }
     }
   } else {
     const vertexGenerated = await tryVertexPortraitAdc({

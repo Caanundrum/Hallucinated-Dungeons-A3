@@ -194,6 +194,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let pendingChoices: CharacterChoices | null = null;
   /** Choices currently being saved — identity edits merge against this while busy. */
   let inFlightChoices: CharacterChoices | null = null;
+  /** Unsaved keystrokes in Identity inputs so displayChoices() stays up to date without mutating server draft.choices. */
+  let localIdentityDraft: CharacterChoices['identity'] | null = null;
+  let silentIdentitySaveInFlight = false;
   /** Advance to next wizard step once the in-flight save finishes. */
   let pendingAdvance = false;
   /** Physical Appearance text typed in the portrait section; survives re-renders. */
@@ -269,7 +272,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   /** Optimistic UI selection while a save is in flight or queued. */
   function displayChoices(): CharacterChoices {
-    return latestChoices();
+    const base = latestChoices();
+    return localIdentityDraft === null ? base : { ...base, identity: localIdentityDraft };
   }
 
   function tutorialDismissed(): boolean {
@@ -298,6 +302,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         return;
       }
       current = opened;
+      localIdentityDraft = null;
       draftOpened = true;
       activeStep =
         WIZARD_STEPS.find((step) => !current?.draft.completedSteps.includes(step)) ?? 'identity';
@@ -310,13 +315,55 @@ export function mountCharacterCreatePage(host: PageHost): void {
     render();
   }
 
-  async function commitChoices(next: CharacterChoices): Promise<void> {
-    const p = commitChoicesInner(next);
+  function scrollToWizardTop(): void {
+    const docEl = document.documentElement;
+    const prevBehavior = docEl !== null ? docEl.style.scrollBehavior : '';
+    if (docEl !== null) {
+      docEl.style.scrollBehavior = 'auto';
+    }
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+    if (docEl !== null) {
+      docEl.scrollTop = 0;
+    }
+    if (document.body !== null) {
+      document.body.scrollTop = 0;
+    }
+    container.scrollTop = 0;
+    const stepHeading = container.querySelector<HTMLElement>('[data-testid="active-step-heading"]');
+    stepHeading?.focus({ preventScroll: true });
+    if (docEl !== null) {
+      docEl.style.scrollBehavior = prevBehavior;
+    }
+  }
+
+  function isIdentityInputFocused(): boolean {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !container.contains(active)) {
+      return false;
+    }
+    return (
+      active.hasAttribute('data-identity') ||
+      active.getAttribute('data-testid') === 'identity-physical-appearance'
+    );
+  }
+
+  async function commitChoices(
+    next: CharacterChoices,
+    options?: { readonly silentDom?: boolean },
+  ): Promise<void> {
+    const p = commitChoicesInner(next, options);
     activeSavePromise = p;
     return p;
   }
 
-  async function commitChoicesInner(next: CharacterChoices): Promise<void> {
+  async function commitChoicesInner(
+    next: CharacterChoices,
+    options?: { readonly silentDom?: boolean },
+  ): Promise<void> {
     if (candidate === null || current === null) {
       return;
     }
@@ -324,17 +371,32 @@ export function mountCharacterCreatePage(host: PageHost): void {
       pendingChoices = next;
       return;
     }
+    const silent = options?.silentDom === true || (activeStep === 'identity' && isIdentityInputFocused());
     busy = true;
+    silentIdentitySaveInFlight = silent;
     error = null;
     pendingChoices = null;
     inFlightChoices = next;
-    render();
+    if (silent) {
+      syncIdentityStepDomInPlace();
+    } else {
+      render();
+    }
     try {
       current = await saveDraft({
         candidateId: candidate.candidateId,
         draftId: current.draft.draftId,
         choices: next,
       });
+      if (
+        localIdentityDraft !== null &&
+        localIdentityDraft.name === current.draft.choices.identity.name &&
+        localIdentityDraft.pronouns === current.draft.choices.identity.pronouns &&
+        localIdentityDraft.appearance === current.draft.choices.identity.appearance &&
+        localIdentityDraft.concept === current.draft.choices.identity.concept
+      ) {
+        localIdentityDraft = null;
+      }
       // Do not auto-rewind activeStep here. A late/stale save that still lists an
       // earlier step incomplete was yanking players (and e2e) back to Class after
       // Continue. Downstream clears on class/species change already handle invalidation.
@@ -342,13 +404,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
       error = failure instanceof ApiFailure ? failure.message : 'That change could not be saved.';
     } finally {
       busy = false;
+      silentIdentitySaveInFlight = false;
       inFlightChoices = null;
       if (pendingChoices !== null && candidate !== null && current !== null) {
         const queued = pendingChoices;
         pendingChoices = null;
-        await commitChoices(queued);
+        await commitChoices(queued, options);
         return;
       }
+      let advancedStep = false;
       if (pendingAdvance) {
         pendingAdvance = false;
         const index = WIZARD_STEPS.indexOf(activeStep);
@@ -358,35 +422,56 @@ export function mountCharacterCreatePage(host: PageHost): void {
           stepIsComplete(activeStep)
         ) {
           activeStep = WIZARD_STEPS[index + 1]!;
+          advancedStep = true;
         }
       }
-      render();
+      if (advancedStep) {
+        render();
+        scrollToWizardTop();
+      } else if (
+        error === null &&
+        activeStep === 'identity' &&
+        (options?.silentDom === true || isIdentityInputFocused())
+      ) {
+        syncIdentityStepDomInPlace();
+      } else {
+        render();
+      }
     }
+  }
+
+  function effectiveUnresolved(): DraftResponse['draft']['unresolved'] {
+    const raw = current?.draft.unresolved ?? [];
+    if (current === null) {
+      return raw;
+    }
+    const hasName = displayChoices().identity.name.trim().length > 0;
+    if (hasName) {
+      return raw.filter((item) => item.step !== 'identity');
+    }
+    if (!raw.some((item) => item.step === 'identity')) {
+      return [...raw, { step: 'identity', message: 'Enter a character name.' }];
+    }
+    return raw;
+  }
+
+  function effectiveCanCreate(): boolean {
+    if (current === null) {
+      return false;
+    }
+    const hasName = displayChoices().identity.name.trim().length > 0;
+    const nonIdentityUnresolved = current.draft.unresolved.some(
+      (item) => item.step !== 'identity',
+    );
+    return hasName && !nonIdentityUnresolved;
   }
 
   function stepIsComplete(step: WizardStep): boolean {
-    if (
-      step === 'background' &&
-      current?.draft.choices.classId !== null &&
-      current?.draft.choices.backgroundId !== null &&
-      current?.draft.unresolved.some((item) => item.step === 'class') === true
-    ) {
-      return false;
-    }
-    return current?.draft.unresolved.every((item) => item.step !== step) === true;
+    return effectiveUnresolved().every((item) => item.step !== step);
   }
 
   function blockersForStep(step: WizardStep): readonly string[] {
-    if (
-      step === 'background' &&
-      current?.draft.choices.classId !== null &&
-      current?.draft.choices.backgroundId !== null
-    ) {
-      return (current?.draft.unresolved ?? [])
-        .filter((item) => item.step === 'background' || item.step === 'class')
-        .map((item) => item.message);
-    }
-    return (current?.draft.unresolved ?? [])
+    return effectiveUnresolved()
       .filter((item) => item.step === step)
       .map((item) => item.message);
   }
@@ -455,6 +540,29 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </div>`;
   }
 
+  function wizardNavStatusMarkup(): string {
+    const isLast = activeStep === 'identity';
+    const canCreateNow = effectiveCanCreate();
+    const blockers = blockersForStep(activeStep);
+    return blockers.length === 0
+      ? isLast && canCreateNow
+        ? `<p class="wizard-ready" data-testid="nothing-unresolved">Everything required is ready. Create them when you are.</p>`
+        : `<p class="wizard-coach" data-testid="step-coach">Looking good — keep going.</p>`
+      : `<div class="wizard-coach" data-testid="step-blockers" role="status">
+          <p>${escapeHtml(blockers[0]!)}</p>
+          ${
+            blockers.length > 1
+              ? `<ul class="record-list compact" data-testid="step-blocker-list">
+                  ${blockers
+                    .slice(1)
+                    .map((message) => `<li>${escapeHtml(message)}</li>`)
+                    .join('')}
+                </ul>`
+              : ''
+          }
+        </div>`;
+  }
+
   function wizardNav(): string {
     const state = current;
     if (state === null) {
@@ -464,47 +572,32 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const isFirst = stepIndex <= 0;
     const isLast = activeStep === 'identity';
     const complete = stepIsComplete(activeStep);
-    const blockers = blockersForStep(activeStep);
+    const canCreateNow = effectiveCanCreate();
+    const navBusy = busy && !silentIdentitySaveInFlight;
 
     const primary = isLast
       ? `
         <button type="button" data-testid="create-character"
-          aria-disabled="${!state.draft.canCreate || busy}">
-          ${busy ? 'Working…' : 'Create Character'}
+          aria-disabled="${!canCreateNow || navBusy}">
+          ${navBusy ? 'Working…' : 'Create Character'}
         </button>`
       : `
         <button type="button" data-testid="wizard-continue"
           aria-disabled="${!complete}">
-          ${busy && complete ? 'Saving…' : 'Continue'}
+          ${navBusy && complete ? 'Saving…' : 'Continue'}
         </button>`;
 
     return `
       <div class="wizard-nav" data-testid="wizard-nav">
-        ${
-          blockers.length === 0
-            ? isLast && state.draft.canCreate
-              ? `<p class="wizard-ready" data-testid="nothing-unresolved">Everything required is ready. Create them when you are.</p>`
-              : `<p class="wizard-coach" data-testid="step-coach">Looking good — keep going.</p>`
-            : `<div class="wizard-coach" data-testid="step-blockers" role="status">
-                <p>${escapeHtml(blockers[0]!)}</p>
-                ${
-                  blockers.length > 1
-                    ? `<ul class="record-list compact" data-testid="step-blocker-list">
-                        ${blockers
-                          .slice(1)
-                          .map((message) => `<li>${escapeHtml(message)}</li>`)
-                          .join('')}
-                      </ul>`
-                    : ''
-                }
-              </div>`
-        }
+        <div data-testid="wizard-nav-status">
+          ${wizardNavStatusMarkup()}
+        </div>
         <div class="wizard-nav-actions">
           <button type="button" class="secondary" data-testid="wizard-back"
-            aria-disabled="${isFirst || busy}">
+            aria-disabled="${isFirst || navBusy}">
             Back
           </button>
-          <button type="button" class="secondary" data-testid="discard-draft" aria-disabled="${busy}">
+          <button type="button" class="secondary" data-testid="discard-draft" aria-disabled="${navBusy}">
             Discard draft
           </button>
           ${primary}
@@ -596,7 +689,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
             : ''
         }
       </div>
-      <h3>Choose a Class</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
       ${optionList({
         name: 'class',
@@ -660,7 +752,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
           : '';
 
     return `
-      <h3>Choose a Background</h3>
       <p class="step-helper" data-testid="background-nav-hint">${escapeHtml(STEP_HELPERS.background)}</p>
       ${
         choices.classId !== null && classSkillIds.length > 0
@@ -786,16 +877,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
+    const choices = displayChoices();
     const detail = state.options.speciesDetail;
 
     return `
-      <h3>Choose a Species</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.species)}</p>
       ${optionList({
         name: 'species',
         testId: 'species-options',
         entries: state.options.catalog.species,
-        selected: state.draft.choices.speciesId,
+        selected: choices.speciesId,
       })}
       ${
         detail === null
@@ -815,11 +906,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
               .map(
                 (option) => `
               <label class="option${
-                state.draft.choices.speciesChoiceIds[choice.id] === option.id ? ' selected' : ''
+                choices.speciesChoiceIds[choice.id] === option.id ? ' selected' : ''
               }">
                 <input type="radio" name="species-choice-${escapeHtml(choice.id)}"
                   value="${escapeHtml(option.id)}"
-                  ${state.draft.choices.speciesChoiceIds[choice.id] === option.id ? 'checked' : ''}
+                  ${choices.speciesChoiceIds[choice.id] === option.id ? 'checked' : ''}
                   data-species-choice="${escapeHtml(choice.id)}"
                   data-testid="species-choice-${escapeHtml(choice.id)}-${escapeHtml(option.id)}" />
                 <span class="option-label">${escapeHtml(option.label)}</span>
@@ -834,7 +925,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           </div>`,
           )
           .join('')}${
-        state.draft.choices.speciesId === 'human' && state.options.originFeatOptions !== null
+        choices.speciesId === 'human' && state.options.originFeatOptions !== null
           ? `
         <h3>Versatile — choose an Origin feat</h3>
         <p class="step-helper">Humans gain one additional Origin feat from the SRD roster.</p>
@@ -842,7 +933,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           name: 'origin-feat',
           testId: 'origin-feat-options',
           entries: state.options.originFeatOptions,
-          selected: state.draft.choices.chosenOriginFeatId,
+          selected: choices.chosenOriginFeatId,
         })}`
           : ''
       }`
@@ -884,10 +975,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
-    const method = state.draft.choices.abilityMethod;
-    const scores = state.draft.choices.baseAbilityScores;
-    const pool = state.draft.choices.rolledScorePool;
-    const attempts = state.draft.choices.abilityRollAttempts;
+    const choices = displayChoices();
+    const method = choices.abilityMethod;
+    const scores = choices.baseAbilityScores;
+    const pool = choices.rolledScorePool;
+    const attempts = choices.abilityRollAttempts;
     const rollsLeft = Math.max(0, MAX_ABILITY_ROLL_ATTEMPTS - attempts);
     const assignedList = ABILITIES.map((ability) => scores[ability]).filter(
       (score): score is number => score !== undefined,
@@ -895,7 +987,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const pointBuySpent = pointBuyCost(assignedList) ?? 0;
 
     return `
-      <h3>Ability Scores</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.abilities)}</p>
       <h3>Ability-generation method</h3>
       <p>
@@ -1001,11 +1092,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '<p class="empty-state">Choose a Class and Background first.</p>';
     }
 
+    const choices = displayChoices();
     const classKit = classDetail.equipmentOptions.find(
-      (option) => option.id === state.draft.choices.classEquipmentOptionId,
+      (option) => option.id === choices.classEquipmentOptionId,
     );
     const backgroundKit = backgroundDetail.equipmentOptions.find(
-      (option) => option.id === state.draft.choices.backgroundEquipmentOptionId,
+      (option) => option.id === choices.backgroundEquipmentOptionId,
     );
     const overlapNotes = state.options.kitOverlapNotes;
     const overlapNote =
@@ -1028,21 +1120,20 @@ export function mountCharacterCreatePage(host: PageHost): void {
            </div>`;
 
     return `
-      <h3>Starting equipment</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.equipment)}</p>
       <h3>${escapeHtml(classDetail.label)} starting equipment</h3>
       ${optionList({
         name: 'class-equipment',
         testId: 'class-equipment-options',
         entries: classDetail.equipmentOptions.map((option) => ({ id: option.id, label: option.label })),
-        selected: state.draft.choices.classEquipmentOptionId,
+        selected: choices.classEquipmentOptionId,
       })}
       <h3>${escapeHtml(backgroundDetail.label)} starting equipment</h3>
       ${optionList({
         name: 'background-equipment',
         testId: 'background-equipment-options',
         entries: backgroundDetail.equipmentOptions.map((option) => ({ id: option.id, label: option.label })),
-        selected: state.draft.choices.backgroundEquipmentOptionId,
+        selected: choices.backgroundEquipmentOptionId,
       })}
       ${overlapNote}`;
   }
@@ -1223,7 +1314,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }
 
   function portraitPromptValue(): string {
-    return portraitPromptText ?? current?.draft.appearancePrompt ?? '';
+    return (
+      portraitPromptText ??
+      current?.draft.appearancePrompt ??
+      displayChoices().identity.appearance ??
+      ''
+    );
   }
 
   function renderPortraitSection(): string {
@@ -1231,7 +1327,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
-    const choices = state.draft.choices;
+    const choices = displayChoices();
     const forged = state.draft.avatarUrl ?? null;
     const previewUrl =
       forged ??
@@ -1248,7 +1344,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           <img class="portrait-preview" data-testid="portrait-preview" src="${escapeHtml(previewUrl)}"
             alt="${forged ? 'Forged character portrait' : 'Default archetype portrait'}" width="128" height="128" />
           <div class="portrait-section-fields">
-            <label for="character-physical-appearance">Physical Appearance (max ${APPEARANCE_PROMPT_MAX_LENGTH} characters)</label>
+            <label for="character-physical-appearance">Physical Appearance (optional, max ${APPEARANCE_PROMPT_MAX_LENGTH} characters)</label>
             <textarea id="character-physical-appearance" data-testid="identity-physical-appearance"
               rows="3" maxlength="${APPEARANCE_PROMPT_MAX_LENGTH}"
               placeholder="Braided auburn beard, soot-stained leather, a notch in the left ear…">${escapeHtml(promptValue)}</textarea>
@@ -1278,7 +1374,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     portraitError = null;
     render();
     try {
-      const choices = current.draft.choices;
+      const choices = displayChoices();
       const result = await generatePortrait({
         candidateId: candidate.candidateId,
         request: {
@@ -1311,30 +1407,89 @@ export function mountCharacterCreatePage(host: PageHost): void {
     }
   }
 
+  function renderIdentityReadinessSummaryInner(): string {
+    const state = current;
+    if (state === null) {
+      return '';
+    }
+    const readiness = effectiveUnresolved();
+    return `
+      <h3 id="readiness-heading">What can this character do?</h3>
+      ${
+        readiness.length === 0
+          ? `<p class="message success" data-testid="readiness-ready">Ready to create — class, background, species, skills, and features are complete.</p>`
+          : `<ul class="record-list" data-testid="readiness-blockers">
+              ${readiness
+                .map(
+                  (item) =>
+                    `<li data-testid="readiness-blocker">${escapeHtml(item.message)}</li>`,
+                )
+                .join('')}
+            </ul>`
+      }`;
+  }
+
+  function renderIdentityTokenPreviewInner(): string {
+    const state = current;
+    if (state === null) {
+      return '';
+    }
+    const identity = displayChoices().identity;
+    const tokenInitial = identity.name.trim().charAt(0).toUpperCase() || '?';
+    return `
+      ${
+        state.draft.avatarUrl
+          ? `<img class="hero-mini-avatar hero-mini-avatar-img" data-testid="identity-token-avatar" src="${escapeHtml(state.draft.avatarUrl)}" alt="" />`
+          : `<span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>`
+      }
+      <span class="record-meta">Map token preview</span>`;
+  }
+
+  function syncIdentityStepDomInPlace(): void {
+    if (current === null || activeStep !== 'identity') {
+      return;
+    }
+    const tokenPreview = container.querySelector<HTMLElement>('[data-testid="identity-token-preview"]');
+    if (tokenPreview !== null) {
+      tokenPreview.innerHTML = renderIdentityTokenPreviewInner();
+    }
+    const readinessPanel = container.querySelector<HTMLElement>(
+      '[data-testid="character-readiness-summary"]',
+    );
+    if (readinessPanel !== null) {
+      readinessPanel.innerHTML = renderIdentityReadinessSummaryInner();
+    }
+    const navStatusEl = container.querySelector<HTMLElement>('[data-testid="wizard-nav-status"]');
+    if (navStatusEl !== null) {
+      navStatusEl.innerHTML = wizardNavStatusMarkup();
+    }
+    const createBtn = container.querySelector<HTMLButtonElement>('[data-testid="create-character"]');
+    if (createBtn !== null) {
+      const navBusy = busy && !silentIdentitySaveInFlight;
+      createBtn.setAttribute('aria-disabled', String(!effectiveCanCreate() || navBusy));
+      createBtn.textContent = navBusy ? 'Working…' : 'Create Character';
+    }
+    const previewEl = container.querySelector<HTMLElement>('[data-testid="wizard-sheet-preview"]');
+    if (previewEl !== null) {
+      previewEl.outerHTML = liveSheetPreview();
+    }
+  }
+
   function renderIdentityStep(): string {
     const state = current;
     if (state === null) {
       return '';
     }
-    const identity = state.draft.choices.identity;
-    const tokenInitial = identity.name.trim().charAt(0).toUpperCase() || '?';
+    const identity = displayChoices().identity;
     const nameMax = CHARACTER_NAME_MAX_LENGTH;
-    const readiness = state.draft.unresolved;
 
     return `
-      <h3>Identity & final review</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.identity)}</p>
       <p class="record-meta" data-testid="identity-autosave-notice">
-        Identity fields save automatically after you pause typing. While a save is in flight, controls may
-        briefly show <strong>Saving…</strong> — your draft is still safe on the server.
+        Identity fields save automatically after you pause typing.
       </p>
       <div class="identity-token-preview" data-testid="identity-token-preview" aria-live="polite">
-        ${
-          state.draft.avatarUrl
-            ? `<img class="hero-mini-avatar hero-mini-avatar-img" data-testid="identity-token-avatar" src="${escapeHtml(state.draft.avatarUrl)}" alt="" />`
-            : `<span class="hero-mini-avatar" aria-hidden="true">${escapeHtml(tokenInitial)}</span>`
-        }
-        <span class="record-meta">Map token preview</span>
+        ${renderIdentityTokenPreviewInner()}
       </div>
       <label for="character-name">Character name (required, max ${nameMax} characters)</label>
       <input id="character-name" type="text" data-identity="name" data-testid="identity-name"
@@ -1344,10 +1499,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
       <input id="character-pronouns" type="text" data-identity="pronouns" data-testid="identity-pronouns"
         maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Pronouns"
         value="${escapeHtml(identity.pronouns)}" autocomplete="off" placeholder="Optional" />
-      <label for="character-appearance">Appearance (optional)</label>
-      <input id="character-appearance" type="text" data-identity="appearance" data-testid="identity-appearance"
-        maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Appearance"
-        value="${escapeHtml(identity.appearance)}" autocomplete="off" placeholder="Optional — scar, hat, ominous vibes…" />
       <label for="character-concept">Concept (optional)</label>
       <input id="character-concept" type="text" data-identity="concept" data-testid="identity-concept"
         maxlength="${CHARACTER_TEXT_MAX_LENGTH}" aria-label="Concept"
@@ -1356,19 +1507,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${renderPortraitSection()}
 
       <section class="panel" data-testid="character-readiness-summary" aria-labelledby="readiness-heading">
-        <h3 id="readiness-heading">What can this character do?</h3>
-        ${
-          readiness.length === 0
-            ? `<p class="message success" data-testid="readiness-ready">Ready to create — class, background, species, skills, and features are complete.</p>`
-            : `<ul class="record-list" data-testid="readiness-blockers">
-                ${readiness
-                  .map(
-                    (item) =>
-                      `<li data-testid="readiness-blocker">${escapeHtml(item.message)}</li>`,
-                  )
-                  .join('')}
-              </ul>`
-        }
+        ${renderIdentityReadinessSummaryInner()}
       </section>
 
       <h3>Final review</h3>
@@ -1419,7 +1558,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
-    const choices = state.draft.choices;
+    const choices = displayChoices();
     const classLabel =
       state.options.catalog.classes.find((entry) => entry.id === choices.classId)?.label ?? null;
     const backgroundLabel =
@@ -1443,7 +1582,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
               </p>`
             : renderLiveSheetPreview(state.draft.sheet, {
                 abilitiesComplete: ABILITIES.every(
-                  (ability) => state.draft.choices.baseAbilityScores[ability] !== undefined,
+                  (ability) => choices.baseAbilityScores[ability] !== undefined,
                 ),
               })
         }
@@ -1521,6 +1660,180 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </div>`;
   }
 
+  function bindWizardNavActions(): void {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="wizard-back"]')
+      ?.addEventListener('click', () => {
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (index <= 0 || busy) {
+          return;
+        }
+        activeStep = WIZARD_STEPS[index - 1]!;
+        render();
+        scrollToWizardTop();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="wizard-continue"]')
+      ?.addEventListener('click', () => {
+        const index = WIZARD_STEPS.indexOf(activeStep);
+        if (index < 0 || index >= WIZARD_STEPS.length - 1) {
+          return;
+        }
+        if (busy) {
+          pendingAdvance = true;
+          return;
+        }
+        if (!stepIsComplete(activeStep)) {
+          return;
+        }
+        activeStep = WIZARD_STEPS[index + 1]!;
+        render();
+        scrollToWizardTop();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="create-character"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (identityDebounceTimer !== null) {
+            window.clearTimeout(identityDebounceTimer);
+            identityDebounceTimer = null;
+          }
+          if (activeSavePromise !== null) {
+            await activeSavePromise;
+          }
+          if (candidate === null || current === null || busy) {
+            return;
+          }
+          // Flush visible identity fields before create so a typed name that has
+          // not yet fired `change` still counts (and avoid a blur→save race).
+          const foundation = latestChoices();
+          const identity: CharacterChoices['identity'] = {
+            ...foundation.identity,
+            ...(localIdentityDraft ?? {}),
+          };
+          container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((fieldInput) => {
+            const field = fieldInput.dataset.identity as keyof CharacterChoices['identity'];
+            identity[field] = fieldInput.value;
+          });
+          const physEl = container.querySelector<HTMLTextAreaElement>(
+            '[data-testid="identity-physical-appearance"]',
+          );
+          if (physEl !== null) {
+            identity.appearance = physEl.value.slice(0, CHARACTER_TEXT_MAX_LENGTH);
+          }
+          if (
+            identity.name !== foundation.identity.name ||
+            identity.pronouns !== foundation.identity.pronouns ||
+            identity.appearance !== foundation.identity.appearance ||
+            identity.concept !== foundation.identity.concept
+          ) {
+            await commitChoices({ ...foundation, identity }, { silentDom: true });
+          }
+          if (current === null || !current.draft.canCreate) {
+            const remaining = (current?.draft.unresolved ?? [])
+              .map((item) => item.message)
+              .slice(0, 3)
+              .join(' ');
+            error =
+              remaining.length > 0
+                ? `Cannot create yet. ${remaining}`
+                : 'Cannot create yet. Finish every required choice first.';
+            shell.announce(error);
+            render();
+            return;
+          }
+          const pendingPrompt = portraitPromptValue().trim();
+          if (
+            current.draft.avatarUrl === null ||
+            current.draft.avatarUrl === undefined
+          ) {
+            if (pendingPrompt.length > 0 && !(await forgePortrait()) && portraitError !== null) {
+              error = portraitError;
+              render();
+              return;
+            }
+          }
+          if (current === null) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const character = await createCharacter({
+              candidateId: candidate.candidateId,
+              draftId: current.draft.draftId,
+            });
+            if (!isPageMountCurrent(container, mountToken)) {
+              return;
+            }
+            shell.announce(`${character.identity.name} created.`);
+            const params = new URLSearchParams(window.location.search);
+            const returnCampaign = params.get('returnCampaign');
+            const returnTo = params.get('returnTo');
+            if (
+              returnCampaign !== null &&
+              /^[A-Za-z0-9-]{1,64}$/.test(returnCampaign) &&
+              returnCampaign !== 'new'
+            ) {
+              const targetPath =
+                returnTo === 'join'
+                  ? `/campaigns/${returnCampaign}/join?seatCharacter=${encodeURIComponent(character.characterId)}`
+                  : `/campaigns/${returnCampaign}?seatCharacter=${encodeURIComponent(character.characterId)}`;
+              navigate(targetPath);
+              return;
+            }
+            navigate(`/characters/${character.characterId}`);
+            return;
+          } catch (failure) {
+            error = failure instanceof ApiFailure ? failure.message : 'That character could not be created.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="discard-draft"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || current === null || busy) {
+            return;
+          }
+          if (
+            !(await confirmInApp({
+              title: 'Discard this draft?',
+              body: 'Discard this draft? Your unfinished choices will be removed.',
+              confirmLabel: 'Discard draft',
+              cancelLabel: 'Keep draft',
+              testId: 'confirm-discard-draft',
+            }))
+          ) {
+            return;
+          }
+          busy = true;
+          render();
+          try {
+            await discardDraft({ candidateId: candidate.candidateId, draftId: current.draft.draftId });
+            if (!isPageMountCurrent(container, mountToken)) {
+              return;
+            }
+            shell.announce('Draft discarded.');
+            navigate('/characters');
+            return;
+          } catch (failure) {
+            error = failure instanceof ApiFailure ? failure.message : 'That draft could not be discarded.';
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+  }
+
   function bindEvents(): void {
     const state = current;
     if (state === null) {
@@ -1550,34 +1863,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
         activeStep = target;
         error = null;
         render();
+        scrollToWizardTop();
       });
     });
 
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="wizard-back"]')
-      ?.addEventListener('click', () => {
-        const index = WIZARD_STEPS.indexOf(activeStep);
-        if (index <= 0 || busy) {
-          return;
-        }
-        activeStep = WIZARD_STEPS[index - 1]!;
-        render();
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="wizard-continue"]')
-      ?.addEventListener('click', () => {
-        const index = WIZARD_STEPS.indexOf(activeStep);
-        if (index < 0 || index >= WIZARD_STEPS.length - 1 || !stepIsComplete(activeStep)) {
-          return;
-        }
-        if (busy) {
-          pendingAdvance = true;
-          return;
-        }
-        activeStep = WIZARD_STEPS[index + 1]!;
-        render();
-      });
+    bindWizardNavActions();
 
     container
       .querySelector<HTMLButtonElement>('[data-testid="open-quick-start"]')
@@ -1680,6 +1970,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
               draftId: current.draft.draftId,
               templateId: input.value,
             });
+            localIdentityDraft = null;
             activeStep = 'identity';
             quickStartAppliedNotice = template
               ? `${template.label} prefilled Class, Species, Background, Abilities, Gear, and Features. Rename at Identity — every choice stays editable.`
@@ -2060,6 +2351,21 @@ export function mountCharacterCreatePage(host: PageHost): void {
     container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((input) => {
       // Merge against in-flight / pending choices so a Pronouns blur cannot wipe a
       // Name save that is still round-tripping (HD-A3-PQA-001 / 051).
+      const applyOptimisticIdentityField = (
+        field: keyof CharacterChoices['identity'],
+        value: string,
+      ): void => {
+        if (current === null) {
+          return;
+        }
+        const foundation = latestChoices();
+        localIdentityDraft = {
+          ...foundation.identity,
+          ...(localIdentityDraft ?? {}),
+          [field]: value,
+        };
+        syncIdentityStepDomInPlace();
+      };
       const persistIdentity = (): void => {
         if (identityDebounceTimer !== null) {
           window.clearTimeout(identityDebounceTimer);
@@ -2070,15 +2376,31 @@ export function mountCharacterCreatePage(host: PageHost): void {
         }
         const field = input.dataset.identity as keyof CharacterChoices['identity'];
         const foundation = latestChoices();
-        if (foundation.identity[field] === input.value) {
+        const nextIdentity: CharacterChoices['identity'] = {
+          ...foundation.identity,
+          ...(localIdentityDraft ?? {}),
+          [field]: input.value,
+        };
+        localIdentityDraft = nextIdentity;
+        if (
+          nextIdentity.name === foundation.identity.name &&
+          nextIdentity.pronouns === foundation.identity.pronouns &&
+          nextIdentity.appearance === foundation.identity.appearance &&
+          nextIdentity.concept === foundation.identity.concept
+        ) {
           return;
         }
-        void commitChoices({
-          ...foundation,
-          identity: { ...foundation.identity, [field]: input.value },
-        });
+        void commitChoices(
+          {
+            ...foundation,
+            identity: nextIdentity,
+          },
+          { silentDom: true },
+        );
       };
       input.addEventListener('input', () => {
+        const field = input.dataset.identity as keyof CharacterChoices['identity'];
+        applyOptimisticIdentityField(field, input.value);
         if (identityDebounceTimer !== null) {
           window.clearTimeout(identityDebounceTimer);
         }
@@ -2103,143 +2425,31 @@ export function mountCharacterCreatePage(host: PageHost): void {
         errorNode.textContent = portraitError ?? '';
         errorNode.hidden = portraitError === null;
       }
+      if (identityDebounceTimer !== null) {
+        window.clearTimeout(identityDebounceTimer);
+      }
+      identityDebounceTimer = window.setTimeout(() => {
+        if (current === null || !isPageMountCurrent(container, mountToken)) {
+          return;
+        }
+        const foundation = latestChoices();
+        const trimmedAppearance = physicalAppearance.value.slice(0, CHARACTER_TEXT_MAX_LENGTH);
+        if (foundation.identity.appearance === trimmedAppearance) {
+          return;
+        }
+        void commitChoices(
+          {
+            ...foundation,
+            identity: { ...foundation.identity, appearance: trimmedAppearance },
+          },
+          { silentDom: true },
+        );
+      }, 400);
     });
     container
       .querySelector<HTMLButtonElement>('[data-testid="forge-portrait"]')
       ?.addEventListener('click', () => {
         void forgePortrait();
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="create-character"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (identityDebounceTimer !== null) {
-            window.clearTimeout(identityDebounceTimer);
-            identityDebounceTimer = null;
-          }
-          if (activeSavePromise !== null) {
-            await activeSavePromise;
-          }
-          if (candidate === null || current === null || busy) {
-            return;
-          }
-          // Flush visible identity fields before create so a typed name that has
-          // not yet fired `change` still counts (and avoid a blur→save race).
-          const foundation = latestChoices();
-          const identity = { ...foundation.identity };
-          container.querySelectorAll<HTMLInputElement>('[data-identity]').forEach((fieldInput) => {
-            const field = fieldInput.dataset.identity as keyof CharacterChoices['identity'];
-            identity[field] = fieldInput.value;
-          });
-          if (
-            identity.name !== foundation.identity.name ||
-            identity.pronouns !== foundation.identity.pronouns ||
-            identity.appearance !== foundation.identity.appearance ||
-            identity.concept !== foundation.identity.concept
-          ) {
-            await commitChoices({ ...foundation, identity });
-          }
-          if (current === null || !current.draft.canCreate) {
-            const remaining = (current?.draft.unresolved ?? [])
-              .map((item) => item.message)
-              .slice(0, 3)
-              .join(' ');
-            error =
-              remaining.length > 0
-                ? `Cannot create yet. ${remaining}`
-                : 'Cannot create yet. Finish every required choice first.';
-            shell.announce(error);
-            render();
-            return;
-          }
-          const pendingPrompt = portraitPromptValue().trim();
-          if (
-            current.draft.avatarUrl === null ||
-            current.draft.avatarUrl === undefined
-          ) {
-            if (pendingPrompt.length > 0 && !(await forgePortrait()) && portraitError !== null) {
-              error = portraitError;
-              render();
-              return;
-            }
-          }
-          if (current === null) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const character = await createCharacter({
-              candidateId: candidate.candidateId,
-              draftId: current.draft.draftId,
-            });
-            if (!isPageMountCurrent(container, mountToken)) {
-              return;
-            }
-            shell.announce(`${character.identity.name} created.`);
-            const params = new URLSearchParams(window.location.search);
-            const returnCampaign = params.get('returnCampaign');
-            const returnTo = params.get('returnTo');
-            if (
-              returnCampaign !== null &&
-              /^[A-Za-z0-9-]{1,64}$/.test(returnCampaign) &&
-              returnCampaign !== 'new'
-            ) {
-              const targetPath =
-                returnTo === 'join'
-                  ? `/campaigns/${returnCampaign}/join?seatCharacter=${encodeURIComponent(character.characterId)}`
-                  : `/campaigns/${returnCampaign}?seatCharacter=${encodeURIComponent(character.characterId)}`;
-              navigate(targetPath);
-              return;
-            }
-            navigate(`/characters/${character.characterId}`);
-            return;
-          } catch (failure) {
-            error = failure instanceof ApiFailure ? failure.message : 'That character could not be created.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="discard-draft"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || current === null || busy) {
-            return;
-          }
-          if (
-            !(await confirmInApp({
-              title: 'Discard this draft?',
-              body: 'Discard this draft? Your unfinished choices will be removed.',
-              confirmLabel: 'Discard draft',
-              cancelLabel: 'Keep draft',
-              testId: 'confirm-discard-draft',
-            }))
-          ) {
-            return;
-          }
-          busy = true;
-          render();
-          try {
-            await discardDraft({ candidateId: candidate.candidateId, draftId: current.draft.draftId });
-            if (!isPageMountCurrent(container, mountToken)) {
-              return;
-            }
-            shell.announce('Draft discarded.');
-            navigate('/characters');
-            return;
-          } catch (failure) {
-            error = failure instanceof ApiFailure ? failure.message : 'That draft could not be discarded.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
       });
   }
 
@@ -2421,7 +2631,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 ? ''
                 : `<div class="message success" role="status" data-testid="quick-start-applied-notice">${escapeHtml(quickStartAppliedNotice)}</div>`
             }
-            <h2 id="step-heading" data-testid="active-step-heading">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
+            <h2 id="step-heading" data-testid="active-step-heading" tabindex="-1">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
             ${renderStepBody()}
             ${wizardNav()}
           </section>

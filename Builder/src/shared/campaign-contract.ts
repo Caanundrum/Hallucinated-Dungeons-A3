@@ -59,9 +59,9 @@ export const DIRECTOR_PERSONALITY_SUMMARIES: Record<DirectorPersonality, string>
 
 export const DIRECTOR_IDENTITY_SUMMARIES: Record<DirectorIdentity, string> = {
   veyra:
-    'Perceptive, measured, and atmospheric — a seasoned chronicler of shadowed roads, hidden motives, and lantern-lit intrigue.',
+    'Woman — perceptive, measured, and atmospheric; a seasoned chronicler of shadowed roads, hidden motives, and lantern-lit intrigue.',
   garrick:
-    'Grounded, direct, and battle-tested — a veteran table host who frames clear stakes, tactile grit, and decisive action.',
+    'Man — grounded, direct, and battle-tested; a veteran table host who frames clear stakes, tactile grit, and decisive action.',
 };
 
 /** Seasoned Host may be visually recommended; never auto-committed. */

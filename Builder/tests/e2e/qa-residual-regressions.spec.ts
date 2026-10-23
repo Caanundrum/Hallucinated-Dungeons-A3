@@ -13,6 +13,81 @@ async function dismissIntroIfPresent(page: Page): Promise<void> {
 }
 
 test.describe('PQA residual regressions', () => {
+  test('User UI Regressions: smooth identity typing across debounce, scroll-to-top on Continue, no duplicate headings, ordered campaign sections', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto('/');
+    await dismissIntroIfPresent(page);
+    await enterAccountFromShell(page);
+    await page.getByTestId('nav-characters').click();
+    await page.getByTestId('start-character').click();
+    const tutorialNo = page.getByTestId('tutorial-ask-no');
+    if (await tutorialNo.isVisible().catch(() => false)) await tutorialNo.click();
+
+    // Verify no duplicate <h3> step heading directly under <h2 id="step-heading">
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Class');
+    await expect(page.locator('#step-heading + h3')).toHaveCount(0);
+
+    // Pick Fighter + 2 skills, scroll down, click Continue, and verify scroll resets to top
+    await page.getByTestId('option-fighter').click();
+    await page.getByTestId('check-athletics').click();
+    await page.getByTestId('check-perception').click();
+    await page.evaluate(() => window.scrollTo(0, 600));
+    await page.getByTestId('wizard-continue').click();
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Background');
+    const scrollAfterContinue = await page.evaluate(() => window.scrollY);
+    expect(scrollAfterContinue).toBe(0);
+
+    // Jump to Identity via quick-start and verify keystroke-by-keystroke typing across 300ms debounce
+    await page.getByTestId('step-class').click();
+    await page.getByTestId('open-quick-start').click();
+    await page.getByTestId('option-stalwart-defender').click();
+    const confirmQuickStart = page.getByTestId('confirm-quick-start-confirm');
+    if (await confirmQuickStart.isVisible().catch(() => false)) {
+      await confirmQuickStart.click();
+    }
+    await expect(page.getByTestId('active-step-heading')).toHaveText('Identity & Final Review');
+    await expect(page.getByTestId('identity-appearance')).toHaveCount(0);
+    await expect(page.getByTestId('identity-physical-appearance')).toHaveCount(1);
+
+    const nameInput = page.getByTestId('identity-name');
+    await nameInput.click();
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="identity-name"]');
+      if (el) (el as HTMLElement).dataset.domIdentityMarker = 'original-node';
+    });
+    await nameInput.pressSequentially('Thrain', { delay: 60 });
+    await page.waitForTimeout(450);
+    await nameInput.pressSequentially(' Ironshield', { delay: 60 });
+    await expect(nameInput).toHaveValue('Thrain Ironshield');
+    // Verify the input node was NEVER detached/re-rendered while typing or autosaving
+    const marker = await nameInput.getAttribute('data-dom-identity-marker');
+    expect(marker).toBe('original-node');
+    await expect(page.getByTestId('nothing-unresolved')).toBeVisible();
+
+    // Verify Campaign creation sections 1..5 are in order and have only one premise input
+    await page.getByTestId('nav-campaigns').click();
+    await page.getByTestId('start-campaign').click();
+    await expect(page.getByTestId('campaign-summary')).toHaveCount(1);
+    await expect(page.getByTestId('campaign-premise-input')).toHaveCount(0);
+    const sectionOrder = await page.evaluate(() => {
+      const nameEl = document.querySelector('[data-testid="campaign-name"]');
+      const identityEl = document.querySelector('[data-testid="director-identity-list"]');
+      const personalityEl = document.querySelector('[data-testid="director-personality-list"]');
+      const skeletonBtn = document.querySelector('[data-testid="draft-campaign-skeleton"]');
+      const submitBtn = document.querySelector('[data-testid="create-campaign-submit"]');
+      if (!nameEl || !identityEl || !personalityEl || !skeletonBtn || !submitBtn) return false;
+      return Boolean(
+        nameEl.compareDocumentPosition(identityEl) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          identityEl.compareDocumentPosition(personalityEl) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          personalityEl.compareDocumentPosition(skeletonBtn) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          skeletonBtn.compareDocumentPosition(submitBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+    expect(sectionOrder).toBe(true);
+  });
+
   test('PQA-061: switching ability method uses an in-app confirm dialog', async ({ page }) => {
     test.setTimeout(90_000);
     await page.goto('/');

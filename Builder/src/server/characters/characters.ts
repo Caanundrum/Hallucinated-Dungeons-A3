@@ -29,6 +29,7 @@ import {
   validateAppearancePrompt,
 } from '../../shared/portrait-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { storeCampaignAssetRecord } from '../assets/campaign-assets.js';
 import { resolvePortrait, type PortraitEnvironment } from './portrait.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
@@ -871,7 +872,25 @@ export async function generateCharacterPortrait(options: {
     ...(options.env !== undefined ? { env: options.env } : {}),
     ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
   });
-  if (!isTrustedAvatarUrl(portrait.avatarUrl)) {
+  let resolvedAvatarUrl = portrait.avatarUrl;
+  const dataUrlMatch = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
+    resolvedAvatarUrl,
+  );
+  if (dataUrlMatch !== null && resolvedAvatarUrl.length > 1000) {
+    try {
+      resolvedAvatarUrl = await storeCampaignAssetRecord({
+        firestore,
+        campaignId: characterId ?? draftId ?? 'character-portrait',
+        kind: 'npc_portrait',
+        mimeType: dataUrlMatch[1]!,
+        base64Data: dataUrlMatch[2]!,
+        prompt: appearancePrompt,
+      });
+    } catch {
+      // Keep inline dataUrl if asset store write fails.
+    }
+  }
+  if (!isTrustedAvatarUrl(resolvedAvatarUrl)) {
     throw new PortraitRequestError('Portrait could not be produced.');
   }
 
@@ -880,7 +899,7 @@ export async function generateCharacterPortrait(options: {
     milestonePortraitCredits = Math.max(0, (stored.milestonePortraitCredits ?? 0) - 1);
     const updated: StoredCharacter = {
       ...stored,
-      avatarUrl: portrait.avatarUrl,
+      avatarUrl: resolvedAvatarUrl,
       appearancePrompt,
       milestonePortraitCredits,
       revisions: [
@@ -893,7 +912,7 @@ export async function generateCharacterPortrait(options: {
   if (draft !== null && draftId !== null) {
     const updatedDraft: StoredDraft = {
       ...draft,
-      avatarUrl: portrait.avatarUrl,
+      avatarUrl: resolvedAvatarUrl,
       appearancePrompt,
       updatedAt: new Date(),
     };
@@ -901,7 +920,7 @@ export async function generateCharacterPortrait(options: {
   }
 
   return {
-    avatarUrl: portrait.avatarUrl,
+    avatarUrl: resolvedAvatarUrl,
     appearancePrompt,
     source: portrait.source,
     ...(milestonePortraitCredits !== undefined ? { milestonePortraitCredits } : {}),

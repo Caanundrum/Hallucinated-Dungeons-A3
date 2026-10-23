@@ -682,21 +682,32 @@ export async function createCampaign(options: {
         }
       : baseBlueprint;
 
+  const isHostedMilestone = process.env.HD_ENVIRONMENT_CLASS === 'milestone';
   const shouldForgeWorld =
-    options.forgeWorldAssets === true || options.approvedBlueprint !== undefined;
+    options.forgeWorldAssets === true ||
+    options.approvedBlueprint !== undefined ||
+    (isHostedMilestone && premiseText.trim().length > 0);
+  const shouldGenerateRoomMaps =
+    options.forgeWorldAssets === true ||
+    (isHostedMilestone && shouldForgeWorld);
   if (shouldForgeWorld && (campaignBlueprint.milestones?.length ?? 0) > 0) {
     const firstMilestone = campaignBlueprint.milestones![0]!;
-    const firstRoom = firstMilestone.rooms[0];
-    if (firstRoom !== undefined && options.forgeWorldAssets === true) {
-      const assetResult = await generateAndStoreCampaignAsset({
-        firestore,
-        campaignId,
-        kind: 'battlemap',
-        prompt: `${firstRoom.title}. ${firstRoom.summary} (${campaignTone})`,
-        fallbackTemplateId: firstRoom.templateId,
-      });
-      const updatedRooms = firstMilestone.rooms.map((r, idx) =>
-        idx === 0 ? { ...r, sceneArtUrl: assetResult.assetUrl } : r,
+    if (firstMilestone.rooms.length > 0 && shouldGenerateRoomMaps) {
+      const updatedRooms = await Promise.all(
+        firstMilestone.rooms.map(async (room) => {
+          const roomPrompt =
+            typeof room.battlemapPrompt === 'string' && room.battlemapPrompt.trim().length > 0
+              ? `${room.battlemapPrompt.trim()} (${campaignTone}, ${name})`
+              : `${room.title}. ${room.summary} (${campaignTone}, ${name})`;
+          const assetResult = await generateAndStoreCampaignAsset({
+            firestore,
+            campaignId,
+            kind: 'battlemap',
+            prompt: roomPrompt,
+            fallbackTemplateId: room.templateId,
+          });
+          return { ...room, sceneArtUrl: assetResult.assetUrl };
+        }),
       );
       const updatedMilestones = campaignBlueprint.milestones!.map((m, idx) =>
         idx === 0 ? { ...m, rooms: updatedRooms } : m,

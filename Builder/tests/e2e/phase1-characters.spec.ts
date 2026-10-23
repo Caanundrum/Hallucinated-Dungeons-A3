@@ -245,8 +245,9 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('tutorial-ask-no').click();
 
     await chooseOption(page, 'option-fighter');
-    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-survival');
     await chooseOption(page, 'check-perception');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-soldier');
@@ -254,12 +255,15 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('bonus-plus-one-each-summary')).toBeVisible();
     // Illegal free +2/+2/+2 selects are gone — only pattern controls exist.
     await expect(page.getByTestId('bonus-strength')).toHaveCount(0);
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-human');
     await chooseOption(page, 'species-choice-human-skillful-medicine');
+    await chooseOption(page, 'option-Alert');
     await expect(page.getByTestId('choice-helper-human-skillful')).toBeVisible();
     await expect(page.getByTestId('choice-helper-human-skillful')).not.toHaveText('');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-rolled');
@@ -293,19 +297,22 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await page.getByTestId('tutorial-ask-no').click();
 
     await chooseOption(page, 'option-fighter');
-    await chooseOption(page, 'check-athletics');
+    await chooseOption(page, 'check-survival');
     await chooseOption(page, 'check-perception');
     // Fighter wants exactly two skills — a third must be locked, not merely rejected later.
-    await expect(page.getByTestId('check-survival')).toBeDisabled();
+    await expect(page.getByTestId('check-athletics')).toBeDisabled();
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-soldier');
     await chooseOption(page, 'bonus-pattern-plus-one-each');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-goliath');
     await expect(page.getByTestId('choice-helper-giant-ancestry')).toContainText('Giant Ancestry');
     await chooseOption(page, 'species-choice-giant-ancestry-stone');
+    await waitForWizardContinue(page);
     await page.getByTestId('wizard-continue').click();
 
     await chooseOption(page, 'option-standard-array');
@@ -315,6 +322,10 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     await expect(page.getByTestId('ability-select-dexterity').locator('option[value="15"]')).toHaveCount(0);
 
     await chooseOption(page, 'option-point-buy');
+    const confirmAbilityMethod = page.getByTestId('confirm-ability-method-confirm');
+    if (await confirmAbilityMethod.isVisible().catch(() => false)) {
+      await confirmAbilityMethod.click();
+    }
     await expect(page.getByTestId('point-buy-budget')).toContainText(`0 of ${27}`);
     await page.getByTestId('ability-select-strength').selectOption('15');
     await expect(page.getByTestId('ability-select-strength')).toHaveValue('15');
@@ -326,15 +337,27 @@ test.describe('Phase 1 character creation and Character Vault', () => {
     // Budget spent — remaining abilities only offer 8.
     await expect(page.getByTestId('ability-select-intelligence').locator('option[value="9"]')).toHaveCount(0);
     await expect(page.getByTestId('ability-select-intelligence').locator('option[value="8"]')).toHaveCount(1);
+    await page.getByTestId('ability-select-intelligence').selectOption('8');
+    await page.getByTestId('ability-select-wisdom').selectOption('8');
+    await page.getByTestId('ability-select-charisma').selectOption('8');
+    await waitForWizardContinue(page);
+    await page.getByTestId('wizard-continue').click();
 
-    await page.getByTestId('step-features').click();
+    await chooseOption(page, 'option-fighter-a');
+    await chooseOption(page, 'option-soldier-kit');
+    await waitForWizardContinue(page);
+    await page.getByTestId('wizard-continue').click();
+
     await expect(page.getByTestId('choice-helper-fighting-style')).toBeVisible();
     await chooseOption(page, 'check-defense');
     // Fighting Style choose 1 — a second style is locked.
     await expect(page.getByTestId('check-archery')).toBeDisabled();
     await expect(page.getByTestId('preview-chosen-options')).toContainText('Fighting Style: Defense');
-
-    await page.getByTestId('step-identity').click();
+    await page.getByTestId('mastery-check-Greatsword').click();
+    await page.getByTestId('mastery-check-Longsword').click();
+    await page.getByTestId('mastery-check-Javelin').click();
+    await waitForWizardContinue(page);
+    await page.getByTestId('wizard-continue').click();
     await expect(page.getByTestId('identity-name')).toHaveAttribute('maxlength', '40');
     await expect(page.getByTestId('identity-concept')).toHaveAttribute('maxlength', '300');
   });

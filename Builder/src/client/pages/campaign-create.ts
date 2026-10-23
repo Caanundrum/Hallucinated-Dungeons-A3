@@ -155,11 +155,8 @@ export function mountCampaignCreatePage(host: PageHost): void {
   const mountToken = beginPageMount(container);
 
   function effectivePremise(): string {
-    const parts = [summary.trim(), premise.trim()].filter((part) => part.length > 0);
-    if (parts.length > 0) {
-      return parts.join('\n\n').slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
-    }
-    return '';
+    const text = (summary.trim() || premise.trim() || name.trim()).trim();
+    return text.slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
   }
 
   function canSubmit(): boolean {
@@ -385,8 +382,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
         startLevel,
         targetEndLevel,
         campaignTone,
+        forgeWorldAssets: true,
         ...(options.useForgedBlueprint && draftedBlueprint !== null
-          ? { approvedBlueprint: draftedBlueprint, forgeWorldAssets: true }
+          ? { approvedBlueprint: draftedBlueprint }
           : {}),
       });
       shell.announce(
@@ -489,7 +487,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         </section>
 
         <section class="panel" aria-labelledby="campaign-basics-heading">
-          <h2 id="campaign-basics-heading">2. Table &amp; Campaign World Forge</h2>
+          <h2 id="campaign-basics-heading">2. Table details &amp; premise</h2>
           <label class="field">
             <span>Title</span>
             <input type="text" data-testid="campaign-name" maxlength="${CAMPAIGN_NAME_MAX_LENGTH}"
@@ -497,16 +495,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
           </label>
           <label class="field">
             <span>Adventure premise (optional)</span>
-            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_SUMMARY_MAX_LENGTH}" rows="3" placeholder="Example: a canal town missing courier, a misty marsh inn, a stone crypt…">${escapeHtml(summary)}</textarea>
+            <textarea data-testid="campaign-summary" maxlength="${CAMPAIGN_PREMISE_MAX_LENGTH}" rows="4" placeholder="Example: a canal town missing courier, a misty marsh inn, a stone crypt, factions, or campaign arc notes…">${escapeHtml(summary)}</textarea>
             <span class="record-meta" data-testid="premise-continuity-hint">
               The opening scene keeps your core location, quest hook, and named entities when you
               write them here. The Game Director inspires the rest — the premise is not quoted word-for-word.
             </span>
-            ${premiseCommittedFactsMarkup(summary || premise)}
-          </label>
-          <label class="field">
-            <span>World Forge Premise &amp; Campaign Arc Notes (up to ${CAMPAIGN_PREMISE_MAX_LENGTH} chars)</span>
-            <textarea data-testid="campaign-premise-input" maxlength="${CAMPAIGN_PREMISE_MAX_LENGTH}" rows="4" placeholder="Describe the world setting, central conflict, factions, or mysteries for the Campaign World Forge…">${escapeHtml(premise)}</textarea>
+            ${premiseCommittedFactsMarkup(summary)}
           </label>
           <div class="actions">
             <label class="field">
@@ -527,13 +521,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
               </select>
             </label>
           </div>
-          <div class="actions">
-            <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
-              ${draftingSkeleton || busy ? 'disabled' : ''}>
-              ${draftingSkeleton ? 'Drafting Campaign Skeleton…' : draftedBlueprint !== null ? 'Regenerate Campaign Skeleton' : 'Draft Campaign Skeleton'}
-            </button>
-          </div>
-          ${renderSkeletonPreview()}
         </section>
 
         <section class="panel" aria-labelledby="director-identity-heading">
@@ -593,6 +580,20 @@ export function mountCampaignCreatePage(host: PageHost): void {
 
         ${renderPreview()}
 
+        <section class="panel" aria-labelledby="world-forge-heading">
+          <h2 id="world-forge-heading">5. Campaign Skeleton &amp; World Forge (optional preview)</h2>
+          <p class="record-meta">
+            Optionally preview and customize the multi-milestone room graph and leveling curve before creating the table, or create the table directly below.
+          </p>
+          <div class="actions">
+            <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
+              ${draftingSkeleton || busy ? 'disabled' : ''}>
+              ${draftingSkeleton ? 'Drafting Campaign Skeleton…' : draftedBlueprint !== null ? 'Regenerate Campaign Skeleton' : 'Draft Campaign Skeleton'}
+            </button>
+          </div>
+          ${renderSkeletonPreview()}
+        </section>
+
         <div class="actions">
           <button type="button" data-testid="create-campaign-submit"
             aria-disabled="${canSubmit() ? 'false' : 'true'}">
@@ -634,20 +635,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     );
     summaryInput?.addEventListener('input', () => {
       summary = summaryInput.value;
-      updateFactsDom();
-    });
-
-    const premiseInput = container.querySelector<HTMLTextAreaElement>(
-      '[data-testid="campaign-premise-input"]',
-    );
-    premiseInput?.addEventListener('input', () => {
-      premise = premiseInput.value;
-      if (summary.trim().length === 0) {
-        summary = premise.slice(0, CAMPAIGN_SUMMARY_MAX_LENGTH);
-        if (summaryInput !== null) {
-          summaryInput.value = summary;
-        }
-      }
+      premise = summaryInput.value;
       updateFactsDom();
     });
 
