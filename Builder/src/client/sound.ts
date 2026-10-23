@@ -34,10 +34,6 @@ class SoundController {
     return this.muted;
   }
 
-  public setMuted(muted: boolean): void {
-    this.muted = muted;
-  }
-
   /** Subtle micro-chirp for hover states */
   public playHover(): void {
     const ctx = this.getContext();

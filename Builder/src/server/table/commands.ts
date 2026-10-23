@@ -34,6 +34,7 @@ import {
   describeMoveDestination,
   doorNearSquare,
   formatMoveTravelSummary,
+  isAdjacentToDoorEdge,
 } from '../../shared/map-presentation.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import type { RulesCommandFields } from '../../shared/rules-combat-contract.js';
@@ -91,23 +92,6 @@ function edgesWithDoorStates(
   });
 }
 
-function isAdjacentToDoorEdge(anchor: MapSquareCoordinate, edge: MapEdgeRecord): boolean {
-  return (
-    (edge.orientation === 'east' &&
-      edge.row === anchor.row &&
-      (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
-    (edge.orientation === 'north' &&
-      edge.column === anchor.column &&
-      (edge.row === anchor.row || edge.row === anchor.row - 1)) ||
-    (edge.orientation === 'west' &&
-      edge.row === anchor.row &&
-      (edge.column === anchor.column || edge.column === anchor.column + 1)) ||
-    (edge.orientation === 'south' &&
-      edge.column === anchor.column &&
-      (edge.row === anchor.row || edge.row === anchor.row - 1))
-  );
-}
-
 /** Prefer an adjacent closed/locked door for unlock success; else nearest on the scene. */
 function resolveUnlockTargetEdge(
   map: MapBundleProjection,
@@ -161,6 +145,7 @@ async function loadMapBuildContext(
 ): Promise<{
   readonly adventureTemplateId: string | null;
   readonly currentChapterId: string | null;
+  readonly campaignBlueprint: import('../../shared/campaign-contract.js').CampaignBlueprint | null;
   readonly seats: Awaited<ReturnType<typeof loadCampaignSeats>>;
   readonly runtime: StoredMapRuntime;
 }> {
@@ -171,7 +156,10 @@ async function loadMapBuildContext(
     firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).get(),
   ]);
   const campaignData = campaignSnap.exists
-    ? (campaignSnap.data() as { adventureTemplateId?: string | null })
+    ? (campaignSnap.data() as {
+        adventureTemplateId?: string | null;
+        campaignBlueprint?: import('../../shared/campaign-contract.js').CampaignBlueprint | null;
+      })
     : null;
   const memoryData = memorySnap.exists
     ? (memorySnap.data() as { currentChapterId?: string | null })
@@ -179,6 +167,7 @@ async function loadMapBuildContext(
   return {
     adventureTemplateId: campaignData?.adventureTemplateId ?? null,
     currentChapterId: memoryData?.currentChapterId ?? null,
+    campaignBlueprint: campaignData?.campaignBlueprint ?? null,
     seats,
     runtime,
   };
@@ -721,6 +710,8 @@ export async function acceptTableCommand(options: {
     readonly nextState: string;
   } | null = null;
   let nextProgression: StoredProgression | null = null;
+  let additionalProgressions: Array<{ characterId: string; progression: StoredProgression }> = [];
+  let moveValidationMap: MapBundleProjection | null = null;
   let takenEquipmentName: string | null = null;
   let doorTargetLabel = 'the wooden doorway';
 
@@ -906,6 +897,12 @@ export async function acceptTableCommand(options: {
       } catch {
         priorProgression = null;
       }
+      const activeMilestoneIdx = activeSceneInstance(mapContext.runtime)?.milestoneIndex ?? 1;
+      const activeMilestone =
+        mapContext.campaignBlueprint?.milestones?.find(
+          (m, idx) => m.milestoneIndex === activeMilestoneIdx || idx + 1 === activeMilestoneIdx,
+        ) ?? null;
+      const requiredXpThreshold = activeMilestone?.requiredXpThreshold;
       const result = travelSceneRuntime({
         runtime: mapContext.runtime,
         campaignId,
@@ -916,19 +913,52 @@ export async function acceptTableCommand(options: {
           ? mapContext.runtime.tokenPositions
           : [{ seatId: seat.seatId, column: 2, row: 2 }],
         ...(priorProgression !== null ? { partyXp: priorProgression.experiencePoints } : {}),
+        ...(typeof requiredXpThreshold === 'number' ? { requiredXpThreshold } : {}),
       });
       nextSceneRuntime = result.runtime;
       buildSceneTitle = result.composed?.title ?? activeSceneInstance(result.runtime)?.title ?? null;
       sceneChronicleBody = result.chronicle;
       eventType = 'table.scene_traveled';
-      if (priorProgression !== null && (result.xpAwarded ?? 0) > 0) {
-        const nextXp = priorProgression.experiencePoints + (result.xpAwarded ?? 0);
-        nextProgression = {
-          ...priorProgression,
-          experiencePoints: nextXp,
-          level: levelForExperience(nextXp),
-          updatedAt: new Date().toISOString(),
-        };
+      const xpAwarded = result.xpAwarded ?? 0;
+      if (xpAwarded > 0) {
+        const nowIso = new Date().toISOString();
+        if (priorProgression !== null) {
+          const nextXp = priorProgression.experiencePoints + xpAwarded;
+          nextProgression = {
+            ...priorProgression,
+            experiencePoints: nextXp,
+            level: levelForExperience(nextXp),
+            updatedAt: nowIso,
+          };
+        }
+        // Award discovery XP to all other seated party members as well.
+        for (const otherSeat of mapContext.seats) {
+          if (otherSeat.characterId === seat.characterId) {
+            continue;
+          }
+          try {
+            const otherSource = await loadCharacterRulesSource(firestore, otherSeat.characterId);
+            const otherSnap = await firestore
+              .collection(COLLECTIONS.characterProgressions)
+              .doc(otherSeat.characterId)
+              .get();
+            const otherPrior = otherSnap.exists
+              ? (otherSnap.data() as StoredProgression)
+              : initialStoredProgression(otherSource);
+            const otherNextXp = otherPrior.experiencePoints + xpAwarded;
+            additionalProgressions.push({
+              characterId: otherSeat.characterId,
+              progression: {
+                ...otherPrior,
+                experiencePoints: otherNextXp,
+                level: levelForExperience(otherNextXp),
+                updatedAt: nowIso,
+              },
+            });
+          } catch {
+            // Ignore unresolvable companion seat progression.
+          }
+        }
       }
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
@@ -959,6 +989,7 @@ export async function acceptTableCommand(options: {
       adventureTemplateId: mapContext.adventureTemplateId,
       currentChapterId: mapContext.currentChapterId,
     });
+    moveValidationMap = map;
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token === undefined) {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
@@ -1016,6 +1047,7 @@ export async function acceptTableCommand(options: {
       adventureTemplateId: mapContext.adventureTemplateId,
       currentChapterId: mapContext.currentChapterId,
     });
+    moveValidationMap = map;
     const edge = map.edges.find((entry) => entry.edgeId === edgeId);
     if (edge === undefined || edge.kind !== 'door') {
       throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is not on this scene.');
@@ -1034,16 +1066,9 @@ export async function acceptTableCommand(options: {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
     }
     const anchor = token.footprint.anchor;
-    const doorNeighbor =
-      edge.orientation === 'north'
-        ? { column: edge.column, row: edge.row - 1 }
-        : { column: edge.column + 1, row: edge.row };
     const nearDoor =
-      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1 ||
-      Math.max(
-        Math.abs(anchor.column - doorNeighbor.column),
-        Math.abs(anchor.row - doorNeighbor.row),
-      ) <= 1;
+      isAdjacentToDoorEdge(anchor, edge) ||
+      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1;
     if (!nearDoor) {
       throw new TableCommandError(
         ERROR_CODES.ILLEGAL_PATH,
@@ -1069,6 +1094,7 @@ export async function acceptTableCommand(options: {
       adventureTemplateId: mapContext.adventureTemplateId,
       currentChapterId: mapContext.currentChapterId,
     });
+    moveValidationMap = map;
     const edge = map.edges.find((entry) => entry.edgeId === edgeId);
     if (edge === undefined || edge.kind !== 'door') {
       throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is not on this scene.');
@@ -1084,16 +1110,9 @@ export async function acceptTableCommand(options: {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
     }
     const anchor = token.footprint.anchor;
-    const doorNeighbor =
-      edge.orientation === 'north'
-        ? { column: edge.column, row: edge.row - 1 }
-        : { column: edge.column + 1, row: edge.row };
     const nearDoor =
-      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1 ||
-      Math.max(
-        Math.abs(anchor.column - doorNeighbor.column),
-        Math.abs(anchor.row - doorNeighbor.row),
-      ) <= 1;
+      isAdjacentToDoorEdge(anchor, edge) ||
+      Math.max(Math.abs(anchor.column - edge.column), Math.abs(anchor.row - edge.row)) <= 1;
     if (!nearDoor) {
       throw new TableCommandError(
         ERROR_CODES.ILLEGAL_PATH,
@@ -1113,6 +1132,7 @@ export async function acceptTableCommand(options: {
       adventureTemplateId: mapContext.adventureTemplateId,
       currentChapterId: mapContext.currentChapterId,
     });
+    moveValidationMap = map;
     if (!map.mapBundleId.startsWith('blank:')) {
       throw new TableCommandError(
         ERROR_CODES.BAD_REQUEST,
@@ -1153,6 +1173,7 @@ export async function acceptTableCommand(options: {
       adventureTemplateId: mapContext.adventureTemplateId,
       currentChapterId: mapContext.currentChapterId,
     });
+    moveValidationMap = map;
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token !== undefined) {
       syncVisionSquares = visibleSquaresFrom(
@@ -1293,17 +1314,21 @@ export async function acceptTableCommand(options: {
       const destination = movePath[movePath.length - 1]!;
       tokenPositions = upsertTokenPosition(tokenPositions, seat.seatId, destination);
       const active = activeSceneId ? sceneInstances[activeSceneId] : null;
-      const visionEdges = edgesWithDoorStates(
-        active?.edges ?? runtimeEdges,
-        { ...(active?.doorStates ?? {}), ...doorStates },
-      );
+      const baseVisionEdges =
+        active?.edges ??
+        (runtimeEdges.length > 0 ? runtimeEdges : (moveValidationMap?.edges ?? []));
+      const visionEdges = edgesWithDoorStates(baseVisionEdges, {
+        ...(active?.doorStates ?? {}),
+        ...doorStates,
+      });
+      const fallbackCells = active?.cells ?? moveValidationMap?.cells;
       const vision = visibleSquaresFrom(
         destination,
         DEFAULT_VISION_RADIUS_SQUARES,
         {
-          columns: active?.columns ?? 12,
-          rows: active?.rows ?? 8,
-          ...(active?.cells !== undefined ? { cells: active.cells } : {}),
+          columns: active?.columns ?? moveValidationMap?.coordinateSpace.columns ?? 12,
+          rows: active?.rows ?? moveValidationMap?.coordinateSpace.rows ?? 8,
+          ...(fallbackCells !== undefined ? { cells: fallbackCells } : {}),
         },
         visionEdges,
       );
@@ -1411,7 +1436,7 @@ export async function acceptTableCommand(options: {
           [activeSceneId]: {
             ...activeScene,
             features,
-            doorStates: { ...activeScene.doorStates, [openEdgeId]: 'unlocked' },
+            doorStates: { ...activeScene.doorStates, ...doorStates, [openEdgeId]: 'unlocked' },
           },
         };
       }
@@ -1434,6 +1459,45 @@ export async function acceptTableCommand(options: {
       }
       if (unlockEdgeId !== undefined) {
         doorStates[unlockEdgeId] = storedDoorStateFromAuthority(doorStateAfterUnlockSuccess());
+      }
+      if (activeSceneId && sceneInstances[activeSceneId]) {
+        const activeScene = sceneInstances[activeSceneId]!;
+        const unlockedEdge =
+          unlockEdgeId !== undefined
+            ? (activeScene.edges.find((edge) => edge.edgeId === unlockEdgeId) ??
+              runtimeEdges.find((edge) => edge.edgeId === unlockEdgeId) ??
+              null)
+            : null;
+        const features =
+          unlockedEdge !== null
+            ? activeScene.features.map((feature) => {
+                const isExit =
+                  feature.objectKind === 'exit' ||
+                  feature.referenceKind === 'exit' ||
+                  feature.objectId.includes(':exit');
+                if (!isExit) {
+                  return feature;
+                }
+                const near =
+                  Math.abs(feature.column - unlockedEdge.column) +
+                    Math.abs(feature.row - unlockedEdge.row) <=
+                  1;
+                if (!near) {
+                  return feature;
+                }
+                const base = stripDoorStateLabelSuffix(feature.label);
+                return { ...feature, label: `${base} — closed, unlocked` };
+              })
+            : activeScene.features;
+        sceneInstances = {
+          ...sceneInstances,
+          [activeSceneId]: {
+            ...activeScene,
+            features,
+            doorStates: { ...activeScene.doorStates, ...doorStates },
+            exploredByAccount,
+          },
+        };
       }
     }
 
@@ -1581,6 +1645,12 @@ export async function acceptTableCommand(options: {
       transaction.set(
         firestore.collection(COLLECTIONS.characterProgressions).doc(seat.characterId),
         nextProgression,
+      );
+    }
+    for (const extra of additionalProgressions) {
+      transaction.set(
+        firestore.collection(COLLECTIONS.characterProgressions).doc(extra.characterId),
+        extra.progression,
       );
     }
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {

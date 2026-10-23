@@ -34,6 +34,7 @@ import { mountInvitePage } from './pages/invite.js';
 import { mountNotFoundPage } from './pages/not-found.js';
 import { mountWelcomePage } from './pages/welcome.js';
 import { isHostedPlayerSurface } from './player-surface.js';
+import { runPageCleanups } from './page-mount.js';
 import { pathnameOf, startRouter } from './router.js';
 import { mountShell } from './shell.js';
 import {
@@ -115,12 +116,17 @@ async function start(): Promise<void> {
         legalGateError = message;
       },
       render: () => {
-        onUnblocked();
+        if (!isPlayBlockedByLegal()) {
+          onUnblocked();
+          return;
+        }
+        mountLegalGateForPlay(title, body, onUnblocked);
       },
     });
   }
 
   function startRouterCallback(locationKey: string): void {
+    runPageCleanups(shell.mainElement);
     const path = pathnameOf(locationKey);
     shell.setActiveRoute(path);
     const host: PageHost = { container: shell.mainElement, shell, candidate };

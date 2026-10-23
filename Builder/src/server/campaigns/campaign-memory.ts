@@ -414,11 +414,10 @@ function seedNpcsFromBlueprint(blueprint: CampaignBlueprint): CampaignNpcRecordP
     const lower = name.toLowerCase();
     const isMissing =
       missingNpcs.some((m) => m.toLowerCase() === lower) ||
-      roomNpcRoles.get(lower) === 'Missing person';
+      /missing/i.test(roomNpcRoles.get(lower) ?? '');
     const isPresent =
       presentNpcs.some((p) => p.toLowerCase() === lower) ||
-      roomNpcRoles.get(lower) === 'Key contact' ||
-      roomNpcRoles.get(lower) === 'Local witness';
+      /contact|witness|guide/i.test(roomNpcRoles.get(lower) ?? '');
 
     let role = 'Encountered acquaintance';
     let motive = 'Helpful';

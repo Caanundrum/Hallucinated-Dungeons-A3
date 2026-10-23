@@ -10,18 +10,6 @@ import { isLegalPlayBlocked } from './legal-play-gate.js';
 let acceptance: LegalAcceptanceProjection | null = null;
 let loadedForAccountId: string | null = null;
 let loading = false;
-const listeners = new Set<() => void>();
-
-export function subscribeLegalAcceptance(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function notify(): void {
-  for (const listener of listeners) {
-    listener();
-  }
-}
 
 export function getLegalAcceptance(): LegalAcceptanceProjection | null {
   return acceptance;
@@ -36,7 +24,6 @@ export async function hydrateLegalAcceptance(): Promise<void> {
   if (account === null) {
     acceptance = null;
     loadedForAccountId = null;
-    notify();
     return;
   }
   if (loading) {
@@ -54,19 +41,11 @@ export async function hydrateLegalAcceptance(): Promise<void> {
     loadedForAccountId = account.accountId;
   } finally {
     loading = false;
-    notify();
   }
 }
 
 export function setLegalAcceptance(next: LegalAcceptanceProjection): void {
   acceptance = next;
-  notify();
-}
-
-export function clearLegalAcceptance(): void {
-  acceptance = null;
-  loadedForAccountId = null;
-  notify();
 }
 
 subscribeAccount(() => {

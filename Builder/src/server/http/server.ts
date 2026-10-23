@@ -240,7 +240,7 @@ function contentSecurityPolicy(env: ServerEnvironment): string {
       "object-src 'none'",
     ].join('; ');
   }
-  return "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
+  return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 }
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
@@ -535,9 +535,14 @@ async function readJsonBody(
     chunks.push(buffer);
   }
   if (total === 0) {
-    return undefined;
+    return {};
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (raw.trim() === '') {
+    return {};
+  }
+  const parsed = JSON.parse(raw) as unknown;
+  return parsed ?? {};
 }
 
 async function readFormBody(request: IncomingMessage): Promise<URLSearchParams> {
@@ -604,7 +609,7 @@ function applyCorsHeaders(response: ServerResponse, originContext: OriginGuardOp
   response.setHeader('access-control-allow-origin', corsAllowOrigin(originContext));
   response.setHeader('access-control-allow-credentials', 'true');
   response.setHeader('access-control-allow-headers', `content-type, ${CANDIDATE_HEADER}`);
-  response.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+  response.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
 }
 
 function sessionTokenFrom(request: IncomingMessage): string | null {
@@ -784,7 +789,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       const csrfCookie = parseCookies(request.headers.cookie).get('g_csrf_token') ?? '';
       const csrfBody = form.get('g_csrf_token')?.trim() ?? '';
       const googleIdToken = form.get('credential')?.trim() ?? '';
-      if (csrfCookie !== '' && csrfBody !== '' && csrfCookie !== csrfBody) {
+      if (csrfBody === '' || (csrfCookie !== '' && csrfCookie !== csrfBody)) {
         process.stderr.write(`[auth/google-login] CSRF token mismatch between cookie and form body\n`);
         writeRedirect(response, env, '/?auth_error=google_signin_failed');
         return;
@@ -1538,9 +1543,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       }
     };
 
-    const readBody = async (): Promise<unknown | typeof BODY_REJECTED> => {
+    const readBody = async (maxBytes?: number): Promise<unknown | typeof BODY_REJECTED> => {
       try {
-        return await readJsonBody(request);
+        return await readJsonBody(request, maxBytes);
       } catch (error) {
         if (error instanceof PayloadTooLargeError) {
           refuseOversizedBody(request, response);
@@ -1694,7 +1699,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
 
         if (method === 'DELETE') {
           await deleteCharacter({ firestore, accountId, characterId });
-          sendJson(response, 204, null);
+          response.writeHead(204);
+          response.end();
           return;
         }
 
@@ -2602,7 +2608,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       const presenceMatch = /^\/api\/campaigns\/([A-Za-z0-9-]{1,64})\/presence$/.exec(path);
       if (presenceMatch !== null) {
         const campaignId = presenceMatch[1]!;
-        await readCampaignDetail({ firestore, accountId, campaignId });
+        const detail = await readCampaignDetail({ firestore, accountId, campaignId });
         if (method === 'GET') {
           sendJson(response, 200, await loadCampaignPresence(firestore, campaignId));
           return;
@@ -2622,7 +2628,6 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             sendError(response, ERROR_CODES.BAD_REQUEST);
             return;
           }
-          const detail = await readCampaignDetail({ firestore, accountId, campaignId });
           const ownSeat = detail.ownSeat?.seatId ?? null;
           const presence = await heartbeatPresence({
             firestore,
@@ -2631,7 +2636,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             displayLabel: session.identity.displayLabel,
             deviceSessionId: session.deviceSessionId,
             tabId: payload.tabId,
-            seatId: typeof payload.seatId === 'string' ? payload.seatId : ownSeat,
+            seatId: ownSeat,
             spectator: payload.spectator === true,
           });
           // Detect grace for other seated accounts and lock their Active Turns.

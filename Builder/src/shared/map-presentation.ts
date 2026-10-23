@@ -30,7 +30,7 @@ export function isAdjacentToDoorEdge(
       (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
     (edge.orientation === 'north' &&
       edge.column === anchor.column &&
-      (edge.row === anchor.row || edge.row === anchor.row - 1)) ||
+      (edge.row === anchor.row || edge.row === anchor.row + 1)) ||
     (edge.orientation === 'west' &&
       edge.row === anchor.row &&
       (edge.column === anchor.column || edge.column === anchor.column + 1)) ||

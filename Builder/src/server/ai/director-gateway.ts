@@ -248,13 +248,19 @@ export function buildPresenceWithNpcsNarration(
  * Never quotes the NPC description/role field as spoken dialogue.
  */
 export function buildNpcDialogueReply(options: {
-  readonly npc: { readonly name: string; readonly role: string; readonly motive: string };
+  readonly npc: {
+    readonly name: string;
+    readonly role: string;
+    readonly motive: string;
+    readonly knowledge?: string;
+  };
   readonly playerText: string;
   readonly mapTitle: string | null;
 }): string {
   const q = options.playerText.toLowerCase();
   const name = options.npc.name;
   const where = options.mapTitle?.trim() || 'this chamber';
+  const knowledge = options.npc.knowledge?.trim() ?? '';
 
   if (
     (/\b(beyond|past|behind|through)\b/.test(q) && /\bdoor\b/.test(q)) ||
@@ -269,8 +275,18 @@ export function buildNpcDialogueReply(options: {
   if (/\bwhich door\b|\bleads to\b|\barchive\b/.test(q)) {
     return `${name}: "Only one door shows from here. What's beyond it isn't settled until someone opens it — I won't invent an archive for you."`;
   }
-  if (/\b(?:mira|vanished|missing|bell|stolen|last\s+see|know\s+about|what\s+happened)\b/i.test(q)) {
+  if (/\b(?:mira|bell)\b/i.test(q)) {
     return `${name}: "Mira was carrying that copper bell when she vanished into the old mill passages. I fear she's held deeper inside — we need to find her alive and recover the bell."`;
+  }
+  if (/\b(?:vanished|missing|stolen|last\s+see|know\s+about|what\s+happened)\b/i.test(q)) {
+    if (
+      knowledge.length > 0 &&
+      knowledge !== 'Present in the area.' &&
+      knowledge.toLowerCase() !== options.npc.role.toLowerCase()
+    ) {
+      return `${name}: "Here is what I know from ${where}: ${knowledge}"`;
+    }
+    return `${name}: "Whoever vanished was last seen heading deeper into the passages beyond ${where}. We need to search the adjoining rooms carefully."`;
   }
   return `${name}: "Ask plainly about what we can see here. I answer from this chamber — not from places that aren't established yet."`;
 }
@@ -607,7 +623,7 @@ async function resolveDirectorNarrateOutput(options: {
       const locationNote = /tavern/i.test(memory?.chapters[0]?.title ?? '')
         ? 'in the tavern'
         : 'in the previous area';
-      return `${npc.name} is not in this room right now — she remains ${locationNote} and out of earshot.`;
+      return `${npc.name} is not in this room right now — they remain ${locationNote} and out of earshot.`;
     }
     const cleanName = sceneNpc?.label.replace(/\s+[—–-]\s+\w+$/u, '').trim() || npc?.name || name;
     try {

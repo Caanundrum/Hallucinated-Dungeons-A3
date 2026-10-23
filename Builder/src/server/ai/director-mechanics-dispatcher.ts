@@ -156,18 +156,20 @@ export async function queryDirectorMechanicsArbiter(
     env.GCLOUD_PROJECT ??
     ''
   ).trim();
+  const isLocalArena = env.HD_ENVIRONMENT_CLASS === 'local';
   const isMilestone = env.HD_ENVIRONMENT_CLASS === 'milestone';
 
-  if (apiKey.length < 20 && (!isMilestone || project.length === 0)) {
-    return null; // Local offline arena without live API key falls back to deterministic engine
+  if (isLocalArena || (apiKey.length < 20 && (!isMilestone || project.length === 0))) {
+    return null; // Local offline arena falls back to deterministic engine
   }
 
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const ai =
       apiKey.length >= 20
         ? new GoogleGenAI({ apiKey })
         : new GoogleGenAI({
-            enterprise: true,
+            vertexai: true,
             project,
             location: (env.GOOGLE_CLOUD_LOCATION ?? 'us-central1').trim() || 'us-central1',
           });
@@ -186,15 +188,19 @@ export async function queryDirectorMechanicsArbiter(
       },
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('DM Dispatcher timeout')), timeoutMs),
-    );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('DM Dispatcher timeout')), timeoutMs);
+    });
 
     const response = await Promise.race([generatePromise, timeoutPromise]);
     const rawText = (response.text ?? '').trim();
     return parseDispatchJson(rawText);
   } catch {
     return null; // Gracefully fall back to deterministic engine on timeout or network error
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -294,13 +300,17 @@ export function applyDirectorDispatchToMap(options: {
 
   // 3. Travel Scene (Return or Advance)
   if (dispatch.actionType === 'travel_scene') {
-    const returnToPrevious = dispatch.travelScene?.returnToPrevious ?? true;
-    const hint = dispatch.travelScene?.destinationHint ?? (returnToPrevious ? 'the earlier scene' : 'the next scene');
+    const returnToPrevious = dispatch.travelScene?.returnToPrevious === true;
+    const hint =
+      dispatch.travelScene?.destinationHint ??
+      (returnToPrevious ? 'the earlier scene' : 'the next area');
     return {
       proposedCommandType: 'table.travel_scene',
       returnToPrevious,
       destinationHint: hint,
-      summary: `Ready to return to ${hint}. Confirm to restore it with prior consequences.`,
+      summary: returnToPrevious
+        ? `Ready to return to ${hint}. Confirm to restore it with prior consequences.`
+        : `Ready to travel to ${hint}. Confirm to advance the party into the next area.`,
     };
   }
 
@@ -320,7 +330,7 @@ export function applyDirectorDispatchToMap(options: {
       if (!presentNpc && isKnownNpc) {
         return {
           proposedCommandType: 'table.sync',
-          summary: `${isKnownNpc.label} is not in this room right now — she remains in the previous area and out of earshot.`,
+          summary: `${isKnownNpc.label} is not in this room right now — they remain in the previous area and out of earshot.`,
         };
       }
     }

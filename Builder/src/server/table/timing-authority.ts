@@ -156,6 +156,7 @@ export async function supersedeIssuedActiveTurnAuthorities(options: {
   const existingQuery = firestore
     .collection(COLLECTIONS.timingAuthorities)
     .where('campaignId', '==', campaignId)
+    .where('state', '==', 'issued')
     .limit(20);
   const existing = await transaction.get(existingQuery);
   for (const doc of existing.docs) {
@@ -289,10 +290,30 @@ export async function claimActiveTurnAuthority(options: {
   await assertMember({ firestore, accountId, campaignId });
   const seat = await loadOwnSeat({ firestore, accountId, campaignId });
 
-  const projectionSnap = await firestore
-    .collection(COLLECTIONS.campaignTableProjections)
-    .doc(campaignId)
-    .get();
+  const [projectionSnap, encounterSnap] = await Promise.all([
+    firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId).get(),
+    firestore.collection(COLLECTIONS.campaignEncounters).doc(campaignId).get(),
+  ]);
+  const currentEncounter = encounterSnap.exists
+    ? (encounterSnap.data() as EncounterProjection)
+    : null;
+  if (isActiveCombat(currentEncounter)) {
+    const activeCombatant =
+      currentEncounter.combatants.find(
+        (combatant) => combatant.combatantId === currentEncounter.activeCombatantId,
+      ) ?? null;
+    if (
+      activeCombatant !== null &&
+      activeCombatant.side === 'party' &&
+      activeCombatant.seatId !== null &&
+      activeCombatant.seatId !== seat.seatId
+    ) {
+      throw new TimingAuthorityError(
+        ERROR_CODES.TIMING_AUTHORITY_REQUIRED,
+        'Active Turn Authority belongs to the active party combatant in initiative order.',
+      );
+    }
+  }
   const projectionVersion = projectionSnap.exists
     ? ((projectionSnap.data() as { stateVersion?: number }).stateVersion ?? 0)
     : 0;
@@ -306,6 +327,7 @@ export async function claimActiveTurnAuthority(options: {
     const existingQuery = firestore
       .collection(COLLECTIONS.timingAuthorities)
       .where('campaignId', '==', campaignId)
+      .where('state', '==', 'issued')
       .limit(20);
     const existing = await transaction.get(existingQuery);
 

@@ -219,18 +219,6 @@ export async function ensureCampaignSettings(
   return created;
 }
 
-export async function assertSessionZeroRecorded(
-  firestore: Firestore,
-  campaignId: string,
-): Promise<void> {
-  const stored = await ensureCampaignSettings(firestore, campaignId);
-  if (!stored.sessionZero.completed) {
-    throw new CampaignValidationError(
-      'Session Zero is not recorded for this campaign yet. Open Campaign settings to record it before seating characters or starting live play.',
-    );
-  }
-}
-
 export async function readCampaignSettings(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
@@ -518,8 +506,4 @@ export async function seedCampaignSettings(
     .collection(COLLECTIONS.campaignSettings)
     .doc(campaignId)
     .set(buildDefaultStoredSettings(campaignId, now));
-}
-
-export function contentProfileSummaryFor(profile: ContentProfile): string {
-  return CONTENT_PROFILE_SUMMARIES[profile];
 }

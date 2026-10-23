@@ -666,7 +666,7 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
   }
 
   const assigned = ABILITIES.map((ability) => choices.baseAbilityScores[ability]);
-  if (assigned.some((score) => score === undefined)) {
+  if (assigned.some((score) => score === undefined || !Number.isInteger(score))) {
     problems.push(
       unresolved('abilities', 'ABILITY_SCORES_INCOMPLETE', 'Assign a score to each of the six Ability Scores.'),
     );
@@ -713,15 +713,15 @@ export function validateChoices(choices: CharacterChoices): readonly UnresolvedC
   // ── Background ability increases ───────────────────────────────────────
   if (backgroundRecord !== null) {
     const bonuses = choices.backgroundAbilityBonuses;
-    const entries = ABILITIES.map((ability) => [ability, bonuses[ability] ?? 0] as const).filter(
-      ([, amount]) => amount !== 0,
-    );
+    const rawEntries = ABILITIES.map((ability) => [ability, bonuses[ability] ?? 0] as const);
+    const hasInvalidBonus = rawEntries.some(([, amount]) => !Number.isInteger(amount) || amount < 0);
+    const entries = rawEntries.filter(([, amount]) => amount !== 0);
     const outsideBackground = entries.filter(
       ([ability]) => !backgroundRecord.abilityOptions.includes(ability),
     );
     const total = entries.reduce((sum, [, amount]) => sum + amount, 0);
     const amounts = entries.map(([, amount]) => amount).sort((a, b) => b - a).join(',');
-    const legalPattern = amounts === '2,1' || amounts === '1,1,1';
+    const legalPattern = !hasInvalidBonus && (amounts === '2,1' || amounts === '1,1,1');
 
     if (outsideBackground.length > 0) {
       problems.push(
@@ -1110,7 +1110,7 @@ function deriveAttacks(
           { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
           { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
         ]),
-        damage: `1+${modifiers[ability]}`,
+        damage: String(Math.max(1, 1 + modifiers[ability])),
         damageType: 'bludgeoning',
         properties: ['Unarmed'],
         ruleId: 'weapon.unarmed-strike',
@@ -1517,10 +1517,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
             ...featCantripEntries,
           ],
           spellbook: spellbookEntries,
-          spells:
-            spellbookSize !== null
-              ? classSpellEntries
-              : [...classSpellEntries, ...featSpellEntries],
+          spells: [...classSpellEntries, ...featSpellEntries],
           level1SlotCount,
           level1SlotsRemaining: level1SlotCount,
           preparationStyle: casting?.preparationStyle ?? 'known',
@@ -1537,6 +1534,16 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       label: 'Alert',
       amount: proficiencyBonus.value,
       ruleId: 'feat.alert.initiative',
+    });
+  }
+  const hasTough =
+    backgroundRecord.originFeat === 'Tough' ||
+    (speciesRecord.id === 'human' && activeOriginFeat === 'Tough');
+  if (hasTough) {
+    hitPointComponents.push({
+      label: 'Tough',
+      amount: 2 * STARTING_LEVEL,
+      ruleId: 'feat.tough.hit-points',
     });
   }
   const hitPoints = value(hitPointComponents);

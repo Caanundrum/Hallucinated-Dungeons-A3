@@ -34,7 +34,6 @@ import type {
   InvitationCreatedProjection,
   InvitationPreview,
   JoinTableResponse,
-  PublicTableListProjection,
   SeatProjection,
   TablesHubProjection,
 } from '../shared/campaign-contract.js';
@@ -74,7 +73,6 @@ import type {
   AreaTarget,
   CharacterProgressionProjection,
   EncounterProjection,
-  RuleExplanationProjection,
 } from '../shared/rules-combat-contract.js';
 
 /** A draft always travels with the options legal for its current state. */
@@ -177,10 +175,6 @@ export async function fetchSession(): Promise<AccountProjection> {
 }
 
 /** Alias for the product-facing account surface; same Development Test Identity. */
-export async function fetchAccount(): Promise<AccountProjection> {
-  return fetchSession();
-}
-
 export async function enterLocalArena(candidateId: string): Promise<AccountProjection> {
   return (await request<AccountProjection>('/api/identity/development-session', {
     method: 'POST',
@@ -208,10 +202,6 @@ export async function openDraft(candidateId: string): Promise<DraftResponse> {
     method: 'POST',
     candidateId,
   })) as DraftResponse;
-}
-
-export async function fetchDraft(draftId: string): Promise<DraftResponse> {
-  return (await request<DraftResponse>(`/api/characters/drafts/${draftId}`)) as DraftResponse;
 }
 
 export async function saveDraft(options: {
@@ -357,12 +347,6 @@ export async function fetchCampaigns(): Promise<CampaignListProjection> {
 
 export async function fetchTablesHub(): Promise<TablesHubProjection> {
   return (await request<TablesHubProjection>('/api/tables/hub')) as TablesHubProjection;
-}
-
-export async function fetchPublicTables(): Promise<PublicTableListProjection> {
-  return (await request<PublicTableListProjection>(
-    '/api/tables/public',
-  )) as PublicTableListProjection;
 }
 
 export async function fetchActiveSeatedTable(): Promise<ActiveSeatedTableProjection | null> {
@@ -631,84 +615,6 @@ export async function fetchCampaignMemory(campaignId: string): Promise<CampaignM
   return (await request(`/api/campaigns/${campaignId}/memory`)) as CampaignMemoryProjection;
 }
 
-/** Director-owned NPC establish — not a player Confirm scene control. */
-export async function applyDirectorNpc(options: {
-  readonly candidateId: string;
-  readonly campaignId: string;
-  readonly directive: {
-    readonly schemaVersion: 'play-authority-npc-v1';
-    readonly npcId: string;
-    readonly name: string;
-    readonly publicDescription: string;
-    readonly disposition: 'friendly' | 'wary' | 'neutral' | 'hostile' | 'allied' | 'unknown';
-    readonly location: { readonly column: number; readonly row: number } | null;
-    readonly placeToken: boolean;
-    readonly firstDialogue: string | null;
-    readonly audience: 'public' | 'private';
-    readonly causeActionId: string | null;
-  };
-}): Promise<{
-  readonly memory: CampaignMemoryProjection;
-  readonly created: boolean;
-  readonly chronicleBody: string | null;
-}> {
-  return (await request(`/api/campaigns/${options.campaignId}/director/npc`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify(options.directive),
-  })) as {
-    readonly memory: CampaignMemoryProjection;
-    readonly created: boolean;
-    readonly chronicleBody: string | null;
-  };
-}
-
-/** Director-owned scene establish — validates + chronicles; map geometry apply is follow-on. */
-export async function applyDirectorScene(options: {
-  readonly candidateId: string;
-  readonly campaignId: string;
-  readonly directive: {
-    readonly schemaVersion: 'play-authority-scene-v1';
-    readonly sceneId: string;
-    readonly revision: number;
-    readonly title: string;
-    readonly displayMode: 'ambient' | 'exploration' | 'combat';
-    readonly bounds: { readonly columns: number; readonly rows: number };
-    readonly causeActionId: string | null;
-    readonly continuity: {
-      readonly previousSceneId: string | null;
-      readonly boundaryCrossed: boolean;
-    };
-    readonly structure: { readonly edges: readonly unknown[] };
-    readonly markers: readonly unknown[];
-    readonly entities: readonly unknown[];
-    readonly visibility: 'public' | 'discovered' | 'hidden' | 'dm_only';
-    readonly rejectedMechanics: readonly string[];
-  };
-}): Promise<{
-  readonly ok: true;
-  readonly sceneId: string;
-  readonly revision: number;
-  readonly title: string;
-  readonly mapApplied: false;
-  readonly rejectedMechanics: readonly string[];
-  readonly chronicleBody: string;
-}> {
-  return (await request(`/api/campaigns/${options.campaignId}/director/scene`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify(options.directive),
-  })) as {
-    readonly ok: true;
-    readonly sceneId: string;
-    readonly revision: number;
-    readonly title: string;
-    readonly mapApplied: false;
-    readonly rejectedMechanics: readonly string[];
-    readonly chronicleBody: string;
-  };
-}
-
 export async function fetchPersonalRecap(campaignId: string): Promise<PersonalRecapProjection> {
   return (await request(`/api/campaigns/${campaignId}/recap`)) as PersonalRecapProjection;
 }
@@ -836,12 +742,6 @@ export async function fetchRulesState(campaignId: string): Promise<{
   };
 }
 
-export async function fetchRuleExplanation(ruleId: string): Promise<RuleExplanationProjection> {
-  return (await request(
-    `/api/rules/explain?ruleId=${encodeURIComponent(ruleId)}`,
-  )) as RuleExplanationProjection;
-}
-
 export async function fetchRulesCatalog(): Promise<
   import('../shared/rules-catalog-contract.js').RulesCatalogProjection
 > {
@@ -865,18 +765,6 @@ export async function claimTimingAuthority(options: {
     candidateId: options.candidateId,
     body: JSON.stringify({}),
   })) as TimingAuthorityClaimResponse;
-}
-
-export async function endTimingAuthority(options: {
-  readonly candidateId: string;
-  readonly campaignId: string;
-  readonly timingAuthorityId: string;
-}): Promise<{ authority: TimingAuthorityProjection }> {
-  return (await request(`/api/campaigns/${options.campaignId}/timing-authority/end`, {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify({ timingAuthorityId: options.timingAuthorityId }),
-  })) as { authority: TimingAuthorityProjection };
 }
 
 export async function previewTableMove(options: {
@@ -1009,17 +897,6 @@ export async function acceptLegalDocument(
   })) as LegalAcceptanceProjection;
 }
 
-export async function enterHostedGoogleSession(options: {
-  readonly candidateId: string;
-  readonly googleIdToken: string;
-}): Promise<AccountProjection> {
-  return (await request<AccountProjection>('/api/identity/google-session', {
-    method: 'POST',
-    candidateId: options.candidateId,
-    body: JSON.stringify({ googleIdToken: options.googleIdToken }),
-  })) as AccountProjection;
-}
-
 export async function enterGoogleEmulatorSession(options: {
   readonly candidateId: string;
   readonly email: string;
@@ -1097,12 +974,6 @@ export async function heartbeatCampaignPresence(options: {
       ...(options.spectator !== undefined ? { spectator: options.spectator } : {}),
     }),
   })) as never;
-}
-
-export async function fetchCampaignPresence(
-  campaignId: string,
-): Promise<import('../shared/presence-contract.js').CampaignPresenceProjection> {
-  return (await request(`/api/campaigns/${campaignId}/presence`)) as never;
 }
 
 export async function postDirectorAddress(options: {

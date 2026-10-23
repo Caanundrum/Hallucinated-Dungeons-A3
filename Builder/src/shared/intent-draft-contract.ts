@@ -84,7 +84,7 @@ export function deriveEpicFramingTags(
   ) {
     tags.push('heroic_failure');
   }
-  if (/\bleap\b|\bwarhammer\b|\bcrash(?:es|ed)?\b|\bsplat\b|\bstunt\b/.test(lower)) {
+  if (/\bleap\b|\bcrash(?:es|ed)?\b|\bstunt\b/.test(lower)) {
     tags.push('bold_stunt');
   }
   return tags;

@@ -936,8 +936,9 @@ export async function draftCampaignBlueprintWithAi(
     env.GCLOUD_PROJECT ??
     ''
   ).trim();
+  const isLocalArena = env.HD_ENVIRONMENT_CLASS === 'local';
   const canUseVertex = env.HD_ENVIRONMENT_CLASS === 'milestone' && project.length > 0;
-  if (apiKey.length < 20 && !canUseVertex) {
+  if (isLocalArena || (apiKey.length < 20 && !canUseVertex)) {
     return base;
   }
 

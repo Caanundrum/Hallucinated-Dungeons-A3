@@ -86,7 +86,7 @@ export function applyComposedSceneToRuntime(options: {
   const stack = [...(runtime.sceneStack ?? [])];
   const priorId = runtime.activeSceneId ?? null;
 
-  if (mode === 'travel' && priorId !== null && instances[priorId] !== undefined) {
+  if ((mode === 'travel' || mode === 'restore') && priorId !== null && instances[priorId] !== undefined) {
     // Snapshot current global token/door/explored onto the prior instance before leaving.
     instances[priorId] = {
       ...instances[priorId]!,
@@ -94,7 +94,9 @@ export function applyComposedSceneToRuntime(options: {
       doorStates: { ...instances[priorId]!.doorStates, ...runtime.doorStates },
       exploredByAccount: { ...runtime.exploredByAccount },
     };
-    stack.push(priorId);
+    if (mode === 'travel') {
+      stack.push(priorId);
+    }
   }
 
   if (mode === 'restore') {

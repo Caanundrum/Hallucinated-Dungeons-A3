@@ -88,7 +88,6 @@ import {
   requestDirectorNarration,
   savePlayerSettings,
   submitTableCommand,
-  updateCharacterTrackers,
   yieldNpcSpotlight,
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
@@ -102,7 +101,7 @@ import {
   renderLegalPlayGatePage,
   type LegalAcceptanceProjection,
 } from '../legal-play-gate.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { applyPresentationPreferences } from '../presentation-preferences.js';
 import { navigate } from '../router.js';
@@ -214,10 +213,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let diceTrayRollingSides: number | null = null;
   let diceTrayResult: string | null = null;
   let diceTrayFaceValue: number | null = null;
-  /** Scratchpad notes sliding drawer (Gemini UX-3). */
-  let notesDrawerOpen = false;
   /** Rules spotlight modal (Gemini UX-3 / Cmd+K). */
   let rulesModalOpen = false;
+  let rulesHotkeyListener: ((event: KeyboardEvent) => void) | null = null;
   /** Ask-the-DM consulting shimmer while the request is in flight. */
   let askDmConsulting = false;
   /** Phase 3 Sprint A — last known HP for floating combat text. */
@@ -1454,27 +1452,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <a href="/characters/${escapeHtml(progression.characterId)}" data-link data-testid="sheet-modal-full-page-link">Open full sheet page</a>
           </p>
         </div>
-      </div>`;
-  }
-
-  function notesDrawerHtml(): string {
-    if (!notesDrawerOpen) {
-      return '';
-    }
-    return `
-      <div class="drawer-backdrop" data-testid="notes-drawer-backdrop" role="presentation">
-        <aside class="notes-drawer" data-testid="notes-drawer" role="dialog" aria-modal="true"
-          aria-labelledby="notes-drawer-title" tabindex="-1">
-          <div class="notes-drawer-chrome">
-            <h2 id="notes-drawer-title">Scratchpad notes</h2>
-            <button type="button" class="table-secondary-action" data-testid="close-notes-drawer">Close</button>
-          </div>
-          <p class="record-meta">Private scratch notes — saved on this device for this campaign.</p>
-          <label class="field">
-            <span class="visually-hidden">Notes</span>
-            <textarea data-testid="notes-drawer-input" rows="14" placeholder="Clues, names, open questions…">${escapeHtml(tableNotes)}</textarea>
-          </label>
-        </aside>
       </div>`;
   }
 
@@ -3920,12 +3897,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function bindPanelEvents(root: HTMLElement): void {
     if (root.dataset.rulesHotkeyBound !== '1') {
       root.dataset.rulesHotkeyBound = '1';
-      document.addEventListener('keydown', (event) => {
+      if (rulesHotkeyListener !== null) {
+        document.removeEventListener('keydown', rulesHotkeyListener);
+      }
+      rulesHotkeyListener = (event: KeyboardEvent) => {
         if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') {
           return;
         }
-        if (!container.contains(document.activeElement) && document.activeElement !== document.body) {
-          // still allow when focus is in table shell
+        if (!isPageMountCurrent(container, mountToken)) {
+          return;
         }
         const onTable = container.querySelector('[data-testid="table-page-shell"]') !== null;
         if (!onTable) return;
@@ -3935,7 +3915,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         infoRailCollapsed = false;
         commsRailCollapsed = true;
         render();
-      });
+      };
+      document.addEventListener('keydown', rulesHotkeyListener);
     }
     bindDmPlayThreadScroll();
     bindActionDockScrollLock();
@@ -4026,38 +4007,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
     } else {
       document.body.classList.remove('sheet-modal-open');
-      if (modalChromeCleanup !== null && !notesDrawerOpen && !rulesModalOpen) {
+      if (modalChromeCleanup !== null && !rulesModalOpen) {
         modalChromeCleanup();
         modalChromeCleanup = null;
       }
     }
-
-    const closeNotesDrawer = () => {
-      if (!notesDrawerOpen) return;
-      notesDrawerOpen = false;
-      render();
-    };
-    root.querySelectorAll<HTMLButtonElement>('[data-testid="open-notes-drawer"]').forEach((button) => {
-      button.addEventListener('click', () => {
-        notesDrawerOpen = true;
-        render();
-      });
-    });
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="close-notes-drawer"]')
-      ?.addEventListener('click', () => closeNotesDrawer());
-    root
-      .querySelector<HTMLElement>('[data-testid="notes-drawer-backdrop"]')
-      ?.addEventListener('click', (event) => {
-        if (event.target === event.currentTarget) closeNotesDrawer();
-      });
-    root
-      .querySelector<HTMLTextAreaElement>('[data-testid="notes-drawer-input"]')
-      ?.addEventListener('input', (event) => {
-        const value = (event.target as HTMLTextAreaElement).value;
-        tableNotes = value;
-        saveTableNotesPreference(value);
-      });
 
     const closeRulesModal = () => {
       if (!rulesModalOpen) return;
@@ -4250,156 +4204,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           draft = draft.replace(new RegExp(`^@?${escaped}\\s*[,:]\\s*`, 'i'), '').trimStart();
         }
         render();
-      });
-    root.querySelectorAll<HTMLButtonElement>('[data-sheet-resource]').forEach((button) => {
-      button.addEventListener('click', () => {
-        void (async () => {
-          if (
-            progression === null ||
-            candidate === null ||
-            busy ||
-            button.getAttribute('aria-disabled') === 'true'
-          ) {
-            return;
-          }
-          const resourceId = button.dataset.sheetResource;
-          const resource = progression.sheet.classResources?.find(
-            (entry) => entry.id === resourceId,
-          );
-          if (resourceId === undefined || resource === undefined || resource.remaining <= 0) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const updated = await updateCharacterTrackers({
-              candidateId: candidate.candidateId,
-              characterId: progression.characterId,
-              resourceRemaining: { [resourceId]: resource.remaining - 1 },
-            });
-            // updated.sheet is the same DerivedCharacterSheet shape as progression.sheet.
-            progression = { ...progression, sheet: updated.sheet };
-            shell.announce(`Spent ${resourceId.replace(/-/g, ' ')}.`);
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'That resource could not be spent.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-    });
-    root.querySelectorAll<HTMLButtonElement>('[data-sheet-hp]').forEach((button) => {
-      button.addEventListener('click', () => {
-        void (async () => {
-          if (
-            progression === null ||
-            candidate === null ||
-            busy ||
-            button.getAttribute('aria-disabled') === 'true'
-          ) {
-            return;
-          }
-          const action = button.dataset.sheetHp;
-          const maxHp = progression.sheet.hitPoints.value;
-          let hitPointsCurrent = progression.sheet.hitPointsCurrent;
-          let temporaryHitPoints = progression.sheet.temporaryHitPoints ?? 0;
-          let announce = '';
-          let floater: { amount: number; kind: 'damage' | 'heal' | 'temp' } | null = null;
-          if (action === 'damage') {
-            if (temporaryHitPoints > 0) {
-              temporaryHitPoints -= 1;
-              announce = 'Absorbed 1 damage with temporary Hit Points.';
-              floater = { amount: 1, kind: 'damage' };
-            } else {
-              hitPointsCurrent = Math.max(0, hitPointsCurrent - 1);
-              announce = 'Took 1 damage.';
-              floater = { amount: 1, kind: 'damage' };
-            }
-          } else if (action === 'heal') {
-            if (hitPointsCurrent >= maxHp) {
-              return;
-            }
-            hitPointsCurrent = Math.min(maxHp, hitPointsCurrent + 1);
-            announce = 'Healed 1 Hit Point.';
-            floater = { amount: 1, kind: 'heal' };
-          } else if (action === 'temp') {
-            temporaryHitPoints += 1;
-            announce = 'Gained 1 temporary Hit Point.';
-            floater = { amount: 1, kind: 'temp' };
-          } else if (action === 'clear-temp') {
-            temporaryHitPoints = 0;
-            announce = 'Cleared temporary Hit Points.';
-          } else {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const updated = await updateCharacterTrackers({
-              candidateId: candidate.candidateId,
-              characterId: progression.characterId,
-              hitPointsCurrent,
-              temporaryHitPoints,
-            });
-            progression = { ...progression, sheet: updated.sheet };
-            lastKnownHp = updated.sheet.hitPointsCurrent;
-            if (floater !== null) {
-              spawnCombatFloater(floater.amount, floater.kind);
-            }
-            shell.announce(announce);
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'Hit Points could not be updated.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-    });
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="spend-spell-slot"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (
-            progression === null ||
-            candidate === null ||
-            busy ||
-            progression.sheet.spellcasting === null ||
-            progression.sheet.spellcasting.level1SlotsRemaining <= 0
-          ) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const updated = await updateCharacterTrackers({
-              candidateId: candidate.candidateId,
-              characterId: progression.characterId,
-              level1SlotsRemaining: progression.sheet.spellcasting.level1SlotsRemaining - 1,
-            });
-            // updated.sheet is the same DerivedCharacterSheet shape as progression.sheet.
-            progression = { ...progression, sheet: updated.sheet };
-            shell.announce('Spent a level 1 spell slot.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'That spell slot could not be spent.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
       });
 
     root.querySelectorAll<HTMLButtonElement>('[data-info-tab]').forEach((button) => {
@@ -6054,7 +5858,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     sheetModalSlot.innerHTML = characterSheetModalHtml();
     const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
     if (overlaySlot !== null) {
-      overlaySlot.innerHTML = `${notesDrawerHtml()}${rulesModalHtml()}${diceTrayOverlayHtml()}${turnSplashHtml()}`;
+      overlaySlot.innerHTML = `${rulesModalHtml()}${diceTrayOverlayHtml()}${turnSplashHtml()}`;
     }
     const combatHost = container.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
     if (combatHost !== null) {
@@ -6314,7 +6118,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     const snapshot = await fetchTableSnapshot(campaignId);
-    if (!isPageMountCurrent(container, mountToken)) {
+    if (!isPageMountCurrent(container, mountToken) || busy) {
       return;
     }
     const tableFeed = snapshot.table;
@@ -6527,6 +6331,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           fetchCampaignMemory(campaignId).catch(() => null),
           fetchRulesCatalog().catch(() => null),
         ]);
+      if (!isPageMountCurrent(container, mountToken)) {
+        return;
+      }
       chronicle = chronicleFeed;
       partyChat = chatFeed;
       tableState = tableFeed;
@@ -6551,14 +6358,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         // Presence soft-fails on first load.
       }
       await establishPresentationCueBaseline();
+      if (!isPageMountCurrent(container, mountToken)) {
+        stopProjectionPoll();
+        return;
+      }
       tableBootstrapped = true;
       if (seated) {
         clearPendingJoin(campaignId);
       }
     } catch (failure) {
+      if (!isPageMountCurrent(container, mountToken)) {
+        return;
+      }
       error = failure instanceof ApiFailure ? failure.message : 'The campaign table could not load.';
       stopProjectionPoll();
       tableBootstrapped = true;
+    }
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
     }
     render();
     if (seated && error === null) {
@@ -6567,8 +6384,43 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   document.addEventListener('visibilitychange', onVisibilityRefresh);
-  subscribeAccount(() => {
+  const unsubscribeAccount = subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     void loadLegalThenTable();
+  });
+  registerPageCleanup(container, mountToken, () => {
+    unsubscribeAccount();
+    stopProjectionPoll();
+    clearPartyTravelTimer();
+    document.removeEventListener('visibilitychange', onVisibilityRefresh);
+    if (rulesHotkeyListener !== null) {
+      document.removeEventListener('keydown', rulesHotkeyListener);
+      rulesHotkeyListener = null;
+    }
+    if (sheetEscapeListener !== null) {
+      document.removeEventListener('keydown', sheetEscapeListener, true);
+      sheetEscapeListener = null;
+    }
+    if (modalChromeCleanup !== null) {
+      modalChromeCleanup();
+      modalChromeCleanup = null;
+    }
+    document.body.classList.remove('sheet-modal-open');
+    if (presentationAudioContext !== null) {
+      void presentationAudioContext.close().catch(() => {});
+      presentationAudioContext = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // Ignore speech cancel failure.
+      }
+    }
+    stageHandle?.destroy();
+    stageHandle = null;
   });
   void loadLegalThenTable();
 }

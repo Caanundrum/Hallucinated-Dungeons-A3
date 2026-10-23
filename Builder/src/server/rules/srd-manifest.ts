@@ -1041,9 +1041,10 @@ export const QUICK_START_TEMPLATES: readonly QuickStartTemplate[] = [
   },
 ];
 
-/** Player-facing summaries for Origin feats that are not Magic Initiate. */
+/** Player-facing summaries for Origin feats on the SRD 5.2.1 roster. */
 export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
   Alert: 'Add your Proficiency Bonus to Initiative. You cannot be surprised while conscious.',
+  Crafter: 'You gain proficiency with three Artisan’s Tools and a 20% discount on nonmagical gear.',
   Tough: 'Your Hit Point maximum increases by twice your level (at level 1: +2 HP).',
   Lucky: 'Origin feat resource: Luck Points equal to your Proficiency Bonus for rerolls. Distinct from Halfling Luck (species natural-1 reroll).',
   Skilled: 'You gain proficiency in three skills or tools of your choice.',
@@ -1051,7 +1052,9 @@ export const ORIGIN_FEAT_SUMMARIES: Readonly<Record<string, string>> = {
   'Magic Initiate (Wizard)': 'Learn two Wizard cantrips and one level 1 Wizard spell.',
   'Magic Initiate (Cleric)': 'Learn two Cleric cantrips and one level 1 Cleric spell.',
   'Magic Initiate (Druid)': 'Learn two Druid cantrips and one level 1 Druid spell.',
+  'Savage Attacker': 'Once per turn when you hit with a melee weapon, roll one damage die again and add it.',
   Savage: 'Once per turn when you hit with a melee weapon, roll one damage die again and add it.',
+  'Tavern Brawler': 'Enhanced unarmed strikes, improvised weapon proficiency, and once-per-turn damage rerolls + push.',
   Healer: 'You can use a Healer’s Kit to restore Hit Points as an action.',
   'Magic Initiate': 'Learn two cantrips and one level 1 spell from the listed spell list.',
 };
@@ -1063,9 +1066,11 @@ export const ORIGIN_FEAT_OPTIONS: readonly { readonly id: string; readonly label
     .map((label) => ({
       id: label,
       label,
-      summary: label.startsWith('Magic Initiate')
-        ? 'Learn two cantrips and one level 1 spell from the listed spell list.'
-        : 'Origin feat granted by a Background on the SRD roster.',
+      summary:
+        ORIGIN_FEAT_SUMMARIES[label] ??
+        (label.startsWith('Magic Initiate')
+          ? 'Learn two cantrips and one level 1 spell from the listed spell list.'
+          : 'Origin feat granted by a Background on the SRD roster.'),
     }));
 
 export const MAGIC_INITIATE_CANTRIPS_KNOWN = 2;

@@ -135,7 +135,8 @@ function replaceProficiency(value: DerivedValue, proficiencyBonus: number): Deri
   const components = value.components.map((component) =>
     component.ruleId === 'proficiency-bonus' ||
     component.ruleId.startsWith('proficiency-bonus.') ||
-    component.ruleId === 'feat.alert.initiative'
+    component.ruleId === 'feat.alert.initiative' ||
+    component.ruleId.endsWith('.expertise')
       ? { ...component, amount: proficiencyBonus }
       : component,
   );
@@ -207,7 +208,18 @@ export function deriveProgression(
   experienceRequiredForLevel(level);
   const constitutionModifier = baseSheet.abilityModifiers.constitution;
   const averageHitDie = Math.floor(classRecord.hitDie / 2) + 1;
-  const hitPointsPerAdditionalLevel = Math.max(1, averageHitDie + constitutionModifier);
+  const speciesHpPerLevel = baseSheet.hitPoints.components.some(
+    (c) => c.ruleId.startsWith('species.') && c.ruleId.endsWith('.hit-points'),
+  )
+    ? 1
+    : 0;
+  const toughHpPerLevel = baseSheet.hitPoints.components.some(
+    (c) => c.ruleId === 'feat.tough.hit-points',
+  )
+    ? 2
+    : 0;
+  const hitPointsPerAdditionalLevel =
+    Math.max(1, averageHitDie + constitutionModifier) + speciesHpPerLevel + toughHpPerLevel;
   return {
     proficiencyBonus: proficiencyBonusForLevel(level),
     maxHitPoints: baseSheet.hitPoints.value + (level - 1) * hitPointsPerAdditionalLevel,
@@ -279,6 +291,10 @@ export function recomputeSheetForLevel(
       ...skill,
       bonus: replaceProficiency(skill.bonus, derived.proficiencyBonus),
     })),
+    passivePerception:
+      baseSheet.passivePerception.components.length > 0
+        ? replaceProficiency(baseSheet.passivePerception, derived.proficiencyBonus)
+        : baseSheet.passivePerception,
     initiative: replaceProficiency(baseSheet.initiative, derived.proficiencyBonus),
     attacks: baseSheet.attacks.map((attack) => ({
       ...attack,

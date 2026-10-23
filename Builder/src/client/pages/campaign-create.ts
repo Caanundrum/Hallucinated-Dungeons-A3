@@ -43,7 +43,7 @@ import {
 } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
@@ -654,6 +654,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
     const startLevelInput = container.querySelector<HTMLInputElement>(
       '[data-testid="campaign-start-level"]',
     );
+    const endLevelInput = container.querySelector<HTMLInputElement>(
+      '[data-testid="campaign-end-level"]',
+    );
     startLevelInput?.addEventListener('change', () => {
       const parsed = Number.parseInt(startLevelInput.value, 10);
       if (Number.isFinite(parsed)) {
@@ -661,18 +664,27 @@ export function mountCampaignCreatePage(host: PageHost): void {
         if (targetEndLevel < startLevel) {
           targetEndLevel = startLevel;
         }
-        render();
+        startLevelInput.value = String(startLevel);
+        if (endLevelInput !== null) {
+          endLevelInput.min = String(startLevel);
+          endLevelInput.value = String(targetEndLevel);
+        }
+        if (draftedBlueprint !== null) {
+          draftedBlueprint = null;
+          render();
+        }
       }
     });
 
-    const endLevelInput = container.querySelector<HTMLInputElement>(
-      '[data-testid="campaign-end-level"]',
-    );
     endLevelInput?.addEventListener('change', () => {
       const parsed = Number.parseInt(endLevelInput.value, 10);
       if (Number.isFinite(parsed)) {
         targetEndLevel = Math.max(startLevel, Math.min(20, parsed));
-        render();
+        endLevelInput.value = String(targetEndLevel);
+        if (draftedBlueprint !== null) {
+          draftedBlueprint = null;
+          render();
+        }
       }
     });
 
@@ -682,6 +694,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
     toneSelect?.addEventListener('change', () => {
       if (isCampaignTone(toneSelect.value)) {
         campaignTone = toneSelect.value;
+        if (draftedBlueprint !== null) {
+          draftedBlueprint = null;
+          render();
+        }
       }
     });
 
@@ -895,12 +911,18 @@ export function mountCampaignCreatePage(host: PageHost): void {
           ? failure.message
           : 'Director options could not be loaded.';
     }
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     render();
   }
 
   let lastAccountId: string | null = getAccount()?.accountId ?? null;
 
-  subscribeAccount(() => {
+  const unsubscribeAccount = subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     const nextAccountId = getAccount()?.accountId ?? null;
     if (nextAccountId !== lastAccountId) {
       lastAccountId = nextAccountId;
@@ -923,5 +945,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
     }
     void load();
   });
+  registerPageCleanup(container, mountToken, unsubscribeAccount);
   void load();
 }

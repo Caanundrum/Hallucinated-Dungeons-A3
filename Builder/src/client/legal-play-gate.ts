@@ -151,18 +151,23 @@ export function bindLegalPlayGatePage(options: {
         options.setBusy(true);
         options.setError(null);
         options.render();
+        let unblocked = false;
         try {
           const next = await acceptLegalDocument(options.candidate.candidateId, route);
           options.setAcceptance(next);
           options.shell.announce(`Recorded acceptance of ${route}.`);
           if (next.allCurrentAccepted) {
+            unblocked = true;
+            options.setBusy(false);
             options.onUnblocked();
           }
         } catch {
           options.setError('Legal acceptance could not be recorded. Try again from Account.');
         } finally {
-          options.setBusy(false);
-          options.render();
+          if (!unblocked) {
+            options.setBusy(false);
+            options.render();
+          }
         }
       })();
     });

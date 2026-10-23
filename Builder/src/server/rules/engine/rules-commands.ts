@@ -12,10 +12,6 @@ import {
   type TableStateProjection,
 } from '../../../shared/command-contract.js';
 import { ERROR_CODES } from '../../../shared/contract.js';
-import {
-  TIMING_AUTHORITY_SCHEMA_VERSION,
-  type TimingOpportunityClass,
-} from '../../../shared/timing-authority-contract.js';
 import type {
   AreaCell,
   CharacterProgressionProjection,
@@ -39,7 +35,14 @@ import {
   type AttackResolution,
 } from './adjudication.js';
 import { applyCondition, expireConditions, removeCondition } from './conditions.js';
-import { createSeededRandom, rollD20, rollDamage, type RandomSource } from './dice.js';
+import {
+  createSeededRandom,
+  parseDamageExpression,
+  rollD20,
+  rollDamage,
+  rollDie,
+  type RandomSource,
+} from './dice.js';
 import {
   baseSheetFor,
   initialStoredProgression,
@@ -166,10 +169,6 @@ interface RulesMutation {
   readonly rolls: readonly number[];
   readonly affectedCombatantIds: readonly string[];
   readonly areaCells: readonly AreaCell[];
-  readonly reactionAuthority?: {
-    readonly timingAuthorityId: string;
-    readonly decisionWindowId: string;
-  };
 }
 
 function isRulesCommandType(commandType: TableCommandType): commandType is RulesCommandType {
@@ -334,15 +333,31 @@ function buildPlayerCombatant(
   options: { readonly includeTrainingInventory?: boolean } = {},
 ): CombatantProjection {
   const sheet = progression.sheet;
-  const weaponModifier = Math.max(sheet.abilityModifiers.strength, sheet.abilityModifiers.dexterity);
-  const attacks = sheet.attacks.map((attack, index) => ({
-    attackId: `sheet-attack-${index}`,
-    label: attack.name,
-    attackBonus: attack.attackBonus.value,
-    damageExpression: withDamageModifier(attack.damage, weaponModifier),
-    damageType: attack.damageType,
-    reachFeet: attack.properties.some((property) => property.includes('Range')) ? 60 : 5,
-  }));
+  const fallbackWeaponMod = Math.max(sheet.abilityModifiers.strength, sheet.abilityModifiers.dexterity);
+  const attacks = sheet.attacks.map((attack, index) => {
+    const abilityComponent = attack.attackBonus.components.find((c) =>
+      c.ruleId.startsWith('ability.'),
+    );
+    const attackAbilityMod = abilityComponent ? abilityComponent.amount : fallbackWeaponMod;
+    const isUnarmed = attack.ruleId === 'weapon.unarmed-strike';
+    const isRanged = attack.properties.some(
+      (property) =>
+        property.includes('Range') ||
+        property.startsWith('Ammunition') ||
+        property.startsWith('Thrown'),
+    );
+    const hasReach = attack.properties.some((property) => property === 'Reach');
+    return {
+      attackId: `sheet-attack-${index}`,
+      label: attack.name,
+      attackBonus: attack.attackBonus.value,
+      damageExpression: isUnarmed
+        ? attack.damage
+        : withDamageModifier(attack.damage, attackAbilityMod),
+      damageType: attack.damageType,
+      reachFeet: isRanged ? 60 : hasReach ? 10 : 5,
+    };
+  });
   if (attacks.length === 0) {
     attacks.push({
       attackId: 'unarmed-strike',
@@ -632,7 +647,7 @@ function performFoeAutoAttack(options: {
   const spent = spendAction(active);
   const foeAttack = spent.attacks[0]!;
   const trainingMode = isTrainingEncounter(encounter);
-  const resolvedTarget =
+  const rawResolvedTarget =
     trainingMode && attack.target.currentHitPoints === 0
       ? {
           ...attack.target,
@@ -641,6 +656,13 @@ function performFoeAutoAttack(options: {
           deathSaves: emptyDeathSaves(),
         }
       : attack.target;
+  const concentration = resolveConcentration(
+    partyTarget,
+    rawResolvedTarget,
+    attack.damage,
+    rng,
+  );
+  const resolvedTarget = concentration.combatant;
   const combatants = encounter.combatants.map((combatant) =>
     combatant.combatantId === spent.combatantId
       ? spent
@@ -674,7 +696,7 @@ function performFoeAutoAttack(options: {
       combatants,
     }),
     summaryExtra,
-    rolls: [...attack.rolls],
+    rolls: [...attack.rolls, ...concentration.rolls],
     affectedCombatantIds: [partyTarget.combatantId],
   };
 }
@@ -714,25 +736,28 @@ function advanceInitiativeOnce(current: EncounterProjection): {
       : Math.max(1, current.round);
   const activeCombatantId = livingOrder[nextLivingIndex]!;
   const combatants = current.combatants.map((combatant) => {
+    const hadShield = combatant.conditions.some((condition) => condition.conditionId === 'shielded');
     const expired = expireConditions(combatant.conditions, advancedRound);
+    const shieldStillActive = expired.some((condition) => condition.conditionId === 'shielded');
     if (combatant.combatantId !== activeCombatantId) {
       return {
         ...combatant,
+        armorClass: hadShield && !shieldStillActive ? combatant.baseArmorClass : combatant.armorClass,
         conditions: expired,
-        ready: combatant.combatantId === previousActive ? null : combatant.ready,
       };
     }
-    const shieldExpired = expired.some((condition) => condition.conditionId === 'shielded');
     return {
       ...combatant,
-      armorClass: shieldExpired ? combatant.baseArmorClass : combatant.armorClass,
+      armorClass: hadShield ? combatant.baseArmorClass : combatant.armorClass,
       conditions: removeCondition(expired, 'shielded'),
       actionEconomy: actionEconomy(),
       ready: null,
     };
   });
   const decisionWindows = current.decisionWindows.map((window) =>
-    window.state === 'open' && window.eligibleCombatantId === previousActive
+    window.state === 'open' &&
+    (window.eligibleCombatantId === previousActive ||
+      window.eligibleCombatantId === activeCombatantId)
       ? { ...window, state: 'expired' as const }
       : window,
   );
@@ -1088,7 +1113,6 @@ function mutateRules(options: {
   let rolls: number[] = [];
   let affectedCombatantIds: string[] = [];
   let areaCells: readonly AreaCell[] = [];
-  let reactionAuthority: RulesMutation['reactionAuthority'];
 
   if (commandType === 'encounter.begin') {
     // Session Zero must be recorded before live combat training starts.
@@ -1281,7 +1305,14 @@ function mutateRules(options: {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, 'Choose a spell.');
     }
     const effect = spellEffect(fields.spellId);
-    const availableSpells = [...source.choices.cantripIds, ...source.choices.spellIds];
+    const availableSpells = [
+      ...source.choices.cantripIds,
+      ...source.choices.spellIds,
+      ...(source.choices.backgroundFeatCantripIds ?? []),
+      ...(source.choices.backgroundFeatSpellIds ?? []),
+      ...(source.choices.originFeatCantripIds ?? []),
+      ...(source.choices.originFeatSpellIds ?? []),
+    ];
     if (!availableSpells.includes(effect.spellId)) {
       throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, `${actor.name} does not know or have ${effect.label} prepared.`);
     }
@@ -1352,7 +1383,17 @@ function mutateRules(options: {
               : effect.damageExpression!;
           const damageRoll = rollDamage(expression, rng);
           rolls.push(...damageRoll.rolls);
-          damage = damageRoll.total;
+          let critDamage = 0;
+          if (attackRoll.natural === 20) {
+            for (const term of parseDamageExpression(expression).terms) {
+              for (let index = 0; index < term.count; index += 1) {
+                const rolled = rollDie(term.sides, rng);
+                rolls.push(rolled);
+                critDamage += rolled * term.sign;
+              }
+            }
+          }
+          damage = Math.max(0, damageRoll.total + critDamage);
           updatedTarget = applyDamage(target, damage, { critical: attackRoll.natural === 20 });
           if (effect.spellId === 'guiding-bolt' && updatedTarget.currentHitPoints > 0) {
             updatedTarget = {
@@ -1386,12 +1427,21 @@ function mutateRules(options: {
             : effect.damageExpression!,
           rng,
         );
-        const damage = save.success ? 0 : damageRoll.total;
+        const damage =
+          save.success && effect.halfDamageOnSave
+            ? Math.floor(damageRoll.total / 2)
+            : save.success
+              ? 0
+              : damageRoll.total;
         rolls.push(...save.rolls, ...damageRoll.rolls);
-        replacements.push(applyDamage(target, damage));
-        summary = save.success
-          ? `${target.name} succeeded on the save against ${effect.label}.`
-          : `${actor.name} dealt ${damage} ${effect.damageType} damage to ${target.name} with ${effect.label}.`;
+        const damagedTarget = applyDamage(target, damage);
+        const concentration = resolveConcentration(target, damagedTarget, damage, rng);
+        rolls.push(...concentration.rolls);
+        replacements.push(concentration.combatant);
+        summary =
+          save.success && damage === 0
+            ? `${target.name} succeeded on the save against ${effect.label}.`
+            : `${actor.name} dealt ${damage} ${effect.damageType} damage to ${target.name} with ${effect.label}.`;
       } else {
         actor = { ...actor, concentrationSpellId: effect.concentration ? effect.spellId : actor.concentrationSpellId };
         replacements[0] = actor;
@@ -1399,7 +1449,10 @@ function mutateRules(options: {
       }
       affectedCombatantIds = [actor.combatantId, target.combatantId];
     }
-    encounter = { ...replaceCombatants(current, replacements), areaCells };
+    encounter = endEncounterIfFoesDefeated({
+      ...replaceCombatants(current, replacements),
+      areaCells,
+    });
   } else if (commandType === 'combat.death_save') {
     const current = requireEncounter(encounter);
     const actor = findActor(current, seat.seatId);
@@ -1740,7 +1793,12 @@ function mutateRules(options: {
         : `${actor.name} spent a Reaction for an Opportunity Attack but missed ${target.name}.`;
       affectedCombatantIds = [actor.combatantId, target.combatantId];
     } else {
-      if (!source.choices.spellIds.includes('shield')) {
+      const knownLevel1Spells = [
+        ...source.choices.spellIds,
+        ...(source.choices.backgroundFeatSpellIds ?? []),
+        ...(source.choices.originFeatSpellIds ?? []),
+      ];
+      if (!knownLevel1Spells.includes('shield')) {
         throw new RulesCommandError(ERROR_CODES.BAD_REQUEST, `${actor.name} does not have Shield prepared.`);
       }
       updatedActor = spendSlot(updatedActor, 1);
@@ -1758,14 +1816,14 @@ function mutateRules(options: {
       summary = `${actor.name} spent a Reaction and a level 1 slot to cast Shield, gaining +5 Armor Class.`;
       affectedCombatantIds = [actor.combatantId];
     }
-    encounter = {
+    encounter = endEncounterIfFoesDefeated({
       ...replaceCombatants(current, replacements),
       decisionWindows: current.decisionWindows.map((entry) =>
         entry.decisionWindowId === window.decisionWindowId
           ? { ...entry, state: 'resolved' }
           : entry,
       ),
-    };
+    });
   } else if (commandType === 'progression.award_xp') {
     requireOutOfCombat(encounter, 'Awarding XP');
     if (encounter === null || encounter.status !== 'ended') {
@@ -1879,7 +1937,6 @@ function mutateRules(options: {
     rolls,
     affectedCombatantIds,
     areaCells,
-    ...(reactionAuthority === undefined ? {} : { reactionAuthority }),
   };
 }
 
@@ -2114,37 +2171,6 @@ export async function acceptRulesCommand(options: {
     transaction.update(firestore.collection(COLLECTIONS.campaigns).doc(campaignId), {
       updatedAt: committedAt,
     });
-    if (mutation.reactionAuthority !== undefined && nextEncounter !== null) {
-      const expiresAt = new Date(committedAt.getTime() + 5 * 60 * 1000);
-      transaction.set(
-        firestore
-          .collection(COLLECTIONS.timingAuthorities)
-          .doc(mutation.reactionAuthority.timingAuthorityId),
-        {
-          timingAuthorityId: mutation.reactionAuthority.timingAuthorityId,
-          schemaVersion: TIMING_AUTHORITY_SCHEMA_VERSION,
-          opportunityClass: 'reaction' satisfies TimingOpportunityClass,
-          campaignId,
-          seatId: seat.seatId,
-          characterId: seat.characterId,
-          accountId,
-          permittedCommandTypes: ['combat.reaction'],
-          projectionVersionAtIssue: nextVersion,
-          issuedAt: committedAt,
-          expiresAt,
-          state: 'issued',
-          singleUse: true,
-          encounterId: nextEncounter.encounterId,
-          resolutionFrameId: mutation.reactionAuthority.decisionWindowId,
-        },
-      );
-    }
-    if (commandType === 'combat.reaction' && timingAuthorityId !== undefined) {
-      transaction.update(
-        firestore.collection(COLLECTIONS.timingAuthorities).doc(timingAuthorityId),
-        { state: 'consumed' },
-      );
-    }
     return { command, event, table: nextTable, encounter: nextEncounter, progression: mutation.progression };
   });
 

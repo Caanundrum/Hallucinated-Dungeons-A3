@@ -15,7 +15,7 @@ import { BROWSER_SUPPORT_MATRIX } from '../../shared/public-surface-contract.js'
 import { getAccount } from '../account-session.js';
 import { fetchActiveSeatedTable, fetchCampaigns, fetchVault } from '../api.js';
 import { escapeHtml } from '../dom-utils.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import type { ShellHandle } from '../shell.js';
 
@@ -48,6 +48,14 @@ export function mountHomePage(host: PageHost): void {
 
   const mountToken = beginPageMount(container);
   const account = getAccount();
+  let tourKeydownListener: ((e: KeyboardEvent) => void) | null = null;
+  registerPageCleanup(container, mountToken, () => {
+    if (tourKeydownListener !== null) {
+      window.removeEventListener('keydown', tourKeydownListener);
+      tourKeydownListener = null;
+    }
+    document.body.style.overflow = '';
+  });
 
   // Initial skeleton render while asynchronous user telemetry is fetched
   render({
@@ -542,15 +550,18 @@ export function mountHomePage(host: PageHost): void {
       }
     });
 
-    const onKeydown = (e: KeyboardEvent): void => {
-      if (!container.isConnected) {
-        window.removeEventListener('keydown', onKeydown);
+    if (tourKeydownListener !== null) {
+      window.removeEventListener('keydown', tourKeydownListener);
+    }
+    tourKeydownListener = (e: KeyboardEvent): void => {
+      if (!isPageMountCurrent(container, mountToken)) {
+        window.removeEventListener('keydown', tourKeydownListener!);
         return;
       }
       if (e.key === 'Escape' && tourBackdrop && tourBackdrop.style.display !== 'none') {
         closeTour();
       }
     };
-    window.addEventListener('keydown', onKeydown);
+    window.addEventListener('keydown', tourKeydownListener);
   }
 }

@@ -96,7 +96,7 @@ export function checkRateLimit(options: RateLimitCheck): RateLimitResult {
   return { allowed: true };
 }
 
-/** Test helper: clears all in-memory buckets. */
+/** Clears all rate-limit buckets (used by unit tests). */
 export function resetRateLimitBuckets(): void {
   buckets.clear();
 }

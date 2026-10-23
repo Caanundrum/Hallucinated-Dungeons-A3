@@ -424,19 +424,3 @@ function loadMilestoneEnvironment(options: {
     firebaseWebApiKey: firebaseWebApiKey === '' ? null : firebaseWebApiKey,
   };
 }
-
-/**
- * Redacts values that look like credentials so environment problems can be
- * logged without leaking secret material (Section 1.14.3).
- */
-export function redactEnvironmentForLog(env: NodeJS.ProcessEnv): Record<string, string> {
-  const secretish = /(KEY|TOKEN|SECRET|CREDENTIAL|PASSWORD)/i;
-  const output: Record<string, string> = {};
-  for (const [name, value] of Object.entries(env)) {
-    if (!name.startsWith('HD_') && !name.startsWith('FIRE') && !name.startsWith('GOOGLE')) {
-      continue;
-    }
-    output[name] = secretish.test(name) ? '[redacted]' : (value ?? '');
-  }
-  return output;
-}

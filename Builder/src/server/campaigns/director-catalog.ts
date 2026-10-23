@@ -23,10 +23,6 @@ import {
 export const DIRECTOR_CONFIGURATION_NOTICE =
   'This locks the Game Director identity and personality for the campaign. The Game Director narrates at your table when live narration is enabled.';
 
-/** Local Arena companion notice for development surfaces. */
-export const DIRECTOR_CONFIGURATION_NOTICE_LOCAL =
-  'This locks the Game Director identity and personality for the campaign. Local Arena uses a deterministic simulator instead of live narration.';
-
 export function buildDirectorCatalog(): DirectorCatalog {
   return {
     identities: DIRECTOR_IDENTITIES.map((id) => ({

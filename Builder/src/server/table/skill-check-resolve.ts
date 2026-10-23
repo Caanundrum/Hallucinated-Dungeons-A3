@@ -204,6 +204,10 @@ export function namedInspectTargetFromDraft(draftSummary: string): string {
   if (hide?.[1]?.trim()) {
     return hide[1].trim().replace(/\s+/g, ' ');
   }
+  const attempt = /Ready to attempt\s+(?:the\s+)?(.+?)\s*\(/i.exec(draftSummary);
+  if (attempt?.[1]?.trim()) {
+    return attempt[1].trim().replace(/\s+/g, ' ');
+  }
   const inspect =
     /Ready to (?:inspect|search)\s+(?:the\s+)?(.+?)(?:\s+for traps)?\s*\(/i.exec(draftSummary) ??
     /Ready to (?:inspect|search)\s+(?:the\s+)?(.+?)(?:\s+for traps)?(?:\.|,|$)/i.exec(draftSummary);
@@ -221,6 +225,29 @@ export function namedInspectTargetFromDraft(draftSummary: string): string {
   return 'confirmed target';
 }
 
+const DISPATCHED_SKILL_MAP: Readonly<Record<string, { readonly id: string; readonly label: string }>> = {
+  acrobatics: { id: 'acrobatics', label: 'Acrobatics' },
+  'animal handling': { id: 'animal-handling', label: 'Animal Handling' },
+  'animal-handling': { id: 'animal-handling', label: 'Animal Handling' },
+  arcana: { id: 'arcana', label: 'Arcana' },
+  athletics: { id: 'athletics', label: 'Athletics' },
+  deception: { id: 'deception', label: 'Deception' },
+  history: { id: 'history', label: 'History' },
+  insight: { id: 'insight', label: 'Insight' },
+  intimidation: { id: 'intimidation', label: 'Intimidation' },
+  investigation: { id: 'investigation', label: 'Investigation' },
+  medicine: { id: 'medicine', label: 'Medicine' },
+  nature: { id: 'nature', label: 'Nature' },
+  perception: { id: 'perception', label: 'Perception' },
+  performance: { id: 'performance', label: 'Performance' },
+  persuasion: { id: 'persuasion', label: 'Persuasion' },
+  religion: { id: 'religion', label: 'Religion' },
+  'sleight of hand': { id: 'sleight-of-hand', label: 'Sleight of Hand' },
+  'sleight-of-hand': { id: 'sleight-of-hand', label: 'Sleight of Hand' },
+  stealth: { id: 'stealth', label: 'Stealth' },
+  survival: { id: 'survival', label: 'Survival' },
+};
+
 /**
  * Resolve a committed skill-check draft against the seated sheet.
  * Returns null when the summary is not a skill attempt.
@@ -233,10 +260,27 @@ export function resolveSkillAttemptFromSummary(
     return null;
   }
   const text = draftSummary.toLowerCase();
-  const wantsStealth = /ready to hide|ready to sneak|stealth/.test(text);
-  const wantsTrap = /trap|search|inspect|investigat/.test(text);
-  const wantsLock = /lock|sleight|thieves/.test(text);
-  if (!wantsStealth && !wantsTrap && !wantsLock) {
+  const explicitDcMatch = /\bDC\s+(\d+)\b/i.exec(draftSummary);
+  const explicitDc =
+    explicitDcMatch !== null ? Math.max(5, Math.min(30, Number(explicitDcMatch[1]))) : null;
+  const parentheticalSkillMatch = /\(([A-Za-z -]+?)(?:\s+(?:proficient|not proficient))?\s*[,;]/i.exec(
+    draftSummary,
+  );
+  const dispatchedSkill =
+    parentheticalSkillMatch?.[1] !== undefined
+      ? (DISPATCHED_SKILL_MAP[parentheticalSkillMatch[1].trim().toLowerCase()] ?? null)
+      : null;
+
+  const wantsStealth =
+    dispatchedSkill?.id === 'stealth' || /ready to hide|ready to sneak|\bstealth\b/.test(text);
+  const wantsTrap =
+    dispatchedSkill?.id === 'investigation' ||
+    (dispatchedSkill === null && /trap|search|inspect|investigat/.test(text));
+  const wantsLock =
+    dispatchedSkill?.id === 'sleight-of-hand' ||
+    /sleight|thieves|lock attempt|ready to (?:pick|unlock)|\bunlock\b/.test(text) ||
+    (!wantsTrap && !wantsStealth && dispatchedSkill === null && /\block(?:ed)?\b/.test(text));
+  if (!wantsStealth && !wantsTrap && !wantsLock && dispatchedSkill === null) {
     return null;
   }
 
@@ -255,14 +299,15 @@ export function resolveSkillAttemptFromSummary(
   let lockYielded = false;
 
   if (wantsStealth) {
+    const dc = explicitDc ?? 12;
     const skill = skillBonus(sheet, 'stealth');
     const roll = rollD20('normal', skill.bonus);
     rolls.push(roll.natural);
-    const success = roll.total >= 12;
+    const success = roll.total >= dc;
     const verb = /sneak/i.test(draftSummary) ? 'sneak past' : 'hide behind';
     const targetWithArticle = namedTarget.startsWith('the ') ? namedTarget : `the ${namedTarget}`;
     parts.push(
-      `Stealth check to ${verb} ${targetWithArticle} (Stealth ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC 12 — ${
+      `Stealth check to ${verb} ${targetWithArticle} (Stealth ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${dc} — ${
         success
           ? `you succeed in using cover and stay unseen by those nearby`
           : `cover is insufficient to stay fully hidden`
@@ -271,16 +316,17 @@ export function resolveSkillAttemptFromSummary(
   }
 
   if (wantsTrap) {
+    const dc = explicitDc ?? DEFAULT_TRAP_DC;
     const skill = skillBonus(sheet, 'investigation');
     const roll = rollD20('normal', skill.bonus);
     rolls.push(roll.natural);
-    const success = roll.total >= DEFAULT_TRAP_DC;
+    const success = roll.total >= dc;
     const isTrapSpecific =
       /for traps|trap search/i.test(draftSummary) ||
       /\b(?:door|doorway|gate)\b/i.test(namedTarget);
     if (isTrapSpecific) {
       parts.push(
-        `Trap search on the ${namedTarget} (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_TRAP_DC} — ${
+        `Trap search on the ${namedTarget} (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${dc} — ${
           success
             ? `no trap found on the ${namedTarget}`
             : `you cannot tell if the ${namedTarget} is trapped`
@@ -289,7 +335,7 @@ export function resolveSkillAttemptFromSummary(
     } else {
       const verb = /ready to search/i.test(draftSummary) ? 'Search' : 'Investigation';
       parts.push(
-        `${verb} on the ${namedTarget} (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_TRAP_DC} — ${
+        `${verb} on the ${namedTarget} (Investigation ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${dc} — ${
           success
             ? `you examine the ${namedTarget} thoroughly and note fine details and markings`
             : `you find no hidden mechanisms or unusual marks on the ${namedTarget}`
@@ -299,15 +345,29 @@ export function resolveSkillAttemptFromSummary(
   }
 
   if (wantsLock) {
+    const dc = explicitDc ?? DEFAULT_LOCK_DC;
     const skill = skillBonus(sheet, 'sleight-of-hand');
     const tools = hasThievesTools(sheet);
     const roll = rollD20('normal', skill.bonus);
     rolls.push(roll.natural);
-    const success = roll.total >= DEFAULT_LOCK_DC;
+    const success = roll.total >= dc;
     lockYielded = success;
     parts.push(
-      `Lock attempt (Sleight of Hand ${formatBonus(skill.bonus)}${tools ? ', Thieves’ Tools' : ', no Thieves’ Tools'}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${DEFAULT_LOCK_DC} — ${
+      `Lock attempt (Sleight of Hand ${formatBonus(skill.bonus)}${tools ? ', Thieves’ Tools' : ', no Thieves’ Tools'}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${dc} — ${
         success ? 'the lock yields' : 'the lock holds'
+      }.`,
+    );
+  }
+
+  if (!wantsStealth && !wantsTrap && !wantsLock && dispatchedSkill !== null) {
+    const dc = explicitDc ?? 12;
+    const skill = skillBonus(sheet, dispatchedSkill.id);
+    const roll = rollD20('normal', skill.bonus);
+    rolls.push(roll.natural);
+    const success = roll.total >= dc;
+    parts.push(
+      `${dispatchedSkill.label} check on ${namedTarget} (${dispatchedSkill.label} ${formatBonus(skill.bonus)}): d20 ${roll.natural} ${formatBonus(skill.bonus)} = ${roll.total} vs DC ${dc} — ${
+        success ? 'you succeed on the check' : 'the attempt falls short'
       }.`,
     );
   }

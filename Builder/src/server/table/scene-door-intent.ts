@@ -21,6 +21,7 @@ import {
   relationToDoor,
   resolveCrossingAgainstTopology,
 } from '../../shared/door-topology.js';
+import { isAdjacentToDoorEdge as isAdjacentToDoor } from '../../shared/map-presentation.js';
 import { proposeDoorSceneAhead } from './scene-builder.js';
 
 export interface SceneDoorIntentResolution {
@@ -69,26 +70,6 @@ function wantsDoorPassage(text: string): boolean {
   return (
     /\b(?:steps?\s+through|enter(?:s|ing)?|through|beyond|continue)\b/i.test(text) ||
     /\b(?:go|walk|move|step)s?\s+(?:west|east|north|south|back)\b/i.test(text)
-  );
-}
-
-function isAdjacentToDoor(
-  anchor: MapSquareCoordinate,
-  edge: MapEdgeRecord,
-): boolean {
-  return (
-    (edge.orientation === 'east' &&
-      edge.row === anchor.row &&
-      (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
-    (edge.orientation === 'north' &&
-      edge.column === anchor.column &&
-      (edge.row === anchor.row || edge.row === anchor.row - 1)) ||
-    (edge.orientation === 'west' &&
-      edge.row === anchor.row &&
-      (edge.column === anchor.column || edge.column === anchor.column + 1)) ||
-    (edge.orientation === 'south' &&
-      edge.column === anchor.column &&
-      (edge.row === anchor.row || edge.row === anchor.row - 1))
   );
 }
 
@@ -582,10 +563,10 @@ export function resolveDoorIntentForMap(
         };
       }
     }
-    // Free exploration: only route to a closed door when the player's text actually mentions the door.
+    // Free exploration: only route to a closed door when the player's text actually targets the door.
     if (
       nearestClosed !== null &&
-      (wantsOpen || wantsBesideDoorIntent(text) || (/\\b(?:door|doorway|gate|entry(?:way)?)\\b/i.test(text) && mentionsMovementIntent(text)))
+      (wantsOpen || wantsBesideDoorIntent(text))
     ) {
       const besidePath =
         pathBesideClosedDoor(tokenAnchor, map, 12, preferredCompass) ??

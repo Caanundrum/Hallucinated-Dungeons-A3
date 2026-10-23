@@ -763,22 +763,28 @@ export function parsePlayerDeclaration(
     if (addressee !== null) break;
   }
 
+  // Unknown named addressee stop-words — never treat common verbs, adverbs, pronouns, or interjections as NPC names.
+  const NPC_CANDIDATE_STOP_WORDS =
+    /^(?:The|This|That|What|Which|Where|When|Why|How|Who|Whom|Whose|Director|Garrick|Veyra|In|At|On|For|From|With|By|About|Of|A|An|If|Whether|Then|First|Softly|Quietly|Loudly|Low|Now|Wait|Look|Listen|Here|There|Well|Hold|Stop|Sure|Okay|Yes|No|Fine|Hm|Hmm|Oh|Ah|Quick|Slowly|Carefully|Suddenly|Cautiously|Silently|Gently|Meanwhile|Next|Finally)$/i;
+
   // 2. Check leading addressee format: "Orin: ...", "@Orin, ..."
   if (addressee === null) {
     const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(searchScope);
     if (leading !== null) {
+      const candidate = leading[1]!;
       const matchKnown = knownNpcs.find(
-        (n) => n.label.toLowerCase() === leading[1]!.toLowerCase(),
+        (n) => n.label.toLowerCase() === candidate.toLowerCase(),
       );
-      addressee = matchKnown ? matchKnown.label : leading[1]!;
+      if (matchKnown !== undefined) {
+        addressee = matchKnown.label;
+      } else if (!NPC_CANDIDATE_STOP_WORDS.test(candidate) && !/ly$/i.test(candidate)) {
+        addressee = candidate;
+      }
     }
   }
 
   // 3. Unknown named addressee with explicit speech verb: "asks Nib", "ask Nib,", "speaking to Nib"
   // Multi-word support; NO /i flag so lowercase words like "in", "softly", "about" are never treated as NPC names.
-  const NPC_CANDIDATE_STOP_WORDS =
-    /^(?:The|This|That|What|Which|Where|When|Why|How|Who|Whom|Whose|Director|Garrick|Veyra|In|At|On|For|From|With|By|About|Of|A|An|If|Whether|Then|First|Softly|Quietly|Loudly|Low|Now)$/i;
-
   if (addressee === null) {
     // Strip adverbial or prepositional speech phrases like "in a low voice", "in a whisper", "softly", "quietly"
     const cleanedSearch = searchScope.replace(

@@ -32,7 +32,7 @@ import {
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { bindDirectorAvatarFallback, directorAvatarMarkup } from '../director-avatars.js';
 import { escapeHtml } from '../dom-utils.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { confirmInApp } from '../confirm-dialog.js';
 import { navigate } from '../router.js';
@@ -499,7 +499,6 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                        Close chapter &amp; travel
                      </button>`
                      }
-                   </div>
                    ${
                      memorySnapshot?.adventureTemplateId === null ||
                      memorySnapshot?.adventureTemplateId === undefined
@@ -1103,6 +1102,9 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
     } finally {
       loadingDetail = false;
     }
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     if (detail !== null) {
       memoryError = null;
       try {
@@ -1121,11 +1123,18 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         encounterActive = false;
       }
     }
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     render();
   }
 
-  subscribeAccount(() => {
+  const unsubscribeAccount = subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     void load();
   });
+  registerPageCleanup(container, mountToken, unsubscribeAccount);
   void load();
 }

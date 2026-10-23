@@ -609,9 +609,16 @@ export async function deleteCharacter(options: {
 }): Promise<void> {
   const { firestore, accountId, characterId } = options;
   await loadOwnedCharacter(firestore, accountId, characterId);
+  const danglingSeats = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('characterId', '==', characterId)
+    .get();
   await firestore.runTransaction(async (transaction) => {
     transaction.delete(firestore.collection(COLLECTIONS.characters).doc(characterId));
     transaction.delete(firestore.collection(COLLECTIONS.characterProgressions).doc(characterId));
+    for (const seatDoc of danglingSeats.docs) {
+      transaction.delete(seatDoc.ref);
+    }
   });
 }
 

@@ -58,7 +58,8 @@ import {
   DIRECTOR_CONFIGURATION_NOTICE,
   resolveDirectorConfiguration,
 } from './director-catalog.js';
-import { buildCampaignBlueprint } from './campaign-blueprint.js';
+import { buildCampaignBlueprint, sanitizeWotcProductIdentity } from './campaign-blueprint.js';
+import { resolveSceneArtUrl } from '../../shared/map-contract.js';
 import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
 import { levelForExperience } from '../rules/engine/xp-progression.js';
 import {
@@ -645,9 +646,38 @@ export async function createCampaign(options: {
       ? {
           ...baseBlueprint,
           ...approvedObj,
+          premiseDigest:
+            typeof approvedObj.premiseDigest === 'string'
+              ? sanitizeWotcProductIdentity(approvedObj.premiseDigest)
+              : baseBlueprint.premiseDigest,
           milestones:
             Array.isArray(approvedObj.milestones) && approvedObj.milestones.length > 0
-              ? approvedObj.milestones
+              ? approvedObj.milestones.map((m) => ({
+                  ...m,
+                  title:
+                    typeof m.title === 'string' ? sanitizeWotcProductIdentity(m.title) : 'Milestone',
+                  summary:
+                    typeof m.summary === 'string' ? sanitizeWotcProductIdentity(m.summary) : '',
+                  rooms: Array.isArray(m.rooms)
+                    ? m.rooms.map((r: (typeof m.rooms)[number]) => ({
+                        ...r,
+                        title:
+                          typeof r.title === 'string'
+                            ? sanitizeWotcProductIdentity(r.title)
+                            : 'Room',
+                        summary:
+                          typeof r.summary === 'string'
+                            ? sanitizeWotcProductIdentity(r.summary)
+                            : '',
+                        xpAwardOnDiscovery:
+                          typeof r.xpAwardOnDiscovery === 'number' &&
+                          Number.isFinite(r.xpAwardOnDiscovery)
+                            ? Math.max(25, Math.min(250, Math.round(r.xpAwardOnDiscovery)))
+                            : 75,
+                        sceneArtUrl: resolveSceneArtUrl(r.sceneArtUrl),
+                      }))
+                    : [],
+                }))
               : (baseBlueprint.milestones ?? []),
         }
       : baseBlueprint;
@@ -1281,16 +1311,8 @@ export async function joinTable(options: {
   const visibility = campaignVisibility(stored);
 
   let membership = await loadMembership(firestore, campaignId, accountId);
-  if (membership === null) {
-    if (visibility !== 'public') {
-      throw new CampaignNotFoundError();
-    }
-    membership = await ensurePlayerMembership({
-      firestore,
-      campaignId,
-      accountId,
-      displayLabel,
-    });
+  if (membership === null && visibility !== 'public') {
+    throw new CampaignNotFoundError();
   }
 
   if (campaignPasswordProtected(stored)) {
@@ -1309,6 +1331,31 @@ export async function joinTable(options: {
       throw new AlreadyAtAnotherTableError(globalSeat.campaignId);
     }
     switchedFromCampaignId = globalSeat.campaignId;
+  }
+
+  // Validate character ownership and table seat capacity before creating membership or leaving prior seats.
+  await readCharacter({ firestore, accountId, characterId });
+  const existingAtTable = await firestore
+    .collection(COLLECTIONS.campaignSeats)
+    .where('campaignId', '==', campaignId)
+    .where('ownerAccountId', '==', accountId)
+    .limit(1)
+    .get();
+  if (!existingAtTable.empty) {
+    throw new AlreadySeatedError();
+  }
+  const currentSeats = await countSeats(firestore, campaignId);
+  if (currentSeats >= MAX_ACTIVE_PLAYERS) {
+    throw new TableFullError();
+  }
+
+  if (membership === null) {
+    membership = await ensurePlayerMembership({
+      firestore,
+      campaignId,
+      accountId,
+      displayLabel,
+    });
   }
 
   if (options.confirmSwitch === true) {
@@ -1431,6 +1478,7 @@ export async function deleteCampaign(options: {
     COLLECTIONS.campaignMemory,
     COLLECTIONS.campaignPresenceMeta,
     COLLECTIONS.timingAuthorities,
+    COLLECTIONS.campaignEncounters,
     COLLECTIONS.campaigns,
   ] as const;
   const batch = firestore.batch();

@@ -713,7 +713,7 @@ function paintSemanticSvg(
         <summary aria-label="More map tools">More</summary>
         <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
       </details>
-      <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">${Math.round(zoomScale * 100)}%</span>
+      <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom ${Math.round(zoomScale * 100)}%</span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
     <p class="map-terrain-summary visually-hidden" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
@@ -973,8 +973,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       svg.setAttribute('height', `${displayH}`);
     }
     const indicator = host.querySelector<HTMLElement>('[data-testid="map-zoom-indicator"]');
-    if (indicator !== null) {
-      indicator.textContent = `Zoom ${Math.round(zoomScale * 100)}%`;
+    const nextZoomLabel = `Zoom ${Math.round(zoomScale * 100)}%`;
+    if (indicator !== null && indicator.textContent !== nextZoomLabel) {
+      indicator.textContent = nextZoomLabel;
     }
   }
 
@@ -1037,7 +1038,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     });
   }
 
+  let removeWindowPanListeners: (() => void) | null = null;
+
   function bindPan(): void {
+    if (removeWindowPanListeners !== null) {
+      removeWindowPanListeners();
+      removeWindowPanListeners = null;
+    }
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
     if (viewport === null || viewport.dataset.panBound === '1') {
       return;
@@ -1050,6 +1057,17 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     let scrollLeft = 0;
     let scrollTop = 0;
     let activePointerId: number | null = null;
+
+    const detachWindowListeners = (): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (removeWindowPanListeners === detachWindowListeners) {
+        removeWindowPanListeners = null;
+      }
+    };
 
     const onMove = (event: PointerEvent | MouseEvent) => {
       if (!dragging) {
@@ -1087,11 +1105,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       dragging = false;
       activePointerId = null;
       viewport.classList.remove('is-panning');
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      detachWindowListeners();
     };
 
     const onDown = (event: PointerEvent | MouseEvent) => {
@@ -1123,6 +1137,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           // Capture is best-effort on synthetic events.
         }
       }
+      removeWindowPanListeners = detachWindowListeners;
       window.addEventListener('pointermove', onMove, { passive: false });
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
@@ -1296,7 +1311,10 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     const height = rows * pixelsPerSquare;
 
     for (const name of WEBGL_RENDER_LAYERS) {
-      layers[name].removeChildren();
+      const removed = layers[name].removeChildren();
+      for (const child of removed) {
+        child.destroy({ children: true });
+      }
     }
 
     const background = new Graphics();
@@ -1676,9 +1694,21 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
     },
     destroy() {
+      pixiPaintSeq += 1;
+      if (transitionTimer !== null) {
+        clearTimeout(transitionTimer);
+        transitionTimer = null;
+      }
+      if (removeWindowPanListeners !== null) {
+        removeWindowPanListeners();
+        removeWindowPanListeners = null;
+      }
       window.removeEventListener('resize', onResize);
       if (application !== null) {
         application.destroy(true);
+        application = null;
+        root = null;
+        layers = null;
       }
       host.replaceChildren();
     },

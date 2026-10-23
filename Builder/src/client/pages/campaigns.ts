@@ -27,7 +27,7 @@ import {
   directorPortraitChipMarkup,
 } from '../director-avatars.js';
 import { escapeHtml } from '../dom-utils.js';
-import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
+import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
 import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
@@ -109,6 +109,14 @@ export function mountCampaignsPage(host: PageHost): void {
       (tab === 'mine' && (visibilityFilter !== 'all' || sessionFilter !== 'all')) ||
       seatsFilter !== 'all' ||
       (tab === 'open' && joinFilter !== 'all');
+
+    const activeEl = document.activeElement;
+    const searchWasFocused =
+      activeEl instanceof HTMLInputElement &&
+      container.contains(activeEl) &&
+      activeEl.dataset.testid === 'campaigns-search';
+    const searchSelectionStart = searchWasFocused ? (activeEl.selectionStart ?? searchQuery.length) : 0;
+    const searchSelectionEnd = searchWasFocused ? (activeEl.selectionEnd ?? searchQuery.length) : 0;
 
     container.innerHTML = `
       <div class="page page-wide">
@@ -368,14 +376,21 @@ export function mountCampaignsPage(host: PageHost): void {
     container
       .querySelector<HTMLButtonElement>('[data-testid="start-campaign"]')
       ?.addEventListener('click', () => navigate('/campaigns/new'));
-    container
-      .querySelector<HTMLInputElement>('[data-testid="campaigns-search"]')
-      ?.addEventListener('input', (event) => {
-        if (event.target instanceof HTMLInputElement) {
-          searchQuery = event.target.value;
-          renderSignedIn();
-        }
-      });
+    const searchInput = container.querySelector<HTMLInputElement>('[data-testid="campaigns-search"]');
+    searchInput?.addEventListener('input', (event) => {
+      if (event.target instanceof HTMLInputElement) {
+        searchQuery = event.target.value;
+        renderSignedIn();
+      }
+    });
+    if (searchWasFocused && searchInput !== null) {
+      searchInput.focus({ preventScroll: true });
+      try {
+        searchInput.setSelectionRange(searchSelectionStart, searchSelectionEnd);
+      } catch {
+        // Ignore selection range errors.
+      }
+    }
     container
       .querySelector<HTMLSelectElement>('[data-testid="campaigns-sort"]')
       ?.addEventListener('change', (event) => {
@@ -522,11 +537,18 @@ export function mountCampaignsPage(host: PageHost): void {
       hub = null;
       error = failure instanceof ApiFailure ? failure.message : 'Tables could not be loaded.';
     }
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     render();
   }
 
-  subscribeAccount(() => {
+  const unsubscribeAccount = subscribeAccount(() => {
+    if (!isPageMountCurrent(container, mountToken)) {
+      return;
+    }
     void load();
   });
+  registerPageCleanup(container, mountToken, unsubscribeAccount);
   void load();
 }

@@ -6,8 +6,6 @@
  * hold Timing Authority when a seated actor drops to grace/offline.
  */
 
-import { randomUUID } from 'node:crypto';
-
 import type { Firestore } from 'firebase-admin/firestore';
 
 import {
@@ -156,8 +154,4 @@ export function accountInDisconnectGrace(
   accountId: string,
 ): boolean {
   return presence.graceAccountIds.includes(accountId) && !presence.onlineAccountIds.includes(accountId);
-}
-
-export function newPresenceTabId(): string {
-  return randomUUID();
 }

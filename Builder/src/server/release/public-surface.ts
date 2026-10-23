@@ -8,14 +8,7 @@
  */
 
 import type { ServerEnvironment } from '../config/environment.js';
-import {
-  allowsLocalArenaOnlyCapability,
-  type PublicSurface,
-} from '../../shared/public-surface-contract.js';
-
-export function publicSurfaceOf(env: ServerEnvironment): PublicSurface {
-  return env.publicSurface;
-}
+import { allowsLocalArenaOnlyCapability } from '../../shared/public-surface-contract.js';
 
 export function isLocalArenaPublicSurface(env: ServerEnvironment): boolean {
   return env.environmentClass === 'local' && allowsLocalArenaOnlyCapability(env.publicSurface);

@@ -43,6 +43,18 @@ function indexEdges(edges: readonly MapEdgeRecord[]): Map<string, MapEdgeRecord>
   const map = new Map<string, MapEdgeRecord>();
   for (const edge of edges) {
     map.set(edge.edgeId, edge);
+    // Canonicalize north/west edges so crossedEdgeId (which queries south/east) always finds them.
+    if (edge.orientation === 'north' && edge.row > 0) {
+      const canonicalId = edgeId(edge.column, edge.row - 1, 'south');
+      if (!map.has(canonicalId)) {
+        map.set(canonicalId, edge);
+      }
+    } else if (edge.orientation === 'west' && edge.column > 0) {
+      const canonicalId = edgeId(edge.column - 1, edge.row, 'east');
+      if (!map.has(canonicalId)) {
+        map.set(canonicalId, edge);
+      }
+    }
   }
   return map;
 }
