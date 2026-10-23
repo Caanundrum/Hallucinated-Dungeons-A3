@@ -15,6 +15,10 @@ import type {
   CharacterProgressionProjection,
   EncounterProjection,
 } from '../../shared/rules-combat-contract.js';
+import {
+  extractCampaignFactsFromPremise,
+  mergeCampaignFacts,
+} from '../../shared/campaign-facts.js';
 import { loadCampaignMemory } from '../campaigns/campaign-memory.js';
 import { fetchRulesState } from '../rules/engine/rules-commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
@@ -256,4 +260,74 @@ export async function assembleDirectorVisibleContext(options: {
       : `${map.sceneBanner} (${map.title})`;
 
   return { text, includedIds, sceneTitle, directorPromptLead };
+}
+
+export function buildPremiseFactCorpus(
+  memory: CampaignMemoryProjection | null,
+  extras: readonly string[] = [],
+  premiseKey: string | null = null,
+): ReturnType<typeof extractCampaignFactsFromPremise> {
+  const premiseParts: string[] = [];
+  if (memory !== null) {
+    for (const chapter of memory.chapters) {
+      if (chapter.planSummary.trim().length > 0) {
+        premiseParts.push(chapter.planSummary.trim());
+      }
+      if (chapter.recordedSummary !== null && chapter.recordedSummary.trim().length > 0) {
+        premiseParts.push(chapter.recordedSummary.trim());
+      }
+    }
+    for (const quest of memory.quests) {
+      if (quest.summary.trim().length > 0) {
+        premiseParts.push(`${quest.title}: ${quest.summary}`);
+      }
+    }
+  }
+  for (const extra of extras) {
+    if (extra.trim().length > 0) {
+      premiseParts.push(extra.trim());
+    }
+  }
+  // Banners / chapter echo must not promote player-asserted names into premise NPCs.
+  const fromContext = extractCampaignFactsFromPremise(premiseParts.join(' '), {
+    allowNamedNpcs: false,
+  });
+  const fromPremiseKey = extractCampaignFactsFromPremise(premiseKey ?? '', {
+    allowNamedNpcs: true,
+  });
+  return mergeCampaignFacts(fromContext, fromPremiseKey);
+}
+
+export async function loadScenePremiseExtras(options: {
+  readonly firestore: Firestore;
+  readonly campaignId: string;
+  readonly accountId: string;
+}): Promise<{ readonly banners: readonly string[]; readonly premiseKey: string | null }> {
+  const banners: string[] = [];
+  let premiseKey: string | null = null;
+  try {
+    const map = await fetchCampaignMap({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      campaignId: options.campaignId,
+    });
+    if (map.sceneBanner.trim().length > 0) {
+      banners.push(map.sceneBanner.trim());
+    }
+    if (map.title.trim().length > 0) {
+      banners.push(map.title.trim());
+    }
+  } catch {
+    // Map extras are best-effort.
+  }
+  try {
+    const { loadMapRuntime } = await import('../table/map-runtime.js');
+    const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+    if (typeof runtime.premiseKey === 'string' && runtime.premiseKey.trim().length > 0) {
+      premiseKey = runtime.premiseKey.trim();
+    }
+  } catch {
+    // Runtime premise is best-effort.
+  }
+  return { banners, premiseKey };
 }
