@@ -9,6 +9,8 @@
 
 import { GoogleGenAI } from '@google/genai';
 import {
+  PORTRAIT_DWARF_FIGHTER,
+  PORTRAIT_ELF_ROGUE,
   archetypePortraitUrl,
   type GeneratePortraitResponse,
 } from '../../shared/portrait-contract.js';
@@ -36,19 +38,57 @@ export function portraitApiKey(env: PortraitEnvironment): string | null {
   return key.length >= 20 ? key : null;
 }
 
+export function formatPronounsForPortraitPrompt(pronouns?: string | null): string {
+  const raw = (pronouns ?? '').trim();
+  if (raw.length === 0) {
+    return '';
+  }
+  const lowered = raw.toLowerCase();
+  if (/\b(he|him|his|male|man)\b/.test(lowered) && !/\b(she|her)\b/.test(lowered)) {
+    return 'Gender and presentation: strictly male character (he/him pronouns, masculine facial features, never female).';
+  }
+  if (/\b(she|her|hers|female|woman)\b/.test(lowered)) {
+    return 'Gender and presentation: strictly female character (she/her pronouns, feminine facial features, never male).';
+  }
+  if (/\b(they|them|theirs|non-binary|nonbinary)\b/.test(lowered)) {
+    return 'Gender and presentation: androgynous / non-binary character (they/them pronouns).';
+  }
+  return `Character pronouns: ${raw}.`;
+}
+
 export function buildPortraitPrompt(options: {
   readonly appearancePrompt: string;
   readonly ancestryId?: string | null;
   readonly classId?: string | null;
+  readonly pronouns?: string | null;
+  readonly characterHistory?: string | null;
+  readonly variationHint?: string | null;
+  readonly preserveCorePortrait?: boolean;
 }): string {
   const subject = [options.ancestryId, options.classId]
     .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .map((part) => part.replace(/[-_]+/g, ' '))
     .join(' ');
+  const pronounLine = formatPronounsForPortraitPrompt(options.pronouns);
+  const preserveLine = options.preserveCorePortrait
+    ? 'IMPORTANT: Alter only the existing core portrait shown in the reference image — strictly preserve the same face, bone structure, gender presentation, species, and painterly style. Never rewrite them with a whole new look; apply only subtle level-up progression and the newly described details.'
+    : '';
+  const historyLine =
+    typeof options.characterHistory === 'string' && options.characterHistory.trim().length > 0
+      ? `Cross-campaign character history across tables (reflect their journey and experience while preserving their core portrait): ${options.characterHistory.trim()}.`
+      : '';
+  const variationLine =
+    typeof options.variationHint === 'string' && options.variationHint.trim().length > 0
+      ? `Portrait framing variation: ${options.variationHint.trim()}.`
+      : '';
   return [
     'Oil-painted medieval fantasy character portrait, head and shoulders, dramatic candle-lit tavern lighting, painterly, no text, no watermark.',
+    preserveLine,
     subject.length > 0 ? `A ${subject} adventurer.` : 'A fantasy adventurer.',
+    pronounLine,
     options.appearancePrompt.length > 0 ? `Physical appearance: ${options.appearancePrompt}` : '',
+    historyLine,
+    variationLine,
   ]
     .filter((line) => line.length > 0)
     .join(' ');
@@ -131,6 +171,7 @@ export async function tryGeminiImageGeneration(options: {
   readonly model?: string;
   readonly prompt: string;
   readonly aspectRatio?: '1:1' | '16:9' | '4:3';
+  readonly baseImage?: { readonly mimeType: string; readonly base64Data: string } | null;
 }): Promise<{ readonly mimeType: string; readonly base64Data: string } | null> {
   if (options.env.HD_PORTRAIT_GENERATION === 'off') {
     return null;
@@ -173,9 +214,26 @@ export async function tryGeminiImageGeneration(options: {
         apiKey !== null
           ? new GoogleGenAI({ apiKey })
           : new GoogleGenAI({ vertexai: true, project, location });
+      const contents =
+        options.baseImage !== undefined && options.baseImage !== null
+          ? [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: options.baseImage.mimeType,
+                      data: options.baseImage.base64Data,
+                    },
+                  },
+                  { text: options.prompt },
+                ],
+              },
+            ]
+          : options.prompt;
       const response = await ai.models.generateContent({
         model: candidateModel,
-        contents: options.prompt,
+        contents,
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
           imageConfig: {
@@ -233,12 +291,14 @@ async function tryVertexPortraitAdc(options: {
   readonly env: PortraitEnvironment;
   readonly model: string;
   readonly prompt: string;
+  readonly baseImage?: { readonly mimeType: string; readonly base64Data: string } | null;
 }): Promise<string | null> {
   const generated = await tryGeminiImageGeneration({
     env: options.env,
     model: options.model,
     prompt: options.prompt,
     aspectRatio: '1:1',
+    ...(options.baseImage !== undefined ? { baseImage: options.baseImage } : {}),
   });
   if (generated === null) {
     return null;
@@ -250,7 +310,12 @@ export async function resolvePortrait(options: {
   readonly appearancePrompt: string;
   readonly ancestryId?: string | null;
   readonly classId?: string | null;
+  readonly pronouns?: string | null;
   readonly characterName?: string | null;
+  readonly characterHistory?: string | null;
+  readonly variationHint?: string | null;
+  readonly preserveCorePortrait?: boolean;
+  readonly baseImage?: { readonly mimeType: string; readonly base64Data: string } | null;
   readonly env?: PortraitEnvironment;
   readonly fetchImpl?: typeof fetch;
 }): Promise<Pick<GeneratePortraitResponse, 'avatarUrl' | 'source'>> {
@@ -259,6 +324,17 @@ export async function resolvePortrait(options: {
   const prompt = buildPortraitPrompt(options);
   const apiKey = portraitApiKey(env);
   if (apiKey !== null) {
+    if (options.baseImage !== undefined && options.baseImage !== null && options.fetchImpl === undefined) {
+      const sdkEdited = await tryVertexPortraitAdc({
+        env,
+        model,
+        prompt,
+        baseImage: options.baseImage,
+      });
+      if (sdkEdited !== null) {
+        return { avatarUrl: sdkEdited, source: 'generated' };
+      }
+    }
     const generated = await tryImagen({
       apiKey,
       model,
@@ -273,6 +349,7 @@ export async function resolvePortrait(options: {
         env,
         model,
         prompt,
+        ...(options.baseImage !== undefined ? { baseImage: options.baseImage } : {}),
       });
       if (sdkGenerated !== null) {
         return { avatarUrl: sdkGenerated, source: 'generated' };
@@ -283,6 +360,7 @@ export async function resolvePortrait(options: {
       env,
       model,
       prompt,
+      ...(options.baseImage !== undefined ? { baseImage: options.baseImage } : {}),
     });
     if (vertexGenerated !== null) {
       return { avatarUrl: vertexGenerated, source: 'generated' };
@@ -295,5 +373,58 @@ export async function resolvePortrait(options: {
       name: options.characterName ?? null,
     }),
     source: 'archetype',
+  };
+}
+
+const PORTRAIT_VARIATION_HINTS: readonly string[] = [
+  'Option 1 — warm hearth-lit three-quarter view, focused expression',
+  'Option 2 — dramatic side rim-lighting, determined forward gaze',
+  'Option 3 — weathered atmospheric lantern light, heroic shoulder framing',
+];
+
+/**
+ * Generates 3 candidate portraits so the player can pick 1 (both during
+ * initial character creation and when evolving the existing portrait on level-up).
+ */
+export async function resolvePortraitChoices(options: {
+  readonly appearancePrompt: string;
+  readonly ancestryId?: string | null;
+  readonly classId?: string | null;
+  readonly pronouns?: string | null;
+  readonly characterName?: string | null;
+  readonly characterHistory?: string | null;
+  readonly preserveCorePortrait?: boolean;
+  readonly baseImage?: { readonly mimeType: string; readonly base64Data: string } | null;
+  readonly env?: PortraitEnvironment;
+  readonly fetchImpl?: typeof fetch;
+}): Promise<{
+  readonly avatarUrl: string;
+  readonly avatarOptions: readonly string[];
+  readonly source: 'generated' | 'archetype';
+}> {
+  const results = await Promise.all(
+    PORTRAIT_VARIATION_HINTS.map((variationHint) =>
+      resolvePortrait({
+        ...options,
+        variationHint,
+      }),
+    ),
+  );
+  const first = results[0]!;
+  const anyGenerated = results.some((entry) => entry.source === 'generated');
+  if (!anyGenerated) {
+    const primary = first.avatarUrl;
+    const secondary =
+      primary === PORTRAIT_DWARF_FIGHTER ? PORTRAIT_ELF_ROGUE : PORTRAIT_DWARF_FIGHTER;
+    return {
+      avatarUrl: primary,
+      avatarOptions: [primary, secondary, primary],
+      source: 'archetype',
+    };
+  }
+  return {
+    avatarUrl: first.avatarUrl,
+    avatarOptions: results.map((entry) => entry.avatarUrl),
+    source: 'generated',
   };
 }

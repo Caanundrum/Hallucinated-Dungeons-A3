@@ -54,6 +54,10 @@ export interface DirectorDispatchOutput {
     readonly addressee?: string | null | undefined;
     readonly topic?: string | undefined;
   } | undefined;
+  readonly combatAction?: {
+    readonly targetLabel?: string | undefined;
+    readonly isThreatOnly?: boolean | undefined;
+  } | undefined;
 }
 
 export const DM_DISPATCHER_SYSTEM_INSTRUCTION = `You are the Game Director (Dungeon Master) in an official tabletop D&D 5e / SRD 5.2.1 roleplaying campaign.
@@ -73,6 +77,10 @@ Core D&D 5e Adjudication Rules:
    - Picking locks or disarming traps requires a Dexterity (Thieves' Tools) check.
 4. Scene Travel & Return:
    - Declarations like "I return up the cellar stairs to Drowned Crow Tavern", "I head back through the passage", or "I retreat to the previous room" trigger scene travel (use "travel_scene" with returnToPrevious: true).
+5. Initiating Combat vs. Threatening Tone:
+   - Determine the course of action from the full meaning of what the player describes rather than matching isolated words.
+   - Carefully distinguish a threatening, aggressive, or intimidating tone in dialogue/posturing (e.g. warning an NPC, glaring, resting a hand on a hilt, making a verbal threat, demanding answers) from actually initiating combat. A threatening tone is NEVER combat — route it to "dialogue" or a Charisma (Intimidation) "skill_check" (or set combatAction.isThreatOnly = true).
+   - Only choose "combat_action" (with combatAction.isThreatOnly = false) when the player is genuinely initiating physical or magical combat against a target. Any combat initiation will require explicit player confirmation before combat begins.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -98,6 +106,10 @@ Respond ONLY with a valid JSON object matching this schema:
   "dialogue": {
     "addressee": string | null,
     "topic": string
+  },
+  "combatAction": {
+    "targetLabel": string,
+    "isThreatOnly": boolean
   }
 }`;
 
@@ -385,6 +397,18 @@ export function applyDirectorDispatchToMap(options: {
         summary: `${op === 'close' ? 'Close' : 'Open'} ${label} on the table. Confirm to commit.`,
       };
     }
+  }
+
+  // 6. Combat Initiation (only when genuinely initiating combat, never for a threatening tone)
+  if (dispatch.actionType === 'combat_action') {
+    if (dispatch.combatAction?.isThreatOnly === true) {
+      return null;
+    }
+    const target = dispatch.combatAction?.targetLabel?.trim() ?? '';
+    return {
+      proposedCommandType: 'encounter.begin',
+      summary: `This action will start combat${target.length > 0 ? ` against ${target}` : ''}. Confirm that you want to initiate combat, or cancel if you did not mean to start a fight.`,
+    };
   }
 
   return null;

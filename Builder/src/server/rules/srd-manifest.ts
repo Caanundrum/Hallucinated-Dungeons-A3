@@ -290,9 +290,9 @@ export const SPECIES: readonly SpeciesRecord[] = [
         helper: 'Your Elven Lineage shapes magic and movement. Pick the one that fits this character.',
         choose: 1,
         from: [
-          { id: 'drow', label: 'Drow', summary: 'Superior Darkvision and the Dancing Lights cantrip.' },
-          { id: 'high-elf', label: 'High Elf', summary: 'You know one Wizard cantrip of your choice.' },
-          { id: 'wood-elf', label: 'Wood Elf', summary: 'Speed 35 feet, and you can Hide when lightly obscured by nature.' },
+          { id: 'drow', label: 'Drow', summary: 'Grants: Superior Darkvision (120 ft.), Dancing Lights cantrip, and Faerie Fire (L3) / Darkness (L5) lineage spells.' },
+          { id: 'high-elf', label: 'High Elf', summary: 'Grants: Prestidigitation (or 1 Wizard cantrip, swappable on Long Rest), Detect Magic (L3) / Misty Step (L5) lineage spells.' },
+          { id: 'wood-elf', label: 'Wood Elf', summary: 'Grants: +5 ft. Speed (35 ft. total), Druidcraft cantrip, Longstrider (L3) / Pass without Trace (L5), and Hide in light natural obscurement.' },
         ],
       },
       {
@@ -381,8 +381,8 @@ export const SPECIES: readonly SpeciesRecord[] = [
         helper: 'Forest and Rock Gnomes lean different ways with magic and craft. Pick one lineage.',
         choose: 1,
         from: [
-          { id: 'forest-gnome', label: 'Forest Gnome', summary: 'You know the Minor Illusion cantrip.' },
-          { id: 'rock-gnome', label: 'Rock Gnome', summary: 'You know the Mending and Prestidigitation cantrips.' },
+          { id: 'forest-gnome', label: 'Forest Gnome', summary: 'Grants: Minor Illusion cantrip (30 ft. sound/image illusion) + Speak with Animals always prepared (free casts equal to Proficiency Bonus per Long Rest).' },
+          { id: 'rock-gnome', label: 'Rock Gnome', summary: 'Grants: Mending and Prestidigitation cantrips + Clockwork Tinker (craft tiny clockwork devices that produce light, sound, or sparks).' },
         ],
       },
     ],
@@ -1117,4 +1117,78 @@ export function findSpell(id: string): SpellRecord | null {
 }
 export function spellsForList(listId: string, level: 0 | 1): readonly SpellRecord[] {
   return SPELLS.filter((spell) => spell.level === level && spell.lists.includes(listId));
+}
+
+export const SPELL_SUMMARIES: Readonly<Record<string, string>> = {
+  'acid-splash': 'Evocation Cantrip · Action · 60 ft · Instant · DEX save or 1d6 Acid damage in a 5-ft sphere.',
+  'blade-ward': 'Abjuration Cantrip · Action · Self · 1 min (Conc.) · Attackers subtract 1d4 from melee attack rolls against you.',
+  'chill-touch': 'Necromancy Cantrip · Action · Touch/120 ft · Instant · Spell attack for 1d10 Necrotic damage; target cannot regain HP until your next turn.',
+  'dancing-lights': 'Illusion Cantrip · Action · 120 ft · 1 min (Conc.) · Create up to 4 torch-sized glowing lights that shed dim light in a 10-ft radius.',
+  'druidcraft': 'Transmutation Cantrip · Action · 30 ft · Instant · Predict weather, bloom a flower, create a tiny sensory nature effect, or light/snuff a small flame.',
+  'eldritch-blast': 'Evocation Cantrip · Action · 120 ft · Instant · Ranged spell attack for 1d10 Force damage.',
+  'fire-bolt': 'Evocation Cantrip · Action · 120 ft · Instant · Ranged spell attack for 1d10 Fire damage; ignites unattended flammable objects.',
+  'guidance': 'Divination Cantrip · Action · Touch · 1 min (Conc.) · Touch a willing creature to add +1d4 to checks with a chosen skill.',
+  'light': 'Evocation Cantrip · Action · Touch · 1 hour · Object sheds bright light in a 20-ft radius and dim light for an additional 20 ft.',
+  'mage-hand': 'Conjuration Cantrip · Action · 30 ft · 1 min · Spectral floating hand manipulates objects, opens unlocked doors, or retrieves items (up to 10 lb).',
+  'mending': 'Transmutation Cantrip · 1 min · Touch · Instant · Repairs a single break or tear up to 1 ft in a nonmagical object.',
+  'message': 'Transmutation Cantrip · Action · 120 ft · 1 round · Whisper a secret message to a creature within range that can whisper a reply only you hear.',
+  'minor-illusion': 'Illusion Cantrip · Action · 30 ft · 1 min · Create a sound or a 5-ft image of an object (Investigation check vs. Spell Save DC to discern).',
+  'poison-spray': 'Necromancy Cantrip · Action · 30 ft · Instant · Ranged spell attack or CON save for 1d12 Poison damage.',
+  'prestidigitation': 'Transmutation Cantrip · Action · 10 ft · Up to 1 hour · Minor magical trick: sensory effect, light/snuff flame, clean/soil, chill/warm/flavor, or trinket.',
+  'produce-flame': 'Conjuration Cantrip · Bonus Action · Self (30 ft hurl) · 10 min · Flickering flame in your hand sheds light and can be hurled as a ranged spell attack for 1d8 Fire damage.',
+  'ray-of-frost': 'Evocation Cantrip · Action · 60 ft · Instant · Ranged spell attack for 1d8 Cold damage and reduces target Speed by 10 ft for 1 round.',
+  'resistance': 'Abjuration Cantrip · Action · Touch · 1 min (Conc.) · Touched creature reduces damage of a chosen type by 1d4 once per turn.',
+  'sacred-flame': 'Evocation Cantrip · Action · 60 ft · Instant · DEX save (ignores cover) or take 1d8 Radiant damage.',
+  'shillelagh': 'Transmutation Cantrip · Bonus Action · Self · 1 min · Imbue a Club or Quarterstaff to use your spellcasting ability for attack/damage and deal 1d8 Force or Bludgeoning damage.',
+  'shocking-grasp': 'Evocation Cantrip · Action · Touch · Instant · Melee spell attack for 1d8 Lightning damage; target cannot take Opportunity Attacks until its next turn.',
+  'spare-the-dying': 'Necromancy Cantrip · Action · 15 ft · Instant · A creature with 0 Hit Points becomes Stable.',
+  'thaumaturgy': 'Transmutation Cantrip · Action · 30 ft · Up to 1 min · Booming voice (Advantage on Intimidation), tremors, slam doors, or alter flames/eyes.',
+  'true-strike': 'Divination Cantrip · Action · Self · Instant · Make a weapon attack using your spellcasting ability for attack and damage rolls (Radiant or weapon damage).',
+  'vicious-mockery': 'Enchantment Cantrip · Action · 60 ft · Instant · WIS save or take 1d6 Psychic damage and have Disadvantage on next attack roll.',
+  'alarm': 'Abjuration L1 (Ritual) · 1 min · 30 ft · 8 hours · Wards a door, window, or 20-ft cube and alerts you mentally or audibly when a creature enters.',
+  'animal-friendship': 'Enchantment L1 · Action · 30 ft · 24 hours · WIS save or a Beast is Charmed by you for the duration.',
+  'bane': 'Enchantment L1 · Action · 30 ft · 1 min (Conc.) · Up to 3 creatures make a CHA save or subtract 1d4 from attack rolls and saving throws.',
+  'bless': 'Enchantment L1 · Action · 30 ft · 1 min (Conc.) · Up to 3 creatures add +1d4 to attack rolls and saving throws.',
+  'burning-hands': 'Evocation L1 · Action · Self (15-ft cone) · Instant · DEX save for 3d6 Fire damage (half on success).',
+  'charm-person': 'Enchantment L1 · Action · 30 ft · 1 hour · WIS save (with Advantage if fighting you) or a Humanoid is Charmed by you.',
+  'command': 'Enchantment L1 · Action · 60 ft · 1 round · WIS save or target obeys a one-word command (Approach, Drop, Flee, Grovel, Halt) on its next turn.',
+  'cure-wounds': 'Abjuration L1 · Action · Touch · Instant · Restore 2d8 + spellcasting modifier Hit Points to a creature you touch.',
+  'detect-magic': 'Divination L1 (Ritual) · Action · Self (30-ft aura) · 10 min (Conc.) · Sense the presence and school of magic within 30 feet.',
+  'disguise-self': 'Illusion L1 · Action · Self · 1 hour · Magically alter the appearance of your body, clothing, armor, and weapons.',
+  'divine-favor': 'Transmutation L1 · Bonus Action · Self · 1 min · Your weapon attacks deal an extra 1d4 Radiant damage on a hit.',
+  'entangle': 'Conjuration L1 · Action · 90 ft · 1 min (Conc.) · Grasping weeds fill a 20-ft square (difficult terrain); STR save or Restrained.',
+  'faerie-fire': 'Evocation L1 · Action · 60 ft · 1 min (Conc.) · DEX save in a 20-ft cube or targets are outlined in light (attacks against them have Advantage; cannot benefit from Invisibility).',
+  'false-life': 'Necromancy L1 · Action · Self · Instant · Gain 2d4 + 4 Temporary Hit Points.',
+  'feather-fall': 'Transmutation L1 · Reaction · 60 ft · 1 min · Up to 5 falling creatures descend at 60 ft/round and take no falling damage on landing.',
+  'fog-cloud': 'Conjuration L1 · Action · 120 ft · 1 hour (Conc.) · Create a 20-ft-radius sphere of heavily obscured fog.',
+  'goodberry': 'Conjuration L1 · Action · Touch · 24 hours · Create 10 magical berries; eating one as a Bonus Action restores 1 HP and provides a day of nourishment.',
+  'guiding-bolt': 'Evocation L1 · Action · 120 ft · 1 round · Ranged spell attack for 4d6 Radiant damage, and the next attack roll against the target has Advantage.',
+  'healing-word': 'Abjuration L1 · Bonus Action · 60 ft · Instant · Restore 2d4 + spellcasting modifier Hit Points to a creature you can see.',
+  'heroism': 'Enchantment L1 · Action · Touch · 1 min (Conc.) · Willing creature is immune to Frightened and gains Temporary HP equal to your spellcasting modifier at the start of each of its turns.',
+  'hex': 'Enchantment L1 · Bonus Action · 90 ft · 1 hour (Conc.) · Deal +1d6 Necrotic damage when you hit the target, and give it Disadvantage on checks with one chosen ability.',
+  'hunters-mark': 'Divination L1 · Bonus Action · 90 ft · 1 hour (Conc.) · Deal +1d6 Force damage when you hit the quarry, and gain Advantage on Perception/Survival checks to find it.',
+  'identify': 'Divination L1 (Ritual) · 1 min · Touch · Instant · Learn the magical properties, attunement requirements, charges, and active spells on an object or creature.',
+  'inflict-wounds': 'Necromancy L1 · Action · Touch · Instant · CON save or take 2d10 Necrotic damage (half on success).',
+  'jump': 'Transmutation L1 · Bonus Action · Touch · 1 min · Touched creature can jump 30 feet by spending 10 feet of movement once per turn.',
+  'longstrider': 'Transmutation L1 · Action · Touch · 1 hour · Touched creature’s Speed increases by 10 feet.',
+  'mage-armor': 'Abjuration L1 · Action · Touch · 8 hours · Unarmored creature’s base Armor Class becomes 13 + its Dexterity modifier.',
+  'magic-missile': 'Evocation L1 · Action · 120 ft · Instant · Create 3 glowing darts that automatically hit visible targets for 1d4 + 1 Force damage each.',
+  'protection-from-evil-and-good': 'Abjuration L1 · Action · Touch · 10 min (Conc.) · Aberrations, Celestials, Elementals, Fey, Fiends, and Undead have Disadvantage on attacks against target and cannot Charm/Frighten/Possess it.',
+  'purify-food-and-drink': 'Transmutation L1 (Ritual) · Action · 10 ft · Instant · Remove poison and rot from nonmagical food and drink in a 5-ft-radius sphere.',
+  'sanctuary': 'Abjuration L1 · Bonus Action · 30 ft · 1 min · Attackers targeting the warded creature must succeed on a WIS save or choose a new target.',
+  'shield': 'Abjuration L1 · Reaction · Self · 1 round · Triggered when hit by an attack or targeted by Magic Missile: +5 bonus to AC (including against the triggering attack) and take no damage from Magic Missile.',
+  'shield-of-faith': 'Abjuration L1 · Bonus Action · 60 ft · 10 min (Conc.) · A shimmering field grants a creature of your choice a +2 bonus to Armor Class.',
+  'silent-image': 'Illusion L1 · Action · 60 ft · 10 min (Conc.) · Create a visual illusion up to a 15-ft cube that can move natively (Investigation check vs. Spell Save DC to discern).',
+  'sleep': 'Enchantment L1 · Action · 60 ft · 1 min (Conc.) · Creatures in a 5-ft-radius sphere make a WIS save or become Incapacitated, then Unconscious.',
+  'speak-with-animals': 'Divination L1 (Ritual) · Action · Self · 10 min · Comprehend and verbally communicate with Beasts for the duration.',
+  'thunderwave': 'Evocation L1 · Action · Self (15-ft cube) · Instant · CON save for 2d8 Thunder damage and pushed 10 ft away (half damage and no push on success).',
+  'unseen-servant': 'Conjuration L1 (Ritual) · Action · 60 ft · 1 hour · Invisible, mindless, shapeless force performs simple tasks on your command.',
+  'witch-bolt': 'Evocation L1 · Action · 60 ft · 1 min (Conc.) · Ranged spell attack for 2d12 Lightning damage; on subsequent turns use Bonus Action to deal 1d12 Lightning damage automatically.',
+};
+
+export function describeSpell(spell: SpellRecord): string {
+  return (
+    SPELL_SUMMARIES[spell.id] ??
+    `${spell.school} ${spell.level === 0 ? 'Cantrip' : `Level ${spell.level} Spell`}`
+  );
 }

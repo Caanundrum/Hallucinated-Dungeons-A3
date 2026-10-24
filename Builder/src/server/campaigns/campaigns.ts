@@ -22,6 +22,7 @@ import {
   INVITATION_RATE_LIMIT_MAX,
   INVITATION_RATE_LIMIT_WINDOW_MS,
   INVITATION_TTL_MS,
+  MAX_ACTIVE_CAMPAIGNS,
   MAX_ACTIVE_PLAYERS,
   type ActiveSeatedTableProjection,
   type AdventureTemplate,
@@ -52,7 +53,12 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { generateAndStoreCampaignAsset } from '../assets/campaign-assets.js';
 import { buildMapRuntimeFromBlueprint } from '../table/scene-commands.js';
 import { mergeExplored, upsertTokenPosition, type StoredMapRuntime } from '../table/map-runtime.js';
-import { CharacterNotFoundError, readCharacter, readVault } from '../characters/characters.js';
+import {
+  CharacterNotFoundError,
+  appendCrossCampaignCharacterHistory,
+  readCharacter,
+  readVault,
+} from '../characters/characters.js';
 import type { SessionState } from '../../shared/campaign-memory-contract.js';
 import {
   DIRECTOR_CONFIGURATION_NOTICE,
@@ -408,6 +414,15 @@ async function leaveAllOtherSeats(options: {
       continue;
     }
     await options.firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId).delete();
+    const priorCampaignSnap = await options.firestore
+      .collection(COLLECTIONS.campaigns)
+      .doc(seat.campaignId)
+      .get();
+    const priorCampaignName =
+      priorCampaignSnap.exists &&
+      typeof (priorCampaignSnap.data() as { name?: unknown })?.name === 'string'
+        ? (priorCampaignSnap.data() as { name: string }).name
+        : null;
     await options.firestore.collection(COLLECTIONS.campaigns).doc(seat.campaignId).update({
       updatedAt: new Date(),
     });
@@ -416,6 +431,16 @@ async function leaveAllOtherSeats(options: {
       campaignId: seat.campaignId,
       kind: 'seat_left',
       body: `${seat.characterName} left their seat at the table.`,
+    });
+    await appendCrossCampaignCharacterHistory({
+      firestore: options.firestore,
+      characterId: seat.characterId,
+      campaignId: seat.campaignId,
+      campaignName: priorCampaignName,
+      summary:
+        priorCampaignName !== null
+          ? `Departed campaign "${priorCampaignName}".`
+          : 'Departed a campaign table.',
     });
   }
 }
@@ -476,7 +501,9 @@ function projectCampaign(
     adventurePackVersion: stored.adventurePackVersion ?? null,
     createdAt: toIso(stored.createdAt),
     updatedAt: toIso(stored.updatedAt),
-    isCampaignOwner: membership.role === 'owner',
+    recommendedStartLevel: stored.campaignBlueprint?.startLevel ?? 1,
+    isCampaignOwner:
+      membership.role === 'owner' || stored.ownerAccountId === membership.accountId,
   };
 }
 
@@ -485,6 +512,7 @@ function projectPublicTable(stored: StoredCampaign, activeSeatCount: number): Pu
     campaignId: stored.campaignId,
     name: stored.name,
     summary: stored.summary,
+    ownerAccountId: stored.ownerAccountId,
     ownerDisplayLabel: stored.ownerDisplayLabel,
     directorIdentityLabel: DIRECTOR_IDENTITY_LABELS[stored.directorIdentity],
     directorPersonalityLabel: DIRECTOR_PERSONALITY_LABELS[stored.directorPersonality],
@@ -492,6 +520,7 @@ function projectPublicTable(stored: StoredCampaign, activeSeatCount: number): Pu
     maxActivePlayers: MAX_ACTIVE_PLAYERS,
     passwordProtected: campaignPasswordProtected(stored),
     updatedAt: toIso(stored.updatedAt),
+    recommendedStartLevel: stored.campaignBlueprint?.startLevel ?? 1,
   };
 }
 
@@ -604,6 +633,16 @@ export async function createCampaign(options: {
     throw new CampaignValidationError('Choose one approved Game Director personality.');
   }
 
+  const ownedSnapshot = await firestore
+    .collection(COLLECTIONS.campaigns)
+    .where('ownerAccountId', '==', accountId)
+    .get();
+  if (ownedSnapshot.size >= MAX_ACTIVE_CAMPAIGNS) {
+    throw new CampaignValidationError(
+      `You can have at most ${MAX_ACTIVE_CAMPAIGNS} active campaigns at once. Delete an existing campaign before creating a 6th.`,
+    );
+  }
+
   const now = new Date();
   const director = resolveDirectorConfiguration({
     identity: options.directorIdentity,
@@ -706,7 +745,35 @@ export async function createCampaign(options: {
             prompt: roomPrompt,
             fallbackTemplateId: room.templateId,
           });
-          return { ...room, sceneArtUrl: assetResult.assetUrl };
+          const updatedNpcs = await Promise.all(
+            (room.npcs ?? []).map(async (npc) => {
+              const npcAsset = await generateAndStoreCampaignAsset({
+                firestore,
+                campaignId,
+                kind: 'npc_portrait',
+                prompt: npc.portraitPrompt || `${npc.name}, ${npc.role} (${campaignTone}, ${name})`,
+              });
+              return { ...npc, portraitAssetUrl: npcAsset.assetUrl };
+            }),
+          );
+          const updatedEncounters = await Promise.all(
+            (room.encounters ?? []).map(async (enc) => {
+              const monsterAsset = await generateAndStoreCampaignAsset({
+                firestore,
+                campaignId,
+                kind: 'monster_token',
+                prompt: `${enc.name} (${enc.srdMonsterId}) fantasy tabletop RPG monster token`,
+                reusableKey: enc.srdMonsterId || enc.name,
+              });
+              return { ...enc, tokenAssetUrl: monsterAsset.assetUrl };
+            }),
+          );
+          return {
+            ...room,
+            sceneArtUrl: assetResult.assetUrl,
+            npcs: updatedNpcs,
+            encounters: updatedEncounters,
+          };
         }),
       );
       const updatedMilestones = campaignBlueprint.milestones!.map((m, idx) =>
@@ -846,14 +913,22 @@ export async function listCampaigns(options: {
   readonly accountId: string;
 }): Promise<CampaignListProjection> {
   const { firestore, accountId } = options;
-  const membershipSnapshot = await firestore
-    .collection(COLLECTIONS.campaignMemberships)
-    .where('accountId', '==', accountId)
-    .get();
+  const [membershipSnapshot, ownedSnapshot] = await Promise.all([
+    firestore
+      .collection(COLLECTIONS.campaignMemberships)
+      .where('accountId', '==', accountId)
+      .get(),
+    firestore
+      .collection(COLLECTIONS.campaigns)
+      .where('ownerAccountId', '==', accountId)
+      .get(),
+  ]);
 
+  const seenCampaignIds = new Set<string>();
   const campaigns: CampaignProjection[] = [];
   for (const doc of membershipSnapshot.docs) {
     const membership = doc.data() as StoredMembership;
+    seenCampaignIds.add(membership.campaignId);
     try {
       const campaign = await loadCampaign(firestore, membership.campaignId);
       const [memberCount, seatCount] = await Promise.all([
@@ -872,6 +947,30 @@ export async function listCampaigns(options: {
     }
   }
 
+  for (const doc of ownedSnapshot.docs) {
+    const campaign = doc.data() as StoredCampaign;
+    if (seenCampaignIds.has(campaign.campaignId)) {
+      continue;
+    }
+    seenCampaignIds.add(campaign.campaignId);
+    const syntheticMembership: StoredMembership = {
+      membershipId: `owner-${campaign.campaignId}`,
+      campaignId: campaign.campaignId,
+      accountId,
+      displayLabel: campaign.ownerDisplayLabel,
+      role: 'owner',
+      joinedAt: campaign.createdAt,
+    };
+    const [memberCount, seatCount] = await Promise.all([
+      countMembers(firestore, campaign.campaignId),
+      countSeats(firestore, campaign.campaignId),
+    ]);
+    campaigns.push({
+      ...projectCampaign(campaign, syntheticMembership, Math.max(1, memberCount), seatCount),
+      sessionStatusLabel: await resolveSessionStatusLabel(firestore, campaign.campaignId),
+    });
+  }
+
   campaigns.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   return { accountId, campaigns };
 }
@@ -883,12 +982,28 @@ export async function readCampaignDetail(options: {
   readonly campaignId: string;
 }): Promise<CampaignDetailProjection> {
   const { firestore, accountId, campaignId } = options;
-  const membership = await requireMembership(firestore, campaignId, accountId);
   const campaign = await loadCampaign(firestore, campaignId);
+  let membership = await loadMembership(firestore, campaignId, accountId);
+  if (membership === null) {
+    if (campaign.ownerAccountId === accountId) {
+      membership = {
+        membershipId: `owner-${campaignId}`,
+        campaignId,
+        accountId,
+        displayLabel: campaign.ownerDisplayLabel,
+        role: 'owner',
+        joinedAt: campaign.createdAt,
+      };
+    } else {
+      throw new CampaignNotFoundError();
+    }
+  }
   const [members, seats, openInvitation, vault, memberCount] = await Promise.all([
     listMemberships(firestore, campaignId),
     listSeats(firestore, campaignId),
-    membership.role === 'owner' ? findOpenInvitation(firestore, campaignId) : Promise.resolve(null),
+    membership.role === 'owner' || campaign.ownerAccountId === accountId
+      ? findOpenInvitation(firestore, campaignId)
+      : Promise.resolve(null),
     readVault({ firestore, accountId }),
     countMembers(firestore, campaignId),
   ]);
@@ -896,8 +1011,40 @@ export async function readCampaignDetail(options: {
   const seatProjections = seats.map(projectSeat);
   const ownSeat = seatProjections.find((seat) => seat.ownerAccountId === accountId) ?? null;
 
+  let partyAverageLevel: number | null = null;
+  if (seats.length > 0) {
+    const seatedLevels: number[] = [];
+    for (const seat of seats) {
+      const ownMatch = vault.characters.find((c) => c.characterId === seat.characterId);
+      if (ownMatch !== undefined) {
+        seatedLevels.push(ownMatch.level);
+      } else {
+        try {
+          const charSnap = await firestore
+            .collection(COLLECTIONS.characters)
+            .doc(seat.characterId)
+            .get();
+          const charData = charSnap.data() as { level?: unknown } | undefined;
+          if (typeof charData?.level === 'number' && Number.isFinite(charData.level)) {
+            seatedLevels.push(charData.level);
+          }
+        } catch {
+          // Ignore unreadable character docs when computing average level.
+        }
+      }
+    }
+    if (seatedLevels.length > 0) {
+      partyAverageLevel = Math.round(
+        seatedLevels.reduce((sum, lvl) => sum + lvl, 0) / seatedLevels.length,
+      );
+    }
+  }
+
   return {
-    campaign: projectCampaign(campaign, membership, memberCount, seats.length),
+    campaign: {
+      ...projectCampaign(campaign, membership, memberCount, seats.length),
+      partyAverageLevel: partyAverageLevel ?? (campaign.campaignBlueprint?.startLevel ?? 1),
+    },
     members: members
       .map(projectMembership)
       .sort((left, right) => left.joinedAt.localeCompare(right.joinedAt)),
@@ -1183,7 +1330,7 @@ export async function createSeat(options: {
 }): Promise<SeatProjection> {
   const { firestore, accountId, campaignId, characterId, deviceSessionId } = options;
   await requireMembership(firestore, campaignId, accountId);
-  await loadCampaign(firestore, campaignId);
+  const campaign = await loadCampaign(firestore, campaignId);
 
   const existingAtTable = await firestore
     .collection(COLLECTIONS.campaignSeats)
@@ -1299,6 +1446,13 @@ export async function createSeat(options: {
     kind: 'seat_created',
     body: `${character.identity.name} was seated at the table.`,
   });
+  await appendCrossCampaignCharacterHistory({
+    firestore,
+    characterId: character.characterId,
+    campaignId,
+    campaignName: campaign.name,
+    summary: `Joined and took a seat in campaign "${campaign.name}".`,
+  });
   return projectSeat(seat);
 }
 
@@ -1402,7 +1556,7 @@ export async function leaveSeat(options: {
 }): Promise<void> {
   const { firestore, accountId, campaignId } = options;
   await requireMembership(firestore, campaignId, accountId);
-  await loadCampaign(firestore, campaignId);
+  const campaign = await loadCampaign(firestore, campaignId);
 
   const existingSeats = await firestore
     .collection(COLLECTIONS.campaignSeats)
@@ -1423,6 +1577,13 @@ export async function leaveSeat(options: {
     campaignId,
     kind: 'seat_left',
     body: `${seat.characterName} left their seat at the table.`,
+  });
+  await appendCrossCampaignCharacterHistory({
+    firestore,
+    characterId: seat.characterId,
+    campaignId,
+    campaignName: campaign.name,
+    summary: `Departed campaign "${campaign.name}".`,
   });
 }
 
@@ -1460,11 +1621,14 @@ export async function deleteCampaign(options: {
   readonly campaignId: string;
 }): Promise<void> {
   const { firestore, accountId, campaignId } = options;
-  const membership = await requireMembership(firestore, campaignId, accountId);
-  if (membership.role !== 'owner') {
+  const campaign = await loadCampaign(firestore, campaignId);
+  const membership = await loadMembership(firestore, campaignId, accountId);
+  if (campaign.ownerAccountId !== accountId && membership?.role !== 'owner') {
+    if (membership === null) {
+      throw new CampaignNotFoundError();
+    }
     throw new CampaignValidationError('Only the campaign owner can delete this campaign.');
   }
-  const campaign = await loadCampaign(firestore, campaignId);
 
   const queryCollections = [
     COLLECTIONS.campaignMemberships,

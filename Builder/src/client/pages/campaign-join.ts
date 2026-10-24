@@ -3,11 +3,13 @@
  */
 
 import type { TablesHubProjection } from '../../shared/campaign-contract.js';
+import { CAMPAIGN_JOIN_LEVEL_TOLERANCE } from '../../shared/campaign-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
 import {
   ApiFailure,
   createCampaignInvitation,
+  deleteCampaign,
   discardDraft,
   fetchCampaignDetail,
   fetchTablesHub,
@@ -26,6 +28,7 @@ import type { PageHost } from './home.js';
 type VaultCharacterOption = {
   readonly characterId: string;
   readonly label: string;
+  readonly level: number;
   readonly seatedElsewhere: boolean;
   readonly seatedCampaignName: string | null;
 };
@@ -40,11 +43,12 @@ function joinQueryFlags(): { created: boolean; privateTable: boolean } {
 
 export function mountCampaignJoinPage(host: PageHost, campaignId: string): void {
   const { container, shell, candidate } = host;
-  shell.setDocumentTitle('Join table');
+  shell.setDocumentTitle('Join Campaign');
 
   let hub: TablesHubProjection | null = null;
-  let tableName = 'Table';
+  let tableName = 'Campaign';
   let directorLabel: string | null = null;
+  let campaignTargetLevel = 1;
   let passwordProtected = false;
   let password = '';
   let characterId = '';
@@ -53,6 +57,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
   let charactersLoading = false;
   let alreadySeatedHere = false;
   let seatedCharacterName: string | null = null;
+  let isCampaignOwner = false;
   let busy = false;
   let error: string | null = null;
   let gateBusy = false;
@@ -99,9 +104,9 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
       : '';
     return `
       <section class="panel" data-testid="join-created-orientation" aria-labelledby="join-created-heading">
-        <h2 id="join-created-heading">Table created — now take a seat</h2>
+        <h2 id="join-created-heading">Campaign created — now take a seat</h2>
         <p>
-          ${escapeHtml(tableName)} is ready. Pick a character below to sit at this table the same way
+          ${escapeHtml(tableName)} is ready. Pick a character below to sit at this campaign the same way
           every other player does${
             directorLabel === null ? '' : ` with ${escapeHtml(directorLabel)} as Game Director`
           }.
@@ -140,9 +145,57 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
                  </a>`
               : ''
           }
+          ${
+            isCampaignOwner
+              ? `<button type="button" class="danger" data-testid="join-delete-campaign" ${busy ? 'disabled' : ''}>
+                   Delete Campaign
+                 </button>`
+              : ''
+          }
           <a href="/campaigns" data-link data-testid="join-table-back">Back to tables</a>
         </div>
       </div>`;
+    bindJoinDeleteButton();
+  }
+
+  function bindJoinDeleteButton(): void {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="join-delete-campaign"]')
+      ?.addEventListener('click', () => {
+        if (candidate === null || busy) {
+          return;
+        }
+        void (async () => {
+          const accepted = await confirmInApp({
+            title: `Delete "${tableName}"?`,
+            body: `Permanently delete "${tableName}" and remove its campaign records for all members? Characters keep their persistent inventory and cross-campaign history.`,
+            confirmLabel: 'Delete campaign',
+            cancelLabel: 'Keep campaign',
+            testId: 'confirm-join-delete-campaign',
+          });
+          if (!accepted) {
+            return;
+          }
+          busy = true;
+          error = null;
+          renderForm();
+          try {
+            await deleteCampaign({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            shell.announce(`Deleted campaign ${tableName}.`);
+            navigate('/campaigns');
+          } catch (failure) {
+            busy = false;
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Campaign could not be deleted.';
+            renderForm();
+          }
+        })();
+      });
   }
 
   function renderForm(): void {
@@ -206,8 +259,16 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
           selected?.seatedElsewhere
             ? `<p class="message notice" data-testid="join-character-seated-elsewhere">
                  ${escapeHtml(selected.label.split(' — ')[0] ?? 'This character')} is already seated
-                 at ${escapeHtml(selected.seatedCampaignName ?? 'another table')}. Joining here
-                 switches that seat.
+                 at ${escapeHtml(selected.seatedCampaignName ?? 'another campaign')}. Joining here
+                 switches that seat while keeping their campaign history and inventory.
+               </p>`
+            : ''
+        }
+        ${
+          selected !== null &&
+          Math.abs(selected.level - campaignTargetLevel) > CAMPAIGN_JOIN_LEVEL_TOLERANCE
+            ? `<p class="message notice" role="status" data-testid="join-level-mismatch-warning">
+                 <strong>Level Mismatch Warning:</strong> ${escapeHtml(selected.label.split(' — ')[0] ?? 'This character')} is Level ${selected.level}, while ${escapeHtml(tableName)} is around Level ${campaignTargetLevel} (recommended range: Levels ${Math.max(1, campaignTargetLevel - CAMPAIGN_JOIN_LEVEL_TOLERANCE)}–${Math.min(20, campaignTargetLevel + CAMPAIGN_JOIN_LEVEL_TOLERANCE)}). You will be asked to confirm before joining.
                </p>`
             : ''
         }
@@ -226,14 +287,25 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         <div class="actions">
           <button type="button" data-testid="join-table-submit"
             aria-disabled="${busy || charactersLoading || characterId.length === 0 ? 'true' : 'false'}">
-            ${busy ? 'Joining…' : 'Join table'}
+            ${busy ? 'Joining…' : 'Join Campaign'}
           </button>
-          <a href="/campaigns" data-link data-testid="join-table-back">Back to tables</a>
+          <a href="/campaigns" data-link data-testid="join-table-back">Back to Campaigns</a>
+          <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-manage-campaign">
+            Manage Campaign
+          </a>
+          ${
+            isCampaignOwner
+              ? `<button type="button" class="danger" data-testid="join-delete-campaign" ${busy ? 'disabled' : ''}>
+                   Delete Campaign
+                 </button>`
+              : ''
+          }
           <a href="/characters/new?returnCampaign=${escapeHtml(campaignId)}" data-link data-testid="join-new-character">
             New character
           </a>
         </div>
       </div>`;
+    bindJoinDeleteButton();
 
     container
       .querySelector<HTMLSelectElement>('[data-testid="join-character-select"]')
@@ -342,6 +414,23 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
       error = 'Choose a character before joining.';
       render();
       return;
+    }
+    const chosen = selectedCharacter();
+    if (
+      !confirmSwitch &&
+      chosen !== null &&
+      Math.abs(chosen.level - campaignTargetLevel) > CAMPAIGN_JOIN_LEVEL_TOLERANCE
+    ) {
+      const proceed = await confirmInApp({
+        title: 'Character level outside recommended range',
+        body: `${chosen.label.split(' — ')[0] ?? 'Your character'} is Level ${chosen.level}, while ${tableName} is around Level ${campaignTargetLevel} (recommended ±${CAMPAIGN_JOIN_LEVEL_TOLERANCE} level range: Levels ${Math.max(1, campaignTargetLevel - CAMPAIGN_JOIN_LEVEL_TOLERANCE)}–${Math.min(20, campaignTargetLevel + CAMPAIGN_JOIN_LEVEL_TOLERANCE)}). Join this campaign anyway?`,
+        confirmLabel: 'Join campaign anyway',
+        cancelLabel: 'Pick another character',
+        testId: 'confirm-join-level-mismatch',
+      });
+      if (!proceed) {
+        return;
+      }
     }
     busy = true;
     error = null;
@@ -470,6 +559,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         return {
           characterId: character.characterId,
           label: `${character.name} — Level ${character.level} ${character.speciesLabel} ${character.classLabel} · ${seatHint}`,
+          level: character.level,
           seatedElsewhere,
           seatedCampaignName: seatedNames[0] ?? null,
         };
@@ -510,6 +600,9 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         tableName = detail.campaign.name;
         passwordProtected = detail.campaign.passwordProtected;
         directorLabel = detail.campaign.director.identityLabel;
+        isCampaignOwner = detail.campaign.isCampaignOwner;
+        campaignTargetLevel =
+          detail.campaign.partyAverageLevel ?? detail.campaign.recommendedStartLevel ?? 1;
         if (detail.ownSeat !== null) {
           alreadySeatedHere = true;
           seatedCharacterName = detail.ownSeat.characterName;
@@ -533,6 +626,12 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         }
         tableName = fromHub.name;
         passwordProtected = fromHub.passwordProtected;
+        isCampaignOwner =
+          ('isCampaignOwner' in fromHub && fromHub.isCampaignOwner) ||
+          (fromHub.ownerAccountId !== undefined &&
+            fromHub.ownerAccountId === getAccount()?.accountId);
+        campaignTargetLevel =
+          fromHub.partyAverageLevel ?? fromHub.recommendedStartLevel ?? 1;
         directorLabel =
           'director' in fromHub
             ? fromHub.director.identityLabel

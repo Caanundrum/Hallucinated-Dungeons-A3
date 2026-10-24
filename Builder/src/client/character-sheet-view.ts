@@ -232,15 +232,6 @@ export function renderCharacterSheet(
           <b data-testid="sheet-spell-slots-remaining">${sheet.spellcasting.level1SlotsRemaining}</b>
           / <b data-testid="sheet-spell-slots-maximum">${sheet.spellcasting.level1SlotCount}</b> remaining ·
           Spells are ${escapeHtml(sheet.spellcasting.preparationStyle)}
-          ${
-            interactive
-              ? `<button type="button" class="secondary compact" data-sheet-spell-slot="level1"
-            data-testid="spend-spell-slot"
-            aria-disabled="${sheet.spellcasting.level1SlotsRemaining <= 0 ? 'true' : 'false'}">
-            Spend slot
-          </button>`
-              : ''
-          }
         </p>
         <p><b>Cantrips:</b> ${
           sheet.spellcasting.cantrips.length === 0
@@ -278,22 +269,10 @@ export function renderCharacterSheet(
                   ${resource.remaining} / ${resource.maximum} remaining · recharges on ${escapeHtml(resource.recharge)}
                   · ${escapeHtml(resource.summary)}
                 </span>
-                ${
-                  interactive
-                    ? `<button type="button" class="secondary compact" data-sheet-resource="${escapeHtml(resource.id)}"
-                  data-testid="spend-${escapeHtml(resource.id)}"
-                  aria-disabled="${resource.remaining <= 0 ? 'true' : 'false'}">
-                  Spend
-                </button>`
-                    : ''
-                }
               </li>`,
               )
               .join('')}
           </ul>
-          <p class="record-meta" data-testid="sheet-resource-persistence-note">
-            Spending a resource or spell slot saves to your character and survives reload.
-          </p>
         </section>`;
 
   const assignedMasteries = (sheet.weaponMasteries ?? []).filter((entry) => entry.assigned !== false);
@@ -318,15 +297,6 @@ export function renderCharacterSheet(
       : `<p data-testid="sheet-subclass"><b>Subclass / style:</b> ${escapeHtml(sheet.subclassLabel)}</p>`;
 
   const tempHp = sheet.temporaryHitPoints ?? 0;
-  const hpControls = interactive
-    ? `<div class="actions sheet-hp-controls" data-testid="sheet-hp-controls">
-        <button type="button" class="secondary compact" data-sheet-hp="damage" data-testid="sheet-hp-damage">Damage 1</button>
-        <button type="button" class="secondary compact" data-sheet-hp="heal" data-testid="sheet-hp-heal">Heal 1</button>
-        <button type="button" class="secondary compact" data-sheet-hp="temp" data-testid="sheet-hp-temp">+1 temp HP</button>
-        <button type="button" class="secondary compact" data-sheet-hp="clear-temp" data-testid="sheet-hp-clear-temp"
-          aria-disabled="${tempHp <= 0 ? 'true' : 'false'}">Clear temp</button>
-      </div>`
-    : '';
 
   const overviewPanel = `
         <section class="panel sheet-panel" aria-labelledby="core-stats-heading" data-sheet-section="overview">
@@ -339,10 +309,13 @@ export function renderCharacterSheet(
             ${explained('Proficiency Bonus', sheet.proficiencyBonus, 'sheet-proficiency-bonus', formatModifier)}
             ${explained('Passive Perception', sheet.passivePerception, 'sheet-passive-perception')}
           </div>
-          <p class="record-meta" data-testid="sheet-temp-hp">
-            Temporary Hit Points: <b data-testid="sheet-temp-hp-value">${tempHp}</b>
-          </p>
-          ${hpControls}
+          ${
+            tempHp > 0
+              ? `<p class="record-meta" data-testid="sheet-temp-hp">
+                   Temporary Hit Points: <b data-testid="sheet-temp-hp-value">${tempHp}</b>
+                 </p>`
+              : ''
+          }
           <p class="record-meta">Hit Dice ${escapeHtml(sheet.hitDice)} · Level ${sheet.level} · ${sheet.experiencePoints} XP</p>
         </section>`;
 
@@ -398,36 +371,42 @@ export function renderCharacterSheet(
                   ${sheet.equipment
                     .map((item, index) => {
                       const slug = item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                      const isEquippable =
+                        item.itemKind === 'armor' ||
+                        item.itemKind === 'shield' ||
+                        item.itemKind === 'weapon' ||
+                        item.equipped !== undefined;
                       const equipped = item.equipped === true;
                       return `
                     <li data-testid="sheet-equipment-item" data-equipment-index="${index}">
-                      <span class="record-note">${escapeHtml(item.name)}${
-                        item.quantity > 1 ? ` × <span data-testid="sheet-equipment-qty-${escapeHtml(slug)}">${item.quantity}</span>` : ''
-                      }</span>
+                      <div class="equipment-item-header">
+                        <span class="record-note">${escapeHtml(item.name)}${
+                          item.quantity > 1 ? ` × <span data-testid="sheet-equipment-qty-${escapeHtml(slug)}">${item.quantity}</span>` : ''
+                        }</span>
+                        ${
+                          interactive && isEquippable
+                            ? `<button type="button" class="secondary compact" data-sheet-equip="${index}"
+                                data-equip-item-name="${escapeHtml(item.name)}"
+                                data-testid="sheet-equip-${escapeHtml(slug)}">${equipped ? 'Unequip' : 'Equip'}</button>`
+                            : ''
+                        }
+                      </div>
+                      ${
+                        item.statsSummary !== undefined && item.statsSummary.length > 0
+                          ? `<span class="record-meta equipment-item-stats" data-testid="sheet-equipment-stats-${escapeHtml(slug)}"><b>Stats:</b> ${escapeHtml(item.statsSummary)}</span>`
+                          : ''
+                      }
                       <span class="record-meta">${
-                        equipped ? 'Equipped' : 'Carried'
+                        item.comparisonNote !== undefined && item.comparisonNote.length > 0
+                          ? escapeHtml(item.comparisonNote)
+                          : equipped
+                            ? 'Equipped'
+                            : 'Carried in pack'
                       }${
                         item.note !== undefined && item.note.length > 0
                           ? ` · ${escapeHtml(item.note)}`
                           : ''
-                      } · Alpha tracks equip and quantity; attunement and encumbrance are out of Alpha scope.</span>
-                      ${
-                        interactive
-                          ? `<div class="actions">
-                        <button type="button" class="secondary compact" data-sheet-equip="${index}"
-                          data-testid="sheet-equip-${escapeHtml(slug)}">${equipped ? 'Unequip' : 'Equip'}</button>
-                        <button type="button" class="secondary compact" data-sheet-qty="${index}" data-delta="-1"
-                          data-testid="sheet-qty-dec-${escapeHtml(slug)}"
-                          aria-disabled="${item.quantity <= 0 ? 'true' : 'false'}">−</button>
-                        <button type="button" class="secondary compact" data-sheet-qty="${index}" data-delta="1"
-                          data-testid="sheet-qty-inc-${escapeHtml(slug)}">+</button>
-                        <button type="button" class="secondary compact" data-sheet-consume="${index}"
-                          data-testid="sheet-mark-consumed-${escapeHtml(slug)}">
-                          Mark consumed
-                        </button>
-                      </div>`
-                          : ''
-                      }
+                      }</span>
                     </li>`;
                     })
                     .join('')}

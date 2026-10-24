@@ -132,7 +132,7 @@ function premiseCommittedFactsMarkup(premise: string): string {
 
 export function mountCampaignCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
-  shell.setDocumentTitle('Create a table');
+  shell.setDocumentTitle('Create a Campaign');
 
   let catalog: DirectorCatalog | null = null;
   let name = '';
@@ -141,6 +141,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
   let startLevel = 1;
   let targetEndLevel = 3;
   let campaignTone: CampaignTone = 'heroic_fantasy';
+  let outlineOptions: readonly CampaignBlueprint[] = [];
+  let selectedOutlineIndex = 0;
+  let outlineDraftsUsed = 0;
+  let outlineApproved = false;
   let draftedBlueprint: CampaignBlueprint | null = null;
   let draftingSkeleton = false;
   let forgingStatus: string | null = null;
@@ -166,22 +170,48 @@ export function mountCampaignCreatePage(host: PageHost): void {
       candidate !== null &&
       name.trim().length > 0 &&
       directorIdentity !== null &&
-      directorPersonality !== null
+      directorPersonality !== null &&
+      draftedBlueprint !== null &&
+      outlineApproved
     );
   }
 
   function renderSkeletonPreview(): string {
     if (draftedBlueprint === null) {
-      return '';
+      return `
+        <p class="message notice" data-testid="campaign-outline-required-notice">
+          Drafting and approving a <strong>Rough Campaign Outline</strong> is required before creating the campaign. Click <strong>Draft Rough Campaign Outline</strong> above to generate 3 options and pick 1.
+        </p>`;
     }
-    const milestones = draftedBlueprint.milestones ?? [];
+    const acts = draftedBlueprint.acts ?? [];
     return `
       <div class="panel" data-testid="campaign-skeleton-preview">
-        <h3>Campaign Skeleton &amp; Leveling Curve (Levels ${draftedBlueprint.startLevel ?? startLevel} → ${draftedBlueprint.targetEndLevel ?? targetEndLevel})</h3>
+        <h3>Choose 1 of 3 Rough Campaign Outlines</h3>
         <p class="record-meta">
-          Review or edit the milestone graph below before forging world assets. Each milestone unlocks its sanctum climax once the party reaches its SRD 5.2.1 XP threshold.
+          Pick one of the three rough outlines below and approve it. Detailed room layouts, battle maps, NPCs, monster tokens, and internal DM leveling curves remain hidden so nothing is spoiled.
         </p>
-        <dl class="account-details">
+        ${
+          outlineOptions.length > 1
+            ? `<div class="option-list" role="radiogroup" aria-label="Rough Campaign Outline choices" data-testid="outline-options-list">
+                 ${outlineOptions
+                   .map((opt, idx) => {
+                     const selected = idx === selectedOutlineIndex;
+                     const act1Title = opt.acts[0]?.title ?? `Option ${idx + 1}`;
+                     return `
+                       <button type="button"
+                         class="option${selected ? ' selected' : ''}"
+                         data-testid="outline-option-${idx}"
+                         data-outline-index="${idx}"
+                         aria-pressed="${selected ? 'true' : 'false'}">
+                         <span class="option-label">Outline Option ${idx + 1}: ${escapeHtml(act1Title)}</span>
+                         <span class="option-summary">${escapeHtml(opt.centralTension ?? opt.premiseDigest)}</span>
+                       </button>`;
+                   })
+                   .join('')}
+               </div>`
+            : ''
+        }
+        <dl class="account-details" style="margin-top:0.75rem;">
           <div>
             <dt>Premise Digest</dt>
             <dd>${escapeHtml(draftedBlueprint.premiseDigest)}</dd>
@@ -199,46 +229,50 @@ export function mountCampaignCreatePage(host: PageHost): void {
             <dd>${escapeHtml(draftedBlueprint.questHook ?? draftedBlueprint.premiseDigest)}</dd>
           </div>
         </dl>
-        <div class="stack">
-          ${milestones
-            .map(
-              (milestone, mIdx) => `
-              <section class="panel" data-testid="skeleton-milestone-${milestone.milestoneIndex}">
-                <label class="field">
-                  <span>Milestone ${milestone.milestoneIndex} (Level ${milestone.targetLevelAfterCompletion} · ${milestone.requiredXpThreshold} XP threshold)</span>
-                  <input type="text" data-milestone-title="${mIdx}" value="${escapeHtml(milestone.title)}" />
-                </label>
-                <label class="field">
-                  <span>Milestone Objective</span>
-                  <input type="text" data-milestone-objective="${mIdx}" value="${escapeHtml(milestone.climaxObjective)}" />
-                </label>
-                <ul class="record-list">
-                  ${milestone.rooms
-                    .map(
-                      (room, rIdx) => `
-                      <li data-testid="skeleton-room-${escapeHtml(room.sceneId)}">
-                        <label class="field">
-                          <span>Room ${rIdx + 1}${room.isMilestoneClimax ? ' (Milestone Climax)' : ''} · ${room.xpAwardOnDiscovery} XP on discovery</span>
-                          <input type="text" data-room-title="${mIdx}:${rIdx}" value="${escapeHtml(room.title)}" />
-                        </label>
-                        <p class="record-meta">${escapeHtml(room.summary)}</p>
-                      </li>`,
-                    )
-                    .join('')}
-                </ul>
-              </section>`,
-            )
-            .join('')}
+        <div class="stack" style="margin-top:0.75rem;">
+          <h4 class="preview-subheading">High-Level Story Arc (Rough Outline Only)</h4>
+          <ul class="record-list" data-testid="rough-outline-acts">
+            ${acts
+              .map(
+                (beat) => `
+                <li data-testid="rough-outline-act-${beat.act}">
+                  <span class="record-note">${escapeHtml(beat.title)}</span>
+                  <span class="record-meta">${escapeHtml(beat.currentActGoal)}</span>
+                </li>`,
+              )
+              .join('')}
+          </ul>
         </div>
+        ${
+          outlineApproved
+            ? `<p class="message success" data-testid="outline-approved-badge">
+                 Rough Campaign Outline #${selectedOutlineIndex + 1} approved. Ready to create and forge the campaign world.
+               </p>`
+            : ''
+        }
         ${
           forgingStatus !== null
             ? `<p class="message notice" role="status" data-testid="campaign-forge-progress">${escapeHtml(forgingStatus)}</p>`
             : ''
         }
-        <div class="actions">
+        <div class="actions" style="margin-top:0.75rem;">
+          <button type="button" class="${outlineApproved ? 'secondary' : ''}" data-testid="approve-rough-outline"
+            ${busy ? 'disabled' : ''}>
+            ${outlineApproved ? `Outline #${selectedOutlineIndex + 1} Approved ✓` : `Approve Outline #${selectedOutlineIndex + 1}`}
+          </button>
           <button type="button" data-testid="approve-and-forge-campaign"
-            aria-disabled="${canSubmit() ? 'false' : 'true'}">
-            ${busy ? 'Forging World Assets…' : 'Approve & Forge Campaign World'}
+            aria-disabled="${
+              !busy &&
+              !draftingSkeleton &&
+              candidate !== null &&
+              name.trim().length > 0 &&
+              directorIdentity !== null &&
+              directorPersonality !== null &&
+              draftedBlueprint !== null
+                ? 'false'
+                : 'true'
+            }">
+            ${busy ? 'Forging World Assets…' : 'Approve & Forge World'}
           </button>
         </div>
       </div>`;
@@ -312,29 +346,42 @@ export function mountCampaignCreatePage(host: PageHost): void {
     );
     if (submit !== null) {
       submit.setAttribute('aria-disabled', canSubmit() ? 'false' : 'true');
-      submit.textContent = busy ? 'Creating…' : 'Create table';
+      submit.textContent = busy ? 'Creating…' : 'Create Campaign';
     }
     const forgeBtn = container.querySelector<HTMLButtonElement>(
       '[data-testid="approve-and-forge-campaign"]',
     );
     if (forgeBtn !== null) {
-      forgeBtn.setAttribute('aria-disabled', canSubmit() ? 'false' : 'true');
+      const canForge =
+        !busy &&
+        !draftingSkeleton &&
+        candidate !== null &&
+        name.trim().length > 0 &&
+        directorIdentity !== null &&
+        directorPersonality !== null &&
+        draftedBlueprint !== null;
+      forgeBtn.setAttribute('aria-disabled', canForge ? 'false' : 'true');
     }
 
     const previewName = container.querySelector<HTMLElement>('[data-testid="preview-campaign-name"]');
     if (previewName !== null) {
-      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled table';
+      previewName.textContent = name.trim().length > 0 ? name.trim() : 'Untitled campaign';
     }
 
     const missing: string[] = [];
     if (name.trim().length === 0) {
-      missing.push('a table title');
+      missing.push('a campaign title');
     }
     if (directorIdentity === null) {
       missing.push('a Game Director identity');
     }
     if (directorPersonality === null) {
       missing.push('a Game Director personality');
+    }
+    if (draftedBlueprint === null) {
+      missing.push('a drafted Rough Campaign Outline');
+    } else if (!outlineApproved) {
+      missing.push('approval of your Rough Campaign Outline');
     }
 
     let requirements = container.querySelector<HTMLElement>(
@@ -356,6 +403,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
   }
 
   async function submitCreateCampaign(options: { readonly useForgedBlueprint: boolean }): Promise<void> {
+    if (options.useForgedBlueprint && draftedBlueprint !== null) {
+      outlineApproved = true;
+    }
     if (!canSubmit() || candidate === null || directorIdentity === null || directorPersonality === null) {
       return;
     }
@@ -363,7 +413,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     error = null;
     if (options.useForgedBlueprint) {
       forgingStatus =
-        'Forging campaign world: generating starting room battlemap, seeding multi-room graph, and locking leveling curve…';
+        'Forging campaign world in the background: preparing unique battle maps, NPC portraits, and reusable monster tokens so they load fast at the table…';
     }
     render();
     try {
@@ -389,8 +439,8 @@ export function mountCampaignCreatePage(host: PageHost): void {
       });
       shell.announce(
         visibility === 'private'
-          ? `Private table ${campaign.name} created — take a seat, then copy an invite from the table page.`
-          : `Table ${campaign.name} created — now take a seat.`,
+          ? `Private campaign ${campaign.name} created — take a seat, then copy an invite from the campaign page.`
+          : `Campaign ${campaign.name} created — now take a seat.`,
       );
       navigate(
         `/campaigns/${campaign.campaignId}/join?created=1${
@@ -401,7 +451,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       error =
         failure instanceof ApiFailure
           ? failure.message
-          : 'The table could not be created.';
+          : 'The campaign could not be created.';
     } finally {
       busy = false;
       forgingStatus = null;
@@ -443,13 +493,18 @@ export function mountCampaignCreatePage(host: PageHost): void {
     if (directorPersonality === null) {
       missing.push('a Game Director personality');
     }
+    if (draftedBlueprint === null) {
+      missing.push('a drafted Rough Campaign Outline');
+    } else if (!outlineApproved) {
+      missing.push('approval of your Rough Campaign Outline');
+    }
 
     container.innerHTML = `
       <div class="page">
-        <h1 data-testid="create-campaign-heading">Create a table</h1>
+        <h1 data-testid="create-campaign-heading">Create a Campaign</h1>
         <p class="tagline">
-          Name the table, choose public or private visibility, pick a Game Director identity and
-          personality, and optionally forge a full multi-room campaign skeleton before play.
+          Name the campaign, choose public or private visibility, pick a Game Director identity and
+          personality, and draft &amp; approve a Rough Campaign Outline before creating the campaign.
         </p>
         <p class="message notice" data-testid="director-config-notice">${escapeHtml(catalog.configurationNotice)}</p>
         ${
@@ -459,11 +514,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
         }
 
         <section class="panel" aria-labelledby="table-visibility-heading">
-          <h2 id="table-visibility-heading">1. Visibility</h2>
+          <h2 id="table-visibility-heading">1. Campaign visibility</h2>
           <p>
-            Public tables appear in the open lobby. Private tables are invite-only — after you
-            create one, you can copy an invite link from the table page (and refresh or revoke it
-            later). Public tables may optionally require a password to join.
+            Public campaigns appear in the open lobby. Private campaigns are invite-only — after you
+            create one, you can copy an invite link from the campaign page (and refresh or revoke it
+            later). Public campaigns may optionally require a password to join.
           </p>
           <div class="option-list" role="radiogroup" aria-labelledby="table-visibility-heading" data-testid="table-visibility-list">
             ${CAMPAIGN_VISIBILITY.map(
@@ -487,7 +542,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         </section>
 
         <section class="panel" aria-labelledby="campaign-basics-heading">
-          <h2 id="campaign-basics-heading">2. Table details &amp; premise</h2>
+          <h2 id="campaign-basics-heading">2. Campaign details &amp; premise</h2>
           <label class="field">
             <span>Title</span>
             <input type="text" data-testid="campaign-name" maxlength="${CAMPAIGN_NAME_MAX_LENGTH}"
@@ -581,14 +636,20 @@ export function mountCampaignCreatePage(host: PageHost): void {
         ${renderPreview()}
 
         <section class="panel" aria-labelledby="world-forge-heading">
-          <h2 id="world-forge-heading">5. Campaign Skeleton &amp; World Forge (optional preview)</h2>
+          <h2 id="world-forge-heading">5. Rough Campaign Outline &amp; World Forge (Required)</h2>
           <p class="record-meta">
-            Optionally preview and customize the multi-milestone room graph and leveling curve before creating the table, or create the table directly below.
+            Generate 3 Rough Campaign Outlines from your premise, pick the one you like best, and approve it before creating the campaign. Battle maps, NPCs, and reusable monster tokens are forged in the background upon creation.
           </p>
           <div class="actions">
             <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
-              ${draftingSkeleton || busy ? 'disabled' : ''}>
-              ${draftingSkeleton ? 'Drafting Campaign Skeleton…' : draftedBlueprint !== null ? 'Regenerate Campaign Skeleton' : 'Draft Campaign Skeleton'}
+              ${draftingSkeleton || busy || outlineDraftsUsed >= 1 ? 'disabled' : ''}>
+              ${
+                draftingSkeleton
+                  ? 'Drafting 3 Rough Campaign Outlines…'
+                  : outlineDraftsUsed >= 1
+                    ? '3 Rough Campaign Outlines Generated (Pick 1 Below)'
+                    : 'Draft Rough Campaign Outline (Generates 3 Choices)'
+              }
             </button>
           </div>
           ${renderSkeletonPreview()}
@@ -597,9 +658,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <div class="actions">
           <button type="button" data-testid="create-campaign-submit"
             aria-disabled="${canSubmit() ? 'false' : 'true'}">
-            ${busy ? 'Creating…' : 'Create table'}
+            ${busy ? 'Creating…' : 'Create Campaign'}
           </button>
-          <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Tables</a>
+          <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Campaigns</a>
         </div>
         ${
           canSubmit() || missing.length === 0
@@ -693,12 +754,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="draft-campaign-skeleton"]')
       ?.addEventListener('click', () => {
         void (async () => {
-          if (candidate === null || draftingSkeleton || busy) {
+          if (candidate === null || draftingSkeleton || busy || outlineDraftsUsed >= 1) {
             return;
           }
           const seedPremise = effectivePremise();
           if (seedPremise.length === 0) {
-            error = 'Enter a campaign title or premise before drafting a skeleton.';
+            error = 'Enter a campaign title or premise before drafting a Rough Campaign Outline.';
             render();
             return;
           }
@@ -713,12 +774,19 @@ export function mountCampaignCreatePage(host: PageHost): void {
               targetEndLevel,
               campaignTone,
             });
-            draftedBlueprint = response.blueprint;
+            outlineOptions =
+              Array.isArray(response.outlines) && response.outlines.length > 0
+                ? response.outlines.slice(0, 3)
+                : [response.blueprint];
+            selectedOutlineIndex = 0;
+            draftedBlueprint = outlineOptions[0] ?? response.blueprint;
+            outlineDraftsUsed = 1;
+            outlineApproved = false;
           } catch (failure) {
             error =
               failure instanceof ApiFailure
                 ? failure.message
-                : 'Could not draft the campaign skeleton.';
+                : 'Could not draft the Rough Campaign Outline.';
           } finally {
             draftingSkeleton = false;
             render();
@@ -726,63 +794,33 @@ export function mountCampaignCreatePage(host: PageHost): void {
         })();
       });
 
-    container.querySelectorAll<HTMLInputElement>('[data-milestone-title]').forEach((input) => {
-      input.addEventListener('input', () => {
-        if (draftedBlueprint?.milestones === undefined) {
-          return;
+    container.querySelectorAll<HTMLButtonElement>('[data-outline-index]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number.parseInt(btn.dataset.outlineIndex ?? '0', 10);
+        if (Number.isFinite(idx) && outlineOptions[idx] !== undefined) {
+          selectedOutlineIndex = idx;
+          draftedBlueprint = outlineOptions[idx]!;
+          render();
         }
-        const mIdx = Number.parseInt(input.dataset.milestoneTitle ?? '', 10);
-        if (!Number.isFinite(mIdx) || draftedBlueprint.milestones[mIdx] === undefined) {
-          return;
-        }
-        const milestones = draftedBlueprint.milestones.map((m, idx) =>
-          idx === mIdx ? { ...m, title: input.value } : m,
-        );
-        draftedBlueprint = { ...draftedBlueprint, milestones };
-      });
-    });
-
-    container.querySelectorAll<HTMLInputElement>('[data-milestone-objective]').forEach((input) => {
-      input.addEventListener('input', () => {
-        if (draftedBlueprint?.milestones === undefined) {
-          return;
-        }
-        const mIdx = Number.parseInt(input.dataset.milestoneObjective ?? '', 10);
-        if (!Number.isFinite(mIdx) || draftedBlueprint.milestones[mIdx] === undefined) {
-          return;
-        }
-        const milestones = draftedBlueprint.milestones.map((m, idx) =>
-          idx === mIdx ? { ...m, climaxObjective: input.value } : m,
-        );
-        draftedBlueprint = { ...draftedBlueprint, milestones };
-      });
-    });
-
-    container.querySelectorAll<HTMLInputElement>('[data-room-title]').forEach((input) => {
-      input.addEventListener('input', () => {
-        if (draftedBlueprint?.milestones === undefined) {
-          return;
-        }
-        const parts = (input.dataset.roomTitle ?? '').split(':');
-        const mIdx = Number.parseInt(parts[0] ?? '', 10);
-        const rIdx = Number.parseInt(parts[1] ?? '', 10);
-        const milestone = draftedBlueprint.milestones[mIdx];
-        if (milestone === undefined || milestone.rooms[rIdx] === undefined) {
-          return;
-        }
-        const nextRooms = milestone.rooms.map((r, idx) =>
-          idx === rIdx ? { ...r, title: input.value } : r,
-        );
-        const milestones = draftedBlueprint.milestones.map((m, idx) =>
-          idx === mIdx ? { ...m, rooms: nextRooms } : m,
-        );
-        draftedBlueprint = { ...draftedBlueprint, milestones };
       });
     });
 
     container
+      .querySelector<HTMLButtonElement>('[data-testid="approve-rough-outline"]')
+      ?.addEventListener('click', () => {
+        if (draftedBlueprint === null) {
+          return;
+        }
+        outlineApproved = true;
+        render();
+      });
+
+    container
       .querySelector<HTMLButtonElement>('[data-testid="approve-and-forge-campaign"]')
       ?.addEventListener('click', () => {
+        if (draftedBlueprint !== null) {
+          outlineApproved = true;
+        }
         void submitCreateCampaign({ useForgedBlueprint: true });
       });
 
@@ -920,6 +958,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
       startLevel = 1;
       targetEndLevel = 3;
       campaignTone = 'heroic_fantasy';
+      outlineOptions = [];
+      selectedOutlineIndex = 0;
+      outlineDraftsUsed = 0;
+      outlineApproved = false;
       draftedBlueprint = null;
       draftingSkeleton = false;
       forgingStatus = null;

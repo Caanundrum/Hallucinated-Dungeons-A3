@@ -8,6 +8,7 @@
 
 import type { CampaignDetailProjection, DirectorIdentity } from '../../shared/campaign-contract.js';
 import {
+  CAMPAIGN_JOIN_LEVEL_TOLERANCE,
   DIRECTOR_IDENTITY_LABELS,
   DIRECTOR_PERSONALITY_LABELS,
 } from '../../shared/campaign-contract.js';
@@ -321,6 +322,14 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
               ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>`
               : `<span class="record-meta" data-testid="open-campaign-table-gated">Open table after Session Zero is recorded</span>`
           }
+          ${
+            campaign.isCampaignOwner
+              ? `<button type="button" class="danger" data-testid="delete-campaign-top"
+                   aria-disabled="${busy || sessionBusy ? 'true' : 'false'}">
+                   Delete campaign
+                 </button>`
+              : ''
+          }
         </div>
         <p class="record-meta" data-testid="session-zero-summary">
           Session Zero:
@@ -451,7 +460,7 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
                  </section>`
           }
           ${
-            memory === null || !campaign.isCampaignOwner
+            !campaign.isCampaignOwner
               ? ''
               : `<section class="panel panel-nested" aria-labelledby="campaign-owner-heading" data-testid="campaign-owner-panel">
                    <h3 id="campaign-owner-heading">Owner admin tools</h3>
@@ -793,6 +802,27 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
             render();
             return;
           }
+          if (detail !== null) {
+            const chosenChar = detail.ownCharacters.find(
+              (c) => c.characterId === selectedCharacterId,
+            );
+            const lvlMatch = chosenChar?.summary.match(/Level\s+(\d+)/i);
+            const charLevel = lvlMatch?.[1] ? Number.parseInt(lvlMatch[1], 10) : 1;
+            const targetLevel =
+              detail.campaign.partyAverageLevel ?? detail.campaign.recommendedStartLevel ?? 1;
+            if (Math.abs(charLevel - targetLevel) > CAMPAIGN_JOIN_LEVEL_TOLERANCE) {
+              const proceed = await confirmInApp({
+                title: 'Character level outside recommended range',
+                body: `${chosenChar?.name ?? 'Your character'} is Level ${charLevel}, while ${detail.campaign.name} is around Level ${targetLevel} (recommended ±${CAMPAIGN_JOIN_LEVEL_TOLERANCE} level range). Seat this character anyway?`,
+                confirmLabel: 'Seat character anyway',
+                cancelLabel: 'Cancel',
+                testId: 'confirm-seat-level-mismatch',
+              });
+              if (!proceed) {
+                return;
+              }
+            }
+          }
           busy = true;
           error = null;
           render();
@@ -896,45 +926,47 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
       });
 
     container
-      .querySelector<HTMLButtonElement>('[data-testid="delete-campaign"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy || sessionBusy || campaign === null) {
-            return;
-          }
-          const campaignName = campaign.name.trim();
-          const accepted = await confirmInApp({
-            title: 'Delete campaign permanently?',
-            body: `This permanently deletes ${campaignName} and its table records for every member. Type the campaign name to unlock Delete. This cannot be undone.`,
-            confirmLabel: 'Delete permanently',
-            cancelLabel: 'Keep campaign',
-            testId: 'confirm-delete-campaign',
-            requireTypedPhrase: campaignName,
-            typedPhraseLabel: `Type ${campaignName} to confirm`,
-          });
-          if (!accepted) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            await deleteCampaign({
-              candidateId: candidate.candidateId,
-              campaignId,
+      .querySelectorAll<HTMLButtonElement>(
+        '[data-testid="delete-campaign"], [data-testid="delete-campaign-top"]',
+      )
+      .forEach((deleteBtn) => {
+        deleteBtn.addEventListener('click', () => {
+          void (async () => {
+            if (candidate === null || busy || sessionBusy || campaign === null) {
+              return;
+            }
+            const campaignName = campaign.name.trim();
+            const accepted = await confirmInApp({
+              title: `Delete "${campaignName}" permanently?`,
+              body: `This permanently deletes "${campaignName}" and its table records for every member. Characters keep their persistent inventory and cross-campaign history. This cannot be undone.`,
+              confirmLabel: 'Delete permanently',
+              cancelLabel: 'Keep campaign',
+              testId: 'confirm-delete-campaign',
             });
-            shell.announce('Campaign deleted.');
-            navigate('/campaigns');
-          } catch (failure) {
-            busy = false;
-            error =
-              failure instanceof ApiFailure
-                ? failure.message
-                : 'That campaign could not be deleted.';
+            if (!accepted) {
+              return;
+            }
+            busy = true;
+            error = null;
             render();
-            shell.announce(error);
-          }
-        })();
+            try {
+              await deleteCampaign({
+                candidateId: candidate.candidateId,
+                campaignId,
+              });
+              shell.announce('Campaign deleted.');
+              navigate('/campaigns');
+            } catch (failure) {
+              busy = false;
+              error =
+                failure instanceof ApiFailure
+                  ? failure.message
+                  : 'That campaign could not be deleted.';
+              render();
+              shell.announce(error);
+            }
+          })();
+        });
       });
 
     container

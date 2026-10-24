@@ -56,11 +56,12 @@ export function buildStoredSceneFromRoomBlueprint(
     room.isMilestoneClimax === true ||
     room.roomIndex >= 3;
   const isPassageRoom = !isSanctumRoom && room.roomIndex === 2;
-  const kind: SceneComposeKind = isSanctumRoom
-    ? 'landmark'
-    : room.templateId === 'starter_trail_crossroads'
-      ? 'exterior'
-      : 'interior';
+  const kind: SceneComposeKind =
+    isSanctumRoom || room.templateId.startsWith('landmark_')
+      ? 'landmark'
+      : room.templateId === 'starter_trail_crossroads' || room.templateId.startsWith('exterior_')
+        ? 'exterior'
+        : 'interior';
   const composePremise = isPassageRoom
     ? 'crypt catacomb subterranean stone passage'
     : room.summary;
@@ -112,10 +113,15 @@ export function buildStoredSceneFromRoomBlueprint(
     !baseFeatures.some((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
   ) {
     const primaryNpc = room.npcs[0]!;
+    const npcCol = Math.max(1, composed.spawn.column - 1);
+    const npcRow =
+      composed.spawn.row <= composed.rows - 3
+        ? composed.spawn.row + 1
+        : Math.max(1, composed.spawn.row - 1);
     baseFeatures.push({
       objectId: `${room.sceneId}:npc-premise`,
-      column: 2,
-      row: 3,
+      column: npcCol,
+      row: npcRow,
       label: `${primaryNpc.name} — present`,
       referenceKind: 'npc',
       objectKind: 'npc',

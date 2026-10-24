@@ -147,6 +147,8 @@ export interface CharacterChoices {
    * mastery property. Empty is incomplete — create is blocked until filled.
    */
   readonly weaponMasteryWeaponNames: readonly string[];
+  /** Item names explicitly unequipped by the player during review/play. */
+  readonly unequippedItemNames?: readonly string[];
   readonly identity: CharacterIdentity;
 }
 
@@ -234,6 +236,12 @@ export interface DerivedCharacterSheet {
     readonly equipped?: boolean;
     /** How Class/Background kits contributed when items overlapped. */
     readonly note?: string;
+    /** Item category for equip/comparison UI. */
+    readonly itemKind?: 'armor' | 'shield' | 'weapon' | 'gear';
+    /** Mechanical stats (AC formula, damage dice/type/properties, etc.). */
+    readonly statsSummary?: string;
+    /** Live comparison against currently equipped gear (e.g. AC delta or attack/damage). */
+    readonly comparisonNote?: string;
   }[];
   readonly currencyGold: number;
   readonly spellcasting: {
@@ -290,7 +298,17 @@ export interface DraftProjection {
   readonly completedSteps: readonly WizardStep[];
   readonly canCreate: boolean;
   readonly avatarUrl?: string | null;
+  readonly avatarOptions?: readonly string[];
+  readonly portraitForged?: boolean;
   readonly appearancePrompt?: string | null;
+}
+
+/** A persistent cross-campaign character history milestone entry. */
+export interface CrossCampaignHistoryEntry {
+  readonly at: string;
+  readonly campaignId?: string | null;
+  readonly campaignName?: string | null;
+  readonly summary: string;
 }
 
 /** A committed, account-owned character. */
@@ -309,7 +327,10 @@ export interface CharacterProjection {
   readonly editOptions: DraftOptions;
   /** Recent ledger correction / identity audit reasons (newest last). */
   readonly revisions?: readonly { readonly at: string; readonly reason: string }[];
+  /** Cross-campaign character history entries across all campaigns joined, left, or leveled up in. */
+  readonly crossCampaignHistory?: readonly CrossCampaignHistoryEntry[];
   readonly avatarUrl?: string | null;
+  readonly avatarOptions?: readonly string[];
   readonly appearancePrompt?: string | null;
   /** Portrait updates earned at level-up milestones; spent one per regenerate. Default 0. */
   readonly milestonePortraitCredits?: number;

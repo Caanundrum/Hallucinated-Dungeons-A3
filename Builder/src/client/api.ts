@@ -359,8 +359,14 @@ export async function draftCampaignBlueprint(options: {
   readonly startLevel: number;
   readonly targetEndLevel: number;
   readonly campaignTone: CampaignTone;
-}): Promise<{ readonly blueprint: CampaignBlueprint }> {
-  return (await request<{ readonly blueprint: CampaignBlueprint }>(
+}): Promise<{
+  readonly blueprint: CampaignBlueprint;
+  readonly outlines?: readonly CampaignBlueprint[];
+}> {
+  return (await request<{
+    readonly blueprint: CampaignBlueprint;
+    readonly outlines?: readonly CampaignBlueprint[];
+  }>(
     '/api/campaigns/draft-blueprint',
     {
       method: 'POST',
@@ -372,7 +378,10 @@ export async function draftCampaignBlueprint(options: {
         campaignTone: options.campaignTone,
       }),
     },
-  )) as { readonly blueprint: CampaignBlueprint };
+  )) as {
+    readonly blueprint: CampaignBlueprint;
+    readonly outlines?: readonly CampaignBlueprint[];
+  };
 }
 
 export async function createCampaign(options: {

@@ -131,7 +131,7 @@ import {
   updateCampaign,
 } from '../campaigns/campaigns.js';
 import { isCampaignTone } from '../../shared/campaign-contract.js';
-import { draftCampaignBlueprintWithAi } from '../campaigns/campaign-blueprint.js';
+import { draftCampaignBlueprintOptionsWithAi } from '../campaigns/campaign-blueprint.js';
 import { loadCampaignAsset } from '../assets/campaign-assets.js';
 import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
@@ -2067,13 +2067,14 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const campaignTone = isCampaignTone(payload.campaignTone)
           ? payload.campaignTone
           : 'heroic_fantasy';
-        const blueprint = await draftCampaignBlueprintWithAi({
+        const outlines = await draftCampaignBlueprintOptionsWithAi({
           summary: premise,
           startLevel,
           targetEndLevel,
           campaignTone,
         });
-        sendJson(response, 200, { blueprint });
+        const blueprint = outlines[0]!;
+        sendJson(response, 200, { blueprint, outlines });
         return;
       }
 

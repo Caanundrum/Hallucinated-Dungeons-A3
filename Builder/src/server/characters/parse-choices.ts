@@ -155,6 +155,8 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
   const classChoiceIds = asChoiceListMap(record.classChoiceIds);
   const expertiseSkillIds = asIdList(record.expertiseSkillIds) ?? [];
   const weaponMasteryWeaponNames = asIdList(record.weaponMasteryWeaponNames) ?? [];
+  const unequippedItemNames =
+    record.unequippedItemNames === undefined ? undefined : (asIdList(record.unequippedItemNames) ?? []);
   if (
     baseAbilityScores === undefined ||
     backgroundAbilityBonuses === undefined ||
@@ -205,6 +207,7 @@ export function parseChoices(payload: unknown): CharacterChoices | null {
     classChoiceIds,
     expertiseSkillIds,
     weaponMasteryWeaponNames,
+    ...(unequippedItemNames !== undefined ? { unequippedItemNames } : {}),
     identity: { name, pronouns, appearance, concept },
   };
 }

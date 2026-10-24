@@ -45,7 +45,6 @@ import {
 } from '../../shared/play-authority-contract.js';
 import {
   declarationIsDoorOpenOrPassage,
-  declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
 import type {
   PresentationCueKind,
@@ -217,6 +216,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let diceTrayFaceValue: number | null = null;
   /** Rules spotlight modal (Gemini UX-3 / Cmd+K). */
   let rulesModalOpen = false;
+  let tableHistoryModalOpen = false;
+  let lobbyWaitingForPlayers = false;
+  let lobbyConfirmedReady = false;
   let rulesHotkeyListener: ((event: KeyboardEvent) => void) | null = null;
   /** Ask-the-DM consulting shimmer while the request is in flight. */
   let askDmConsulting = false;
@@ -592,7 +594,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const adjacent =
       ownToken !== undefined && isAdjacentToDoorEdge(ownToken.footprint.anchor, edge);
     const canOpen =
-      (adjacent || explorationMode()) &&
+      adjacent &&
       edge.doorState !== 'locked' &&
       seated &&
       !sessionIsSuspended();
@@ -1551,6 +1553,53 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                     )}</p>
                   </article>`
             }
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function tableHistoryModalHtml(): string {
+    if (!tableHistoryModalOpen) {
+      return '';
+    }
+    const recordedChapters =
+      memory?.chapters.filter((chapter) => chapter.recordedSummary !== null) ?? [];
+    return `
+      <div class="modal-backdrop cockpit-modal-backdrop" data-testid="table-history-modal" role="presentation">
+        <div class="modal-dialog cockpit-modal-dialog rules-spotlight-dialog" role="dialog" aria-modal="true"
+          aria-labelledby="table-history-title" tabindex="-1">
+          <div class="sheet-modal-chrome">
+            <h2 id="table-history-title">Table History</h2>
+            <button type="button" class="table-secondary-action" data-testid="close-table-history">Close</button>
+          </div>
+          <p class="record-meta">Catch up on what has happened so far in this campaign without spoiling upcoming scenes or objectives.</p>
+          <div class="sheet-modal-body" data-testid="table-history-body">
+            <section aria-labelledby="table-history-presence-heading">
+              <h3 class="preview-subheading" id="table-history-presence-heading">Who is connected</h3>
+              ${presenceBody()}
+            </section>
+            <section aria-labelledby="table-history-chapters-heading">
+              <h3 class="preview-subheading" id="table-history-chapters-heading">Completed chapters</h3>
+              ${
+                recordedChapters.length === 0
+                  ? '<p class="record-meta" data-testid="table-history-chapters-empty">No completed chapters recorded yet — the opening chapter is underway.</p>'
+                  : `<ul class="record-list compact" data-testid="table-history-chapters">
+                      ${recordedChapters
+                        .map(
+                          (chapter) => `
+                        <li data-testid="table-history-chapter">
+                          <strong>${escapeHtml(chapter.sessionLabel)}: ${escapeHtml(chapter.title)}</strong>
+                          <p>${escapeHtml(chapter.recordedSummary ?? '')}</p>
+                        </li>`,
+                        )
+                        .join('')}
+                    </ul>`
+              }
+            </section>
+            <section aria-labelledby="table-history-chronicle-heading">
+              <h3 class="preview-subheading" id="table-history-chronicle-heading">Chronicle so far</h3>
+              ${renderThreadMessages(dmThread, { listTestId: 'table-history-chronicle-list' })}
+            </section>
           </div>
         </div>
       </div>`;
@@ -2707,9 +2756,83 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
+  function checkTokenActionRangeAndAdjacency(
+    interpreted: {
+      readonly proposedCommandType: string;
+      readonly edgeId?: string | undefined;
+      readonly objectId?: string | undefined;
+      readonly summary: string;
+    },
+    _declaration: string,
+  ): string | null {
+    if (interpreted.proposedCommandType === 'table.move') {
+      return 'Movement is controlled by moving your token directly on the battle map rather than by words. Click a square on the map to move your token first, then declare what you do!';
+    }
+    if (mapBundle === null || ownSeatId === null) {
+      return null;
+    }
+    const anchor = ownTokenAnchor(mapBundle, ownSeatId);
+    if (anchor === null) {
+      return null;
+    }
+    if (
+      interpreted.proposedCommandType === 'table.open_door' ||
+      interpreted.proposedCommandType === 'table.close_door'
+    ) {
+      const targetEdge =
+        interpreted.edgeId !== undefined
+          ? mapBundle.edges.find((edge) => edge.edgeId === interpreted.edgeId)
+          : mapBundle.edges.find((edge) => edge.kind === 'door');
+      if (targetEdge !== undefined && !isAdjacentToDoorEdge(anchor, targetEdge)) {
+        return 'You are not next to the door yet. Move your token adjacent to the doorway on the battle map first, then declare that you open it.';
+      }
+    }
+    if (
+      interpreted.proposedCommandType === 'table.interact_object' ||
+      interpreted.proposedCommandType === 'table.take_scene_prop'
+    ) {
+      const targetFeature =
+        interpreted.objectId !== undefined
+          ? mapBundle.notableFeatures.find(
+              (feature) =>
+                feature.objectId === interpreted.objectId ||
+                feature.label.toLowerCase() === interpreted.objectId?.toLowerCase(),
+            )
+          : undefined;
+      if (targetFeature !== undefined) {
+        const dist = Math.max(
+          Math.abs(anchor.column - targetFeature.column),
+          Math.abs(anchor.row - targetFeature.row),
+        );
+        if (dist > 1) {
+          return `You are not next to ${targetFeature.label} yet (${dist * 5} ft away). Move your token adjacent to it on the battle map first, then declare your action.`;
+        }
+      }
+    }
+    if (interpreted.proposedCommandType === 'combat.attack') {
+      const foeCombatants =
+        encounter?.combatants.filter(
+          (combatant) => combatant.side === 'foe' && combatant.currentHitPoints > 0,
+        ) ?? [];
+      if (foeCombatants.length > 0) {
+        const anyAdjacent = foeCombatants.some(
+          (foe) =>
+            Math.max(
+              Math.abs(anchor.column - foe.position.column),
+              Math.abs(anchor.row - foe.position.row),
+            ) <= 1,
+        );
+        if (!anyAdjacent) {
+          return 'You are out of melee range of that target. Move your token adjacent to the target on the battle map first, then declare your attack.';
+        }
+      }
+    }
+    return null;
+  }
+
   /**
-   * Free exploration: commit routine move/open/interact without a Confirm click.
-   * Still resumes approach→open and open→cross compounds.
+   * Free exploration: commit routine open/interact without a Confirm click.
+   * Token movement is controlled directly on the battle map rather than by words.
    */
   async function autoCommitExplorationDraft(
     draft: ActionDraftSuggestion,
@@ -2728,22 +2851,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     error = null;
     render();
     try {
-      const resumeAfterOpenCross =
-        draft.proposedCommandType === 'table.open_door' &&
-        declarationText.length > 0 &&
-        !declarationNegatesDoorOpen(declarationText) &&
-        /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
-      const nonAdjectivalDeclaration = declarationText.replace(
-        /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
-        'doorway',
-      );
-      const resumeApproachThenOpen =
-        draft.proposedCommandType === 'table.move' &&
-        draft.edgeId !== undefined &&
-        !declarationNegatesDoorOpen(declarationText) &&
-        /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
-          nonAdjectivalDeclaration,
-        );
+      const resumeAfterOpenCross = false;
+      const resumeApproachThenOpen = false;
       const summaryForCommand =
         draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
           ? draft.summary.trim()
@@ -2925,6 +3034,30 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           <div class="dm-play-thread-chrome">
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
           </div>
+          ${
+            seated &&
+            !sessionIsSuspended() &&
+            !lobbyConfirmedReady &&
+            (chronicle?.entries.length ?? 0) <= 2
+              ? `<section class="panel-inset" data-testid="table-lobby-banner" aria-label="Campaign Lobby">
+                   <p><strong>Campaign Lobby — Are any more players joining before ${escapeHtml(directorIdentityLabel)} sets the scene?</strong></p>
+                   <p class="record-meta">Wait here in the lobby until your party is seated, or confirm everyone is in so ${escapeHtml(directorIdentityLabel)} can set the opening scene in a huge way.</p>
+                   ${
+                     lobbyWaitingForPlayers
+                       ? `<p class="message notice" data-testid="lobby-waiting-status">Waiting in the lobby for additional players to join (${escapeHtml(compactPresenceLine())}). Click "No — Everyone is In, Set the Scene!" when ready.</p>`
+                       : ''
+                   }
+                   <div class="action-composer-controls">
+                     <button type="button" class="table-secondary-action" data-testid="lobby-wait-for-players" aria-pressed="${lobbyWaitingForPlayers}" ${busy ? 'disabled' : ''}>
+                       Yes — Wait for More Players
+                     </button>
+                     <button type="button" class="table-primary-action" data-testid="lobby-set-the-scene" ${busy ? 'disabled' : ''}>
+                       No — Everyone is In, Set the Scene!
+                     </button>
+                   </div>
+                 </section>`
+              : ''
+          }
           <p class="record-meta visually-hidden" data-testid="dm-beat-queue-hint">
             Declarations, rulings, mechanics, and narration share one timeline. Free exploration resolves immediately; skill checks, attacks, and scene transitions present drafts for confirmation before committing.
           </p>
@@ -2945,6 +3078,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                   <p data-testid="intent-intercept-summary">${escapeHtml(
                     playerFacingMechanicsCopy(intentDraft.summary),
                   )}</p>
+                  ${
+                    intentDraft.proposedCommandType === 'encounter.begin'
+                      ? `<p class="message notice" data-testid="combat-initiation-warning"><strong>Starting Combat?</strong> This action will start combat. Please confirm that you want to initiate combat, or cancel if you only meant to speak or posture.</p>`
+                      : ''
+                  }
                   ${
                     intentDraft.interceptState === 'confirmed'
                       ? `<p class="message notice" data-testid="intent-intercept-resolving">Resolving on the table…</p>
@@ -2969,9 +3107,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                          </div>`
                           : `<div class="action-composer-controls">
                     <button type="button" data-testid="confirm-intent-intercept"
-                      aria-disabled="${busy || (!explorationMode() && !holdsOwnAuthority())}">Confirm action</button>
+                      aria-disabled="${busy || (!explorationMode() && !holdsOwnAuthority())}">${
+                        intentDraft.proposedCommandType === 'encounter.begin'
+                          ? 'Confirm — Start Combat'
+                          : 'Confirm action'
+                      }</button>
                     <button type="button" data-testid="cancel-intent-intercept"
-                      aria-disabled="${busy}">Cancel draft</button>
+                      aria-disabled="${busy}">${
+                        intentDraft.proposedCommandType === 'encounter.begin'
+                          ? 'Cancel — Do Not Start Combat'
+                          : 'Cancel draft'
+                      }</button>
                   </div>`
                   }
                 </div>`
@@ -3322,10 +3468,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     slot.classList.toggle('table-stage-low-effects', lowEffects || reducedMotion);
   }
 
-  function activeSeatCount(): number {
-    return mapBundle?.tokens.length ?? 0;
-  }
-
   function clearPartyTravelTimer(): void {
     if (partyTravelTimer !== null) {
       clearInterval(partyTravelTimer);
@@ -3518,14 +3660,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       'the next scene';
     const readyName =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
-    if (activeSeatCount() <= 1) {
-      sceneTitleCard = { title: destinationTitle, until: Date.now() + 800 };
-      const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
-      if (chrome !== null) {
-        syncMapStageOverlays(chrome);
-      }
-      return false;
-    }
     clearPartyTravelTimer();
     partyTravel = {
       destinationTitle,
@@ -3691,8 +3825,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }));
       movePreviewPath = commitPath;
       pendingMoveConfirm = true;
-      movePreviewNote = `${formatMoveSummary({ path: commitPath, map: mapBundle, start })} Confirm to commit, or Cancel to clear.`;
-      shell.announce('Move ready — confirm or cancel.');
+      if (explorationMode()) {
+        movePreviewNote = formatMoveSummary({ path: commitPath, map: mapBundle, start });
+      } else {
+        movePreviewNote = `${formatMoveSummary({ path: commitPath, map: mapBundle, start })} Confirm to commit, or Cancel to clear.`;
+        shell.announce('Move ready — confirm or cancel.');
+      }
     } catch (failure) {
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be previewed.';
@@ -3710,6 +3848,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     } finally {
       busy = false;
       render();
+    }
+    if (explorationMode() && pendingMoveConfirm && movePreviewPath !== null) {
+      await confirmPendingMove();
     }
   }
 
@@ -4280,6 +4421,81 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       .querySelector<HTMLButtonElement>('[data-testid="expand-comms-rail"]')
       ?.addEventListener('click', () => openCommsDrawer());
 
+    const toggleTableHistory = () => {
+      tableHistoryModalOpen = !tableHistoryModalOpen;
+      render();
+    };
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-table-history"]')
+      ?.addEventListener('click', () => toggleTableHistory());
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-table-history-hud"]')
+      ?.addEventListener('click', () => toggleTableHistory());
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="close-table-history"]')
+      ?.addEventListener('click', () => {
+        tableHistoryModalOpen = false;
+        render();
+      });
+    root
+      .querySelector<HTMLElement>('[data-testid="table-history-modal"]')
+      ?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+          tableHistoryModalOpen = false;
+          render();
+        }
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="lobby-wait-for-players"]')
+      ?.addEventListener('click', () => {
+        lobbyWaitingForPlayers = true;
+        shell.announce('Waiting in the campaign lobby for more players to join.');
+        render();
+      });
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="lobby-set-the-scene"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy) {
+            return;
+          }
+          lobbyWaitingForPlayers = false;
+          lobbyConfirmedReady = true;
+          if (awaitingDirectorScene()) {
+            await maybeAutoBeginAdventure({ force: true });
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            const sceneTitle = mapBundle?.title?.trim() || campaignName;
+            const sceneBanner = mapBundle?.sceneBanner?.trim() || 'The party gathers to begin the adventure.';
+            const narration = await requestDirectorNarration({
+              candidateId: candidate.candidateId,
+              campaignId,
+              mechanicsSummary: `Everyone is in the lobby and ready! Set the opening scene in a huge, vivid, cinematic way for ${sceneTitle}: ${sceneBanner} Describe the atmosphere, sights, sounds, who is present, and invite the party to make their opening move.`,
+            });
+            directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
+            try {
+              chronicle = await fetchChronicle(campaignId);
+              dmThreadOptimistic = [];
+              lastChronicleSyncCount = chronicle.entries.length;
+              syncDmThreadFromChronicle();
+            } catch {
+              appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
+            }
+            shell.announce(`${narration.directorIdentityLabel} set the opening scene!`);
+          } catch {
+            // Best-effort opening narration if director service is offline.
+          } finally {
+            busy = false;
+            render();
+          }
+        })();
+      });
+
     root
       .querySelector<HTMLButtonElement>('[data-testid="claim-active-turn"]')
       ?.addEventListener('click', () => {
@@ -4805,16 +5021,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               moveTarget,
             });
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
-            const draft = draftFromInterpret({
-              ...interpreted,
-              summary: scrubbedSummary,
-            });
-            if (explorationMode() && isRoutineExplorationDraft(draft)) {
+            const rangeGateMessage = checkTokenActionRangeAndAdjacency(interpreted, declaration);
+            if (rangeGateMessage !== null) {
               setIntentDraft(null);
-              await autoCommitExplorationDraft(draft, declaration);
+              appendDmThread('player', 'You', declaration, 'declaration');
+              appendDmThread('dm', directorIdentityLabel, rangeGateMessage, 'ruling_hint');
+              shell.announce(rangeGateMessage);
             } else {
-              setIntentDraft(draft);
-              shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+              const draft = draftFromInterpret({
+                ...interpreted,
+                summary: scrubbedSummary,
+              });
+              if (explorationMode() && isRoutineExplorationDraft(draft)) {
+                setIntentDraft(null);
+                await autoCommitExplorationDraft(draft, declaration);
+              } else {
+                setIntentDraft(draft);
+                shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
+              }
             }
           } catch (failure) {
             error =
@@ -5038,7 +5262,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             });
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
             const clarificationOnly = isSyncClarificationOnly(interpreted, scrubbedSummary);
-            if (clarificationOnly) {
+            const rangeGateMessage = clarificationOnly
+              ? null
+              : checkTokenActionRangeAndAdjacency(interpreted, declaration);
+            if (rangeGateMessage !== null) {
+              setIntentDraft(null);
+              appendDmThread('player', 'You', declaration, 'declaration');
+              appendDmThread('dm', directorIdentityLabel, rangeGateMessage, 'ruling_hint');
+              shell.announce(rangeGateMessage);
+            } else if (clarificationOnly) {
               // Server chronicles declaration + ruling immediately; resync once and do not
               // optimistic-append (that duplicated Story so far).
               setIntentDraft(null);
@@ -5543,20 +5775,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           const declarationText =
             (intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim();
           const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
-          const resumeAfterOpenCross =
-            draft.proposedCommandType === 'table.open_door' &&
-            declarationText.length > 0 &&
-            /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
-          const nonAdjectivalDeclaration = declarationText.replace(
-            /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
-            'doorway',
-          );
-          const resumeApproachThenOpen =
-            draft.proposedCommandType === 'table.move' &&
-            draft.edgeId !== undefined &&
-            /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
-              nonAdjectivalDeclaration,
-            );
+          const resumeAfterOpenCross = false;
+          const resumeApproachThenOpen = false;
           // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
           const summaryForCommand =
             draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
@@ -5830,13 +6050,14 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             }
           </div>
         </div>
-        <div class="table-hud-actions" role="group" aria-label="Table session">
+        <div class="table-hud-actions" role="group" aria-label="Campaign session">
+          <button type="button" class="table-hud-action" data-testid="toggle-table-history-hud" title="Table History">Table History</button>
           <a class="table-hud-action table-hud-action-settings" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" title="Settings">Settings</a>
-          <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" title="Exit table">Exit table</a>
+          <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" title="Exit campaign">Exit campaign</a>
           <details class="table-hud-overflow" data-testid="table-overflow-menu">
-            <summary aria-label="Table menu">Menu</summary>
+            <summary aria-label="Campaign menu">Menu</summary>
             <div class="table-hud-overflow-panel" role="menu">
-              <a href="/campaigns" data-link data-testid="table-overflow-tables" role="menuitem">Return to Tables</a>
+              <a href="/campaigns" data-link data-testid="table-overflow-tables" role="menuitem">Return to Campaigns</a>
               <a href="/characters" data-link data-testid="table-overflow-vault" role="menuitem">Character Vault</a>
               <a href="/account" data-link data-testid="table-overflow-account" role="menuitem">Account</a>
               <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-overflow-settings" role="menuitem">Settings</a>
@@ -5884,7 +6105,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     sheetModalSlot.innerHTML = characterSheetModalHtml();
     const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
     if (overlaySlot !== null) {
-      overlaySlot.innerHTML = `${rulesModalHtml()}${diceTrayOverlayHtml()}${turnSplashHtml()}`;
+      overlaySlot.innerHTML = `${rulesModalHtml()}${tableHistoryModalHtml()}${diceTrayOverlayHtml()}${turnSplashHtml()}`;
     }
     const combatHost = container.querySelector<HTMLElement>('[data-testid="floating-combat-host"]');
     if (combatHost !== null) {
@@ -5923,10 +6144,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     dashboardBody?.classList.toggle('table-drawer-comms-open', !commsRailCollapsed);
     const focusRestore = container.querySelector<HTMLElement>('[data-testid="table-focus-restore"]');
     if (focusRestore !== null) {
-      const showRestore = infoRailCollapsed || commsRailCollapsed;
-      focusRestore.hidden = !showRestore;
-      focusRestore.innerHTML = showRestore
-        ? `<div class="table-focus-restore-actions" data-testid="table-focus-restore-actions">
+      focusRestore.hidden = false;
+      focusRestore.innerHTML = `<div class="table-focus-restore-actions" data-testid="table-focus-restore-actions">
              ${
                infoRailCollapsed
                  ? `<button type="button" class="table-secondary-action" data-testid="expand-info-rail">Reference</button>`
@@ -5937,65 +6156,26 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                  ? `<button type="button" class="table-secondary-action" data-testid="expand-comms-rail">Chat</button>`
                  : ''
              }
-           </div>`
-        : '';
+             <button type="button" class="table-secondary-action" data-testid="toggle-table-history" aria-expanded="${tableHistoryModalOpen}">Table History</button>
+           </div>`;
     }
 
     footer.innerHTML = `
-      <details class="table-meta-panel table-hud-meta" data-testid="presence-section"${presenceOpen ? ' open' : ''}>
-        <summary data-testid="table-details-summary">Table details</summary>
-        <div class="table-hud-meta-body">
-          <section aria-labelledby="presence-heading">
-            <h2 id="presence-heading">Who is connected</h2>
-            ${presenceBody()}
-          </section>
-          <p class="record-meta" data-testid="table-state-meta"
-            data-state-version="${tableState?.stateVersion ?? 0}"
-            data-event-sequence="${tableState?.lastEventSequence ?? 0}">
-            ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
-          </p>
-          <p class="record-meta" data-testid="shared-scene-status">
-            Everyone at this table sees the same current scene. When the Director changes the map, you will hear a brief update.
-          </p>
-          ${
-            mapBundle?.title === 'Awaiting first scene' ||
-            (mapBundle?.mapBundleId?.startsWith('blank:') &&
-              (mapBundle.edges.length ?? 0) === 0 &&
-              mapBundle.title !== 'Quiet chamber')
-              ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                   Establishing the opening scene from your premise…
-                 </p>`
-              : mapBundle?.title === 'Quiet chamber'
-                ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                     Quiet chamber — a wooden doorway waits.
-                   </p>`
-                : mapBundle !== null && mapBundle.mapBundleId.startsWith('director:')
-                  ? `<p class="record-meta" data-testid="director-scene-hint">
-                       Declare what you change or where you go. Confirm before it commits.
-                     </p>`
-                  : mapBundle?.title === 'Blank table' && (mapBundle.edges.length ?? 0) === 0
-                    ? `<p class="record-meta" data-testid="blank-table-start-hint">
-                         Establishing the opening scene…
-                       </p>`
-                    : ''
-          }
-          <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
-          ${
-            mapBundle === null || mapBundle.notableFeatures.length === 0
-              ? ''
-              : `<ul class="record-list compact" data-testid="map-notable-features">
-                  ${mapBundle.notableFeatures
-                    .map(
-                      (feature) => `
-                    <li data-testid="map-notable-feature">
-                      ${escapeHtml(feature.label)}
-                    </li>`,
-                    )
-                    .join('')}
-                </ul>`
-          }
-        </div>
-      </details>`;
+      <div class="visually-hidden" data-testid="presence-section"${presenceOpen ? ' data-open="true"' : ''}>
+        <section aria-labelledby="presence-heading">
+          <h2 id="presence-heading">Who is connected</h2>
+          ${presenceBody()}
+        </section>
+        <p class="record-meta" data-testid="table-state-meta"
+          data-state-version="${tableState?.stateVersion ?? 0}"
+          data-event-sequence="${tableState?.lastEventSequence ?? 0}">
+          ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
+        </p>
+        <p class="record-meta" data-testid="shared-scene-status">
+          Everyone at this table sees the same current scene.
+        </p>
+        <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+      </div>`;
 
     if (toolsWereActive && advancedOpen) {
       const advanced = infoSlot.querySelector<HTMLDetailsElement>(

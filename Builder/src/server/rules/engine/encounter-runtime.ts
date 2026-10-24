@@ -181,11 +181,17 @@ export function applyProgressionTrackers(
         };
   const equipment =
     progression.equipmentOverrides !== undefined && progression.equipmentOverrides.length > 0
-      ? progression.equipmentOverrides.map((item) => ({
-          name: item.name,
-          quantity: Math.max(0, item.quantity),
-          ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
-        }))
+      ? progression.equipmentOverrides.map((item) => {
+          const baseMatch = sheet.equipment.find(
+            (entry) => entry.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
+          );
+          return {
+            ...(baseMatch ?? {}),
+            name: item.name,
+            quantity: Math.max(0, item.quantity),
+            ...(item.equipped === undefined ? {} : { equipped: item.equipped }),
+          };
+        })
       : sheet.equipment;
   return {
     ...sheet,

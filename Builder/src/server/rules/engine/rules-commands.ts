@@ -2161,7 +2161,27 @@ export async function acceptRulesCommand(options: {
       const credits = withMilestonePortraitCredit(
         characterSnap.data() as { milestonePortraitCredits?: number },
       ).milestonePortraitCredits;
-      transaction.update(characterRef, { milestonePortraitCredits: credits });
+      const charData = (characterSnap.data() ?? {}) as {
+        milestonePortraitCredits?: number;
+        crossCampaignHistory?: readonly {
+          readonly at: string;
+          readonly campaignId?: string | null;
+          readonly campaignName?: string | null;
+          readonly summary: string;
+        }[];
+      };
+      const nextHistory = [
+        ...(charData.crossCampaignHistory ?? []),
+        {
+          at: committedAt.toISOString(),
+          campaignId,
+          summary: `Reached Level ${mutation.progression.level} (${mutation.summary}).`,
+        },
+      ].slice(-40);
+      transaction.update(characterRef, {
+        milestonePortraitCredits: credits,
+        crossCampaignHistory: nextHistory,
+      });
     }
     if (nextEncounter !== null) transaction.set(encounterRef, nextEncounter);
     transaction.update(firestore.collection(COLLECTIONS.campaignSeats).doc(seat.seatId), {

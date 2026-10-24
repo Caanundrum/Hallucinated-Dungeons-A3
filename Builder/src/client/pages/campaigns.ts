@@ -3,7 +3,7 @@
  */
 
 import type { TablesHubProjection } from '../../shared/campaign-contract.js';
-import { MAX_ACTIVE_PLAYERS } from '../../shared/campaign-contract.js';
+import { MAX_ACTIVE_CAMPAIGNS, MAX_ACTIVE_PLAYERS } from '../../shared/campaign-contract.js';
 import {
   filterMyTables,
   filterOpenTables,
@@ -13,8 +13,9 @@ import {
   type TablesVisibilityFilter,
 } from '../../shared/tables-hub-filters.js';
 import { getAccount, isAccountHydrated, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchTablesHub } from '../api.js';
+import { ApiFailure, deleteCampaign, fetchTablesHub } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
+import { confirmInApp } from '../confirm-dialog.js';
 import {
   clearHiddenTablesFromHubPreference,
   hideTableFromHubPreference,
@@ -42,7 +43,7 @@ function formatTimestamp(iso: string): string {
 
 export function mountCampaignsPage(host: PageHost): void {
   const { container, shell, candidate } = host;
-  shell.setDocumentTitle('Tables');
+  shell.setDocumentTitle('Campaigns');
 
   let hub: TablesHubProjection | null = null;
   let error: string | null = null;
@@ -118,12 +119,14 @@ export function mountCampaignsPage(host: PageHost): void {
     const searchSelectionStart = searchWasFocused ? (activeEl.selectionStart ?? searchQuery.length) : 0;
     const searchSelectionEnd = searchWasFocused ? (activeEl.selectionEnd ?? searchQuery.length) : 0;
 
+    const totalOwnedCount = myTables.filter((table) => table.isCampaignOwner).length;
+    const atCampaignLimit = totalOwnedCount >= MAX_ACTIVE_CAMPAIGNS;
+
     container.innerHTML = `
       <div class="page page-wide">
-        <h1 data-testid="campaigns-heading">Tables</h1>
+        <h1 data-testid="campaigns-heading">Campaigns</h1>
         <p class="tagline">
-          Jump in: pick a table, choose your character, and play. Up to four seats are active at once.
-          Tables you own and tables you joined stay listed here; hide removes a table from this hub only.
+          Jump in: pick a campaign, choose your character, and play. Up to four players can be seated at a campaign at once, and you can run up to ${MAX_ACTIVE_CAMPAIGNS} active campaigns at a time.
         </p>
         ${
           hub?.activeSeat
@@ -141,8 +144,17 @@ export function mountCampaignsPage(host: PageHost): void {
             : `<div class="message error" role="alert" tabindex="-1" data-testid="campaigns-error">${escapeHtml(error)}</div>`
         }
         <div class="actions">
-          <button type="button" data-testid="start-campaign">New table</button>
+          <button type="button" data-testid="start-campaign" ${atCampaignLimit ? 'aria-disabled="true"' : ''}>
+            New Campaign (${totalOwnedCount}/${MAX_ACTIVE_CAMPAIGNS})
+          </button>
         </div>
+        ${
+          atCampaignLimit
+            ? `<p class="message notice" data-testid="campaign-limit-notice">
+                 You have ${totalOwnedCount} active campaigns (maximum ${MAX_ACTIVE_CAMPAIGNS}). Delete an existing campaign below before creating a 6th.
+               </p>`
+            : ''
+        }
         <div class="campaign-list-tools" data-testid="campaign-list-tools">
           <label class="field">
             <span>Search</span>
@@ -194,31 +206,31 @@ export function mountCampaignsPage(host: PageHost): void {
               <option value="full" ${seatsFilter === 'full' ? 'selected' : ''}>Full (${MAX_ACTIVE_PLAYERS}/${MAX_ACTIVE_PLAYERS})</option>
             </select>
           </label>
-          <div class="actions" role="tablist" aria-label="Table lists">
+          <div class="actions" role="tablist" aria-label="Campaign lists">
             <button type="button" role="tab" data-testid="tables-tab-mine"
-              aria-selected="${tab === 'mine' ? 'true' : 'false'}">My tables</button>
+              aria-selected="${tab === 'mine' ? 'true' : 'false'}">My Campaigns</button>
             <button type="button" role="tab" data-testid="tables-tab-open"
-              aria-selected="${tab === 'open' ? 'true' : 'false'}">Open tables</button>
+              aria-selected="${tab === 'open' ? 'true' : 'false'}">Open Campaigns</button>
           </div>
         </div>
         <p class="record-meta" data-testid="tables-filter-summary">
-          Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'tables in your hub' : 'open tables'}.
+          Showing ${filteredCount} of ${sourceCount} ${tab === 'mine' ? 'campaigns in your hub' : 'open campaigns'}.
           ${
             tab === 'mine' && hiddenCount > 0
               ? showHiddenTables
-                ? `${hiddenCount} hidden ${hiddenCount === 1 ? 'table is' : 'tables are'} included below.`
-                : `${hiddenCount} hidden ${hiddenCount === 1 ? 'table is' : 'tables are'} omitted from this list.`
+                ? `${hiddenCount} hidden ${hiddenCount === 1 ? 'campaign is' : 'campaigns are'} included below.`
+                : `${hiddenCount} hidden ${hiddenCount === 1 ? 'campaign is' : 'campaigns are'} omitted from this list.`
               : ''
           }
           ${filtersActive ? 'Filters are applied client-side.' : 'Use filters to narrow the list.'}
-          Owned and joined tables are grouped below. Hide is local to this browser until server archive ships.
+          Owned and joined campaigns are grouped below.
         </p>
         ${
           tab === 'mine' && hiddenCount > 0
             ? `<div class="actions" data-testid="tables-hidden-controls">
                  <button type="button" class="button ghost" data-testid="tables-toggle-hidden"
                    aria-pressed="${showHiddenTables ? 'true' : 'false'}">
-                   ${showHiddenTables ? 'Hide hidden tables again' : `Show ${hiddenCount} hidden`}
+                   ${showHiddenTables ? 'Hide hidden campaigns again' : `Show ${hiddenCount} hidden`}
                  </button>
                  <button type="button" class="button ghost" data-testid="tables-clear-hidden">
                    Restore all hidden
@@ -227,14 +239,14 @@ export function mountCampaignsPage(host: PageHost): void {
             : ''
         }
         <section class="panel" aria-labelledby="table-list-heading">
-          <h2 id="table-list-heading">${tab === 'mine' ? 'My tables' : 'Open tables'}</h2>
+          <h2 id="table-list-heading">${tab === 'mine' ? 'My Campaigns' : 'Open Campaigns'}</h2>
           ${
             tab === 'mine'
               ? filteredMine.length === 0
                 ? `<p class="empty-state" data-testid="campaigns-empty">${
                     myTables.length === 0
-                      ? 'You have not created or joined a table yet.'
-                      : 'No tables match the current search and filters.'
+                      ? 'You have not created or joined a campaign yet.'
+                      : 'No campaigns match the current search and filters.'
                   }</p>`
                 : (() => {
                     const owned = filteredMine.filter((table) => table.isCampaignOwner);
@@ -275,8 +287,20 @@ export function mountCampaignsPage(host: PageHost): void {
                             ${
                               seatedHere
                                 ? `<a class="button ghost" href="${tableHref}" data-link data-testid="my-table-open">
-                                     Open table
+                                     Open campaign
                                    </a>`
+                                : ''
+                            }
+                            <a class="button ghost" href="${detailHref}" data-link data-testid="my-table-manage">
+                              Manage campaign
+                            </a>
+                            ${
+                              table.isCampaignOwner
+                                ? `<button type="button" class="button ghost danger" data-testid="delete-campaign-hub"
+                                     data-campaign-id="${escapeHtml(table.campaignId)}"
+                                     data-campaign-name="${escapeHtml(table.name)}">
+                                     Delete campaign
+                                   </button>`
                                 : ''
                             }
                             ${
@@ -296,10 +320,10 @@ export function mountCampaignsPage(host: PageHost): void {
                     };
                     return `
                   <div data-testid="my-tables-owned-group">
-                    <h3 class="record-meta" data-testid="my-tables-owned-heading">Owned (${owned.length})</h3>
+                    <h3 class="record-meta" data-testid="my-tables-owned-heading">Owned (${owned.length} / ${MAX_ACTIVE_CAMPAIGNS} max)</h3>
                     ${
                       owned.length === 0
-                        ? '<p class="empty-state" data-testid="my-tables-owned-empty">No owned tables in this filter.</p>'
+                        ? '<p class="empty-state" data-testid="my-tables-owned-empty">No owned campaigns in this filter.</p>'
                         : `<ul class="record-list" data-testid="campaign-list-owned">${owned.map(renderRow).join('')}</ul>`
                     }
                   </div>
@@ -307,7 +331,7 @@ export function mountCampaignsPage(host: PageHost): void {
                     <h3 class="record-meta" data-testid="my-tables-joined-heading">Joined (${joined.length})</h3>
                     ${
                       joined.length === 0
-                        ? '<p class="empty-state" data-testid="my-tables-joined-empty">No joined tables in this filter.</p>'
+                        ? '<p class="empty-state" data-testid="my-tables-joined-empty">No joined campaigns in this filter.</p>'
                         : `<ul class="record-list" data-testid="campaign-list-joined">${joined.map(renderRow).join('')}</ul>`
                     }
                   </div>
@@ -328,6 +352,12 @@ export function mountCampaignsPage(host: PageHost): void {
                     ${filteredOpen
                       .map((table) => {
                         const identity = directorIdentityFromLabelOrKey(table.directorIdentityLabel);
+                        const currentAccountId = getAccount()?.accountId;
+                        const isOwnedOpen =
+                          (currentAccountId !== undefined && table.ownerAccountId === currentAccountId) ||
+                          myTables.some(
+                            (mine) => mine.campaignId === table.campaignId && mine.isCampaignOwner,
+                          );
                         return `
                       <li data-testid="open-table-item" class="table-lobby-row">
                         ${
@@ -350,6 +380,20 @@ export function mountCampaignsPage(host: PageHost): void {
                             · ${table.activeSeatCount}/${MAX_ACTIVE_PLAYERS} seated
                             · updated ${escapeHtml(formatTimestamp(table.updatedAt))}
                           </span>
+                          ${
+                            isOwnedOpen
+                              ? `<div class="actions">
+                                   <a class="button ghost" href="/campaigns/${escapeHtml(table.campaignId)}" data-link data-testid="open-table-manage">
+                                     Manage campaign
+                                   </a>
+                                   <button type="button" class="button ghost danger" data-testid="delete-campaign-hub"
+                                     data-campaign-id="${escapeHtml(table.campaignId)}"
+                                     data-campaign-name="${escapeHtml(table.name)}">
+                                     Delete campaign
+                                   </button>
+                                 </div>`
+                              : ''
+                          }
                         </div>
                       </li>`;
                       })
@@ -375,7 +419,51 @@ export function mountCampaignsPage(host: PageHost): void {
     }
     container
       .querySelector<HTMLButtonElement>('[data-testid="start-campaign"]')
-      ?.addEventListener('click', () => navigate('/campaigns/new'));
+      ?.addEventListener('click', () => {
+        if (atCampaignLimit) {
+          error = `You can have at most ${MAX_ACTIVE_CAMPAIGNS} active campaigns at once. Delete an existing campaign below before creating a 6th.`;
+          renderSignedIn();
+          return;
+        }
+        navigate('/campaigns/new');
+      });
+    container
+      .querySelectorAll<HTMLButtonElement>('[data-testid="delete-campaign-hub"]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          const id = button.dataset.campaignId;
+          const campaignName = button.dataset.campaignName ?? 'this campaign';
+          if (typeof id !== 'string' || id.length === 0 || candidate === null) {
+            return;
+          }
+          void (async () => {
+            const confirmed = await confirmInApp({
+              title: `Delete "${campaignName}"?`,
+              body: `Permanently delete "${campaignName}" and remove its campaign records for all members? Characters keep their persistent inventory and history.`,
+              confirmLabel: 'Delete campaign',
+              cancelLabel: 'Keep campaign',
+              testId: 'confirm-delete-campaign-hub',
+            });
+            if (!confirmed) {
+              return;
+            }
+            try {
+              await deleteCampaign({
+                candidateId: candidate.candidateId,
+                campaignId: id,
+              });
+              shell.announce(`Deleted campaign ${campaignName}.`);
+              await load();
+            } catch (failure) {
+              error =
+                failure instanceof ApiFailure
+                  ? failure.message
+                  : 'Campaign could not be deleted.';
+              renderSignedIn();
+            }
+          })();
+        });
+      });
     const searchInput = container.querySelector<HTMLInputElement>('[data-testid="campaigns-search"]');
     searchInput?.addEventListener('input', (event) => {
       if (event.target instanceof HTMLInputElement) {

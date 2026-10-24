@@ -21,6 +21,7 @@ import {
   type CharacterChoices,
   type CharacterProjection,
   type CharacterVaultProjection,
+  type CrossCampaignHistoryEntry,
   type DraftProjection,
 } from '../../shared/character-contract.js';
 import {
@@ -29,8 +30,8 @@ import {
   validateAppearancePrompt,
 } from '../../shared/portrait-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
-import { storeCampaignAssetRecord } from '../assets/campaign-assets.js';
-import { resolvePortrait, type PortraitEnvironment } from './portrait.js';
+import { loadCampaignAsset, storeCampaignAssetRecord } from '../assets/campaign-assets.js';
+import { resolvePortraitChoices, type PortraitEnvironment } from './portrait.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
   RULES_VERSION,
@@ -59,6 +60,8 @@ interface StoredDraft {
   readonly createdAt: Timestamp | Date;
   readonly updatedAt: Timestamp | Date;
   readonly avatarUrl?: string | null;
+  readonly avatarOptions?: readonly string[];
+  readonly portraitForged?: boolean;
   readonly appearancePrompt?: string | null;
 }
 
@@ -69,7 +72,9 @@ interface StoredCharacter {
   readonly choices: CharacterChoices;
   readonly createdAt: Timestamp | Date;
   readonly revisions: readonly { readonly at: string; readonly reason: string }[];
+  readonly crossCampaignHistory?: readonly CrossCampaignHistoryEntry[];
   readonly avatarUrl?: string | null;
+  readonly avatarOptions?: readonly string[];
   readonly appearancePrompt?: string | null;
   readonly milestonePortraitCredits?: number;
 }
@@ -120,6 +125,8 @@ function projectDraft(stored: StoredDraft): DraftProjection {
     completedSteps: completedSteps(choices),
     canCreate: problems.length === 0,
     avatarUrl: stored.avatarUrl ?? null,
+    ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
+    ...(stored.portraitForged !== undefined ? { portraitForged: stored.portraitForged } : {}),
     appearancePrompt: stored.appearancePrompt ?? null,
   };
 }
@@ -129,7 +136,17 @@ function projectCharacter(
   progression: StoredProgression | null = null,
 ): CharacterProjection {
   const choices = normalizeChoices(stored.choices);
-  const baseSheet = deriveSheet(choices);
+  const overrideUnequipped =
+    progression?.equipmentOverrides !== undefined
+      ? progression.equipmentOverrides
+          .filter((item) => item.equipped === false)
+          .map((item) => item.name)
+      : undefined;
+  const choicesForSheet =
+    overrideUnequipped !== undefined
+      ? { ...choices, unequippedItemNames: overrideUnequipped }
+       : choices;
+  const baseSheet = deriveSheet(choicesForSheet);
   if (baseSheet === null) {
     // A committed character always has Class, Background, and Species, since
     // commitment requires a clean validation. Reaching here means the stored
@@ -162,10 +179,114 @@ function projectCharacter(
       at: revision.at,
       reason: revision.reason,
     })),
+    crossCampaignHistory: (stored.crossCampaignHistory ?? []).map((entry) => ({
+      at: entry.at,
+      ...(entry.campaignId !== undefined ? { campaignId: entry.campaignId } : {}),
+      ...(entry.campaignName !== undefined ? { campaignName: entry.campaignName } : {}),
+      summary: entry.summary,
+    })),
     avatarUrl: stored.avatarUrl ?? null,
+    ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
     appearancePrompt: stored.appearancePrompt ?? null,
     milestonePortraitCredits: stored.milestonePortraitCredits ?? 0,
   };
+}
+
+/**
+ * Appends a persistent cross-campaign history milestone to a character record so
+ * their history across campaigns is preserved even when they leave or switch tables.
+ */
+export async function appendCrossCampaignCharacterHistory(options: {
+  readonly firestore: Firestore;
+  readonly characterId: string;
+  readonly campaignId?: string | null;
+  readonly campaignName?: string | null;
+  readonly summary: string;
+}): Promise<void> {
+  const { firestore, characterId, campaignId, campaignName, summary } = options;
+  const trimmed = summary.trim();
+  if (trimmed.length === 0) {
+    return;
+  }
+  const ref = firestore.collection(COLLECTIONS.characters).doc(characterId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return;
+  }
+  const stored = snap.data() as StoredCharacter;
+  const entry: CrossCampaignHistoryEntry = {
+    at: new Date().toISOString(),
+    ...(campaignId !== undefined ? { campaignId } : {}),
+    ...(campaignName !== undefined ? { campaignName } : {}),
+    summary: trimmed,
+  };
+  const nextHistory = [...(stored.crossCampaignHistory ?? []), entry].slice(-40);
+  await ref.set({ ...stored, crossCampaignHistory: nextHistory });
+}
+
+async function loadCrossCampaignCharacterHistory(
+  firestore: Firestore,
+  characterId: string,
+  stored: StoredCharacter,
+): Promise<string> {
+  const parts: string[] = [];
+  const concept = stored.choices.identity?.concept?.trim() ?? '';
+  if (concept.length > 0) {
+    parts.push(concept);
+  }
+  for (const entry of (stored.crossCampaignHistory ?? []).slice(-8)) {
+    const prefix =
+      typeof entry.campaignName === 'string' && entry.campaignName.trim().length > 0
+        ? `[${entry.campaignName.trim()}] `
+        : '';
+    parts.push(`${prefix}${entry.summary}`);
+  }
+  try {
+    const seatSnap = await firestore
+      .collection(COLLECTIONS.campaignSeats)
+      .where('characterId', '==', characterId)
+      .get();
+    for (const doc of seatSnap.docs) {
+      const seatData = doc.data() as { campaignId?: string };
+      if (typeof seatData.campaignId !== 'string' || seatData.campaignId.length === 0) {
+        continue;
+      }
+      const [campaignSnap, memorySnap] = await Promise.all([
+        firestore.collection(COLLECTIONS.campaigns).doc(seatData.campaignId).get(),
+        firestore.collection(COLLECTIONS.campaignMemory).doc(seatData.campaignId).get(),
+      ]);
+      const campaignName =
+        campaignSnap.exists && typeof (campaignSnap.data() as { name?: unknown })?.name === 'string'
+          ? ((campaignSnap.data() as { name: string }).name ?? '').trim()
+          : '';
+      const chapters =
+        memorySnap.exists &&
+        Array.isArray((memorySnap.data() as { chapters?: unknown })?.chapters)
+          ? ((memorySnap.data() as { chapters: readonly { summary?: string }[] }).chapters ?? [])
+          : [];
+      const chapterSummaries = chapters
+        .map((ch) => (typeof ch.summary === 'string' ? ch.summary.trim() : ''))
+        .filter((s) => s.length > 0)
+        .slice(-2);
+      if (chapterSummaries.length > 0) {
+        parts.push(
+          campaignName.length > 0
+            ? `[${campaignName}] ${chapterSummaries.join('; ')}`
+            : chapterSummaries.join('; '),
+        );
+      } else if (campaignName.length > 0) {
+        parts.push(`Active in campaign: ${campaignName}`);
+      }
+    }
+  } catch {
+    // Non-fatal if seat/memory lookup fails.
+  }
+  const revisionNotes = (stored.revisions ?? [])
+    .map((rev) => rev.reason)
+    .filter((reason) => !/^Portrait updated/i.test(reason))
+    .slice(-5);
+  parts.push(...revisionNotes);
+  return Array.from(new Set(parts.filter((part) => part.trim().length > 0))).join(' | ');
 }
 
 /**
@@ -386,6 +507,7 @@ export async function commitDraft(options: {
     createdAt: now,
     revisions: [{ at: now.toISOString(), reason: 'Character created' }],
     avatarUrl: stored.avatarUrl ?? null,
+    ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
     appearancePrompt: stored.appearancePrompt ?? null,
     milestonePortraitCredits: 0,
   };
@@ -850,6 +972,11 @@ export async function generateCharacterPortrait(options: {
   const appearancePrompt = validation.text;
   let ancestryId = optionalId(body.ancestryId);
   let classId = optionalId(body.classId);
+  let pronouns = typeof body.pronouns === 'string' && body.pronouns.length <= 120 ? body.pronouns : null;
+  const selectedAvatarUrl =
+    typeof body.selectedAvatarUrl === 'string' && body.selectedAvatarUrl.length > 0
+      ? body.selectedAvatarUrl
+      : null;
   const characterId = optionalId(body.characterId);
   const draftId = optionalId(body.draftId);
 
@@ -859,37 +986,133 @@ export async function generateCharacterPortrait(options: {
   if (choices !== null) {
     ancestryId = ancestryId ?? choices.speciesId;
     classId = classId ?? choices.classId;
+    pronouns = pronouns ?? (choices.identity?.pronouns ?? null);
   }
+
+  // Selecting one of the 3 already-forged portraits does not regenerate or spend another credit.
+  if (selectedAvatarUrl !== null) {
+    if (!isTrustedAvatarUrl(selectedAvatarUrl)) {
+      throw new PortraitRequestError('Selected portrait is not valid.');
+    }
+    if (draft !== null && draftId !== null) {
+      const allowed = draft.avatarOptions ?? (draft.avatarUrl ? [draft.avatarUrl] : []);
+      if (allowed.length > 0 && !allowed.includes(selectedAvatarUrl)) {
+        throw new PortraitRequestError('Choose one of your forged portrait options.');
+      }
+      const updatedDraft: StoredDraft = {
+        ...draft,
+        avatarUrl: selectedAvatarUrl,
+        updatedAt: new Date(),
+      };
+      await firestore.collection(COLLECTIONS.characterDrafts).doc(draftId).set(updatedDraft);
+      return {
+        avatarUrl: selectedAvatarUrl,
+        ...(draft.avatarOptions !== undefined ? { avatarOptions: draft.avatarOptions } : {}),
+        portraitForged: true,
+        appearancePrompt: draft.appearancePrompt ?? appearancePrompt,
+        source: 'generated',
+      };
+    }
+    if (stored !== null && characterId !== null) {
+      const allowed = stored.avatarOptions ?? (stored.avatarUrl ? [stored.avatarUrl] : []);
+      if (allowed.length > 0 && !allowed.includes(selectedAvatarUrl)) {
+        throw new PortraitRequestError('Choose one of your forged portrait options.');
+      }
+      const updatedCharacter: StoredCharacter = {
+        ...stored,
+        avatarUrl: selectedAvatarUrl,
+      };
+      await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updatedCharacter);
+      return {
+        avatarUrl: selectedAvatarUrl,
+        ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
+        portraitForged: true,
+        appearancePrompt: stored.appearancePrompt ?? appearancePrompt,
+        source: 'generated',
+        milestonePortraitCredits: stored.milestonePortraitCredits ?? 0,
+      };
+    }
+  }
+
+  // During character creation, once 3 portraits are forged, return those 3 options rather than re-forging endlessly.
+  if (
+    draft !== null &&
+    draft.portraitForged === true &&
+    draft.avatarOptions !== undefined &&
+    draft.avatarOptions.length > 0
+  ) {
+    return {
+      avatarUrl: draft.avatarUrl ?? draft.avatarOptions[0]!,
+      avatarOptions: draft.avatarOptions,
+      portraitForged: true,
+      appearancePrompt: draft.appearancePrompt ?? appearancePrompt,
+      source: 'generated',
+    };
+  }
+
   if (stored !== null && (stored.milestonePortraitCredits ?? 0) < 1) {
     throw new PortraitCreditRequiredError();
   }
 
-  const portrait = await resolvePortrait({
+  // On level-up, pass the character's cross-campaign history and existing core portrait so variations alter the existing look.
+  let characterHistory: string | null = null;
+  let baseImage: { readonly mimeType: string; readonly base64Data: string } | null = null;
+  if (stored !== null && characterId !== null) {
+    characterHistory = await loadCrossCampaignCharacterHistory(firestore, characterId, stored);
+    if (typeof stored.avatarUrl === 'string') {
+      const inlineMatch = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
+        stored.avatarUrl,
+      );
+      if (inlineMatch !== null) {
+        baseImage = { mimeType: inlineMatch[1]!, base64Data: inlineMatch[2]! };
+      } else {
+        const assetMatch = /^\/api\/campaign-assets\/([a-zA-Z0-9_-]{1,120})$/.exec(
+          stored.avatarUrl,
+        );
+        if (assetMatch !== null) {
+          const asset = await loadCampaignAsset(firestore, assetMatch[1]!);
+          if (asset !== null) {
+            baseImage = { mimeType: asset.mimeType, base64Data: asset.base64Data };
+          }
+        }
+      }
+    }
+  }
+
+  const portrait = await resolvePortraitChoices({
     appearancePrompt,
     ancestryId,
     classId,
-    characterName: choices?.identity.name ?? null,
+    pronouns,
+    characterName: choices?.identity?.name ?? null,
+    characterHistory,
+    preserveCorePortrait: stored !== null && Boolean(stored.avatarUrl),
+    baseImage,
     ...(options.env !== undefined ? { env: options.env } : {}),
     ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
   });
-  let resolvedAvatarUrl = portrait.avatarUrl;
-  const dataUrlMatch = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
-    resolvedAvatarUrl,
-  );
-  if (dataUrlMatch !== null && resolvedAvatarUrl.length > 1000) {
-    try {
-      resolvedAvatarUrl = await storeCampaignAssetRecord({
-        firestore,
-        campaignId: characterId ?? draftId ?? 'character-portrait',
-        kind: 'npc_portrait',
-        mimeType: dataUrlMatch[1]!,
-        base64Data: dataUrlMatch[2]!,
-        prompt: appearancePrompt,
-      });
-    } catch {
-      // Keep inline dataUrl if asset store write fails.
+
+  const persistSingleUrl = async (rawUrl: string): Promise<string> => {
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(rawUrl);
+    if (match !== null && rawUrl.length > 1000) {
+      try {
+        return await storeCampaignAssetRecord({
+          firestore,
+          campaignId: characterId ?? draftId ?? 'character-portrait',
+          kind: 'npc_portrait',
+          mimeType: match[1]!,
+          base64Data: match[2]!,
+          prompt: appearancePrompt,
+        });
+      } catch {
+        return rawUrl;
+      }
     }
-  }
+    return rawUrl;
+  };
+
+  const resolvedOptions = await Promise.all(portrait.avatarOptions.map(persistSingleUrl));
+  const resolvedAvatarUrl = resolvedOptions[0] ?? portrait.avatarUrl;
   if (!isTrustedAvatarUrl(resolvedAvatarUrl)) {
     throw new PortraitRequestError('Portrait could not be produced.');
   }
@@ -900,6 +1123,7 @@ export async function generateCharacterPortrait(options: {
     const updated: StoredCharacter = {
       ...stored,
       avatarUrl: resolvedAvatarUrl,
+      avatarOptions: resolvedOptions,
       appearancePrompt,
       milestonePortraitCredits,
       revisions: [
@@ -913,6 +1137,8 @@ export async function generateCharacterPortrait(options: {
     const updatedDraft: StoredDraft = {
       ...draft,
       avatarUrl: resolvedAvatarUrl,
+      avatarOptions: resolvedOptions,
+      portraitForged: true,
       appearancePrompt,
       updatedAt: new Date(),
     };
@@ -921,6 +1147,8 @@ export async function generateCharacterPortrait(options: {
 
   return {
     avatarUrl: resolvedAvatarUrl,
+    avatarOptions: resolvedOptions,
+    portraitForged: true,
     appearancePrompt,
     source: portrait.source,
     ...(milestonePortraitCredits !== undefined ? { milestonePortraitCredits } : {}),

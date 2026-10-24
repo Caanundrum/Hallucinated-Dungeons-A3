@@ -133,8 +133,9 @@ export async function storeCampaignAssetRecord(options: {
   readonly mimeType: string;
   readonly base64Data: string;
   readonly prompt: string;
+  readonly customAssetId?: string;
 }): Promise<string> {
-  const assetId = `asset-${randomUUID()}`;
+  const assetId = options.customAssetId ?? `asset-${randomUUID()}`;
   const createdAt = new Date().toISOString();
   const chunks: string[] = [];
   for (let offset = 0; offset < options.base64Data.length; offset += ASSET_FIRESTORE_CHUNK_SIZE) {
@@ -170,15 +171,47 @@ export async function storeCampaignAssetRecord(options: {
   return `/api/assets/${assetId}`;
 }
 
+export function normalizeReusableMonsterKey(rawKey: string): string {
+  return rawKey
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
 export async function generateAndStoreCampaignAsset(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
   readonly kind: CampaignAssetKind;
   readonly prompt: string;
   readonly fallbackTemplateId?: string;
+  /** Optional shared cache key (e.g. SRD monster id like 'kobold' or 'goblin') to reuse across campaigns. */
+  readonly reusableKey?: string;
   readonly env?: PortraitEnvironment;
   readonly fetchImpl?: typeof fetch;
 }): Promise<{ readonly assetUrl: string; readonly source: 'generated' | 'curated' }> {
+  const sharedAssetId =
+    options.kind === 'monster_token' &&
+    typeof options.reusableKey === 'string' &&
+    normalizeReusableMonsterKey(options.reusableKey).length > 0
+      ? `shared_monster_${normalizeReusableMonsterKey(options.reusableKey)}`
+      : undefined;
+
+  if (sharedAssetId !== undefined) {
+    try {
+      const existing = await loadCampaignAsset(options.firestore, sharedAssetId);
+      if (existing !== null) {
+        return {
+          assetUrl: `/api/assets/${sharedAssetId}`,
+          source: 'generated',
+        };
+      }
+    } catch {
+      // Proceed to generate if cache read fails.
+    }
+  }
+
   const env = options.env ?? process.env;
   const model = (env.HD_PORTRAIT_IMAGE_MODEL ?? '').trim() || PORTRAIT_IMAGE_MODEL_DEFAULT;
   const fullPrompt = buildCampaignAssetPrompt({
@@ -215,6 +248,7 @@ export async function generateAndStoreCampaignAsset(options: {
         mimeType: generated.mimeType,
         base64Data: generated.base64Data,
         prompt: fullPrompt,
+        ...(sharedAssetId !== undefined ? { customAssetId: sharedAssetId } : {}),
       });
       return {
         assetUrl,

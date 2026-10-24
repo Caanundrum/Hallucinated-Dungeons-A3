@@ -33,7 +33,7 @@ import {
   SESSION_TONE_LABELS,
 } from '../../shared/settings-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchCampaignDetail, saveCampaignSettings } from '../api.js';
+import { ApiFailure, deleteCampaign, fetchCampaignDetail, saveCampaignSettings } from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { confirmInApp } from '../confirm-dialog.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -302,6 +302,9 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
                  </button>
                  <button type="button" class="secondary" data-testid="complete-session-zero" aria-disabled="${busy}">
                    ${draft.sessionZero.completed ? 'Update Session Zero' : 'Record Session Zero'}
+                 </button>
+                 <button type="button" class="danger" data-testid="settings-delete-campaign" aria-disabled="${busy}">
+                   Delete campaign
                  </button>`
               : '<p class="record-meta" data-testid="settings-read-only">Only the campaign owner can edit these settings.</p>'
           }
@@ -545,6 +548,43 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
     container
       .querySelector<HTMLButtonElement>('[data-testid="complete-session-zero"]')
       ?.addEventListener('click', () => void save(true));
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="settings-delete-campaign"]')
+      ?.addEventListener('click', () => {
+        if (candidate === null || busy) {
+          return;
+        }
+        void (async () => {
+          const accepted = await confirmInApp({
+            title: 'Delete campaign permanently?',
+            body: 'Permanently delete this campaign and remove its campaign records for all members? Characters keep their persistent inventory and cross-campaign history.',
+            confirmLabel: 'Delete campaign',
+            cancelLabel: 'Keep campaign',
+            testId: 'confirm-settings-delete-campaign',
+          });
+          if (!accepted) {
+            return;
+          }
+          busy = true;
+          error = null;
+          render();
+          try {
+            await deleteCampaign({
+              candidateId: candidate.candidateId,
+              campaignId,
+            });
+            shell.announce('Campaign deleted.');
+            navigate('/campaigns');
+          } catch (failure) {
+            busy = false;
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'Campaign could not be deleted.';
+            render();
+          }
+        })();
+      });
   }
 
   function render(): void {

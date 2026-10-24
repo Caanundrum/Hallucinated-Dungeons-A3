@@ -16,6 +16,7 @@ import {
 import {
   ARCHITECTURAL_ROOM_NOUNS,
   capitalizeLabel,
+  classifyNpcRoles,
   detectPremiseLocation,
   detectQuestHook,
   extractPremiseEntities,
@@ -366,11 +367,16 @@ function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string)
     new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(haystack());
   const withArticle = (label: string) => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
 
-  const validNpcs = continuity.namedNpcs.filter(
+  const { missingNpcs, presentNpcs } = classifyNpcRoles(continuity.namedNpcs, premise);
+  const nonRoomNpcs = continuity.namedNpcs.filter(
     (name) =>
       !ARCHITECTURAL_ROOM_NOUNS.has(name.toLowerCase()) &&
       !/\b(?:passage|sanctum|chamber|room|cellar|corridor|hall|vault|antechamber|alcove)\b/i.test(name),
   );
+  const validNpcs =
+    presentNpcs.length > 0
+      ? nonRoomNpcs.filter((name) => !missingNpcs.includes(name))
+      : nonRoomNpcs;
   const [firstNpc, ...otherNpcs] = validNpcs;
   if (firstNpc !== undefined) {
     npcLabel = firstNpc;
@@ -836,11 +842,9 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
   return pickLandmarkFamily('watchtower', seed);
 }
 
-/** Canonical interior grid — west chamber (cols 1–6) | door wall | east chamber (cols 7–10). */
+/** Canonical interior grid — dimensions 12×8 with seed-varied wall/door/spawn layout. */
 const INTERIOR_COLUMNS = 12;
 const INTERIOR_ROWS = 8;
-const INTERIOR_WALL_COLUMN = 6;
-const INTERIOR_DOOR_ROW = 4;
 
 function composeInterior(options: {
   readonly sceneId: string;
@@ -855,24 +859,42 @@ function composeInterior(options: {
   const columns = INTERIOR_COLUMNS;
   const rows = INTERIOR_ROWS;
   const cells = perimeterCells(columns, rows);
-  // West chamber spawn — always inside vision of west-wing props.
-  const spawn = { column: 3, row: 4 };
-  const wallColumn = INTERIOR_WALL_COLUMN;
-  const doorRow = INTERIOR_DOOR_ROW;
-  // Full interior-height dividing wall (rows 1..rows-2) with the door at (6, 4).
+  // Seed-varied interior layout so each campaign has a distinct wall, door, spawn, and NPC placement.
+  const wallColumn = 5 + (seed % 2);
+  const doorRow = 2 + ((seed >>> 2) % 4);
+  const spawnCol = Math.max(2, wallColumn - 2 - ((seed >>> 4) % 2));
+  const spawnRow = Math.max(2, Math.min(rows - 3, doorRow + (((seed >>> 6) % 3) - 1)));
+  const spawn = { column: spawnCol, row: spawnRow };
   const { edges, doorEdgeId } = eastDoorWall(wallColumn, doorRow, 1, rows - 2);
-  setTerrain(cells, 4, 5, 'difficult');
+  setTerrain(
+    cells,
+    Math.min(wallColumn, spawn.column + 1),
+    Math.min(rows - 2, spawn.row + 1),
+    'difficult',
+  );
 
   const lightId = `${options.sceneId}:light`;
   const coverId = `${options.sceneId}:cover`;
   const poiId = `${options.sceneId}:poi`;
   const chestId = `${options.sceneId}:east-chest`;
   const passageExitId = `${options.sceneId}:exit-passage`;
+  const lightPos = {
+    column: spawn.column,
+    row: spawn.row >= 3 ? spawn.row - 2 : spawn.row + 2,
+  };
+  const coverPos = {
+    column: Math.max(1, spawn.column - 1),
+    row: spawn.row >= 2 ? spawn.row - 1 : spawn.row + 1,
+  };
+  const poiPos = {
+    column: Math.min(wallColumn, spawn.column + 1),
+    row: spawn.row,
+  };
   const features: ComposedSceneFeature[] = [
     {
       objectId: lightId,
-      column: 3,
-      row: 2,
+      column: lightPos.column,
+      row: lightPos.row,
       label: family.lightLabel,
       referenceKind: 'lighting',
       objectKind: 'light',
@@ -881,8 +903,8 @@ function composeInterior(options: {
     },
     {
       objectId: coverId,
-      column: 2,
-      row: 2,
+      column: coverPos.column,
+      row: coverPos.row,
       label: family.coverLabel,
       referenceKind: 'cover',
       objectKind: 'cover',
@@ -891,8 +913,8 @@ function composeInterior(options: {
     },
     {
       objectId: poiId,
-      column: 4,
-      row: 4,
+      column: poiPos.column,
+      row: poiPos.row,
       label: family.poiLabel,
       referenceKind: family.poiRef,
       objectKind: family.poiKind,
@@ -902,8 +924,8 @@ function composeInterior(options: {
     // East chamber — behind the closed dividing door.
     {
       objectId: chestId,
-      column: 9,
-      row: 2,
+      column: Math.min(columns - 2, wallColumn + 3),
+      row: 2 + ((seed >>> 8) % 2),
       label: 'Sturdy oak chest',
       referenceKind: 'prop',
       objectKind: 'container',
@@ -912,8 +934,8 @@ function composeInterior(options: {
     },
     {
       objectId: passageExitId,
-      column: 9,
-      row: 5,
+      column: Math.min(columns - 2, wallColumn + 3),
+      row: 4 + ((seed >>> 9) % 2),
       label: family.exitLabel?.includes('Cellar') || /cellar|stairs|passage/i.test(family.exitLabel ?? '')
         ? (family.exitLabel ?? 'Cellar stairs')
         : 'Cellar stairs',
@@ -929,8 +951,8 @@ function composeInterior(options: {
   ) {
     features.push({
       objectId: `${options.sceneId}:service-counter`,
-      column: 4,
-      row: 2,
+      column: Math.min(wallColumn, spawn.column + 1),
+      row: lightPos.row,
       label: 'Service counter',
       referenceKind: 'prop',
       objectKind: 'container',
@@ -939,10 +961,19 @@ function composeInterior(options: {
     });
   }
   if (family.npcLabel !== null && family.npcLabel !== undefined && family.npcLabel.trim().length > 0) {
+    const npcCol = (seed >>> 10) % 2 === 0 ? Math.max(1, spawn.column - 1) : spawn.column;
+    const npcRow =
+      npcCol === spawn.column
+        ? spawn.row <= rows - 3
+          ? spawn.row + 1
+          : spawn.row - 1
+        : spawn.row <= rows - 3
+          ? spawn.row + 1
+          : spawn.row;
     features.push({
       objectId: `${options.sceneId}:npc-premise`,
-      column: 2,
-      row: 3,
+      column: npcCol,
+      row: npcRow,
       label: family.npcLabel,
       referenceKind: 'npc',
       objectKind: 'npc',

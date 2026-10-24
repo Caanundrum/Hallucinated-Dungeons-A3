@@ -478,6 +478,10 @@ export async function previewTableMove(options: {
   if (token === undefined) {
     throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
   }
+  const encounter = await loadEncounter(firestore, campaignId);
+  const inCombat = encounter !== null && encounter.status === 'active';
+  const effectiveBudgetFeet =
+    options.movementBudgetFeet ?? (inCombat ? DEFAULT_MOVEMENT_BUDGET_FEET : 600);
   return validateWalkPath({
     map,
     start: token.footprint.anchor,
@@ -489,7 +493,7 @@ export async function previewTableMove(options: {
       tinySlot: token.footprint.tinySlot,
       elevationFeet: token.footprint.elevationFeet,
     },
-    movementBudgetFeet: options.movementBudgetFeet ?? DEFAULT_MOVEMENT_BUDGET_FEET,
+    movementBudgetFeet: effectiveBudgetFeet,
     movementMode: 'walk',
     actorSeatId: seat.seatId,
   });
@@ -994,6 +998,8 @@ export async function acceptTableCommand(options: {
     if (token === undefined) {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
     }
+    const encounter = await loadEncounter(firestore, campaignId);
+    const inCombat = encounter !== null && encounter.status === 'active';
     const preview = validateWalkPath({
       map,
       start: token.footprint.anchor,
@@ -1005,7 +1011,7 @@ export async function acceptTableCommand(options: {
         tinySlot: token.footprint.tinySlot,
         elevationFeet: token.footprint.elevationFeet,
       },
-      movementBudgetFeet: DEFAULT_MOVEMENT_BUDGET_FEET,
+      movementBudgetFeet: inCombat ? DEFAULT_MOVEMENT_BUDGET_FEET : 600,
       movementMode: 'walk',
       actorSeatId: seat.seatId,
     });

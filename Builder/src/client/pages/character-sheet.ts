@@ -80,7 +80,15 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             classId: character.choices.classId,
             name: character.identity.name,
           });
+    const avatarOptions = character.avatarOptions ?? [];
     const basePrompt = character.appearancePrompt ?? '';
+    const crossHistoryItems = (character.crossCampaignHistory ?? []).map((entry) =>
+      entry.campaignName ? `[${entry.campaignName}] ${entry.summary}` : entry.summary,
+    );
+    const revisionItems = (character.revisions ?? [])
+      .map((rev) => rev.reason)
+      .filter((r) => r.trim().length > 0 && !/^Portrait updated/i.test(r));
+    const historyHighlights = [...crossHistoryItems, ...revisionItems].slice(-4);
     return `
       <section class="panel portrait-section" aria-labelledby="portrait-edit-heading" data-testid="character-portrait-panel">
         <h2 id="portrait-edit-heading">Portrait</h2>
@@ -96,15 +104,42 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             }
             ${
               credits > 0
-                ? `<label for="portrait-scar-note">Story scar note (appended to appearance, max ${MILESTONE_STORY_SCAR_MAX_LENGTH} characters)</label>
+                ? `<label for="portrait-scar-note">Level-up appearance update (alters your core portrait using your cross-campaign character history, max ${MILESTONE_STORY_SCAR_MAX_LENGTH} characters)</label>
                    <input id="portrait-scar-note" type="text" data-testid="portrait-scar-note"
                      maxlength="${MILESTONE_STORY_SCAR_MAX_LENGTH}" value="${escapeHtml(portraitScarDraft)}"
-                     placeholder="A burn across the left hand from the bell tower" />
+                     placeholder="A burn across the left hand from the bell tower, veteran cloak" />
                    <p class="record-meta">Current appearance: ${escapeHtml(basePrompt.length > 0 ? basePrompt : 'none recorded')}</p>
+                   ${
+                     historyHighlights.length > 0
+                       ? `<p class="record-meta">Cross-campaign character history included: ${escapeHtml(historyHighlights.join(' · '))}</p>`
+                       : ''
+                   }
                    <button type="button" data-testid="update-portrait" ${portraitBusy ? 'disabled' : ''}>
-                     ${portraitBusy ? 'Forging…' : 'Update portrait'}
+                     ${portraitBusy ? 'Forging 3 variations…' : 'Update portrait (Generates 3 Choices)'}
                    </button>`
-                : '<p class="record-meta">Reach a level-up milestone to earn a portrait update.</p>'
+                : '<p class="record-meta">Reach a level-up milestone to earn a portrait update that evolves your core look with 3 new variations using your cross-campaign character history.</p>'
+            }
+            ${
+              avatarOptions.length > 1
+                ? `<div class="portrait-options-picker" data-testid="character-portrait-options">
+                    <p class="record-meta"><b>Pick 1 of your 3 portrait variations:</b></p>
+                    <div class="portrait-options-grid">
+                      ${avatarOptions
+                        .map(
+                          (optionUrl, index) => `
+                        <button type="button"
+                          class="portrait-option-card${portraitUrl === optionUrl ? ' selected' : ''}"
+                          data-portrait-option="${escapeHtml(optionUrl)}"
+                          data-testid="character-portrait-option-${index}"
+                          aria-pressed="${portraitUrl === optionUrl ? 'true' : 'false'}">
+                          <img src="${escapeHtml(optionUrl)}" alt="Portrait option ${index + 1}" width="88" height="88" />
+                          <span>Option ${index + 1}${portraitUrl === optionUrl ? ' (Selected)' : ''}</span>
+                        </button>`,
+                        )
+                        .join('')}
+                    </div>
+                  </div>`
+                : ''
             }
           </div>
         </div>
@@ -139,17 +174,19 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
               candidateId: candidate.candidateId,
               request: {
                 appearancePrompt: validation.text.slice(0, APPEARANCE_PROMPT_MAX_LENGTH),
+                pronouns: character.identity.pronouns,
                 characterId: character.characterId,
               },
             });
             character = {
               ...character,
               avatarUrl: result.avatarUrl,
+              ...(result.avatarOptions !== undefined ? { avatarOptions: result.avatarOptions } : {}),
               appearancePrompt: result.appearancePrompt,
               milestonePortraitCredits: result.milestonePortraitCredits ?? 0,
             };
             portraitScarDraft = '';
-            shell.announce('Portrait updated.');
+            shell.announce('Portrait updated with 3 variations.');
           } catch (failure) {
             portraitError =
               failure instanceof ApiFailure ? failure.message : 'Portrait could not be updated.';
@@ -159,6 +196,45 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           }
         })();
       });
+    container.querySelectorAll<HTMLButtonElement>('[data-portrait-option]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void (async () => {
+          const selectedUrl = btn.dataset.portraitOption ?? '';
+          if (candidate === null || character === null || portraitBusy || selectedUrl.length === 0) {
+            return;
+          }
+          portraitBusy = true;
+          portraitError = null;
+          renderSignedIn();
+          try {
+            const result = await generatePortrait({
+              candidateId: candidate.candidateId,
+              request: {
+                appearancePrompt: character.appearancePrompt ?? '',
+                pronouns: character.identity.pronouns,
+                characterId: character.characterId,
+                selectedAvatarUrl: selectedUrl,
+              },
+            });
+            character = {
+              ...character,
+              avatarUrl: result.avatarUrl,
+              ...(result.avatarOptions !== undefined ? { avatarOptions: result.avatarOptions } : {}),
+              appearancePrompt: result.appearancePrompt,
+              milestonePortraitCredits:
+                result.milestonePortraitCredits ?? character.milestonePortraitCredits ?? 0,
+            };
+            shell.announce('Portrait choice updated.');
+          } catch (failure) {
+            portraitError =
+              failure instanceof ApiFailure ? failure.message : 'Portrait choice could not be saved.';
+          } finally {
+            portraitBusy = false;
+            renderSignedIn();
+          }
+        })();
+      });
+    });
   }
 
   function renderLoadoutEditor(): string {
@@ -208,18 +284,31 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
         ${
           spellOptions.length > 0
             ? `<h3>Prepared / known spells</h3>
-          <p class="record-meta">Choose up to ${spellLimit}.</p>
+          <p class="record-meta">Choose up to ${spellLimit}. Hover or focus a spell for its stats and description.</p>
           <ul class="record-list" data-testid="loadout-spell-options">
             ${spellOptions
               .map((spell) => {
                 const checked = loadoutSpellIds.includes(spell.id);
                 const locked = !checked && loadoutSpellIds.length >= spellLimit;
-                return `<li><label>
-                  <input type="checkbox" data-loadout-spell="${escapeHtml(spell.id)}"
-                    data-testid="loadout-spell-${escapeHtml(spell.id)}"
-                    ${checked ? 'checked' : ''} ${locked || loadoutBusy ? 'disabled' : ''} />
-                  ${escapeHtml(spell.label)}
-                </label></li>`;
+                return `<li class="has-breakdown" tabindex="0">
+                  <label>
+                    <input type="checkbox" data-loadout-spell="${escapeHtml(spell.id)}"
+                      data-testid="loadout-spell-${escapeHtml(spell.id)}"
+                      ${checked ? 'checked' : ''} ${locked || loadoutBusy ? 'disabled' : ''} />
+                    <span>
+                      <b>${escapeHtml(spell.label)}</b>
+                      ${spell.summary ? `<span class="option-summary">${escapeHtml(spell.summary)}</span>` : ''}
+                    </span>
+                  </label>
+                  ${
+                    spell.summary
+                      ? `<span class="stat-tooltip spell-hover-tooltip" role="tooltip">
+                          <span class="stat-tooltip-title">${escapeHtml(spell.label)}</span>
+                          <span>${escapeHtml(spell.summary)}</span>
+                        </span>`
+                      : ''
+                  }
+                </li>`;
               })
               .join('')}
           </ul>`
@@ -286,6 +375,83 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </section>`;
   }
 
+  function renderNextStepsPanel(): string {
+    if (character === null) {
+      return '';
+    }
+    return `
+      <section class="panel next-steps-banner" aria-labelledby="next-steps-heading" data-testid="character-next-steps-banner">
+        <h2 id="next-steps-heading">What to do next with ${escapeHtml(character.identity.name)}</h2>
+        <p class="record-meta">
+          Your character is forged and stored in your Character Vault. Here is how to bring them to a Campaign:
+        </p>
+        <ol class="record-list">
+          <li>
+            <span class="record-note">1. Join an existing Campaign</span>
+            <span class="record-meta">Have an invite link or code from a friend or Dungeon Master? Open Campaigns to join and seat ${escapeHtml(character.identity.name)} (recommended within ±2 levels of the party).</span>
+          </li>
+          <li>
+            <span class="record-note">2. Create your own Campaign</span>
+            <span class="record-meta">Start a new Campaign, pick 1 of 3 rough campaign outlines, and seat ${escapeHtml(character.identity.name)} as the founding adventurer.</span>
+          </li>
+          <li>
+            <span class="record-note">3. Compare &amp; equip your gear</span>
+            <span class="record-meta">Use the <b>Equip / Unequip</b> buttons in Equipment below to compare Armor Class and weapon stats at any time. Your inventory travels with your character across campaigns.</span>
+          </li>
+        </ol>
+        <div class="actions">
+          <a class="button" href="/campaigns" data-link data-testid="next-step-browse-campaigns">Browse or Join a Campaign</a>
+          <a class="button secondary" href="/campaigns/new" data-link data-testid="next-step-create-campaign">Create a Campaign</a>
+          <a class="button secondary" href="/characters" data-link data-testid="next-step-vault">Return to Character Vault</a>
+        </div>
+      </section>`;
+  }
+
+  function renderCampaignHistoryPanel(): string {
+    if (character === null) {
+      return '';
+    }
+    const crossHistory = character.crossCampaignHistory ?? [];
+    const revisions = character.revisions ?? [];
+    const mergedHistory = [
+      ...crossHistory.map((entry) => ({
+        at: entry.at,
+        label: entry.campaignName
+          ? `[${entry.campaignName}] ${entry.summary}`
+          : entry.summary,
+      })),
+      ...revisions.map((rev) => ({
+        at: rev.at,
+        label: rev.reason,
+      })),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    return `
+      <section class="panel" aria-labelledby="campaign-history-heading" data-testid="character-campaign-history">
+        <h2 id="campaign-history-heading">Cross-Campaign Character History &amp; Persistent Inventory</h2>
+        <p class="record-meta">
+          ${escapeHtml(character.identity.name)} is not locked to a single campaign and can join or drop between different Campaigns (up to 5 active Campaigns at once).
+          Cross-campaign history, equipment, gold, and progression travel with this character across tables. Joining a table where the party's average level differs by more than ±2 levels will warn you before seating.
+        </p>
+        ${
+          mergedHistory.length > 0
+            ? `<ul class="record-list" data-testid="character-history-list">
+                ${mergedHistory
+                  .slice(-10)
+                  .reverse()
+                  .map(
+                    (item) =>
+                      `<li data-testid="character-history-item">
+                        <span class="record-note">${escapeHtml(item.label)}</span>
+                        <span class="record-meta">${escapeHtml(new Date(item.at).toLocaleString())}</span>
+                      </li>`,
+                  )
+                  .join('')}
+              </ul>`
+            : `<p class="record-meta" data-testid="character-history-empty">No cross-campaign milestones or ledger events recorded yet.</p>`
+        }
+      </section>`;
+  }
+
   function renderSignedIn(): void {
     if (error !== null) {
       container.innerHTML = `
@@ -324,6 +490,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             ? `<p class="record-meta">${escapeHtml(character.identity.appearance)}</p>`
             : ''
         }
+        ${renderNextStepsPanel()}
         <section class="panel" aria-labelledby="identity-edit-heading">
           <h2 id="identity-edit-heading">Identity</h2>
           ${
@@ -356,11 +523,11 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           }
         </section>
         ${renderPortraitPanel()}
+        ${renderCampaignHistoryPanel()}
         <section class="panel" aria-labelledby="correction-mode-heading" data-testid="character-correction-mode">
           <h2 id="correction-mode-heading">Correction mode</h2>
           <p class="record-meta">
-            Hit point, spell slot, resource, and equipment controls are off-table ledger corrections.
-            Unlocking requires an audit reason. Relock when you are done — these are not play declarations at the campaign table.
+            Off-table ledger audit notes require an audit reason. Relock when you are done — consumables and HP changes happen during play at a Campaign table.
           </p>
           ${
             correctionUnlocked
@@ -399,7 +566,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           }
         </section>
         ${renderLoadoutEditor()}
-        ${renderCharacterSheet(character.sheet, { interactive: correctionUnlocked })}
+        ${renderCharacterSheet(character.sheet, { interactive: true })}
         <p class="record-meta">Built from the SRD 5.2.1 character creation rules.</p>
         <p class="record-meta" data-testid="character-archive-scope">
           Archive and restore are post-Alpha. Delete removes this character permanently.
@@ -447,9 +614,7 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
     bindIdentityControls();
     bindPortraitControls();
     bindLoadoutControls();
-    if (correctionUnlocked) {
-      bindSheetTrackers();
-    }
+    bindSheetTrackers();
   }
 
   async function persistTrackers(

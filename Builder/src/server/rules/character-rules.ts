@@ -48,6 +48,7 @@ import {
   MAGIC_INITIATE_SPELLS_KNOWN,
   ORIGIN_FEAT_OPTIONS,
   ORIGIN_FEAT_SUMMARIES,
+  describeSpell,
   findArmor,
   findBackground,
   findClass,
@@ -164,7 +165,7 @@ export function emptyChoices(): CharacterChoices {
     classId: null,
     backgroundId: null,
     speciesId: null,
-    abilityMethod: 'standard-array',
+    abilityMethod: 'point-buy',
     baseAbilityScores: {},
     rolledScorePool: null,
     abilityRollAttempts: 0,
@@ -218,6 +219,9 @@ export function coerceStoredChoices(choices: CharacterChoices): CharacterChoices
     weaponMasteryWeaponNames: Array.isArray(choices.weaponMasteryWeaponNames)
       ? choices.weaponMasteryWeaponNames
       : base.weaponMasteryWeaponNames,
+    ...(Array.isArray(choices.unequippedItemNames)
+      ? { unequippedItemNames: choices.unequippedItemNames }
+      : {}),
     identity: choices.identity ?? base.identity,
     rolledScorePool: Array.isArray(choices.rolledScorePool) ? choices.rolledScorePool : null,
     abilityRollAttempts:
@@ -419,9 +423,35 @@ export { MAX_ABILITY_ROLL_ATTEMPTS };
 export function buildCatalog(): RulesCatalog {
   return {
     rulesVersion: RULES_VERSION,
-    classes: CLASSES.map((entry) => ({ id: entry.id, label: entry.label, summary: entry.summary })),
-    species: SPECIES.map((entry) => ({ id: entry.id, label: entry.label, summary: entry.summary })),
-    backgrounds: BACKGROUNDS.map((entry) => ({ id: entry.id, label: entry.label, summary: entry.summary })),
+    classes: CLASSES.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      summary: `${entry.summary} · Hit Die d${entry.hitDie} · Saves: ${entry.savingThrowProficiencies.map((ability) => ABILITY_LABELS[ability]).join(', ')} · Choose ${entry.skillChoiceCount} skills · Armor: ${entry.armorProficiencies.join(', ') || 'None'} · Weapons: ${entry.weaponProficiencies.join(', ') || 'None'}`,
+    })),
+    species: SPECIES.map((entry) => {
+      const traitNames = entry.features.map((feature) => feature.name).join(', ');
+      const subtypeSummary = entry.choices
+        .map(
+          (choice) =>
+            `${choice.label}: ${choice.from.map((opt) => `${opt.label} (${opt.summary.replace(/^Grants:\s*/i, '')})`).join(' | ')}`,
+        )
+        .join(' · ');
+      return {
+        id: entry.id,
+        label: entry.label,
+        summary: `${entry.summary} · Size: ${entry.size} · Speed: ${entry.speed} ft.${entry.senses.length > 0 ? ` · ${entry.senses.join(', ')}` : ''}${entry.hitPointsPerLevel > 0 ? ` · +${entry.hitPointsPerLevel} HP/level` : ''} · Traits: ${traitNames}${subtypeSummary.length > 0 ? ` · ${subtypeSummary}` : ''}`,
+      };
+    }),
+    backgrounds: BACKGROUNDS.map((entry) => {
+      const abilities = entry.abilityOptions.map((ability) => ABILITY_LABELS[ability]).join(', ');
+      const skills = entry.skillIds.map((id) => findSkill(id)?.label ?? id).join(', ');
+      const featSummary = ORIGIN_FEAT_SUMMARIES[entry.originFeat] ?? '';
+      return {
+        id: entry.id,
+        label: entry.label,
+        summary: `${entry.summary} · Abilities (+2/+1 or +1/+1/+1): ${abilities} · Skills: ${skills} · Tool: ${entry.toolProficiency} · Origin Feat: ${entry.originFeat}${featSummary.length > 0 ? ` (${featSummary})` : ''}`,
+      };
+    }),
     skills: SKILLS.map((entry) => ({ id: entry.id, label: entry.label, ability: entry.ability })),
   };
 }
@@ -1006,11 +1036,26 @@ function deriveArmorClass(
   modifiers: Record<Ability, number>,
   choices: CharacterChoices,
 ): DerivedValue {
+  const unequippedSet = new Set(
+    (choices.unequippedItemNames ?? []).map((name) => name.trim().toLowerCase()),
+  );
   const armorIds = classEquipment?.armorIds ?? [];
   const bodyArmor = armorIds
     .map((id) => findArmor(id))
-    .filter((armor): armor is NonNullable<typeof armor> => armor !== null && armor.category !== 'shield');
-  const shield = armorIds.some((id) => findArmor(id)?.category === 'shield');
+    .filter(
+      (armor): armor is NonNullable<typeof armor> =>
+        armor !== null &&
+        armor.category !== 'shield' &&
+        !unequippedSet.has(armor.label.toLowerCase()),
+    );
+  const shield = armorIds.some((id) => {
+    const armor = findArmor(id);
+    return (
+      armor !== null &&
+      armor.category === 'shield' &&
+      !unequippedSet.has(armor.label.toLowerCase())
+    );
+  });
   const wearingArmor = bodyArmor.length > 0;
 
   if (classRecord.unarmoredDefenseAbility !== null && bodyArmor.length === 0) {
@@ -1324,7 +1369,114 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     { label: 'Perception', amount: perception?.bonus.value ?? modifiers.wisdom, ruleId: 'skill.perception' },
   ]);
 
-  const { equipment } = combineStartingEquipment(classEquipment, backgroundEquipment);
+  const { equipment: rawEquipment } = combineStartingEquipment(classEquipment, backgroundEquipment);
+  const derivedArmorClass = deriveArmorClass(classRecord, classEquipment, modifiers, choices);
+  const unequippedSet = new Set(
+    (choices.unequippedItemNames ?? []).map((name) => name.trim().toLowerCase()),
+  );
+  const hasEquippedShield = rawEquipment.some((entry) => {
+    const lower = entry.name.trim().toLowerCase();
+    return lower === 'shield' && !unequippedSet.has(lower);
+  });
+  const equipment = rawEquipment.map((entry) => {
+    const lower = entry.name.trim().toLowerCase();
+    const matchedArmor =
+      ARMOR.find(
+        (armor) =>
+          armor.label.toLowerCase() === lower ||
+          (armor.category !== 'shield' && lower.includes(armor.label.toLowerCase())),
+      ) ?? null;
+    const matchedWeapon =
+      WEAPONS.find((weapon) => weapon.label.toLowerCase() === lower) ?? null;
+
+    if (matchedArmor !== null && matchedArmor.category === 'shield') {
+      const isEquipped = !unequippedSet.has(lower);
+      const acIfToggled = isEquipped ? derivedArmorClass.value - 2 : derivedArmorClass.value + 2;
+      return {
+        ...entry,
+        equipped: isEquipped,
+        itemKind: 'shield' as const,
+        statsSummary: 'Shield · +2 AC',
+        comparisonNote: isEquipped
+          ? `Equipped · Effective AC ${derivedArmorClass.value} (AC ${acIfToggled} if unequipped)`
+          : `Unequipped · If equipped: AC ${acIfToggled} (+2 AC vs current ${derivedArmorClass.value})`,
+      };
+    }
+
+    if (matchedArmor !== null) {
+      const isEquipped = !unequippedSet.has(lower);
+      const dexRule =
+        matchedArmor.dexterityCap === null
+          ? '+ DEX'
+          : matchedArmor.dexterityCap === 0
+            ? '(no DEX bonus)'
+            : `+ DEX (max +${matchedArmor.dexterityCap})`;
+      const strRule =
+        matchedArmor.strengthRequirement !== null
+          ? ` · Str ${matchedArmor.strengthRequirement} req`
+          : '';
+      const stealthRule = matchedArmor.stealthDisadvantage ? ' · Stealth Disadvantage' : '';
+      const catLabel =
+        matchedArmor.category.charAt(0).toUpperCase() + matchedArmor.category.slice(1);
+      const dexApplied =
+        matchedArmor.dexterityCap === null
+          ? modifiers.dexterity
+          : Math.min(modifiers.dexterity, matchedArmor.dexterityCap);
+      const defenseBonus = hasFightingStyle(choices, 'defense') ? 1 : 0;
+      const shieldBonus = hasEquippedShield ? 2 : 0;
+      const acWithThisArmor = matchedArmor.baseArmorClass + dexApplied + defenseBonus + shieldBonus;
+      const unarmoredBase =
+        classRecord.unarmoredDefenseAbility !== null
+          ? 10 + modifiers.dexterity + modifiers[classRecord.unarmoredDefenseAbility]
+          : 10 + modifiers.dexterity;
+      const unarmoredAc =
+        unarmoredBase + (classRecord.id === 'monk' ? 0 : shieldBonus);
+      const delta = acWithThisArmor - derivedArmorClass.value;
+      const deltaLabel = delta > 0 ? `+${delta} AC` : delta < 0 ? `${delta} AC` : '±0 AC';
+      return {
+        ...entry,
+        equipped: isEquipped,
+        itemKind: 'armor' as const,
+        statsSummary: `${catLabel} Armor · Base AC ${matchedArmor.baseArmorClass} ${dexRule}${strRule}${stealthRule}`,
+        comparisonNote: isEquipped
+          ? `Equipped · Effective AC ${derivedArmorClass.value} (Unarmored: AC ${unarmoredAc})`
+          : `Unequipped · If equipped: AC ${acWithThisArmor} (${deltaLabel} vs current AC ${derivedArmorClass.value})`,
+      };
+    }
+
+    if (matchedWeapon !== null) {
+      const isEquipped = !unequippedSet.has(lower);
+      const ranged = matchedWeapon.category.endsWith('ranged');
+      const finesse = matchedWeapon.properties.includes('Finesse');
+      const ability: Ability = ranged
+        ? 'dexterity'
+        : finesse && modifiers.dexterity > modifiers.strength
+          ? 'dexterity'
+          : 'strength';
+      const proficient = classIsProficientWithWeapon(classRecord, matchedWeapon);
+      const archeryBonus = ranged && hasFightingStyle(choices, 'archery') ? 2 : 0;
+      const atkBonus =
+        modifiers[ability] + (proficient ? proficiencyBonus.value : 0) + archeryBonus;
+      const dmgMod = modifiers[ability];
+      const dmgModStr = dmgMod > 0 ? `+${dmgMod}` : dmgMod < 0 ? `${dmgMod}` : '';
+      const mastery = WEAPON_MASTERY_BY_NAME[matchedWeapon.label];
+      const catLabel = matchedWeapon.category
+        .replace('-', ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        ...entry,
+        equipped: isEquipped,
+        itemKind: 'weapon' as const,
+        statsSummary: `${catLabel} · ${atkBonus >= 0 ? `+${atkBonus}` : atkBonus} to hit · ${matchedWeapon.damage}${dmgModStr} ${matchedWeapon.damageType}${matchedWeapon.properties.length > 0 ? ` · ${matchedWeapon.properties.join(', ')}` : ''}${mastery !== undefined ? ` · Mastery: ${mastery}` : ''}`,
+        comparisonNote: isEquipped ? 'Equipped' : 'Unequipped (Carried in pack)',
+      };
+    }
+
+    return {
+      ...entry,
+      itemKind: 'gear' as const,
+    };
+  });
 
   const features = [
     ...classRecord.features
@@ -1609,7 +1761,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     hitPoints,
     hitPointsCurrent: hitPoints.value,
     hitDice: `1d${classRecord.hitDie}`,
-    armorClass: deriveArmorClass(classRecord, classEquipment, modifiers, choices),
+    armorClass: derivedArmorClass,
     initiative: value(initiativeComponents),
     speed: value([{ label: `${speciesRecord.label} Speed`, amount: speciesRecord.speed, ruleId: `species.${speciesRecord.id}.speed` }]),
     passivePerception,
@@ -1654,8 +1806,16 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
       label: featLabel,
       cantripsKnown: MAGIC_INITIATE_CANTRIPS_KNOWN,
       spellsKnown: MAGIC_INITIATE_SPELLS_KNOWN,
-      cantripOptions: spellsForList(listId, 0).map((spell) => ({ id: spell.id, label: spell.label })),
-      spellOptions: spellsForList(listId, 1).map((spell) => ({ id: spell.id, label: spell.label })),
+      cantripOptions: spellsForList(listId, 0).map((spell) => ({
+        id: spell.id,
+        label: spell.label,
+        summary: describeSpell(spell),
+      })),
+      spellOptions: spellsForList(listId, 1).map((spell) => ({
+        id: spell.id,
+        label: spell.label,
+        summary: describeSpell(spell),
+      })),
     };
   };
 
@@ -1714,10 +1874,12 @@ export function buildDraftOptions(choices: CharacterChoices): DraftOptions {
                     cantripOptions: spellsForList(classRecord.spellcasting.spellListId, 0).map((spell) => ({
                       id: spell.id,
                       label: spell.label,
+                      summary: describeSpell(spell),
                     })),
                     spellOptions: spellsForList(classRecord.spellcasting.spellListId, 1).map((spell) => ({
                       id: spell.id,
                       label: spell.label,
+                      summary: describeSpell(spell),
                     })),
                   },
           },

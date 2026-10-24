@@ -563,10 +563,13 @@ function paintSemanticSvg(
          </g>`
       : '';
     featureClipSeq += 1;
+    const boundDoor = isExit ? doorBoundToExitFeature(map, feature) : null;
+    const doorOwnedExit = boundDoor !== null;
     const actorRing = isActor && !isNpcPortrait
       ? `<circle class="map-actor-ring" cx="${x}" cy="${y}" r="11" fill="none" stroke="${visual.family === 'family_creature' ? '#e07060' : '#f2d38a'}" stroke-width="1.5" stroke-opacity="0.9" pointer-events="none" aria-hidden="true" />`
       : '';
-    const exitChevron = isExit
+    // Door edges already render on the wall boundary; do not draw a duplicate floating door token over the floor.
+    const exitChevron = isExit && !doorOwnedExit
       ? visual.family === 'family_exit_vertical'
         ? `<g class="map-exit-vertical" pointer-events="none" aria-hidden="true">
              <polygon points="${x},${y - 11} ${x + 6},${y - 2} ${x - 6},${y - 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" />
@@ -584,13 +587,15 @@ function paintSemanticSvg(
     const propDiamond = !hasPaintedArt && isProp && !isContainer
       ? `<polygon class="map-poi-core map-prop-diamond" points="${x},${y - 7} ${x + 6},${y} ${x},${y + 7} ${x - 6},${y}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
       : '';
-    const coreDisc = hasPaintedArt
-      ? !isNpcPortrait
-        ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="8" fill="${isExit || isActor ? fill : 'transparent'}" fill-opacity="${isExit || isActor ? '0.85' : '0'}" stroke="rgba(248, 231, 176, 0.28)" stroke-width="1" />`
-        : ''
-      : !isContainer && !isProp && !isNpcPortrait
-        ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
-        : '';
+    const coreDisc = doorOwnedExit
+      ? ''
+      : hasPaintedArt
+        ? !isNpcPortrait
+          ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="8" fill="${isExit || isActor ? fill : 'transparent'}" fill-opacity="${isExit || isActor ? '0.85' : '0'}" stroke="rgba(248, 231, 176, 0.28)" stroke-width="1" />`
+          : ''
+        : !isContainer && !isProp && !isNpcPortrait
+          ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
+          : '';
     const testId = isExit
       ? 'map-exit-marker'
       : isActor
@@ -600,8 +605,6 @@ function paintSemanticSvg(
           : isContainer
             ? 'map-container-marker'
             : 'map-poi-marker';
-    const boundDoor = isExit ? doorBoundToExitFeature(map, feature) : null;
-    const doorOwnedExit = boundDoor !== null;
     const boundEdgeAttr =
       boundDoor !== null ? ` data-bound-edge="${escapeHtml(boundDoor.edgeId)}"` : '';
     const cleanLabel = feature.label.replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '').trim();

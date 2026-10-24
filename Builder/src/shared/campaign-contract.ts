@@ -139,6 +139,12 @@ export function isAdventureTemplate(value: unknown): value is AdventureTemplate 
 /** Maximum concurrent active player seats at one table. */
 export const MAX_ACTIVE_PLAYERS = 4;
 
+/** Maximum concurrent active campaigns an owner or character can have running at once. */
+export const MAX_ACTIVE_CAMPAIGNS = 5;
+
+/** Recommended level tolerance when joining a campaign table (±2 levels). */
+export const CAMPAIGN_JOIN_LEVEL_TOLERANCE = 2;
+
 /** Table visibility: public tables appear in the open lobby; private tables are invite-only. */
 export const CAMPAIGN_VISIBILITY = ['public', 'private'] as const;
 export type CampaignVisibility = (typeof CAMPAIGN_VISIBILITY)[number];
@@ -239,6 +245,10 @@ export interface CampaignProjection {
   readonly updatedAt: string;
   /** Not started until Session Zero is recorded; then Active or Suspended. */
   readonly sessionStatusLabel?: string;
+  /** Recommended starting level for the campaign (from outline/blueprint). */
+  readonly recommendedStartLevel?: number;
+  /** Average character level currently seated at the campaign table. */
+  readonly partyAverageLevel?: number | null;
   /**
    * True when this account owns the campaign. Owning a campaign never grants
    * ownership of another player's character.
@@ -251,6 +261,7 @@ export interface PublicTableProjection {
   readonly campaignId: string;
   readonly name: string;
   readonly summary: string;
+  readonly ownerAccountId?: string;
   readonly ownerDisplayLabel: string;
   readonly directorIdentityLabel: string;
   readonly directorPersonalityLabel: string;
@@ -258,6 +269,8 @@ export interface PublicTableProjection {
   readonly maxActivePlayers: typeof MAX_ACTIVE_PLAYERS;
   readonly passwordProtected: boolean;
   readonly updatedAt: string;
+  readonly recommendedStartLevel?: number;
+  readonly partyAverageLevel?: number | null;
 }
 
 export interface PublicTableListProjection {

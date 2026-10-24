@@ -17,12 +17,16 @@ export interface GeneratePortraitRequest {
   readonly appearancePrompt: string;
   readonly ancestryId?: string | null;
   readonly classId?: string | null;
+  readonly pronouns?: string | null;
   readonly characterId?: string | null;
   readonly draftId?: string | null;
+  readonly selectedAvatarUrl?: string | null;
 }
 
 export interface GeneratePortraitResponse {
   readonly avatarUrl: string;
+  readonly avatarOptions?: readonly string[];
+  readonly portraitForged?: boolean;
   readonly appearancePrompt: string;
   readonly source: 'generated' | 'archetype';
   readonly milestonePortraitCredits?: number;

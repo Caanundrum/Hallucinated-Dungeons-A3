@@ -137,6 +137,18 @@ export function materializeContractExits<
     const existingOriented = edges.find(
       (edge) => edge.kind === 'door' && edge.orientation === place.orientation,
     );
+    if (
+      existingOriented !== undefined &&
+      Math.abs(existingOriented.column - options.spawn.column) +
+        Math.abs(existingOriented.row - options.spawn.row) <=
+        4
+    ) {
+      place = {
+        column: existingOriented.column,
+        row: existingOriented.row,
+        orientation: existingOriented.orientation,
+      };
+    }
     const doorState =
       existingOriented !== undefined
         ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')

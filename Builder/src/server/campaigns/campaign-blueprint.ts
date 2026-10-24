@@ -102,7 +102,7 @@ const LEADING_STOPWORDS = new Set([
   'that', 'these', 'those', 'you', 'your', 'we', 'our', 'beware', 'meet', 'find', 'seek',
   'rescue', 'follow', 'investigate', 'deliver', 'help', 'stop', 'search', 'visit', 'enter', 'ask',
   'talk', 'speak', 'track', 'hunt', 'protect', 'guard', 'save', 'recover', 'retrieve', 'escape',
-  'defeat', 'meanwhile', 'once', 'every', 'each', 'all', 'some', 'many', 'few',
+  'meanwhile', 'once', 'every', 'each', 'all', 'some', 'many', 'few',
 ]);
 
 const PLACE_NOUNS = new Set([
@@ -837,13 +837,37 @@ export function buildCampaignBlueprint(
   const hints = actTemplateHints(location.locationKind);
 
   const hook = questHook ?? 'the trouble that brought the party together';
-  const npc = entities.npcs[0] ?? null;
+  const { presentNpcs } = classifyNpcRoles(entities.npcs, premise);
+  const npc = presentNpcs[0] ?? null;
   const place = entities.places[0] ?? null;
   const exit = entities.exits[0] ?? null;
   const firstProp = entities.props[0] ?? null;
   const secondProp = entities.props[1] ?? null;
   const setting = place ?? location.locationPhrase ?? 'the opening scene';
   const exitPhrase = exit !== null ? `the ${exit}` : 'the first exit';
+
+  const FALLBACK_OPENING_TEMPLATES = [
+    'exterior_village_street',
+    'exterior_forest_path',
+    'interior_inn_common',
+    'landmark_foggy_docks',
+    'landmark_courtyard_ruins',
+    'exterior_marsh_trail',
+    'interior_workshop',
+  ] as const;
+  let seedAcc = 2166136261;
+  const seedKey = `${campaignName}:${premise}`;
+  for (let i = 0; i < seedKey.length; i += 1) {
+    seedAcc ^= seedKey.charCodeAt(i);
+    seedAcc = Math.imul(seedAcc, 16777619) >>> 0;
+  }
+  const resolvedOpeningTemplate =
+    hints.opening ?? FALLBACK_OPENING_TEMPLATES[seedAcc % FALLBACK_OPENING_TEMPLATES.length]!;
+  const resolvedInvestigationTemplate =
+    hints.investigation ??
+    (resolvedOpeningTemplate.startsWith('exterior_')
+      ? 'landmark_courtyard_ruins'
+      : 'interior_stone_crypt');
 
   const act1: CampaignBlueprintBeat = {
     act: 1,
@@ -895,8 +919,8 @@ export function buildCampaignBlueprint(
     hook,
     entities,
     setting,
-    openingTemplate: hints.opening ?? 'interior_inn_common',
-    investigationTemplate: hints.investigation ?? 'interior_stone_crypt',
+    openingTemplate: resolvedOpeningTemplate,
+    investigationTemplate: resolvedInvestigationTemplate,
     premise,
   });
 
@@ -961,7 +985,8 @@ export async function draftCampaignBlueprintWithAi(
       `Premise: ${sanitizeWotcProductIdentity(
         [options.summary, options.premise].filter(Boolean).join('\n\n') || options.summary,
       )}`,
-      'Return JSON only with shape: {"centralTension": string, "milestoneTitles": string[], "climaxObjectives": string[]}',
+      'Identify who the friendly or neutral contact NPC in the opening scene is ("openingContactNpc" — a proper character name and title only, never an action phrase or the climax monster/boss) versus who the main antagonist or boss threat is ("climaxAntagonist").',
+      'Return JSON only with shape: {"centralTension": string, "openingContactNpc": string, "climaxAntagonist": string, "milestoneTitles": string[], "climaxObjectives": string[]}',
     ].join('\n');
 
     const response = await ai.models.generateContent({
@@ -979,6 +1004,8 @@ export async function draftCampaignBlueprintWithAi(
     }
     const parsed = JSON.parse(rawText) as {
       centralTension?: unknown;
+      openingContactNpc?: unknown;
+      climaxAntagonist?: unknown;
       milestoneTitles?: unknown;
       climaxObjectives?: unknown;
     };
@@ -986,27 +1013,162 @@ export async function draftCampaignBlueprintWithAi(
       typeof parsed.centralTension === 'string' && parsed.centralTension.trim().length > 0
         ? sanitizeWotcProductIdentity(parsed.centralTension.trim())
         : base.centralTension;
+    const openingContactNpc =
+      typeof parsed.openingContactNpc === 'string' && parsed.openingContactNpc.trim().length > 0
+        ? sanitizeWotcProductIdentity(parsed.openingContactNpc.trim())
+        : null;
     const titles = Array.isArray(parsed.milestoneTitles) ? parsed.milestoneTitles : [];
     const objectives = Array.isArray(parsed.climaxObjectives) ? parsed.climaxObjectives : [];
-    const milestones = (base.milestones ?? []).map((m, idx) => ({
-      ...m,
-      title:
-        typeof titles[idx] === 'string' && titles[idx].trim().length > 0
-          ? sanitizeWotcProductIdentity(titles[idx].trim())
-          : m.title,
-      climaxObjective:
-        typeof objectives[idx] === 'string' && objectives[idx].trim().length > 0
-          ? sanitizeWotcProductIdentity(objectives[idx].trim())
-          : m.climaxObjective,
-    }));
+    const milestones = (base.milestones ?? []).map((m, idx) => {
+      const updatedRooms =
+        idx === 0 && openingContactNpc !== null
+          ? m.rooms.map((r, rIdx) =>
+              rIdx === 0 && r.npcs.length > 0
+                ? {
+                    ...r,
+                    npcs: r.npcs.map((npc, nIdx) =>
+                      nIdx === 0
+                        ? {
+                            ...npc,
+                            name: openingContactNpc,
+                          }
+                        : npc,
+                    ),
+                  }
+                : r,
+            )
+          : m.rooms;
+      return {
+        ...m,
+        title:
+          typeof titles[idx] === 'string' && titles[idx].trim().length > 0
+            ? sanitizeWotcProductIdentity(titles[idx].trim())
+            : m.title,
+        climaxObjective:
+          typeof objectives[idx] === 'string' && objectives[idx].trim().length > 0
+            ? sanitizeWotcProductIdentity(objectives[idx].trim())
+            : m.climaxObjective,
+        rooms: updatedRooms,
+      };
+    });
     return {
       ...base,
       ...(centralTension !== undefined ? { centralTension } : {}),
+      ...(openingContactNpc !== null
+        ? { namedNpcs: [openingContactNpc, ...base.namedNpcs.filter((n) => n !== openingContactNpc)] }
+        : {}),
       milestones,
     };
   } catch {
     return base;
   }
+}
+
+/**
+ * Generates 3 distinct Rough Campaign Outlines for the campaign creator to choose from.
+ * Each option offers a different opening approach/environment and narrative angle on the premise.
+ */
+export async function draftCampaignBlueprintOptionsWithAi(
+  options: BuildCampaignBlueprintOptions & {
+    readonly env?: Record<string, string | undefined>;
+  },
+): Promise<readonly CampaignBlueprint[]> {
+  const primary = await draftCampaignBlueprintWithAi(options);
+  const baseHook = primary.questHook ?? 'the central mystery';
+  const basePlace = primary.namedPlaces[0] ?? options.name ?? 'the frontier';
+  const baseNpc =
+    classifyNpcRoles(primary.namedNpcs, [options.summary, options.premise].filter(Boolean).join(' '))
+      .presentNpcs[0] ?? 'a local informant';
+
+  const variant2: CampaignBlueprint = {
+    ...primary,
+    centralTension: sanitizeWotcProductIdentity(
+      `Approach ${basePlace} from the outskirts and uncover who is pulling the strings behind ${baseHook}.`,
+    ),
+    acts: [
+      {
+        act: 1,
+        title: `Act I — On the Road into ${capitalizeLabel(basePlace)}`,
+        currentActGoal: `Arrive along the road into ${basePlace}, meet ${baseNpc}, and spot the first sign of ${baseHook}.`,
+        keyClue: primary.acts[0]?.keyClue ?? `Roadside trace of ${baseHook}`,
+        nextSceneTrigger: `The party follows the lead from the approach road into the heart of ${basePlace}.`,
+        templateIdHint: 'exterior_village_street',
+      },
+      {
+        ...(primary.acts[1] ?? primary.acts[0]!),
+        act: 2,
+        title: `Act II — Shadows Beneath ${capitalizeLabel(basePlace)}`,
+        templateIdHint: 'landmark_courtyard_ruins',
+      },
+      {
+        ...(primary.acts[2] ?? primary.acts[0]!),
+        act: 3,
+        title: `Act III — The Reckoning at ${capitalizeLabel(basePlace)}`,
+      },
+    ],
+    milestones: (primary.milestones ?? []).map((m, idx) =>
+      idx === 0
+        ? {
+            ...m,
+            rooms: m.rooms.map((r, rIdx) =>
+              rIdx === 0
+                ? {
+                    ...r,
+                    templateId: 'exterior_village_street',
+                    title: `${capitalizeLabel(basePlace)} — Approach Road`,
+                  }
+                : r,
+            ),
+          }
+        : m,
+    ),
+  };
+
+  const variant3: CampaignBlueprint = {
+    ...primary,
+    centralTension: sanitizeWotcProductIdentity(
+      `Gather whispers in the wilds bordering ${basePlace} before striking at the heart of ${baseHook}.`,
+    ),
+    acts: [
+      {
+        act: 1,
+        title: `Act I — Gathering Whispers Near ${capitalizeLabel(basePlace)}`,
+        currentActGoal: `Rendezvous with ${baseNpc} at the edge of ${basePlace} where rumors of ${baseHook} first surfaced.`,
+        keyClue: primary.acts[0]?.keyClue ?? `Hidden sign of ${baseHook}`,
+        nextSceneTrigger: `The party commits to tracking the threat into ${basePlace}.`,
+        templateIdHint: 'exterior_forest_path',
+      },
+      {
+        ...(primary.acts[1] ?? primary.acts[0]!),
+        act: 2,
+        title: `Act II — The Trail Through the Outskirts`,
+        templateIdHint: 'landmark_foggy_docks',
+      },
+      {
+        ...(primary.acts[2] ?? primary.acts[0]!),
+        act: 3,
+        title: `Act III — Final Confrontation`,
+      },
+    ],
+    milestones: (primary.milestones ?? []).map((m, idx) =>
+      idx === 0
+        ? {
+            ...m,
+            rooms: m.rooms.map((r, rIdx) =>
+              rIdx === 0
+                ? {
+                    ...r,
+                    templateId: 'exterior_forest_path',
+                    title: `${capitalizeLabel(basePlace)} — Forest Crossroads`,
+                  }
+                : r,
+            ),
+          }
+        : m,
+    ),
+  };
+
+  return [primary, variant2, variant3];
 }
 
 /** Act 1 until the party has left a scene, then Act 2, then Act 3. */

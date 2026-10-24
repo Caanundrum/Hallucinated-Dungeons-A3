@@ -20,10 +20,13 @@ import {
   CHARACTER_TEXT_MAX_LENGTH,
   MAX_ABILITY_ROLL_ATTEMPTS,
   POINT_BUY_BUDGET,
+  POINT_BUY_COSTS,
   STANDARD_ARRAY,
   WIZARD_STEPS,
   WIZARD_STEP_LABELS,
+  abilityModifier,
   availableScoresFromPool,
+  formatModifier,
   pointBuyCost,
   pointBuyScoresForAbility,
   type Ability,
@@ -43,7 +46,6 @@ import {
 } from '../api.js';
 import {
   APPEARANCE_PROMPT_MAX_LENGTH,
-  archetypePortraitUrl,
   validateAppearancePrompt,
 } from '../../shared/portrait-contract.js';
 import { getAccount, subscribeAccount } from '../account-session.js';
@@ -379,8 +381,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
     inFlightChoices = next;
     if (silent) {
       syncIdentityStepDomInPlace();
-    } else {
-      render();
     }
     try {
       current = await saveDraft({
@@ -450,7 +450,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return raw.filter((item) => item.step !== 'identity');
     }
     if (!raw.some((item) => item.step === 'identity')) {
-      return [...raw, { step: 'identity', message: 'Enter a character name.' }];
+      return [...raw, { step: 'identity', code: 'MISSING_NAME', message: 'Enter a character name.' }];
     }
     return raw;
   }
@@ -638,6 +638,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly maxChoose?: number;
     /** Prefix for per-option test ids (defaults to `check`). */
     readonly optionTestIdPrefix?: string;
+    /** When true, renders a hover/focus popup tooltip with the full spell/feature stats & description. */
+    readonly tooltipSummaries?: boolean;
   }): string {
     const visibleSelected = options.selected.filter((id) =>
       options.entries.some((entry) => entry.id === id),
@@ -652,8 +654,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
             const isSelected = visibleSelected.includes(entry.id);
             // Cap still blocks over-select; busy must NOT disable — rapid picks queue via pendingChoices.
             const disabled = atCap && !isSelected;
+            const hasTooltip = options.tooltipSummaries === true && entry.summary !== undefined;
             return `
-          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${busy && isSelected ? ' is-saving' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''}>
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${busy && isSelected ? ' is-saving' : ''}${hasTooltip ? ' has-breakdown spell-option-with-tooltip' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''} ${hasTooltip ? 'tabindex="0"' : ''}>
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
               data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
@@ -663,9 +666,36 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 ? ''
                 : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`
             }
+            ${
+              hasTooltip
+                ? `<span class="stat-tooltip spell-hover-tooltip" role="tooltip">
+                     <span class="stat-tooltip-title">${escapeHtml(entry.label)}</span>
+                     <span>${escapeHtml(entry.summary ?? '')}</span>
+                   </span>`
+                : ''
+            }
           </label>`;
           })
           .join('')}
+      </div>`;
+  }
+
+  function topQuickStartBanner(): string {
+    if (current === null) {
+      return '';
+    }
+    return `
+      <div class="wizard-side-actions wizard-top-quick-actions" data-testid="wizard-top-quick-actions">
+        <button type="button" class="secondary" data-testid="open-quick-start">
+          In a hurry? Use a ready-made character
+        </button>
+        ${
+          tutorialDismissed()
+            ? `<button type="button" class="secondary" data-testid="open-tutorial">
+                 Character Creation Tour (4 steps)
+               </button>`
+            : ''
+        }
       </div>`;
   }
 
@@ -677,18 +707,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const detail = state.options.classDetail;
 
     return `
-      <div class="wizard-side-actions">
-        <button type="button" class="secondary" data-testid="open-quick-start">
-          In a hurry? Use a ready-made character
-        </button>
-        ${
-          tutorialDismissed()
-            ? `<button type="button" class="secondary" data-testid="open-tutorial">
-                 New to tabletop RPGs? Short tour
-               </button>`
-            : ''
-        }
-      </div>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.class)}</p>
       ${optionList({
         name: 'class',
@@ -959,6 +977,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         entries: options.detail.cantripOptions,
         selected: options.cantripIds,
         maxChoose: options.detail.cantripsKnown,
+        tooltipSummaries: true,
       })}
       <h4>Level 1 spell</h4>
       ${checkboxList({
@@ -967,6 +986,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
         entries: options.detail.spellOptions,
         selected: options.spellIds,
         maxChoose: options.detail.spellsKnown,
+        tooltipSummaries: true,
       })}`;
   }
 
@@ -981,32 +1001,38 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const pool = choices.rolledScorePool;
     const attempts = choices.abilityRollAttempts;
     const rollsLeft = Math.max(0, MAX_ABILITY_ROLL_ATTEMPTS - attempts);
-    const assignedList = ABILITIES.map((ability) => scores[ability]).filter(
+    const effectivePointBuyScores: Partial<Record<Ability, number>> =
+      method === 'point-buy'
+        ? {
+            strength: scores.strength ?? 8,
+            dexterity: scores.dexterity ?? 8,
+            constitution: scores.constitution ?? 8,
+            intelligence: scores.intelligence ?? 8,
+            wisdom: scores.wisdom ?? 8,
+            charisma: scores.charisma ?? 8,
+          }
+        : scores;
+    const assignedList = ABILITIES.map((ability) => effectivePointBuyScores[ability]).filter(
       (score): score is number => score !== undefined,
     );
     const pointBuySpent = pointBuyCost(assignedList) ?? 0;
+    const pointBuyRemaining = Math.max(0, POINT_BUY_BUDGET - pointBuySpent);
 
     return `
       <p class="step-helper">${escapeHtml(STEP_HELPERS.abilities)}</p>
       <h3>Ability-generation method</h3>
       <p>
-        Standard array is the “I trust the recipe” option. Point buy is for people who enjoy
-        spreadsheets. Rolled scores use 4d6 drop lowest — you get ${MAX_ABILITY_ROLL_ATTEMPTS} rolls
-        max, and each new roll replaces the previous one (no going back).
+        Point buy gives you ${POINT_BUY_BUDGET} points to customize your six Ability Scores (starting at 8) with live cost calculations.
+        Rolled scores use 4d6 drop lowest — you get ${MAX_ABILITY_ROLL_ATTEMPTS} rolls max, and each new roll replaces the previous one.
       </p>
       ${optionList({
         name: 'ability-method',
         testId: 'ability-method-options',
         entries: [
           {
-            id: 'standard-array',
-            label: 'Standard array',
-            summary: `Assign ${STANDARD_ARRAY.join(', ')} across the six Ability Scores. Each number is used once.`,
-          },
-          {
             id: 'point-buy',
             label: 'Point buy',
-            summary: `Spend ${POINT_BUY_BUDGET} points on scores from 8 to 15. Options that blow the budget are not offered.`,
+            summary: `Spend ${POINT_BUY_BUDGET} points on scores from 8 to 15. Every ability starts at 8 (0 pts), and you see live point costs as you adjust.`,
           },
           {
             id: 'rolled',
@@ -1014,8 +1040,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
             summary: `Up to ${MAX_ABILITY_ROLL_ATTEMPTS} rolls. Each roll replaces the last — earlier pools are gone.`,
           },
         ],
-        selected: method,
+        selected: method === 'standard-array' ? 'point-buy' : method,
       })}
+      <label class="sr-only" aria-hidden="true">
+        <input type="radio" name="ability-method" value="standard-array"
+          ${method === 'standard-array' ? 'checked' : ''}
+          data-testid="option-standard-array" tabindex="-1" />
+      </label>
       ${
         method !== 'rolled'
           ? ''
@@ -1043,9 +1074,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
       }
       ${
         method === 'point-buy'
-          ? `<p class="nav-hint" data-testid="point-buy-budget">
-              Points spent: ${pointBuySpent} of ${POINT_BUY_BUDGET}. Remaining: ${Math.max(0, POINT_BUY_BUDGET - pointBuySpent)}.
-            </p>`
+          ? `<div class="panel point-buy-dashboard" data-testid="point-buy-budget">
+              <div class="point-buy-summary-row">
+                <span><b>Points left to spend:</b> <strong data-testid="point-buy-remaining">${pointBuyRemaining}</strong> / ${POINT_BUY_BUDGET}</span>
+                <span><b>Points spent:</b> ${pointBuySpent} of ${POINT_BUY_BUDGET}. Remaining: ${pointBuyRemaining}.</span>
+              </div>
+              <p class="record-meta">
+                <b>Point Buy Cost Table:</b> Score 8 = 0 pts · 9 = 1 pt · 10 = 2 pts · 11 = 3 pts · 12 = 4 pts · 13 = 5 pts · 14 = 7 pts (+2 pts) · 15 = 9 pts (+2 pts).
+              </p>
+            </div>`
           : ''
       }
       <h3>Assign Ability Scores</h3>
@@ -1057,24 +1094,91 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ${ABILITIES.map((ability) => {
           const values =
             method === 'point-buy'
-              ? pointBuyScoresForAbility(scores, ability)
+              ? pointBuyScoresForAbility(effectivePointBuyScores, ability)
               : method === 'standard-array'
                 ? availableScoresFromPool([...STANDARD_ARRAY], scores, ability)
                 : availableScoresFromPool(pool ?? [], scores, ability);
           const current = scores[ability];
+          const displayScore = method === 'point-buy' ? (current ?? 8) : current;
+          const bgBonus = choices.backgroundAbilityBonuses[ability] ?? 0;
+          const totalScore = (displayScore ?? 8) + bgBonus;
+          const modLabel = formatModifier(abilityModifier(totalScore));
+          const currentCost = POINT_BUY_COSTS[displayScore ?? 8] ?? 0;
+          const nextScore = (displayScore ?? 8) + 1;
+          const nextCostTotal = POINT_BUY_COSTS[nextScore];
+          const nextStepCost =
+            nextCostTotal !== undefined ? nextCostTotal - currentCost : null;
+          const canIncrement =
+            method === 'point-buy' &&
+            nextStepCost !== null &&
+            nextStepCost <= pointBuyRemaining &&
+            nextScore <= 15;
+          const prevScore = (displayScore ?? 8) - 1;
+          const prevCostTotal = POINT_BUY_COSTS[prevScore];
+          const prevStepRefund =
+            prevCostTotal !== undefined ? currentCost - prevCostTotal : null;
+          const canDecrement = method === 'point-buy' && (displayScore ?? 8) > 8;
+
           return `
-          <label>
-            <span>${escapeHtml(ABILITY_LABELS[ability])}</span>
-            <select data-ability="${ability}" data-testid="ability-select-${ability}">
-              <option value="">—</option>
-              ${values
-                .map(
-                  (score) =>
-                    `<option value="${score}" ${current === score ? 'selected' : ''}>${score}</option>`,
-                )
-                .join('')}
-            </select>
-          </label>`;
+          <div class="ability-assign-card" data-testid="ability-card-${ability}">
+            <label for="ability-select-${ability}">
+              <span class="ability-assign-title">${escapeHtml(ABILITY_LABELS[ability])}</span>
+            </label>
+            <div class="ability-stepper-row">
+              ${
+                method === 'point-buy'
+                  ? `<button type="button" class="secondary compact point-buy-step-btn"
+                      data-point-buy-ability="${ability}" data-point-buy-delta="-1"
+                      data-testid="point-buy-dec-${ability}"
+                      ${!canDecrement ? 'disabled' : ''}
+                      aria-label="Decrease ${escapeHtml(ABILITY_LABELS[ability])}">−</button>`
+                  : ''
+              }
+              <select id="ability-select-${ability}" data-ability="${ability}" data-testid="ability-select-${ability}">
+                ${method === 'point-buy' ? '' : '<option value="">—</option>'}
+                ${values
+                  .map(
+                    (score) =>
+                      `<option value="${score}" ${displayScore === score ? 'selected' : ''}>${score}</option>`,
+                  )
+                  .join('')}
+              </select>
+              ${
+                method === 'point-buy'
+                  ? `<button type="button" class="secondary compact point-buy-step-btn"
+                      data-point-buy-ability="${ability}" data-point-buy-delta="1"
+                      data-testid="point-buy-inc-${ability}"
+                      ${!canIncrement ? 'disabled' : ''}
+                      aria-label="Increase ${escapeHtml(ABILITY_LABELS[ability])}">+</button>`
+                  : ''
+              }
+            </div>
+            ${
+              method === 'point-buy'
+                ? `<div class="point-buy-stat-math" data-testid="point-buy-math-${ability}">
+                    <span class="record-meta">
+                      Base <b>${displayScore ?? 8}</b>${bgBonus > 0 ? ` + Bg <b>+${bgBonus}</b>` : ''} = <b>${totalScore}</b> (${modLabel}) · Spent: <b>${currentCost} pt${currentCost === 1 ? '' : 's'}</b>
+                    </span>
+                    <span class="record-meta">
+                      ${
+                        nextStepCost !== null
+                          ? canIncrement
+                            ? `+1 (to ${nextScore}) costs ${nextStepCost} pt${nextStepCost === 1 ? '' : 's'}`
+                            : `+1 (to ${nextScore}) needs ${nextStepCost} pt${nextStepCost === 1 ? '' : 's'} (${pointBuyRemaining} left)`
+                          : 'Max base score (15)'
+                      }
+                      ${
+                        prevStepRefund !== null
+                          ? ` · −1 refunds ${prevStepRefund} pt${prevStepRefund === 1 ? '' : 's'}`
+                          : ' · Min base (8)'
+                      }
+                    </span>
+                  </div>`
+                : displayScore !== undefined
+                  ? `<span class="record-meta">Base <b>${displayScore}</b>${bgBonus > 0 ? ` + Bg <b>+${bgBonus}</b>` : ''} = <b>${totalScore}</b> (${modLabel})</span>`
+                  : ''
+            }
+          </div>`;
         }).join('')}
       </div>`
       }`;
@@ -1179,6 +1283,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 entries: detail.spellcasting.cantripOptions,
                 selected: state.draft.choices.cantripIds,
                 maxChoose: detail.spellcasting.cantripsKnown,
+                tooltipSummaries: true,
               })
         }
         <h3>Level 1 Spells</h3>
@@ -1193,6 +1298,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 entries: detail.spellcasting.spellOptions,
                 selected: state.draft.choices.spellIds,
                 maxChoose: detail.spellcasting.spellsAvailable,
+                tooltipSummaries: true,
               })
             : `
         <h3>Spellbook</h3>
@@ -1203,6 +1309,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           entries: detail.spellcasting.spellOptions,
           selected: state.draft.choices.spellbookIds,
           maxChoose: detail.spellcasting.spellbookSize,
+          tooltipSummaries: true,
         })}
         <h3>Prepared Spells</h3>
         <p>Choose ${detail.spellcasting.spellsAvailable} spells from your spellbook to prepare today.</p>
@@ -1217,6 +1324,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 ),
                 selected: state.draft.choices.spellIds,
                 maxChoose: detail.spellcasting.spellsAvailable,
+                tooltipSummaries: true,
               })
         }`
         }`;
@@ -1327,37 +1435,113 @@ export function mountCharacterCreatePage(host: PageHost): void {
     if (state === null) {
       return '';
     }
-    const choices = displayChoices();
     const forged = state.draft.avatarUrl ?? null;
-    const previewUrl =
-      forged ??
-      archetypePortraitUrl({
-        ancestryId: choices.speciesId,
-        classId: choices.classId,
-        name: choices.identity.name,
-      });
+    const avatarOptions = state.draft.avatarOptions ?? (forged !== null ? [forged] : []);
+    const portraitForged = state.draft.portraitForged === true || avatarOptions.length > 0;
     const promptValue = portraitPromptValue();
     return `
       <section class="panel portrait-section" data-testid="portrait-section" aria-labelledby="portrait-heading">
         <h3 id="portrait-heading">Portrait &amp; Physical Appearance</h3>
         <div class="portrait-section-body">
-          <img class="portrait-preview" data-testid="portrait-preview" src="${escapeHtml(previewUrl)}"
-            alt="${forged ? 'Forged character portrait' : 'Default archetype portrait'}" width="128" height="128" />
+          ${
+            forged !== null
+              ? `<img class="portrait-preview" data-testid="portrait-preview" src="${escapeHtml(forged)}"
+                  alt="Forged character portrait" width="128" height="128" />`
+              : `<div class="portrait-preview portrait-preview-placeholder" data-testid="portrait-preview" role="img" aria-label="Portrait not yet forged">?</div>`
+          }
           <div class="portrait-section-fields">
             <label for="character-physical-appearance">Physical Appearance (optional, max ${APPEARANCE_PROMPT_MAX_LENGTH} characters)</label>
             <textarea id="character-physical-appearance" data-testid="identity-physical-appearance"
               rows="3" maxlength="${APPEARANCE_PROMPT_MAX_LENGTH}"
-              placeholder="Braided auburn beard, soot-stained leather, a notch in the left ear…">${escapeHtml(promptValue)}</textarea>
+              placeholder="Braided auburn beard, soot-stained leather, a notch in the left ear…"
+              ${portraitForged ? 'readonly' : ''}>${escapeHtml(promptValue)}</textarea>
             <p class="record-meta" data-testid="portrait-char-count">${promptValue.length}/${APPEARANCE_PROMPT_MAX_LENGTH}</p>
             <p class="message error" data-testid="portrait-error" role="alert" ${portraitError === null ? 'hidden' : ''}>${escapeHtml(portraitError ?? '')}</p>
-            <button type="button" class="button" data-testid="forge-portrait" ${portraitBusy || busy ? 'disabled' : ''}>
-              ${portraitBusy ? 'Forging…' : 'Forge Portrait'}
+            <button type="button" class="button" data-testid="forge-portrait" ${portraitBusy || busy || portraitForged ? 'disabled' : ''}>
+              ${
+                portraitBusy
+                  ? 'Forging 3 Portraits…'
+                  : portraitForged
+                    ? '3 Portraits Forged — Pick 1 Below'
+                    : 'Forge Portrait (Generates 3 Choices)'
+              }
             </button>
-            <p class="record-meta">${forged ? 'Portrait saved with this draft.' : 'Showing the curated default until you forge one.'}
-              Medieval fantasy only.</p>
+            ${
+              avatarOptions.length > 1
+                ? `<div class="portrait-options-picker" data-testid="portrait-options-picker">
+                    <p class="record-meta"><b>Choose 1 of your 3 forged portraits:</b> (You can evolve your core portrait when you level up.)</p>
+                    <div class="portrait-options-grid">
+                      ${avatarOptions
+                        .map(
+                          (optionUrl, index) => `
+                        <button type="button" class="portrait-option-card${forged === optionUrl ? ' selected' : ''}"
+                          data-portrait-option="${escapeHtml(optionUrl)}"
+                          data-testid="portrait-option-${index}"
+                          aria-pressed="${forged === optionUrl ? 'true' : 'false'}">
+                          <img src="${escapeHtml(optionUrl)}" alt="Portrait option ${index + 1}" width="88" height="88" />
+                          <span>Option ${index + 1}${forged === optionUrl ? ' (Selected)' : ''}</span>
+                        </button>`,
+                        )
+                        .join('')}
+                    </div>
+                  </div>`
+                : ''
+            }
           </div>
         </div>
       </section>`;
+  }
+
+  function syncPortraitSectionInPlace(): void {
+    const portraitSection = container.querySelector<HTMLElement>('[data-testid="portrait-section"]');
+    if (portraitSection !== null) {
+      portraitSection.outerHTML = renderPortraitSection();
+      bindPortraitSectionEvents();
+    }
+    const tokenPreview = container.querySelector<HTMLElement>('[data-testid="identity-token-preview"]');
+    if (tokenPreview !== null) {
+      tokenPreview.innerHTML = renderIdentityTokenPreviewInner();
+    }
+  }
+
+  async function selectPortraitOption(selectedUrl: string): Promise<void> {
+    if (candidate === null || current === null || portraitBusy) {
+      return;
+    }
+    portraitBusy = true;
+    portraitError = null;
+    syncPortraitSectionInPlace();
+    try {
+      const choices = displayChoices();
+      const result = await generatePortrait({
+        candidateId: candidate.candidateId,
+        request: {
+          appearancePrompt: portraitPromptValue(),
+          ancestryId: choices.speciesId,
+          classId: choices.classId,
+          pronouns: choices.identity.pronouns,
+          draftId: current.draft.draftId,
+          selectedAvatarUrl: selectedUrl,
+        },
+      });
+      current = {
+        ...current,
+        draft: {
+          ...current.draft,
+          avatarUrl: result.avatarUrl,
+          ...(result.avatarOptions !== undefined ? { avatarOptions: result.avatarOptions } : {}),
+          portraitForged: true,
+          appearancePrompt: result.appearancePrompt,
+        },
+      };
+      shell.announce('Portrait choice updated.');
+    } catch (failure) {
+      portraitError =
+        failure instanceof ApiFailure ? failure.message : 'That portrait choice could not be saved.';
+    } finally {
+      portraitBusy = false;
+      syncPortraitSectionInPlace();
+    }
   }
 
   async function forgePortrait(): Promise<boolean> {
@@ -1367,12 +1551,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const validation = validateAppearancePrompt(portraitPromptValue());
     if (!validation.ok) {
       portraitError = validation.message;
-      render();
+      syncPortraitSectionInPlace();
       return false;
     }
     portraitBusy = true;
     portraitError = null;
-    render();
+    syncPortraitSectionInPlace();
     try {
       const choices = displayChoices();
       const result = await generatePortrait({
@@ -1381,6 +1565,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           appearancePrompt: validation.text,
           ancestryId: choices.speciesId,
           classId: choices.classId,
+          pronouns: choices.identity.pronouns,
           draftId: current.draft.draftId,
         },
       });
@@ -1389,6 +1574,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
         draft: {
           ...current.draft,
           avatarUrl: result.avatarUrl,
+          ...(result.avatarOptions !== undefined ? { avatarOptions: result.avatarOptions } : {}),
+          portraitForged: true,
           appearancePrompt: result.appearancePrompt,
         },
       };
@@ -1403,7 +1590,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return false;
     } finally {
       portraitBusy = false;
-      render();
+      syncPortraitSectionInPlace();
     }
   }
 
@@ -1422,7 +1609,16 @@ export function mountCharacterCreatePage(host: PageHost): void {
               ${readiness
                 .map(
                   (item) =>
-                    `<li data-testid="readiness-blocker">${escapeHtml(item.message)}</li>`,
+                    `<li data-testid="readiness-blocker" class="unresolved-jump-row">
+                      <span>${escapeHtml(item.message)}</span>
+                      ${
+                        item.step !== 'identity'
+                          ? `<button type="button" class="secondary compact" data-goto-step="${escapeHtml(item.step)}" data-testid="goto-step-${escapeHtml(item.step)}">
+                              Go to ${escapeHtml(WIZARD_STEP_LABELS[item.step])}
+                            </button>`
+                          : ''
+                      }
+                    </li>`,
                 )
                 .join('')}
             </ul>`
@@ -1458,6 +1654,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
     );
     if (readinessPanel !== null) {
       readinessPanel.innerHTML = renderIdentityReadinessSummaryInner();
+      readinessPanel.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = btn.dataset.gotoStep as WizardStep;
+          if (!WIZARD_STEPS.includes(target) || busy) {
+            return;
+          }
+          activeStep = target;
+          error = null;
+          render();
+          scrollToWizardTop();
+        });
+      });
     }
     const navStatusEl = container.querySelector<HTMLElement>('[data-testid="wizard-nav-status"]');
     if (navStatusEl !== null) {
@@ -1514,14 +1722,19 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${
         state.draft.unresolved.some((item) => item.step !== 'identity')
           ? `<p class="message notice" data-testid="final-review-incomplete">
-              Mechanics are still incomplete. Finish earlier steps before treating this sheet as final.
+              Mechanics are still incomplete. Click any button below to jump straight to that step and fix it.
             </p>
             <ul class="record-list" data-testid="final-review-unresolved">
               ${state.draft.unresolved
                 .filter((item) => item.step !== 'identity')
                 .map(
                   (item) =>
-                    `<li data-testid="final-review-unresolved-item">${escapeHtml(item.message)}</li>`,
+                    `<li data-testid="final-review-unresolved-item" class="unresolved-jump-row">
+                      <span>${escapeHtml(item.message)}</span>
+                      <button type="button" class="secondary compact" data-goto-step="${escapeHtml(item.step)}">
+                        Fix in ${escapeHtml(WIZARD_STEP_LABELS[item.step])}
+                      </button>
+                    </li>`,
                 )
                 .join('')}
             </ul>`
@@ -1530,7 +1743,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${
         state.draft.sheet === null
           ? '<p class="empty-state">Finish Class, Background, and Species to preview the sheet.</p>'
-          : renderCharacterSheet(state.draft.sheet)
+          : renderCharacterSheet(state.draft.sheet, { interactive: true })
       }`;
   }
 
@@ -1651,10 +1864,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '';
     }
     return `
-      <div class="message notice" data-testid="tutorial-ask" role="region" aria-label="Tutorial offer">
-        <span>New to tabletop or RPG character sheets? A short tour explains the steps without changing any rules.</span>
+      <div class="message notice" data-testid="tutorial-ask" role="region" aria-label="Character Creation Tour offer">
+        <span><b>Character Creation Tour:</b> New to building an adventurer? This 4-step tour walks through Class, Background, Species, and Ability Scores (separate from the Home page platform tour).</span>
         <div class="actions message-actions">
-          <button type="button" data-testid="tutorial-ask-yes">Show me the tour</button>
+          <button type="button" data-testid="tutorial-ask-yes">Show me the character creation tour</button>
           <button type="button" class="secondary" data-testid="tutorial-ask-no">No thanks</button>
         </div>
       </div>`;
@@ -1709,7 +1922,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
           // Flush visible identity fields before create so a typed name that has
           // not yet fired `change` still counts (and avoid a blur→save race).
           const foundation = latestChoices();
-          const identity: CharacterChoices['identity'] = {
+          const identity: {
+            -readonly [K in keyof CharacterChoices['identity']]: CharacterChoices['identity'][K];
+          } = {
             ...foundation.identity,
             ...(localIdentityDraft ?? {}),
           };
@@ -2451,6 +2666,127 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ?.addEventListener('click', () => {
         void forgePortrait();
       });
+    container.querySelectorAll<HTMLButtonElement>('[data-portrait-option]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const optionUrl = btn.dataset.portraitOption ?? '';
+        if (optionUrl.length > 0) {
+          void selectPortraitOption(optionUrl);
+        }
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-point-buy-ability]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const foundation = latestChoices();
+        const ability = btn.dataset.pointBuyAbility as Ability;
+        const delta = Number(btn.dataset.pointBuyDelta ?? '0');
+        if (!ABILITIES.includes(ability) || (delta !== 1 && delta !== -1)) {
+          return;
+        }
+        const scores: Partial<Record<Ability, number>> = {};
+        for (const ab of ABILITIES) {
+          scores[ab] = foundation.baseAbilityScores[ab] ?? 8;
+        }
+        const currentScore = scores[ability] ?? 8;
+        const nextScore = currentScore + delta;
+        const legal = pointBuyScoresForAbility(scores, ability);
+        if (!legal.includes(nextScore)) {
+          return;
+        }
+        scores[ability] = nextScore;
+        void commitChoices({
+          ...foundation,
+          abilityMethod: 'point-buy',
+          baseAbilityScores: scores,
+        });
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.gotoStep as WizardStep;
+        if (!WIZARD_STEPS.includes(target) || busy) {
+          return;
+        }
+        activeStep = target;
+        error = null;
+        render();
+        scrollToWizardTop();
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-sheet-equip]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const itemName = btn.dataset.equipItemName ?? '';
+        if (itemName.length === 0 || busy) {
+          return;
+        }
+        const foundation = latestChoices();
+        const currentUnequipped = new Set(foundation.unequippedItemNames ?? []);
+        if (currentUnequipped.has(itemName)) {
+          currentUnequipped.delete(itemName);
+        } else {
+          currentUnequipped.add(itemName);
+        }
+        void commitChoices({
+          ...foundation,
+          unequippedItemNames: [...currentUnequipped],
+        });
+      });
+    });
+  }
+
+  function bindPortraitSectionEvents(): void {
+    const physicalAppearance = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="identity-physical-appearance"]',
+    );
+    physicalAppearance?.addEventListener('input', () => {
+      portraitPromptText = physicalAppearance.value;
+      const validation = validateAppearancePrompt(physicalAppearance.value);
+      const errorNode = container.querySelector<HTMLElement>('[data-testid="portrait-error"]');
+      const countNode = container.querySelector<HTMLElement>('[data-testid="portrait-char-count"]');
+      if (countNode !== null) {
+        countNode.textContent = `${physicalAppearance.value.length}/${APPEARANCE_PROMPT_MAX_LENGTH}`;
+      }
+      portraitError = validation.ok ? null : validation.message;
+      if (errorNode !== null) {
+        errorNode.textContent = portraitError ?? '';
+        errorNode.hidden = portraitError === null;
+      }
+      if (identityDebounceTimer !== null) {
+        window.clearTimeout(identityDebounceTimer);
+      }
+      identityDebounceTimer = window.setTimeout(() => {
+        if (current === null || !isPageMountCurrent(container, mountToken)) {
+          return;
+        }
+        const foundation = latestChoices();
+        const trimmedAppearance = physicalAppearance.value.slice(0, CHARACTER_TEXT_MAX_LENGTH);
+        if (foundation.identity.appearance === trimmedAppearance) {
+          return;
+        }
+        void commitChoices(
+          {
+            ...foundation,
+            identity: { ...foundation.identity, appearance: trimmedAppearance },
+          },
+          { silentDom: true },
+        );
+      }, 400);
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="forge-portrait"]')
+      ?.addEventListener('click', () => {
+        void forgePortrait();
+      });
+    container.querySelectorAll<HTMLButtonElement>('[data-portrait-option]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const optionUrl = btn.dataset.portraitOption ?? '';
+        if (optionUrl.length > 0) {
+          void selectPortraitOption(optionUrl);
+        }
+      });
+    });
   }
 
   function captureFocus(): {
@@ -2593,37 +2929,29 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const state = current;
     const focus = captureFocus();
 
-    container.innerHTML = `
-      <div class="page page-wide create-carousel-page">
-        <h1 data-testid="create-heading">Create a character</h1>
-        <p class="tagline">
-          Progress through three stages — Archetype, Foundation, and Identity. Local steps sit under the active stage.
-        </p>
-        <p class="wizard-coach" data-testid="one-draft-disclosure">
-          Alpha keeps one draft at a time. Starting a new character from the Vault discards this draft
-          after you confirm.
-        </p>
-        ${
-          error === null
-            ? ''
-            : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>
-               ${
-                 state === null
-                   ? `<div class="actions">
-                        <button type="button" data-testid="retry-open-draft">Retry</button>
-                        <a href="/characters" data-link>Back to the Character Vault</a>
-                      </div>`
-                   : ''
-               }`
-        }
-        ${tutorialAskBanner()}
-        ${state === null && error === null ? '<p class="empty-state">Opening your draft…</p>' : ''}
-        ${state === null ? '' : stepTrain()}
-        ${
-          state === null
-            ? ''
-            : `
-        <div class="wizard-layout wizard-carousel-layout">
+    const errorMarkup =
+      error === null
+        ? ''
+        : `<div class="message error" role="alert" tabindex="-1" data-testid="create-error">${escapeHtml(error)}</div>
+           ${
+             state === null
+               ? `<div class="actions">
+                    <button type="button" data-testid="retry-open-draft">Retry</button>
+                    <a href="/characters" data-link>Back to the Character Vault</a>
+                  </div>`
+               : ''
+           }`;
+    const topBannersMarkup = `
+      ${errorMarkup}
+      ${tutorialAskBanner()}
+      ${topQuickStartBanner()}
+      ${state === null && error === null ? '<p class="empty-state">Opening your draft…</p>' : ''}`;
+    const stepTrainMarkup = state === null ? '' : stepTrain();
+    const layoutMarkup =
+      state === null
+        ? ''
+        : `
+        <div class="wizard-layout wizard-carousel-layout${activeStep === 'identity' ? ' wizard-carousel-layout--identity' : ''}">
           <section class="panel wizard-step-panel wizard-carousel-panel" aria-labelledby="step-heading" data-testid="wizard-carousel-panel">
             <p class="carousel-stage-kicker" data-testid="carousel-stage-kicker">${escapeHtml(carouselStageForStep(activeStep).label)} · ${escapeHtml(carouselStageForStep(activeStep).summary)}</p>
             ${
@@ -2635,12 +2963,44 @@ export function mountCharacterCreatePage(host: PageHost): void {
             ${renderStepBody()}
             ${wizardNav()}
           </section>
-          ${liveSheetPreview()}
-        </div>`
-        }
-        ${quickStartModal()}
-        ${tutorialModal()}
-      </div>`;
+          ${activeStep === 'identity' ? '' : liveSheetPreview()}
+        </div>`;
+    const modalsMarkup = `${quickStartModal()}${tutorialModal()}`;
+
+    const existingPage = container.querySelector<HTMLElement>('.create-carousel-page');
+    const bannersSlot = existingPage?.querySelector<HTMLElement>('[data-slot="create-top-banners"]') ?? null;
+    const stepTrainSlot = existingPage?.querySelector<HTMLElement>('[data-slot="create-step-train"]') ?? null;
+    const layoutSlot = existingPage?.querySelector<HTMLElement>('[data-slot="create-layout"]') ?? null;
+    const modalsSlot = existingPage?.querySelector<HTMLElement>('[data-slot="create-modals"]') ?? null;
+
+    if (
+      existingPage !== null &&
+      bannersSlot !== null &&
+      stepTrainSlot !== null &&
+      layoutSlot !== null &&
+      modalsSlot !== null
+    ) {
+      bannersSlot.innerHTML = topBannersMarkup;
+      stepTrainSlot.innerHTML = stepTrainMarkup;
+      layoutSlot.innerHTML = layoutMarkup;
+      modalsSlot.innerHTML = modalsMarkup;
+    } else {
+      container.innerHTML = `
+        <div class="page page-wide create-carousel-page">
+          <h1 data-testid="create-heading">Create a character</h1>
+          <p class="tagline">
+            Progress through three stages — Archetype, Foundation, and Identity. Local steps sit under the active stage.
+          </p>
+          <p class="wizard-coach" data-testid="one-draft-disclosure">
+            Alpha keeps one draft at a time. Starting a new character from the Vault discards this draft
+            after you confirm.
+          </p>
+          <div data-slot="create-top-banners">${topBannersMarkup}</div>
+          <div data-slot="create-step-train">${stepTrainMarkup}</div>
+          <div data-slot="create-layout">${layoutMarkup}</div>
+          <div data-slot="create-modals">${modalsMarkup}</div>
+        </div>`;
+    }
 
     container
       .querySelector<HTMLButtonElement>('[data-testid="retry-open-draft"]')
