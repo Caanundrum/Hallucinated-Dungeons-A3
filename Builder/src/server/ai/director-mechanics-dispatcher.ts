@@ -81,6 +81,10 @@ Core D&D 5e Adjudication Rules:
    - Determine the course of action from the full meaning of what the player describes rather than matching isolated words.
    - Carefully distinguish a threatening, aggressive, or intimidating tone in dialogue/posturing (e.g. warning an NPC, glaring, resting a hand on a hilt, making a verbal threat, demanding answers) from actually initiating combat. A threatening tone is NEVER combat — route it to "dialogue" or a Charisma (Intimidation) "skill_check" (or set combatAction.isThreatOnly = true).
    - Only choose "combat_action" (with combatAction.isThreatOnly = false) when the player is genuinely initiating physical or magical combat against a target. Any combat initiation will require explicit player confirmation before combat begins.
+6. Spatial & Environmental Common Sense:
+   - Always check the current scene environment, the player's current token coordinates, and the distance in feet to every door, prop, and NPC.
+   - If the scene is an outdoor/exterior wilderness or trail with no doors ("Known Doors / Exits: none"), never adjudicate a door action or a trap check on a door.
+   - Close physical interactions (checking a door for traps, picking a lock, searching a chest or counter) require the player token to be adjacent (within 5 ft) of the target.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -117,6 +121,10 @@ export interface QueryDirectorMechanicsOptions {
   readonly rawText: string;
   readonly sceneTitle: string;
   readonly sceneDescription?: string | undefined;
+  readonly campaignPremise?: string | undefined;
+  readonly playerPosition?: { readonly column: number; readonly row: number } | undefined;
+  readonly spatialObjects?: readonly string[] | undefined;
+  readonly equippedItems?: readonly string[] | undefined;
   readonly visibleFeatures: readonly string[];
   readonly doors: readonly string[];
   readonly presentNpcs: readonly string[];
@@ -134,10 +142,20 @@ export async function queryDirectorMechanicsArbiter(
 ): Promise<DirectorDispatchOutput | null> {
   const userPrompt = [
     `Player Character: ${options.characterName} (Level ${options.characterLevel ?? 1} ${options.characterClass ?? 'Adventurer'})`,
+    options.equippedItems && options.equippedItems.length > 0
+      ? `Equipped Gear: ${options.equippedItems.join(', ')}`
+      : '',
+    options.playerPosition
+      ? `Player Token Position on Grid: (${options.playerPosition.column}, ${options.playerPosition.row})`
+      : '',
     `Current Scene: ${options.sceneTitle}`,
     options.sceneDescription ? `Scene Context: ${options.sceneDescription}` : '',
+    options.campaignPremise ? `Campaign Premise Context: ${options.campaignPremise}` : '',
     `Visible Features / Props: ${options.visibleFeatures.length > 0 ? options.visibleFeatures.join(', ') : 'none'}`,
     `Known Doors / Exits: ${options.doors.length > 0 ? options.doors.join(', ') : 'none'}`,
+    options.spatialObjects && options.spatialObjects.length > 0
+      ? `Spatial Distances from Player Token: ${options.spatialObjects.join('; ')}`
+      : '',
     `Present NPCs in Room: ${options.presentNpcs.length > 0 ? options.presentNpcs.join(', ') : 'none'}`,
     `Other Known Campaign NPCs: ${options.knownNpcs.length > 0 ? options.knownNpcs.join(', ') : 'none'}`,
     '',
@@ -271,6 +289,33 @@ export function applyDirectorDispatchToMap(options: {
       : `${skillName} ${bonusStr}`;
     const dc = dispatch.skillCheck.dc || (skillName === 'stealth' ? 12 : 13);
     const target = dispatch.skillCheck.targetNoun || 'the challenge';
+
+    // Spatial & environmental common-sense gate for close door/prop inspections:
+    if (skillName !== 'stealth' && /\b(?:door|doorway|lock|keyhole)\b/i.test(target)) {
+      const doorEdges = map.edges.filter((e) => e.kind === 'door');
+      if (doorEdges.length === 0) {
+        return {
+          proposedCommandType: 'table.sync',
+          summary: `There is no door in ${map.title} to inspect — only the open surroundings and trail.`,
+        };
+      }
+      if (ownToken !== undefined) {
+        const anchor = ownToken.footprint.anchor;
+        const isAdjacent = doorEdges.some(
+          (d) => Math.abs(anchor.column - d.column) <= 1 && Math.abs(anchor.row - d.row) <= 1,
+        );
+        if (!isAdjacent) {
+          const nearest = doorEdges[0]!;
+          const distFeet =
+            Math.max(Math.abs(anchor.column - nearest.column), Math.abs(anchor.row - nearest.row)) *
+            (map.coordinateSpace.feetPerSquare || 5);
+          return {
+            proposedCommandType: 'table.sync',
+            summary: `You are ${distFeet} ft away from the doorway in ${map.title}. Move your token next to the doorway on the battle map first before inspecting it closely for traps or locks.`,
+          };
+        }
+      }
+    }
 
     let actionVerb = 'Ready to';
     if (skillName === 'stealth') {

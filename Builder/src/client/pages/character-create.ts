@@ -605,26 +605,62 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </div>`;
   }
 
+  function splitBriefAndHoverDetails(summary: string | undefined): {
+    readonly brief: string | null;
+    readonly details: readonly string[];
+  } {
+    if (summary === undefined || summary.trim().length === 0) {
+      return { brief: null, details: [] };
+    }
+    const parts = summary
+      .split(/\s*·\s*/)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    if (parts.length <= 1) {
+      return { brief: parts[0] ?? null, details: [] };
+    }
+    return {
+      brief: parts[0] ?? null,
+      details: parts.slice(1),
+    };
+  }
+
   function optionList(options: {
     readonly name: string;
     readonly testId: string;
     readonly entries: readonly { id: string; label: string; summary?: string }[];
     readonly selected: string | null;
+    readonly hoverDetails?: boolean;
   }): string {
     return `
       <div class="option-list option-card-grid" data-testid="${escapeHtml(options.testId)}">
         ${options.entries
-          .map(
-            (entry) => `
-          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${busy && options.selected === entry.id ? ' is-saving' : ''}"${busy && options.selected === entry.id ? ' aria-busy="true"' : ''}>
+          .map((entry) => {
+            const { brief, details } = splitBriefAndHoverDetails(entry.summary);
+            const showHover =
+              details.length > 0 || (options.hoverDetails === true && brief !== null);
+            const hoverLines = details.length > 0 ? details : brief !== null ? [brief] : [];
+            return `
+          <label class="option option-card${options.selected === entry.id ? ' selected' : ''}${showHover ? ' has-breakdown option-with-hover' : ''}" ${showHover ? 'tabindex="0"' : ''}>
             <input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${options.selected === entry.id ? 'checked' : ''}
               data-testid="option-${escapeHtml(entry.id)}" />
             <span class="option-card-crest" aria-hidden="true">${escapeHtml(entry.label.slice(0, 1))}</span>
-            <span class="option-label">${escapeHtml(entry.label)}${busy && options.selected === entry.id ? ' · Saving…' : ''}</span>
-            ${entry.summary === undefined ? '' : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`}
-          </label>`,
-          )
+            <span class="option-label">${escapeHtml(entry.label)}</span>
+            ${brief === null ? '' : `<span class="option-summary">${escapeHtml(brief)}</span>`}
+            ${
+              showHover
+                ? `<span class="stat-tooltip option-hover-tooltip" role="tooltip">
+                     <span class="stat-tooltip-title">${escapeHtml(entry.label)} — Details &amp; Stats</span>
+                     ${brief !== null && details.length > 0 ? `<span class="tooltip-brief-lead">${escapeHtml(brief)}</span>` : ''}
+                     <ul class="stat-breakdown-list">
+                       ${hoverLines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}
+                     </ul>
+                   </span>`
+                : ''
+            }
+          </label>`;
+          })
           .join('')}
       </div>`;
   }
@@ -638,7 +674,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly maxChoose?: number;
     /** Prefix for per-option test ids (defaults to `check`). */
     readonly optionTestIdPrefix?: string;
-    /** When true, renders a hover/focus popup tooltip with the full spell/feature stats & description. */
+    /** When true, renders a hover/focus popup tooltip with the full spell/feature stats & description and hides inline summary text. */
     readonly tooltipSummaries?: boolean;
   }): string {
     const visibleSelected = options.selected.filter((id) =>
@@ -656,13 +692,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
             const disabled = atCap && !isSelected;
             const hasTooltip = options.tooltipSummaries === true && entry.summary !== undefined;
             return `
-          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${busy && isSelected ? ' is-saving' : ''}${hasTooltip ? ' has-breakdown spell-option-with-tooltip' : ''}"${busy && isSelected ? ' aria-busy="true"' : ''} ${hasTooltip ? 'tabindex="0"' : ''}>
+          <label class="option${isSelected ? ' selected' : ''}${disabled ? ' disabled' : ''}${hasTooltip ? ' has-breakdown spell-option-with-tooltip' : ''}" ${hasTooltip ? 'tabindex="0"' : ''}>
             <input type="checkbox" name="${escapeHtml(options.name)}" value="${escapeHtml(entry.id)}"
               ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''}
               data-testid="${escapeHtml(optionPrefix)}-${escapeHtml(entry.id)}" />
-            <span class="option-label">${escapeHtml(entry.label)}${busy && isSelected ? ' · Saving…' : ''}</span>
+            <span class="option-label">${escapeHtml(entry.label)}</span>
             ${
-              entry.summary === undefined
+              entry.summary === undefined || options.tooltipSummaries === true
                 ? ''
                 : `<span class="option-summary">${escapeHtml(entry.summary)}</span>`
             }
@@ -685,6 +721,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
       return '';
     }
     return `
+      <div class="wizard-hover-instruction-banner" data-testid="character-hover-instruction-banner" role="note">
+        <span class="wizard-hover-badge" aria-hidden="true">Hover for Stats</span>
+        <span><b>Tip:</b> Hover over any <b>Class</b>, <b>Background</b>, <b>Species</b>, <b>Sub-option</b>, or <b>Spell</b> card to view its full stat bonuses, proficiencies, traits, and mechanics before you select it.</span>
+      </div>
       <div class="wizard-side-actions wizard-top-quick-actions" data-testid="wizard-top-quick-actions">
         <button type="button" class="secondary" data-testid="open-quick-start">
           In a hurry? Use a ready-made character
@@ -925,7 +965,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 (option) => `
               <label class="option${
                 choices.speciesChoiceIds[choice.id] === option.id ? ' selected' : ''
-              }">
+              }${option.summary !== undefined ? ' has-breakdown option-with-hover' : ''}" ${
+                option.summary !== undefined ? 'tabindex="0"' : ''
+              }>
                 <input type="radio" name="species-choice-${escapeHtml(choice.id)}"
                   value="${escapeHtml(option.id)}"
                   ${choices.speciesChoiceIds[choice.id] === option.id ? 'checked' : ''}
@@ -935,7 +977,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
                 ${
                   option.summary === undefined
                     ? ''
-                    : `<span class="option-summary">${escapeHtml(option.summary)}</span>`
+                    : `<span class="stat-tooltip option-hover-tooltip" role="tooltip">
+                         <span class="stat-tooltip-title">${escapeHtml(option.label)}</span>
+                         <span>${escapeHtml(option.summary)}</span>
+                       </span>`
                 }
               </label>`,
               )
@@ -946,12 +991,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         choices.speciesId === 'human' && state.options.originFeatOptions !== null
           ? `
         <h3>Versatile — choose an Origin feat</h3>
-        <p class="step-helper">Humans gain one additional Origin feat from the SRD roster.</p>
+        <p class="step-helper">Humans gain one additional Origin feat from the SRD roster. Hover over any feat for its full rules.</p>
         ${optionList({
           name: 'origin-feat',
           testId: 'origin-feat-options',
           entries: state.options.originFeatOptions,
           selected: choices.chosenOriginFeatId,
+          hoverDetails: true,
         })}`
           : ''
       }`
@@ -969,7 +1015,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   }): string {
     return `
       <h3>${escapeHtml(options.title)}</h3>
-      <p>Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list.</p>
+      <p>Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list. Hover over any spell to read its stats and description.</p>
       <h4>Cantrips</h4>
       ${checkboxList({
         name: options.cantripName,
@@ -1042,11 +1088,6 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ],
         selected: method === 'standard-array' ? 'point-buy' : method,
       })}
-      <label class="sr-only" aria-hidden="true">
-        <input type="radio" name="ability-method" value="standard-array"
-          ${method === 'standard-array' ? 'checked' : ''}
-          data-testid="option-standard-array" tabindex="-1" />
-      </label>
       ${
         method !== 'rolled'
           ? ''
@@ -1121,36 +1162,34 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
           return `
           <div class="ability-assign-card" data-testid="ability-card-${ability}">
-            <label for="ability-select-${ability}">
+            <div class="ability-assign-card-header">
               <span class="ability-assign-title">${escapeHtml(ABILITY_LABELS[ability])}</span>
-            </label>
-            <div class="ability-stepper-row">
               ${
                 method === 'point-buy'
-                  ? `<button type="button" class="secondary compact point-buy-step-btn"
-                      data-point-buy-ability="${ability}" data-point-buy-delta="-1"
-                      data-testid="point-buy-dec-${ability}"
-                      ${!canDecrement ? 'disabled' : ''}
-                      aria-label="Decrease ${escapeHtml(ABILITY_LABELS[ability])}">−</button>`
-                  : ''
-              }
-              <select id="ability-select-${ability}" data-ability="${ability}" data-testid="ability-select-${ability}">
-                ${method === 'point-buy' ? '' : '<option value="">—</option>'}
-                ${values
-                  .map(
-                    (score) =>
-                      `<option value="${score}" ${displayScore === score ? 'selected' : ''}>${score}</option>`,
-                  )
-                  .join('')}
-              </select>
-              ${
-                method === 'point-buy'
-                  ? `<button type="button" class="secondary compact point-buy-step-btn"
-                      data-point-buy-ability="${ability}" data-point-buy-delta="1"
-                      data-testid="point-buy-inc-${ability}"
-                      ${!canIncrement ? 'disabled' : ''}
-                      aria-label="Increase ${escapeHtml(ABILITY_LABELS[ability])}">+</button>`
-                  : ''
+                  ? `<div class="ability-stepper-row point-buy-stepper-only">
+                      <button type="button" class="secondary compact point-buy-step-btn"
+                        data-point-buy-ability="${ability}" data-point-buy-delta="-1"
+                        data-testid="point-buy-dec-${ability}"
+                        ${!canDecrement ? 'disabled' : ''}
+                        aria-label="Decrease ${escapeHtml(ABILITY_LABELS[ability])}">−</button>
+                      <span class="point-buy-score-badge" data-testid="ability-select-${ability}">${displayScore ?? 8}</span>
+                      <button type="button" class="secondary compact point-buy-step-btn"
+                        data-point-buy-ability="${ability}" data-point-buy-delta="1"
+                        data-testid="point-buy-inc-${ability}"
+                        ${!canIncrement ? 'disabled' : ''}
+                        aria-label="Increase ${escapeHtml(ABILITY_LABELS[ability])}">+</button>
+                    </div>`
+                  : `<div class="ability-stepper-row">
+                      <select id="ability-select-${ability}" class="compact-ability-select" data-ability="${ability}" data-testid="ability-select-${ability}" aria-label="${escapeHtml(ABILITY_LABELS[ability])}">
+                        <option value="">—</option>
+                        ${values
+                          .map(
+                            (score) =>
+                              `<option value="${score}" ${displayScore === score ? 'selected' : ''}>${score}</option>`,
+                          )
+                          .join('')}
+                      </select>
+                    </div>`
               }
             </div>
             ${
@@ -1438,6 +1477,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const forged = state.draft.avatarUrl ?? null;
     const avatarOptions = state.draft.avatarOptions ?? (forged !== null ? [forged] : []);
     const portraitForged = state.draft.portraitForged === true || avatarOptions.length > 0;
+    const portraitConfirmed = portraitForged && avatarOptions.length <= 1 && forged !== null;
     const promptValue = portraitPromptValue();
     return `
       <section class="panel portrait-section" data-testid="portrait-section" aria-labelledby="portrait-heading">
@@ -1461,15 +1501,17 @@ export function mountCharacterCreatePage(host: PageHost): void {
               ${
                 portraitBusy
                   ? 'Forging 3 Portraits…'
-                  : portraitForged
-                    ? '3 Portraits Forged — Pick 1 Below'
-                    : 'Forge Portrait (Generates 3 Choices)'
+                  : portraitConfirmed
+                    ? 'Portrait Confirmed (Final)'
+                    : portraitForged
+                      ? '3 Portraits Forged — Pick & Confirm 1 Below'
+                      : 'Forge Portrait (Generates 3 Choices)'
               }
             </button>
             ${
               avatarOptions.length > 1
                 ? `<div class="portrait-options-picker" data-testid="portrait-options-picker">
-                    <p class="record-meta"><b>Choose 1 of your 3 forged portraits:</b> (You can evolve your core portrait when you level up.)</p>
+                    <p class="record-meta"><b>Choose &amp; confirm 1 of your 3 forged portraits:</b> Once you confirm your choice, the other two portraits are discarded and your selection is final.</p>
                     <div class="portrait-options-grid">
                       ${avatarOptions
                         .map(
@@ -1479,13 +1521,15 @@ export function mountCharacterCreatePage(host: PageHost): void {
                           data-testid="portrait-option-${index}"
                           aria-pressed="${forged === optionUrl ? 'true' : 'false'}">
                           <img src="${escapeHtml(optionUrl)}" alt="Portrait option ${index + 1}" width="88" height="88" />
-                          <span>Option ${index + 1}${forged === optionUrl ? ' (Selected)' : ''}</span>
+                          <span>Confirm Option ${index + 1}</span>
                         </button>`,
                         )
                         .join('')}
                     </div>
                   </div>`
-                : ''
+                : portraitConfirmed
+                  ? `<p class="record-meta" data-testid="portrait-confirmed-notice">Portrait confirmed and locked (unused options discarded). You can evolve your core portrait when you level up.</p>`
+                  : ''
             }
           </div>
         </div>
@@ -2828,7 +2872,14 @@ export function mountCharacterCreatePage(host: PageHost): void {
         `[data-testid="${CSS.escape(captured.testId)}"]`,
       );
       if (restored instanceof HTMLElement) {
-        restored.focus();
+        if (
+          restored instanceof HTMLInputElement &&
+          (restored.type === 'radio' || restored.type === 'checkbox')
+        ) {
+          // Do not re-focus radio/checkbox inputs after click so hover/focus tooltips dismiss cleanly.
+          return;
+        }
+        restored.focus({ preventScroll: true });
         if (
           (restored instanceof HTMLInputElement || restored instanceof HTMLTextAreaElement) &&
           captured.selectionStart !== null &&
@@ -2846,7 +2897,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
         ),
       ];
       const match = named.find((element) => element.value === captured.value) ?? named[0] ?? null;
-      match?.focus();
+      if (
+        match instanceof HTMLInputElement &&
+        (match.type === 'radio' || match.type === 'checkbox')
+      ) {
+        return;
+      }
+      match?.focus({ preventScroll: true });
     }
   }
 
@@ -2928,6 +2985,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     const state = current;
     const focus = captureFocus();
+    const savedScrollY = window.scrollY;
 
     const errorMarkup =
       error === null
@@ -2947,23 +3005,30 @@ export function mountCharacterCreatePage(host: PageHost): void {
       ${topQuickStartBanner()}
       ${state === null && error === null ? '<p class="empty-state">Opening your draft…</p>' : ''}`;
     const stepTrainMarkup = state === null ? '' : stepTrain();
+    const stepHeaderMarkup =
+      state === null
+        ? ''
+        : `<p class="carousel-stage-kicker" data-testid="carousel-stage-kicker">${escapeHtml(carouselStageForStep(activeStep).label)} · ${escapeHtml(carouselStageForStep(activeStep).summary)}</p>
+           ${
+             quickStartAppliedNotice === null
+               ? ''
+               : `<div class="message success" role="status" data-testid="quick-start-applied-notice">${escapeHtml(quickStartAppliedNotice)}</div>`
+           }
+           <h2 id="step-heading" data-testid="active-step-heading" tabindex="-1">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>`;
+    const stepBodyMarkup = state === null ? '' : renderStepBody();
+    const stepNavMarkup = state === null ? '' : wizardNav();
+    const previewMarkup = state === null || activeStep === 'identity' ? '' : liveSheetPreview();
     const layoutMarkup =
       state === null
         ? ''
         : `
-        <div class="wizard-layout wizard-carousel-layout${activeStep === 'identity' ? ' wizard-carousel-layout--identity' : ''}">
+        <div class="wizard-layout wizard-carousel-layout${activeStep === 'identity' ? ' wizard-carousel-layout--identity' : ''}" data-slot="wizard-layout-root">
           <section class="panel wizard-step-panel wizard-carousel-panel" aria-labelledby="step-heading" data-testid="wizard-carousel-panel">
-            <p class="carousel-stage-kicker" data-testid="carousel-stage-kicker">${escapeHtml(carouselStageForStep(activeStep).label)} · ${escapeHtml(carouselStageForStep(activeStep).summary)}</p>
-            ${
-              quickStartAppliedNotice === null
-                ? ''
-                : `<div class="message success" role="status" data-testid="quick-start-applied-notice">${escapeHtml(quickStartAppliedNotice)}</div>`
-            }
-            <h2 id="step-heading" data-testid="active-step-heading" tabindex="-1">${escapeHtml(WIZARD_STEP_LABELS[activeStep])}</h2>
-            ${renderStepBody()}
-            ${wizardNav()}
+            <div data-slot="wizard-step-header">${stepHeaderMarkup}</div>
+            <div data-slot="wizard-step-body">${stepBodyMarkup}</div>
+            <div data-slot="wizard-nav">${stepNavMarkup}</div>
           </section>
-          ${activeStep === 'identity' ? '' : liveSheetPreview()}
+          <div data-slot="wizard-preview">${previewMarkup}</div>
         </div>`;
     const modalsMarkup = `${quickStartModal()}${tutorialModal()}`;
 
@@ -2982,7 +3047,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
     ) {
       bannersSlot.innerHTML = topBannersMarkup;
       stepTrainSlot.innerHTML = stepTrainMarkup;
-      layoutSlot.innerHTML = layoutMarkup;
+      const existingLayoutRoot = layoutSlot.querySelector<HTMLElement>('[data-slot="wizard-layout-root"]');
+      const stepHeaderSlot = existingLayoutRoot?.querySelector<HTMLElement>('[data-slot="wizard-step-header"]') ?? null;
+      const stepBodySlot = existingLayoutRoot?.querySelector<HTMLElement>('[data-slot="wizard-step-body"]') ?? null;
+      const stepNavSlot = existingLayoutRoot?.querySelector<HTMLElement>('[data-slot="wizard-nav"]') ?? null;
+      const previewSlot = existingLayoutRoot?.querySelector<HTMLElement>('[data-slot="wizard-preview"]') ?? null;
+
+      if (
+        state !== null &&
+        existingLayoutRoot !== null &&
+        stepHeaderSlot !== null &&
+        stepBodySlot !== null &&
+        stepNavSlot !== null &&
+        previewSlot !== null
+      ) {
+        existingLayoutRoot.classList.toggle('wizard-carousel-layout--identity', activeStep === 'identity');
+        stepHeaderSlot.innerHTML = stepHeaderMarkup;
+        stepBodySlot.innerHTML = stepBodyMarkup;
+        stepNavSlot.innerHTML = stepNavMarkup;
+        previewSlot.innerHTML = previewMarkup;
+      } else {
+        layoutSlot.innerHTML = layoutMarkup;
+      }
       modalsSlot.innerHTML = modalsMarkup;
     } else {
       container.innerHTML = `
@@ -3011,6 +3097,9 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
     bindEvents();
     restoreFocus(focus);
+    if (Math.abs(window.scrollY - savedScrollY) > 2) {
+      window.scrollTo(0, savedScrollY);
+    }
   }
 
   async function loadLegalThenDraft(): Promise<void> {

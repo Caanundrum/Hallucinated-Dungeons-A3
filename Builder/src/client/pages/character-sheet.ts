@@ -60,7 +60,6 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   let loadoutBusy = false;
   let loadoutError: string | null = null;
   let trackerBusy = false;
-  let correctionUnlocked = false;
   let correctionReasonDraft = '';
   let portraitScarDraft = '';
   let portraitBusy = false;
@@ -238,67 +237,68 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
   }
 
   function renderLoadoutEditor(): string {
-    if (character === null || !editingLoadout) {
+    if (character === null) {
+      return '';
+    }
+    const inCombat = character.seatedInCombat === true;
+    const spellcasting = character.editOptions.classDetail?.spellcasting ?? null;
+    const spellOptions = spellcasting?.spellOptions ?? [];
+    const spellLimit = spellcasting?.spellsAvailable ?? spellOptions.length;
+    const prepStyle = spellcasting?.preparationStyle ?? null;
+    const canChangeSpells = !inCombat && character.canChangePreparedSpells !== false;
+    const spellRuleNote =
+      inCombat
+        ? 'You are currently in active combat at a table — Equip/Unequip and Prepared Spells are locked until combat ends.'
+        : prepStyle === 'prepared'
+          ? 'Prepared caster rule: You can change your prepared spells when not in combat (such as between sessions or after a Long Rest).'
+          : prepStyle === 'known'
+            ? canChangeSpells
+              ? 'Level-up milestone unlocked: You may swap known spells for this level.'
+              : 'Known caster rule: Known spells are locked to what you chose at creation and can only be changed upon Level Up.'
+            : 'This class does not prepare spells at this level. Equip or unequip your carried gear in the Equipment section below when out of combat.';
+
+    if (!editingLoadout) {
       return `
         <section class="panel" aria-labelledby="loadout-edit-heading" data-testid="loadout-panel">
-          <h2 id="loadout-edit-heading">Prepared spells and equipment</h2>
-          <p class="record-meta">Change prepared spells, starting kits, and weapon masteries without recreating the character.</p>
-          <div class="actions">
-            <button type="button" data-testid="edit-loadout">Edit loadout</button>
-          </div>
+          <h2 id="loadout-edit-heading">Prepared Spells &amp; Loadout Rules</h2>
+          <p class="record-meta">
+            Core creation choices (Origin feat, starting kits, and initial weapon masteries) are permanently locked once your character is created.
+            <b>Equip / Unequip</b> and <b>Prepared Spells</b> can only be changed when not seated at a table, or when seated at a table out of combat.
+          </p>
+          <p class="record-meta" data-testid="loadout-rule-note">${escapeHtml(spellRuleNote)}</p>
+          ${
+            spellOptions.length > 0 && canChangeSpells
+              ? `<div class="actions">
+                   <button type="button" data-testid="edit-loadout">Change Prepared Spells</button>
+                 </div>`
+              : ''
+          }
         </section>`;
     }
-    const options = character.editOptions;
-    const spellOptions = options.classDetail?.spellcasting?.spellOptions ?? [];
-    const spellLimit = options.classDetail?.spellcasting?.spellsAvailable ?? spellOptions.length;
-    const classKits = options.classDetail?.equipmentOptions ?? [];
-    const backgroundKits = options.backgroundDetail?.equipmentOptions ?? [];
-    const mastery = options.weaponMastery;
-    const originFeatOptions = options.originFeatOptions;
     return `
       <section class="panel" aria-labelledby="loadout-edit-heading" data-testid="loadout-panel">
-        <h2 id="loadout-edit-heading">Edit loadout</h2>
+        <h2 id="loadout-edit-heading">Change Prepared Spells</h2>
+        <p class="record-meta">${escapeHtml(spellRuleNote)}</p>
         ${
           loadoutError === null
             ? ''
             : `<div class="message error" role="alert" data-testid="loadout-edit-error">${escapeHtml(loadoutError)}</div>`
         }
         ${
-          originFeatOptions !== null && originFeatOptions.length > 0
-            ? `<h3>Human Versatile Origin feat</h3>
-          <p class="record-meta">Names the Human Versatile choice on your sheet (PQA-195).</p>
-          <ul class="record-list" data-testid="loadout-origin-feat-options">
-            ${originFeatOptions
-              .map(
-                (feat) => `<li><label>
-              <input type="radio" name="loadout-origin-feat" value="${escapeHtml(feat.id)}"
-                data-testid="loadout-origin-feat-${escapeHtml(feat.id.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}"
-                ${loadoutOriginFeat === feat.id ? 'checked' : ''} ${loadoutBusy ? 'disabled' : ''} />
-              ${escapeHtml(feat.label)}
-            </label></li>`,
-              )
-              .join('')}
-          </ul>`
-            : ''
-        }
-        ${
           spellOptions.length > 0
-            ? `<h3>Prepared / known spells</h3>
-          <p class="record-meta">Choose up to ${spellLimit}. Hover or focus a spell for its stats and description.</p>
+            ? `<h3>Prepared spells (Choose up to ${spellLimit})</h3>
+          <p class="record-meta">Hover over any spell to view its stats and description.</p>
           <ul class="record-list" data-testid="loadout-spell-options">
             ${spellOptions
               .map((spell) => {
                 const checked = loadoutSpellIds.includes(spell.id);
                 const locked = !checked && loadoutSpellIds.length >= spellLimit;
-                return `<li class="has-breakdown" tabindex="0">
+                return `<li class="has-breakdown spell-option-with-tooltip" tabindex="0">
                   <label>
                     <input type="checkbox" data-loadout-spell="${escapeHtml(spell.id)}"
                       data-testid="loadout-spell-${escapeHtml(spell.id)}"
-                      ${checked ? 'checked' : ''} ${locked || loadoutBusy ? 'disabled' : ''} />
-                    <span>
-                      <b>${escapeHtml(spell.label)}</b>
-                      ${spell.summary ? `<span class="option-summary">${escapeHtml(spell.summary)}</span>` : ''}
-                    </span>
+                      ${checked ? 'checked' : ''} ${locked || loadoutBusy || !canChangeSpells ? 'disabled' : ''} />
+                    <span><b>${escapeHtml(spell.label)}</b></span>
                   </label>
                   ${
                     spell.summary
@@ -314,62 +314,8 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
           </ul>`
             : '<p class="record-meta" data-testid="loadout-no-spells">This class has no spell preparation list at level 1.</p>'
         }
-        ${
-          classKits.length > 0
-            ? `<h3>Class starting kit</h3>
-          <ul class="record-list" data-testid="loadout-class-equipment">
-            ${classKits
-              .map(
-                (kit) => `<li><label>
-              <input type="radio" name="loadout-class-equipment" value="${escapeHtml(kit.id)}"
-                data-testid="loadout-class-kit-${escapeHtml(kit.id)}"
-                ${loadoutClassEquipment === kit.id ? 'checked' : ''} ${loadoutBusy ? 'disabled' : ''} />
-              ${escapeHtml(kit.label)}
-            </label></li>`,
-              )
-              .join('')}
-          </ul>`
-            : ''
-        }
-        ${
-          backgroundKits.length > 0
-            ? `<h3>Background starting kit</h3>
-          <ul class="record-list" data-testid="loadout-background-equipment">
-            ${backgroundKits
-              .map(
-                (kit) => `<li><label>
-              <input type="radio" name="loadout-background-equipment" value="${escapeHtml(kit.id)}"
-                data-testid="loadout-background-kit-${escapeHtml(kit.id)}"
-                ${loadoutBackgroundEquipment === kit.id ? 'checked' : ''} ${loadoutBusy ? 'disabled' : ''} />
-              ${escapeHtml(kit.label)}
-            </label></li>`,
-              )
-              .join('')}
-          </ul>`
-            : ''
-        }
-        ${
-          mastery === null
-            ? ''
-            : `<h3>Weapon masteries</h3>
-          <p class="record-meta">Choose up to ${mastery.slotCount}. Unassigned slots remain visible on the sheet.</p>
-          <ul class="record-list" data-testid="loadout-mastery-options">
-            ${mastery.options
-              .map((option) => {
-                const checked = loadoutMasteries.includes(option.id);
-                const locked = !checked && loadoutMasteries.length >= mastery.slotCount;
-                return `<li><label>
-                  <input type="checkbox" data-loadout-mastery="${escapeHtml(option.id)}"
-                    data-testid="loadout-mastery-${escapeHtml(option.id.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}"
-                    ${checked ? 'checked' : ''} ${locked || loadoutBusy ? 'disabled' : ''} />
-                  ${escapeHtml(option.label)}
-                </label></li>`;
-              })
-              .join('')}
-          </ul>`
-        }
         <div class="actions">
-          <button type="button" data-testid="save-loadout" ${loadoutBusy ? 'disabled' : ''}>Save loadout</button>
+          <button type="button" data-testid="save-loadout" ${loadoutBusy || !canChangeSpells ? 'disabled' : ''}>Save Prepared Spells</button>
           <button type="button" class="secondary" data-testid="cancel-loadout-edit" ${loadoutBusy ? 'disabled' : ''}>Cancel</button>
         </div>
       </section>`;
@@ -383,26 +329,25 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       <section class="panel next-steps-banner" aria-labelledby="next-steps-heading" data-testid="character-next-steps-banner">
         <h2 id="next-steps-heading">What to do next with ${escapeHtml(character.identity.name)}</h2>
         <p class="record-meta">
-          Your character is forged and stored in your Character Vault. Here is how to bring them to a Campaign:
+          Your character is forged and stored in your Character Vault. Choose an action below:
         </p>
-        <ol class="record-list">
-          <li>
-            <span class="record-note">1. Join an existing Campaign</span>
-            <span class="record-meta">Have an invite link or code from a friend or Dungeon Master? Open Campaigns to join and seat ${escapeHtml(character.identity.name)} (recommended within ±2 levels of the party).</span>
-          </li>
-          <li>
-            <span class="record-note">2. Create your own Campaign</span>
-            <span class="record-meta">Start a new Campaign, pick 1 of 3 rough campaign outlines, and seat ${escapeHtml(character.identity.name)} as the founding adventurer.</span>
-          </li>
-          <li>
-            <span class="record-note">3. Compare &amp; equip your gear</span>
-            <span class="record-meta">Use the <b>Equip / Unequip</b> buttons in Equipment below to compare Armor Class and weapon stats at any time. Your inventory travels with your character across campaigns.</span>
-          </li>
-        </ol>
-        <div class="actions">
-          <a class="button" href="/campaigns" data-link data-testid="next-step-browse-campaigns">Browse or Join a Campaign</a>
-          <a class="button secondary" href="/campaigns/new" data-link data-testid="next-step-create-campaign">Create a Campaign</a>
-          <a class="button secondary" href="/characters" data-link data-testid="next-step-vault">Return to Character Vault</a>
+        <div class="next-steps-button-grid" data-testid="next-steps-button-grid">
+          <a class="button next-step-action-button" href="/campaigns" data-link data-testid="next-step-browse-campaigns">
+            <strong>1. Join an Existing Campaign</strong>
+            <span>Use an invite code or browse open tables to seat ${escapeHtml(character.identity.name)} (recommended within ±2 levels of the party).</span>
+          </a>
+          <a class="button secondary next-step-action-button" href="/campaigns/new" data-link data-testid="next-step-create-campaign">
+            <strong>2. Create Your Own Campaign</strong>
+            <span>Pick 1 of 3 campaign outlines, forge your world, and seat ${escapeHtml(character.identity.name)} as the founding adventurer.</span>
+          </a>
+          <button type="button" class="button secondary next-step-action-button" data-testid="next-step-jump-equipment">
+            <strong>3. Compare &amp; Equip Your Gear</strong>
+            <span>Jump to Equipment below to equip or unequip weapons, armor, and shields and compare AC &amp; damage stats.</span>
+          </button>
+          <a class="button secondary next-step-action-button" href="/characters" data-link data-testid="next-step-vault">
+            <strong>4. Return to Character Vault</strong>
+            <span>View all of your characters and active campaign seats in your Character Vault.</span>
+          </a>
         </div>
       </section>`;
   }
@@ -491,82 +436,43 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
             : ''
         }
         ${renderNextStepsPanel()}
-        <section class="panel" aria-labelledby="identity-edit-heading">
-          <h2 id="identity-edit-heading">Identity</h2>
-          ${
-            identityError === null
-              ? ''
-              : `<div class="message error" role="alert" data-testid="identity-edit-error">${escapeHtml(identityError)}</div>`
-          }
-          ${
-            editingIdentity
-              ? `
-            <label for="edit-character-name">Name</label>
-            <input id="edit-character-name" type="text" data-identity-field="name" data-testid="edit-identity-name"
-              maxlength="${CHARACTER_NAME_MAX_LENGTH}" value="${escapeHtml(identityDraft.name)}" />
-            <label for="edit-character-pronouns">Pronouns</label>
-            <input id="edit-character-pronouns" type="text" data-identity-field="pronouns" data-testid="edit-identity-pronouns"
-              maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.pronouns)}" />
-            <label for="edit-character-appearance">Appearance</label>
-            <input id="edit-character-appearance" type="text" data-identity-field="appearance" data-testid="edit-identity-appearance"
-              maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.appearance)}" />
-            <label for="edit-character-concept">Concept</label>
-            <input id="edit-character-concept" type="text" data-identity-field="concept" data-testid="edit-identity-concept"
-              maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.concept)}" />
-            <div class="actions">
-              <button type="button" data-testid="save-identity" ${identityBusy ? 'disabled' : ''}>Save identity</button>
-              <button type="button" data-testid="cancel-identity-edit" ${identityBusy ? 'disabled' : ''}>Cancel</button>
-            </div>`
-              : `<div class="actions">
-              <button type="button" data-testid="edit-identity">Edit identity</button>
-            </div>`
-          }
-        </section>
-        ${renderPortraitPanel()}
-        ${renderCampaignHistoryPanel()}
-        <section class="panel" aria-labelledby="correction-mode-heading" data-testid="character-correction-mode">
-          <h2 id="correction-mode-heading">Correction mode</h2>
-          <p class="record-meta">
-            Off-table ledger audit notes require an audit reason. Relock when you are done — consumables and HP changes happen during play at a Campaign table.
-          </p>
-          ${
-            correctionUnlocked
-              ? `<p class="message notice" data-testid="correction-mode-unlocked">
-                   Correction controls are unlocked. Audit reason: ${escapeHtml(correctionReasonDraft)}.
-                 </p>
-                 <div class="actions">
-                   <button type="button" class="secondary" data-testid="relock-correction-mode">
-                     Relock correction controls
-                   </button>
-                 </div>
-                 ${
-                   character.revisions !== undefined && character.revisions.length > 0
-                     ? `<ul class="record-list" data-testid="correction-audit-list">
-                          ${character.revisions
-                            .slice(-5)
-                            .reverse()
-                            .map(
-                              (revision) =>
-                                `<li data-testid="correction-audit-item">${escapeHtml(revision.reason)} · ${escapeHtml(new Date(revision.at).toLocaleString())}</li>`,
-                            )
-                            .join('')}
-                        </ul>`
-                     : '<p class="record-meta" data-testid="correction-audit-empty">No ledger corrections recorded yet.</p>'
-                 }`
-              : `<label class="record-meta" for="correction-reason-input">Audit reason (required)</label>
-                 <input id="correction-reason-input" type="text" data-testid="correction-reason-input"
-                   maxlength="160" placeholder="Example: Fixed HP after mis-logged damage"
-                   value="${escapeHtml(correctionReasonDraft)}" />
-                 <div class="actions">
-                   <button type="button" class="secondary" data-testid="unlock-correction-mode"
-                     aria-disabled="${correctionReasonDraft.trim().length < 3 ? 'true' : 'false'}">
-                     Unlock correction controls
-                   </button>
-                 </div>`
-          }
-        </section>
-        ${renderLoadoutEditor()}
-        ${renderCharacterSheet(character.sheet, { interactive: true })}
+        <div class="character-sheet-meta-grid" data-testid="character-sheet-meta-grid">
+          <section class="panel" aria-labelledby="identity-edit-heading">
+            <h2 id="identity-edit-heading">Identity</h2>
+            ${
+              identityError === null
+                ? ''
+                : `<div class="message error" role="alert" data-testid="identity-edit-error">${escapeHtml(identityError)}</div>`
+            }
+            ${
+              editingIdentity
+                ? `
+              <label for="edit-character-name">Name</label>
+              <input id="edit-character-name" type="text" data-identity-field="name" data-testid="edit-identity-name"
+                maxlength="${CHARACTER_NAME_MAX_LENGTH}" value="${escapeHtml(identityDraft.name)}" />
+              <label for="edit-character-pronouns">Pronouns</label>
+              <input id="edit-character-pronouns" type="text" data-identity-field="pronouns" data-testid="edit-identity-pronouns"
+                maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.pronouns)}" />
+              <label for="edit-character-appearance">Appearance</label>
+              <input id="edit-character-appearance" type="text" data-identity-field="appearance" data-testid="edit-identity-appearance"
+                maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.appearance)}" />
+              <label for="edit-character-concept">Concept</label>
+              <input id="edit-character-concept" type="text" data-identity-field="concept" data-testid="edit-identity-concept"
+                maxlength="${CHARACTER_TEXT_MAX_LENGTH}" value="${escapeHtml(identityDraft.concept)}" />
+              <div class="actions">
+                <button type="button" data-testid="save-identity" ${identityBusy ? 'disabled' : ''}>Save identity</button>
+                <button type="button" data-testid="cancel-identity-edit" ${identityBusy ? 'disabled' : ''}>Cancel</button>
+              </div>`
+                : `<div class="actions">
+                <button type="button" data-testid="edit-identity">Edit identity</button>
+              </div>`
+            }
+          </section>
+          ${renderPortraitPanel()}
+          ${renderCampaignHistoryPanel()}
+          ${renderLoadoutEditor()}
+        </div>
+        ${renderCharacterSheet(character.sheet, { interactive: character.seatedInCombat !== true })}
         <p class="record-meta">Built from the SRD 5.2.1 character creation rules.</p>
         <p class="record-meta" data-testid="character-archive-scope">
           Archive and restore are post-Alpha. Delete removes this character permanently.
@@ -578,37 +484,11 @@ export function mountCharacterSheetPage(host: PageHost, characterId: string): vo
       </div>`;
 
     container
-      .querySelector<HTMLInputElement>('[data-testid="correction-reason-input"]')
-      ?.addEventListener('input', (event) => {
-        correctionReasonDraft = (event.target as HTMLInputElement).value;
-        const unlock = container.querySelector<HTMLButtonElement>(
-          '[data-testid="unlock-correction-mode"]',
-        );
-        if (unlock !== null) {
-          unlock.setAttribute(
-            'aria-disabled',
-            correctionReasonDraft.trim().length < 3 ? 'true' : 'false',
-          );
-        }
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="unlock-correction-mode"]')
+      .querySelector<HTMLButtonElement>('[data-testid="next-step-jump-equipment"]')
       ?.addEventListener('click', () => {
-        if (correctionReasonDraft.trim().length < 3) {
-          shell.announce('Enter a short audit reason before unlocking correction controls.');
-          return;
-        }
-        correctionUnlocked = true;
-        renderSignedIn();
-      });
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="relock-correction-mode"]')
-      ?.addEventListener('click', () => {
-        correctionUnlocked = false;
-        correctionReasonDraft = '';
-        renderSignedIn();
+        container
+          .querySelector<HTMLElement>('#equipment-heading')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
 
     bindIdentityControls();

@@ -134,6 +134,7 @@ function projectDraft(stored: StoredDraft): DraftProjection {
 function projectCharacter(
   stored: StoredCharacter,
   progression: StoredProgression | null = null,
+  status: { readonly seatedInCombat?: boolean; readonly canChangePreparedSpells?: boolean } = {},
 ): CharacterProjection {
   const choices = normalizeChoices(stored.choices);
   const overrideUnequipped =
@@ -163,6 +164,15 @@ function projectCharacter(
       ? recomputeSheetForLevel(baseSheet, classId, level, experiencePoints)
       : baseSheet;
   const withTrackers = applyProgressionTrackers(sheet, progression);
+  const editOptions = buildDraftOptions(choices);
+  const prepStyle = editOptions.classDetail?.spellcasting?.preparationStyle ?? null;
+  const hasRestOrLevelUpEligibility =
+    prepStyle === 'prepared'
+      ? !(status.seatedInCombat === true)
+      : prepStyle === 'known'
+        ? (stored.milestonePortraitCredits ?? 0) > 0 ||
+          (stored.revisions ?? []).some((r) => /level/i.test(r.reason))
+        : false;
   return {
     characterId: stored.characterId,
     rulesVersion: stored.rulesVersion,
@@ -174,7 +184,7 @@ function projectCharacter(
     level: withTrackers.level,
     choices,
     sheet: withTrackers,
-    editOptions: buildDraftOptions(choices),
+    editOptions,
     revisions: stored.revisions.map((revision) => ({
       at: revision.at,
       reason: revision.reason,
@@ -189,6 +199,8 @@ function projectCharacter(
     ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
     appearancePrompt: stored.appearancePrompt ?? null,
     milestonePortraitCredits: stored.milestonePortraitCredits ?? 0,
+    seatedInCombat: status.seatedInCombat === true,
+    canChangePreparedSpells: status.canChangePreparedSpells ?? hasRestOrLevelUpEligibility,
   };
 }
 
@@ -507,7 +519,7 @@ export async function commitDraft(options: {
     createdAt: now,
     revisions: [{ at: now.toISOString(), reason: 'Character created' }],
     avatarUrl: stored.avatarUrl ?? null,
-    ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
+    ...(stored.avatarUrl ? { avatarOptions: [stored.avatarUrl] } : {}),
     appearancePrompt: stored.appearancePrompt ?? null,
     milestonePortraitCredits: 0,
   };
@@ -520,6 +532,37 @@ export async function commitDraft(options: {
   return projectCharacter(character);
 }
 
+async function isCharacterSeatedInActiveCombat(
+  firestore: Firestore,
+  characterId: string,
+): Promise<boolean> {
+  try {
+    const seatsSnap = await firestore
+      .collection(COLLECTIONS.campaignSeats)
+      .where('characterId', '==', characterId)
+      .get();
+    for (const doc of seatsSnap.docs) {
+      const seat = doc.data() as { campaignId?: string };
+      if (typeof seat.campaignId !== 'string' || seat.campaignId.length === 0) {
+        continue;
+      }
+      const encSnap = await firestore
+        .collection(COLLECTIONS.campaignEncounters)
+        .doc(seat.campaignId)
+        .get();
+      if (encSnap.exists) {
+        const enc = encSnap.data() as { status?: string };
+        if (enc.status === 'active') {
+          return true;
+        }
+      }
+    }
+  } catch {
+    // Non-fatal in mock/unit environments without query indexes.
+  }
+  return false;
+}
+
 export async function readCharacter(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
@@ -527,14 +570,14 @@ export async function readCharacter(options: {
 }): Promise<CharacterProjection> {
   const { firestore, accountId, characterId } = options;
   const stored = await loadOwnedCharacter(firestore, accountId, characterId);
-  const progressionSnap = await firestore
-    .collection(COLLECTIONS.characterProgressions)
-    .doc(characterId)
-    .get();
+  const [progressionSnap, seatedInCombat] = await Promise.all([
+    firestore.collection(COLLECTIONS.characterProgressions).doc(characterId).get(),
+    isCharacterSeatedInActiveCombat(firestore, characterId),
+  ]);
   const progression = progressionSnap.exists
     ? (progressionSnap.data() as StoredProgression)
     : null;
-  return projectCharacter(stored, progression);
+  return projectCharacter(stored, progression, { seatedInCombat });
 }
 
 /** The account's Character Vault: committed characters plus any open draft. */
@@ -989,7 +1032,7 @@ export async function generateCharacterPortrait(options: {
     pronouns = pronouns ?? (choices.identity?.pronouns ?? null);
   }
 
-  // Selecting one of the 3 already-forged portraits does not regenerate or spend another credit.
+  // Selecting one of the 3 already-forged portraits confirms that choice as final and discards the other two.
   if (selectedAvatarUrl !== null) {
     if (!isTrustedAvatarUrl(selectedAvatarUrl)) {
       throw new PortraitRequestError('Selected portrait is not valid.');
@@ -1002,12 +1045,13 @@ export async function generateCharacterPortrait(options: {
       const updatedDraft: StoredDraft = {
         ...draft,
         avatarUrl: selectedAvatarUrl,
+        avatarOptions: [selectedAvatarUrl],
         updatedAt: new Date(),
       };
       await firestore.collection(COLLECTIONS.characterDrafts).doc(draftId).set(updatedDraft);
       return {
         avatarUrl: selectedAvatarUrl,
-        ...(draft.avatarOptions !== undefined ? { avatarOptions: draft.avatarOptions } : {}),
+        avatarOptions: [selectedAvatarUrl],
         portraitForged: true,
         appearancePrompt: draft.appearancePrompt ?? appearancePrompt,
         source: 'generated',
@@ -1021,11 +1065,12 @@ export async function generateCharacterPortrait(options: {
       const updatedCharacter: StoredCharacter = {
         ...stored,
         avatarUrl: selectedAvatarUrl,
+        avatarOptions: [selectedAvatarUrl],
       };
       await firestore.collection(COLLECTIONS.characters).doc(characterId).set(updatedCharacter);
       return {
         avatarUrl: selectedAvatarUrl,
-        ...(stored.avatarOptions !== undefined ? { avatarOptions: stored.avatarOptions } : {}),
+        avatarOptions: [selectedAvatarUrl],
         portraitForged: true,
         appearancePrompt: stored.appearancePrompt ?? appearancePrompt,
         source: 'generated',

@@ -3556,10 +3556,9 @@ body.sheet-modal-open {
 }
 
 .has-breakdown:hover .stat-tooltip,
-.has-breakdown:focus-visible .stat-tooltip,
-.has-breakdown:focus-within .stat-tooltip {
+.has-breakdown:focus-visible .stat-tooltip {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none;
   transform: translateY(0);
 }
 
@@ -5266,7 +5265,7 @@ html.hd-low-effects .table-stage-svg-viewport,
 }
 
 .wizard-carousel-panel {
-  animation: cockpitModalIn var(--motion-ordinary) ease;
+  /* No re-entry animation on in-place selection updates to prevent screen flash */
 }
 
 .option-card-grid {
@@ -7716,4 +7715,309 @@ body.chaos-boot-active {
   white-space: normal;
   line-height: 1.4;
 }
+
+/* ===== Character Creation, Sheet, Campaign Creation & Table Lobby Polish ===== */
+
+.wizard-hover-instruction-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.75rem 1rem;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-control);
+  border: 2px solid color-mix(in srgb, var(--gold-primary) 75%, var(--panel-border));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--gold-primary) 20%, var(--panel-surface)),
+    color-mix(in srgb, var(--moonlit-blue) 12%, var(--panel-surface))
+  );
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+
+.wizard-hover-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--gold-primary);
+  color: #120d05;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.wizard-hover-instruction-banner p {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.option-card.has-breakdown,
+.option-list li.has-breakdown {
+  position: relative;
+}
+
+.option-hover-tooltip {
+  min-width: 17rem;
+  max-width: 24rem;
+  white-space: normal;
+  line-height: 1.42;
+  z-index: 45;
+  pointer-events: none !important;
+}
+
+.tooltip-brief-lead {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-secondary);
+}
+
+.spell-choice-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.35rem 0.5rem;
+}
+
+/* Ability assignment card & Point Buy compact controls */
+.ability-assign-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000 8%);
+}
+
+.ability-assign-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ability-assign-label {
+  font-weight: 700;
+  color: var(--text-gold);
+}
+
+.point-buy-stepper-only {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.point-buy-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 14%, var(--panel-surface));
+  color: var(--text-primary);
+  font-weight: 800;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.compact-ability-select {
+  width: auto !important;
+  max-width: 5.5rem;
+  min-width: 4.25rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* Character Sheet organization & 2-column Equipment */
+.character-sheet-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.character-sheet-meta-grid > .panel {
+  margin: 0;
+}
+
+.sheet-panel-full {
+  grid-column: 1 / -1;
+}
+
+.equipment-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+
+.next-steps-button-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.next-step-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 55%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 14%, var(--panel-surface));
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.next-step-action-button:hover {
+  background: color-mix(in srgb, var(--gold-primary) 26%, var(--panel-surface));
+  border-color: var(--gold-primary);
+}
+
+/* Campaign Creation: side-by-side outline options & World Forge Theater */
+.outline-options-section {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.outline-options-grid-3col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+}
+
+.outline-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000 8%);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.outline-choice-card.selected,
+.outline-choice-card[aria-selected='true'] {
+  border-color: var(--gold-primary);
+  background: color-mix(in srgb, var(--gold-primary) 16%, var(--panel-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold-primary) 45%, transparent);
+}
+
+.outline-choice-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-gold);
+}
+
+.outline-selected-detail-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.outline-acts-list li {
+  margin-bottom: var(--space-2);
+  line-height: 1.5;
+}
+
+.world-forge-theater {
+  margin-top: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 65%, var(--panel-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--gold-primary) 16%, var(--panel-surface)),
+    color-mix(in srgb, var(--moonlit-blue) 14%, var(--panel-surface))
+  );
+}
+
+.world-forge-theater-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.world-forge-spinner {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--gold-primary) 30%, transparent);
+  border-top-color: var(--gold-primary);
+  animation: hdSpin 0.9s linear infinite;
+}
+
+@keyframes hdSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.world-forge-progress-bar {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+
+.world-forge-progress-fill {
+  height: 100%;
+  width: 65%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-primary), var(--moonlit-blue));
+}
+
+/* Pre-Adventure Campaign Lobby Stage Curtain */
+.table-lobby-stage-curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: radial-gradient(
+    circle at center,
+    rgba(16, 18, 26, 0.92) 0%,
+    rgba(8, 10, 15, 0.97) 100%
+  );
+  backdrop-filter: blur(6px);
+}
+
+.table-lobby-curtain-card {
+  max-width: 34rem;
+  width: 100%;
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 60%, var(--panel-border));
+  background: color-mix(in srgb, var(--panel-surface) 95%, #000 5%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+  display: grid;
+  gap: var(--space-2);
+  text-align: center;
+  justify-items: center;
+}
+
+.lobby-curtain-dm-question {
+  font-size: 1.02rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin: var(--space-1) 0;
+}
+
 

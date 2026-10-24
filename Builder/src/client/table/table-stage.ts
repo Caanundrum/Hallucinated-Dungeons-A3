@@ -1085,10 +1085,20 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       const dx = event.clientX - originX;
       const dy = event.clientY - originY;
-      if (!moved && Math.hypot(dx, dy) < 3) {
+      if (!moved && Math.hypot(dx, dy) < 6) {
         return;
       }
-      moved = true;
+      if (!moved) {
+        moved = true;
+        viewport.classList.add('is-panning');
+        if ('pointerId' in event && typeof viewport.setPointerCapture === 'function') {
+          try {
+            viewport.setPointerCapture(event.pointerId);
+          } catch {
+            // Capture is best-effort on synthetic events.
+          }
+        }
+      }
       event.preventDefault();
       viewport.scrollLeft = scrollLeft - dx;
       viewport.scrollTop = scrollTop - dy;
@@ -1132,14 +1142,6 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       scrollLeft = viewport.scrollLeft;
       scrollTop = viewport.scrollTop;
       activePointerId = 'pointerId' in event ? event.pointerId : null;
-      viewport.classList.add('is-panning');
-      if ('pointerId' in event && typeof viewport.setPointerCapture === 'function') {
-        try {
-          viewport.setPointerCapture(event.pointerId);
-        } catch {
-          // Capture is best-effort on synthetic events.
-        }
-      }
       removeWindowPanListeners = detachWindowListeners;
       window.addEventListener('pointermove', onMove, { passive: false });
       window.addEventListener('pointerup', onUp);

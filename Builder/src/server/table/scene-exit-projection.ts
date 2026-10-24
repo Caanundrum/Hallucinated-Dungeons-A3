@@ -101,6 +101,8 @@ export function materializeContractExits<
   readonly exits: readonly TExit[];
   readonly edges: readonly MapEdgeRecord[];
   readonly doorStates: Record<string, DoorState>;
+  readonly suppressSyntheticDoors?: boolean;
+  readonly snapToAnyExistingDoor?: boolean;
 }): {
   readonly features: TFeature[];
   readonly edges: MapEdgeRecord[];
@@ -134,14 +136,17 @@ export function materializeContractExits<
       guard += 1;
     }
     // Prefer an existing door on this bearing so we do not invent a second unnamed opening.
-    const existingOriented = edges.find(
-      (edge) => edge.kind === 'door' && edge.orientation === place.orientation,
-    );
+    const existingOriented =
+      edges.find((edge) => edge.kind === 'door' && edge.orientation === place.orientation) ??
+      (options.snapToAnyExistingDoor && index === 0
+        ? edges.find((edge) => edge.kind === 'door')
+        : undefined);
     if (
       existingOriented !== undefined &&
-      Math.abs(existingOriented.column - options.spawn.column) +
-        Math.abs(existingOriented.row - options.spawn.row) <=
-        4
+      (options.snapToAnyExistingDoor === true ||
+        Math.abs(existingOriented.column - options.spawn.column) +
+          Math.abs(existingOriented.row - options.spawn.row) <=
+          4)
     ) {
       place = {
         column: existingOriented.column,
@@ -150,9 +155,11 @@ export function materializeContractExits<
       };
     }
     const doorState =
-      existingOriented !== undefined
-        ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')
-        : 'closed';
+      options.suppressSyntheticDoors && existingOriented === undefined
+        ? 'open'
+        : existingOriented !== undefined
+          ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')
+          : 'closed';
     const labeledExit = /\b—\s*(open|closed|locked|unlocked)\b/i.test(exit.label)
       ? exit.label
       : `${exit.label.replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, '').trim()} — ${doorState}`;
@@ -178,6 +185,7 @@ export function materializeContractExits<
     }
     // Only add a door when none exists on this bearing and none is already nearby.
     if (
+      !options.suppressSyntheticDoors &&
       existingOriented === undefined &&
       !nearbyDoor(edges, place.column, place.row)
     ) {
@@ -220,14 +228,30 @@ export function attachExitsToComposedScene(scene: ComposedScene): ComposedScene 
 
 /** Apply exit materialization to a stored scene instance at projection time. */
 export function attachExitsToStoredScene(scene: StoredSceneInstance): StoredSceneInstance {
+  const isOutdoorScene =
+    scene.templateId.startsWith('exterior_') ||
+    scene.templateId === 'starter_trail_crossroads' ||
+    scene.environment === 'forest_path' ||
+    scene.environment === 'marsh_trail' ||
+    scene.environment === 'village_street';
+  const hasExplicitDoorExit = scene.exits.some((exit) =>
+    /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
+  );
+  const suppressSyntheticDoors = isOutdoorScene && !hasExplicitDoorExit;
+  const cleanedEdges = suppressSyntheticDoors
+    ? scene.edges.filter((edge) => edge.kind !== 'door')
+    : scene.edges;
+  const cleanedDoorStates = suppressSyntheticDoors ? {} : scene.doorStates;
   const materialized = materializeContractExits({
     spawn: scene.spawn,
     columns: scene.columns,
     rows: scene.rows,
     features: scene.features,
     exits: scene.exits as readonly StoredSceneExit[],
-    edges: scene.edges,
-    doorStates: scene.doorStates,
+    edges: cleanedEdges,
+    doorStates: cleanedDoorStates,
+    suppressSyntheticDoors,
+    snapToAnyExistingDoor: true,
   });
   return {
     ...scene,

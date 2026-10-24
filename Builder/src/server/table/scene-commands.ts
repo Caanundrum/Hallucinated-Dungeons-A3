@@ -98,11 +98,29 @@ export function buildStoredSceneFromRoomBlueprint(
           targetSceneId: exit.targetSceneId,
         }))
       : composed.exits;
+  const hasExplicitDoorExit = exits.some((exit) =>
+    /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
+  );
+  const suppressOutdoorDoors = kind === 'exterior' && !hasExplicitDoorExit;
+  const primaryDoorEdge = composed.edges.find((edge) => edge.kind === 'door');
+  const roomEdges = suppressOutdoorDoors
+    ? composed.edges.filter((edge) => edge.kind !== 'door')
+    : room.exits.length === 1 && primaryDoorEdge !== undefined
+      ? composed.edges.filter((edge) => edge.kind !== 'door' || edge.edgeId === primaryDoorEdge.edgeId)
+      : composed.edges;
+  const roomDoorStates: Record<string, (typeof composed.doorStates)[string]> = {};
+  for (const edge of roomEdges) {
+    if (edge.kind === 'door') {
+      roomDoorStates[edge.edgeId] = composed.doorStates[edge.edgeId] ?? edge.doorState ?? 'closed';
+    }
+  }
   const baseFeatures = composed.features
     .filter(
       (feature) =>
-        room.npcs.length > 0 ||
-        (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc'),
+        (room.exits.length === 0 ||
+          (feature.objectKind !== 'exit' && feature.referenceKind !== 'exit')) &&
+        (room.npcs.length > 0 ||
+          (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc')),
     )
     .map((feature) => ({
       ...feature,
@@ -142,9 +160,9 @@ export function buildStoredSceneFromRoomBlueprint(
     columns: composed.columns,
     rows: composed.rows,
     cells: composed.cells,
-    edges: composed.edges,
+    edges: roomEdges,
     features: baseFeatures,
-    doorStates: { ...composed.doorStates },
+    doorStates: roomDoorStates,
     spawn: composed.spawn,
     exits,
     inhabitantObjectIds: room.npcs.length > 0 ? [...composed.inhabitantObjectIds] : [],

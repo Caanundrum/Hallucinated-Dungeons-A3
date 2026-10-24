@@ -242,6 +242,13 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     const start = match.index ?? 0;
     const words = match[0].split(/\s+/);
     let hadThe = false;
+    // If a capitalized word at the start of a sentence/clause is followed by an article ("The", "A", "An")
+    // and a proper name (e.g. "Remove The Five-Crowned Wyrm"), strip the sentence-opening imperative/verb.
+    const articleIdx = words.findIndex((w, idx) => idx > 0 && /^(?:the|a|an)$/i.test(w));
+    if (articleIdx > 0 && words.length - articleIdx - 1 >= 2) {
+      hadThe = words[articleIdx]!.toLowerCase() === 'the';
+      words.splice(0, articleIdx + 1);
+    }
     while (words.length > 0 && LEADING_STOPWORDS.has(words[0]!.toLowerCase())) {
       if (words[0]!.toLowerCase() === 'the') {
         hadThe = true;
@@ -458,6 +465,7 @@ export function sanitizeWotcProductIdentity(text: string): string {
 export interface ClassifiedNpcRoles {
   readonly missingNpcs: readonly string[];
   readonly presentNpcs: readonly string[];
+  readonly antagonistNpcs: readonly string[];
 }
 
 export function classifyNpcRoles(
@@ -466,6 +474,7 @@ export function classifyNpcRoles(
 ): ClassifiedNpcRoles {
   const missing: string[] = [];
   const present: string[] = [];
+  const antagonists: string[] = [];
 
   for (const name of npcs) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -478,16 +487,23 @@ export function classifyNpcRoles(
       new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:waiting|entrance|greets?|meets?|here)\\b`, 'i').test(premise) ||
       new RegExp(`\\b(?:waiting|entrance|greets?|meets?|question|speak\\s+with|talk\\s+to|meet)\\s+(?:(?:the|with|to)\\s+)?(?:[a-z]+\\s+){0,3}${escaped}\\b`, 'i').test(premise);
 
+    const isBossArchetype =
+      /\b(?:wyrm|dragon|lich|tyrant|horror|overlord|serpent\s+queen|crimson\s+count|aberrant|archlich|behemoth)\b/i.test(
+        name,
+      );
+
     if (isMissing) {
       missing.push(name);
-    } else if (isPresent) {
+    } else if (isPresent && !isBossArchetype) {
       present.push(name);
+    } else if (isBossArchetype) {
+      antagonists.push(name);
     } else {
       present.push(name);
     }
   }
 
-  return { missingNpcs: missing, presentNpcs: present };
+  return { missingNpcs: missing, presentNpcs: present, antagonistNpcs: antagonists };
 }
 
 export interface BuildCampaignBlueprintOptions {
@@ -526,6 +542,53 @@ const EVOCATIVE_FALLBACK_NPCS = [
   'Old Greta',
 ];
 
+function buildRoomBattlemapPrompt(
+  templateId: string,
+  placeName: string,
+  toneLabel: string,
+  roomRole: 'opening' | 'investigation' | 'sanctum',
+): string {
+  const tone = toneLabel.toLowerCase();
+  if (templateId.startsWith('exterior_forest')) {
+    return sanitizeWotcProductIdentity(
+      `Top-down overhead fantasy battlemap of ${placeName}, outdoor forest crossroads clearing with winding dirt trail, ancient mossy trees, fallen logs, and dappled woodland light in a ${tone} setting, outdoor wilderness, no roof, no indoor walls`,
+    );
+  }
+  if (templateId.startsWith('exterior_marsh')) {
+    return sanitizeWotcProductIdentity(
+      `Top-down overhead fantasy battlemap of ${placeName}, misty marshland trail with weathered wooden boardwalks, reeds, shallow bog water, and mossy stones in a ${tone} setting, outdoor wilderness, no roof`,
+    );
+  }
+  if (templateId.startsWith('exterior_')) {
+    return sanitizeWotcProductIdentity(
+      `Top-down overhead fantasy battlemap of ${placeName}, open cobblestone road and rustic frontier crossroads, timber market stalls, roadside lanterns, and open pathways in a ${tone} setting, outdoor street, no roof`,
+    );
+  }
+  if (templateId.startsWith('landmark_foggy_docks')) {
+    return sanitizeWotcProductIdentity(
+      `Top-down overhead fantasy battlemap of ${placeName}, weathered wooden waterfront piers, mooring posts, cargo crates, and dark canal water in a ${tone} setting`,
+    );
+  }
+  if (templateId.startsWith('landmark_courtyard_ruins')) {
+    return sanitizeWotcProductIdentity(
+      `Top-down overhead fantasy battlemap of ${placeName}, weathered stone courtyard ruins, mossy flagstones, broken pillars, and open archways in a ${tone} setting`,
+    );
+  }
+  if (roomRole === 'investigation') {
+    return sanitizeWotcProductIdentity(
+      `Shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east in a ${tone} setting`,
+    );
+  }
+  if (roomRole === 'sanctum') {
+    return sanitizeWotcProductIdentity(
+      `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework in a ${tone} setting`,
+    );
+  }
+  return sanitizeWotcProductIdentity(
+    `${placeName} entry chamber in a ${tone} setting, warm lantern light, stone and timber floor, doorway leading east`,
+  );
+}
+
 function buildMilestoneGraph(options: {
   readonly campaignName: string;
   readonly startLevel: number;
@@ -542,7 +605,10 @@ function buildMilestoneGraph(options: {
   const totalMilestones = Math.max(1, options.targetEndLevel - options.startLevel);
   const toneLabel = CAMPAIGN_TONE_LABELS[options.campaignTone];
   const premiseText = typeof options.premise === 'string' ? options.premise : '';
-  const { missingNpcs, presentNpcs } = classifyNpcRoles(options.entities.npcs, premiseText);
+  const { missingNpcs, presentNpcs, antagonistNpcs } = classifyNpcRoles(
+    options.entities.npcs,
+    premiseText,
+  );
 
   for (let m = 1; m <= totalMilestones; m += 1) {
     const fromLevel = options.startLevel + m - 1;
@@ -557,14 +623,13 @@ function buildMilestoneGraph(options: {
     const r3Xp = Math.max(50, xpBudgetForMilestone - r1Xp - r2Xp);
     const r3EncounterXp = Math.round(xpBudgetForMilestone * 0.4);
 
+    const nonMissingNonAntagonistNpcs = options.entities.npcs.filter(
+      (name) => !missingNpcs.includes(name) && !antagonistNpcs.includes(name),
+    );
     const openingNpcFromPremise =
       m === 1
-        ? presentNpcs[0] ??
-          options.entities.npcs.find((name) => !missingNpcs.includes(name)) ??
-          null
-        : presentNpcs[m - 1] ??
-          options.entities.npcs.filter((name) => !missingNpcs.includes(name))[m - 1] ??
-          null;
+        ? presentNpcs[0] ?? nonMissingNonAntagonistNpcs[0] ?? null
+        : presentNpcs[m - 1] ?? nonMissingNonAntagonistNpcs[m - 1] ?? null;
     const fallbackNpc = EVOCATIVE_FALLBACK_NPCS[(m - 1) % EVOCATIVE_FALLBACK_NPCS.length]!;
     const npcName = sanitizeWotcProductIdentity(
       openingNpcFromPremise ?? fallbackNpc,
@@ -586,9 +651,12 @@ function buildMilestoneGraph(options: {
       options.entities.props[m % Math.max(1, options.entities.props.length)] ??
         'sealed ledger',
     );
+    const room1Template = m === 1 ? options.openingTemplate : options.investigationTemplate;
+    const isRoom1Outdoor =
+      room1Template.startsWith('exterior_') || room1Template.startsWith('landmark_');
     const exitLabel = sanitizeWotcProductIdentity(
       options.entities.exits[(m - 1) % Math.max(1, options.entities.exits.length)] ??
-        'wooden door',
+        (isRoom1Outdoor ? 'winding trail ahead' : 'wooden door'),
     );
     const monster = pickSrdMonsterForLevel(fromLevel);
     const bossMonster = pickSrdMonsterForLevel(targetLevel);
@@ -712,10 +780,8 @@ function buildMilestoneGraph(options: {
             ? `${npcName} is waiting at ${placeName} where ${options.hook} begins to surface.`
             : `${npcName} keeps watch over ${placeName} where ${options.hook} begins to surface.`,
         ),
-        templateId: m === 1 ? options.openingTemplate : options.investigationTemplate,
-        battlemapPrompt: sanitizeWotcProductIdentity(
-          `${placeName} entry chamber in a ${toneLabel.toLowerCase()} setting, warm lantern light, stone and timber floor, doorway leading east`,
-        ),
+        templateId: room1Template,
+        battlemapPrompt: buildRoomBattlemapPrompt(room1Template, placeName, toneLabel, 'opening'),
         exits: room1Exits,
         npcs: [
           {
@@ -738,8 +804,11 @@ function buildMilestoneGraph(options: {
         title: room2Title,
         summary: room2Summary,
         templateId: options.investigationTemplate,
-        battlemapPrompt: sanitizeWotcProductIdentity(
-          `Shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east`,
+        battlemapPrompt: buildRoomBattlemapPrompt(
+          options.investigationTemplate,
+          placeName,
+          toneLabel,
+          'investigation',
         ),
         exits: room2Exits,
         npcs: [],
@@ -762,8 +831,11 @@ function buildMilestoneGraph(options: {
         title: room3Title,
         summary: room3SummaryFinal,
         templateId: 'interior_stone_crypt',
-        battlemapPrompt: sanitizeWotcProductIdentity(
-          `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework`,
+        battlemapPrompt: buildRoomBattlemapPrompt(
+          'interior_stone_crypt',
+          placeName,
+          toneLabel,
+          'sanctum',
         ),
         exits: room3Exits,
         npcs: room3Npcs,
@@ -836,15 +908,28 @@ export function buildCampaignBlueprint(
   const questHook = detectQuestHook(premise, entities.props[0]);
   const hints = actTemplateHints(location.locationKind);
 
-  const hook = questHook ?? 'the trouble that brought the party together';
-  const { presentNpcs } = classifyNpcRoles(entities.npcs, premise);
+  const { presentNpcs, missingNpcs, antagonistNpcs } = classifyNpcRoles(entities.npcs, premise);
+  const antagonist = antagonistNpcs[0] ?? null;
   const npc = presentNpcs[0] ?? null;
   const place = entities.places[0] ?? null;
   const exit = entities.exits[0] ?? null;
   const firstProp = entities.props[0] ?? null;
   const secondProp = entities.props[1] ?? null;
-  const setting = place ?? location.locationPhrase ?? 'the opening scene';
-  const exitPhrase = exit !== null ? `the ${exit}` : 'the first exit';
+  const setting = place ?? location.locationPhrase ?? 'the frontier';
+  const exitPhrase = exit !== null ? `the ${exit}` : 'the outer threshold';
+  const cleanTitle =
+    campaignName.trim().length > 0 && !/^(?:campaign|untitled\s+campaign)$/i.test(campaignName.trim())
+      ? sanitizeWotcProductIdentity(campaignName.trim())
+      : null;
+  const hook =
+    questHook ??
+    (antagonist !== null
+      ? `the rising dominion of ${antagonist}`
+      : firstProp !== null
+        ? `the contested ${firstProp}`
+        : cleanTitle !== null
+          ? `the crisis behind ${cleanTitle}`
+          : `the looming shadow over ${setting}`);
 
   const FALLBACK_OPENING_TEMPLATES = [
     'exterior_village_street',
@@ -869,12 +954,38 @@ export function buildCampaignBlueprint(
       ? 'landmark_courtyard_ruins'
       : 'interior_stone_crypt');
 
+  const levelSpan = Math.max(1, targetEndLevel - startLevel);
+  const act1End = Math.min(targetEndLevel, startLevel + Math.max(1, Math.floor(levelSpan / 3)));
+  const act2End = Math.min(
+    targetEndLevel,
+    Math.max(act1End, startLevel + Math.max(1, Math.floor((levelSpan * 2) / 3))),
+  );
+  const act1Range =
+    act1End > startLevel ? `Levels ${startLevel}–${act1End}` : `Level ${startLevel}`;
+  const act2Range =
+    act2End > act1End ? `Levels ${act1End + 1}–${act2End}` : `Level ${act2End}`;
+  const act3Range =
+    targetEndLevel > act2End
+      ? `Levels ${act2End + 1}–${targetEndLevel}`
+      : `Level ${targetEndLevel}`;
+
+  const scaleTwistClause =
+    levelSpan >= 10
+      ? ` Across this epic ${startLevel}–${targetEndLevel} arc, what begins as a local flashpoint reveals a realm-spanning network of corrupted sanctuaries, rival warlords, and ancient seals failing one by one.`
+      : levelSpan >= 5
+        ? ` As the party advances through ${act2Range}, the conflict widens from a local mystery into a regional struggle with entrenched lieutenants and competing factions.`
+        : ` A sudden betrayal or hidden accomplice complicates the trail, forcing the party to choose who can be trusted before time runs out.`;
+
   const act1: CampaignBlueprintBeat = {
     act: 1,
-    title: `Act I — Opening at ${setting}`,
-    currentActGoal: `Establish ${setting} and let the party feel why ${hook} matters${
-      npc !== null ? `; ${npc} is the first face to deal with` : ''
-    }.`,
+    title: `Act I (${act1Range}) — The Gathering Storm at ${capitalizeLabel(setting)}`,
+    currentActGoal: sanitizeWotcProductIdentity(
+      `The adventurers converge at ${setting} as the first tremors of ${hook} disrupt the region${
+        npc !== null ? `, where ${npc} serves as their initial point of contact` : ''
+      }. Early leads and physical evidence (${
+        firstProp !== null ? `such as the ${firstProp}` : 'left behind at the scene'
+      }) reveal that the surface incident is merely the opening move of a deeper plot. DM Guardrail: Let the party establish their footing, interrogate witnesses, and uncover the trail leading past ${exitPhrase}.`,
+    ),
     keyClue:
       firstProp !== null
         ? `The ${firstProp} in the opening room`
@@ -889,23 +1000,35 @@ export function buildCampaignBlueprint(
   };
   const act2: CampaignBlueprintBeat = {
     act: 2,
-    title: `Act II — Investigation beyond ${exit !== null ? `the ${exit}` : 'the opening room'}`,
-    currentActGoal: `Follow the trail of ${hook} past ${exitPhrase}; a hazard or complication should make the answer cost something.`,
+    title: `Act II (${act2Range}) — Web of Shadows & Shifting Stakes`,
+    currentActGoal: sanitizeWotcProductIdentity(
+      `Pushing beyond ${exitPhrase}, the party tracks the architects of ${hook} through contested territory and hazardous strongholds.${scaleTwistClause}${
+        antagonist !== null
+          ? ` Heralds and inner-circle agents of ${antagonist} move to silence witnesses and secure the remaining pieces of their design.`
+          : missingNpcs[0] !== undefined
+            ? ` Fresh signs show ${missingNpcs[0]} was taken deeper underground for a specific purpose.`
+            : ''
+      } DM Guardrail: Introduce a mid-campaign twist where an apparent ally or assumption turns out to have hidden strings attached, raising the cost of pressing forward.`,
+    ),
     keyClue:
       secondProp !== null
         ? `The ${secondProp} found along the trail`
         : entities.places[1] !== undefined
           ? `A lead pointing to ${entities.places[1]}`
-          : `A trace tying ${npc ?? 'the culprit'} to ${hook}`,
+          : `A trace tying ${antagonist ?? npc ?? 'the mastermind'} to ${hook}`,
     nextSceneTrigger: `The party learns who or what is behind ${hook} and commits to confronting it.`,
     templateIdHint: hints.investigation,
   };
   const act3: CampaignBlueprintBeat = {
     act: 3,
-    title: 'Act III — Climax',
-    currentActGoal: `Confront the source of ${hook} and resolve it for good or ill${
-      npc !== null ? `, with ${npc} still at stake` : ''
-    }.`,
+    title: `Act III (${act3Range}) — The Crucible & Final Reckoning`,
+    currentActGoal: sanitizeWotcProductIdentity(
+      `Armed with hard-won allies, relics, and the truth behind ${hook}, the party launches a decisive push into the heart of the sanctum${
+        antagonist !== null ? ` to break the power of ${antagonist}` : ''
+      }${
+        missingNpcs[0] !== undefined ? ` and bring ${missingNpcs[0]} out alive` : ''
+      }. The enemy's endgame is already in motion, and the final confrontation forces both a tactical showdown and a defining choice over what becomes of ${setting}. DM Guardrail: Allow the party's earlier faction choices and discoveries to shape the final battlefield.`,
+    ),
     keyClue: `The proof that settles ${hook}`,
     nextSceneTrigger: 'The confrontation resolves and the chapter closes with a recap.',
     templateIdHint: null,
@@ -1074,36 +1197,64 @@ export async function draftCampaignBlueprintOptionsWithAi(
   },
 ): Promise<readonly CampaignBlueprint[]> {
   const primary = await draftCampaignBlueprintWithAi(options);
-  const baseHook = primary.questHook ?? 'the central mystery';
+  const rawPremise = [options.summary, options.premise].filter(Boolean).join(' ');
+  const roles = classifyNpcRoles(primary.namedNpcs, rawPremise);
+  const antagonist = roles.antagonistNpcs[0] ?? null;
+  const baseHook =
+    primary.questHook ??
+    (antagonist !== null
+      ? `the rising dominion of ${antagonist}`
+      : primary.namedProps[0] !== undefined
+        ? `the contested ${primary.namedProps[0]}`
+        : `the crisis unfolding in ${primary.namedPlaces[0] ?? options.name ?? 'the realm'}`);
   const basePlace = primary.namedPlaces[0] ?? options.name ?? 'the frontier';
-  const baseNpc =
-    classifyNpcRoles(primary.namedNpcs, [options.summary, options.premise].filter(Boolean).join(' '))
-      .presentNpcs[0] ?? 'a local informant';
+  const baseNpc = roles.presentNpcs[0] ?? 'Warden Elira';
+  const toneLabel = CAMPAIGN_TONE_LABELS[primary.campaignTone ?? 'heroic_fantasy'];
+  const startLvl = primary.startLevel ?? 1;
+  const endLvl = primary.targetEndLevel ?? 3;
+  const span = Math.max(1, endLvl - startLvl);
+  const a1End = Math.min(endLvl, startLvl + Math.max(1, Math.floor(span / 3)));
+  const a2End = Math.min(endLvl, Math.max(a1End, startLvl + Math.max(1, Math.floor((span * 2) / 3))));
+  const r1 = a1End > startLvl ? `Levels ${startLvl}–${a1End}` : `Level ${startLvl}`;
+  const r2 = a2End > a1End ? `Levels ${a1End + 1}–${a2End}` : `Level ${a2End}`;
+  const r3 = endLvl > a2End ? `Levels ${a2End + 1}–${endLvl}` : `Level ${endLvl}`;
 
   const variant2: CampaignBlueprint = {
     ...primary,
     centralTension: sanitizeWotcProductIdentity(
-      `Approach ${basePlace} from the outskirts and uncover who is pulling the strings behind ${baseHook}.`,
+      `Infiltrate the faction rivalries of ${basePlace} and expose the hidden conspiracy driving ${baseHook} (Levels ${startLvl}–${endLvl}).`,
     ),
     acts: [
       {
         act: 1,
-        title: `Act I — On the Road into ${capitalizeLabel(basePlace)}`,
-        currentActGoal: `Arrive along the road into ${basePlace}, meet ${baseNpc}, and spot the first sign of ${baseHook}.`,
-        keyClue: primary.acts[0]?.keyClue ?? `Roadside trace of ${baseHook}`,
-        nextSceneTrigger: `The party follows the lead from the approach road into the heart of ${basePlace}.`,
+        title: `Act I (${r1}) — Shadows & Informants in ${capitalizeLabel(basePlace)}`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `The party arrives along the approach road into ${basePlace}, where ${baseNpc} quietly warns them that local authorities are covering up the truth of ${baseHook}. By following covert leads and testing rival factions' loyalties, the adventurers uncover a hidden smuggling and espionage ring operating right beneath the settlement. DM Guardrail: Reward social cunning, stealth, and investigation as the party pieces together who profits from the chaos.`,
+        ),
+        keyClue: primary.acts[0]?.keyClue ?? `Covert ledger tying local elites to ${baseHook}`,
+        nextSceneTrigger: `The party follows the conspiracy's trail into the ruined inner courtyard of ${basePlace}.`,
         templateIdHint: 'exterior_village_street',
       },
       {
         ...(primary.acts[1] ?? primary.acts[0]!),
         act: 2,
-        title: `Act II — Shadows Beneath ${capitalizeLabel(basePlace)}`,
+        title: `Act II (${r2}) — Double-Cross in the Fractured Strongholds`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `As the investigation reaches the mid-campaign turning point, a trusted patron's faction fractures and an ambush turns the tables on the party. Across ${r2}, the adventurers must disrupt enemy supply lines, turn a rival lieutenant to their side, and breach the inner wardens guarding ${
+            antagonist ?? `the architect of ${baseHook}`
+          }. DM Guardrail: Keep faction alliances dynamic — let players play enemies against one another or forge unexpected truces.`,
+        ),
         templateIdHint: 'landmark_courtyard_ruins',
       },
       {
         ...(primary.acts[2] ?? primary.acts[0]!),
         act: 3,
-        title: `Act III — The Reckoning at ${capitalizeLabel(basePlace)}`,
+        title: `Act III (${r3}) — The Shattered Crown at ${capitalizeLabel(basePlace)}`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `With the conspiracy unmasked and its outer defenses broken, the party leads a final strike into the sanctum to confront ${
+            antagonist ?? `the power behind ${baseHook}`
+          } before their ritual or conquest reaches completion. Every faction debt and secret uncovered in earlier acts converges on the final battleground. DM Guardrail: Let the party's accumulated allies and hard choices decide the lasting order of ${basePlace}.`,
+        ),
       },
     ],
     milestones: (primary.milestones ?? []).map((m, idx) =>
@@ -1116,6 +1267,17 @@ export async function draftCampaignBlueprintOptionsWithAi(
                     ...r,
                     templateId: 'exterior_village_street',
                     title: `${capitalizeLabel(basePlace)} — Approach Road`,
+                    battlemapPrompt: buildRoomBattlemapPrompt(
+                      'exterior_village_street',
+                      `${capitalizeLabel(basePlace)} — Approach Road`,
+                      toneLabel,
+                      'opening',
+                    ),
+                    exits: r.exits.map((ex, eIdx) =>
+                      eIdx === 0 && isDoorLikeExitPhrase(ex.edgeLabel)
+                        ? { ...ex, edgeLabel: 'Cobblestone road ahead' }
+                        : ex,
+                    ),
                   }
                 : r,
             ),
@@ -1127,27 +1289,39 @@ export async function draftCampaignBlueprintOptionsWithAi(
   const variant3: CampaignBlueprint = {
     ...primary,
     centralTension: sanitizeWotcProductIdentity(
-      `Gather whispers in the wilds bordering ${basePlace} before striking at the heart of ${baseHook}.`,
+      `Brave the untamed wilds and ancient ruins bordering ${basePlace} to unearth the forgotten power capable of stopping ${baseHook} (Levels ${startLvl}–${endLvl}).`,
     ),
     acts: [
       {
         act: 1,
-        title: `Act I — Gathering Whispers Near ${capitalizeLabel(basePlace)}`,
-        currentActGoal: `Rendezvous with ${baseNpc} at the edge of ${basePlace} where rumors of ${baseHook} first surfaced.`,
-        keyClue: primary.acts[0]?.keyClue ?? `Hidden sign of ${baseHook}`,
-        nextSceneTrigger: `The party commits to tracking the threat into ${basePlace}.`,
+        title: `Act I (${r1}) — Whispers at the Wilderness Crossroads`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `Drawn together at the forest crossroads outside ${basePlace}, the party meets ${baseNpc} beside the first omens of ${baseHook}. Survival hazards, unnatural scouts, and ancient boundary stones point toward a long-buried ruin waking in the wilds. DM Guardrail: Emphasize frontier exploration, tracking, and environmental discovery as the party charts a path into the borderlands.`,
+        ),
+        keyClue: primary.acts[0]?.keyClue ?? `Ancient boundary stone bearing the mark of ${baseHook}`,
+        nextSceneTrigger: `The party tracks the expedition trail from the forest crossroads toward the sunken ruins.`,
         templateIdHint: 'exterior_forest_path',
       },
       {
         ...(primary.acts[1] ?? primary.acts[0]!),
         act: 2,
-        title: `Act II — The Trail Through the Outskirts`,
+        title: `Act II (${r2}) — The Sunken Vaults & Ancient Bargains`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `Delving into the forgotten reaches beyond ${basePlace}, the party discovers a twist in the lore: the threat behind ${baseHook} is bound to an ancient pact that was broken generations ago. Across ${r2}, the adventurers must navigate hazardous catacombs, outmaneuver vanguard warbands${
+            antagonist !== null ? ` loyal to ${antagonist}` : ''
+          }, and claim the keystone relics needed to breach the inner sanctum. DM Guardrail: Offer meaningful exploration choices, ancient puzzles, and high-risk shortcuts.`,
+        ),
         templateIdHint: 'landmark_foggy_docks',
       },
       {
         ...(primary.acts[2] ?? primary.acts[0]!),
         act: 3,
-        title: `Act III — Final Confrontation`,
+        title: `Act III (${r3}) — Dawn Over the Crucible`,
+        currentActGoal: sanitizeWotcProductIdentity(
+          `In the climactic tier (${r3}), the wilderness and ${basePlace} stand on the brink as ${
+            antagonist ?? `the awakened force behind ${baseHook}`
+          } gathers its full strength. Wielding the secrets unearthed on their expedition, the party descends into the inner sanctum for a decisive reckoning that will either seal the threat forever or reshape the realm. DM Guardrail: Make the final confrontation feel earned, mythic, and responsive to how the party handled the ancient pact.`,
+        ),
       },
     ],
     milestones: (primary.milestones ?? []).map((m, idx) =>
@@ -1160,6 +1334,17 @@ export async function draftCampaignBlueprintOptionsWithAi(
                     ...r,
                     templateId: 'exterior_forest_path',
                     title: `${capitalizeLabel(basePlace)} — Forest Crossroads`,
+                    battlemapPrompt: buildRoomBattlemapPrompt(
+                      'exterior_forest_path',
+                      `${capitalizeLabel(basePlace)} — Forest Crossroads`,
+                      toneLabel,
+                      'opening',
+                    ),
+                    exits: r.exits.map((ex, eIdx) =>
+                      eIdx === 0 && isDoorLikeExitPhrase(ex.edgeLabel)
+                        ? { ...ex, edgeLabel: 'Winding forest trail ahead' }
+                        : ex,
+                    ),
                   }
                 : r,
             ),

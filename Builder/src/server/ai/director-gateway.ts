@@ -1197,11 +1197,35 @@ export async function interpretNaturalLanguageIntent(options: {
     const presentNpcs = map.notableFeatures
       .filter((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
       .map((f) => f.label);
+    const feetPerSq = map.coordinateSpace.feetPerSquare || 5;
+    const anchor = ownToken?.footprint.anchor;
+    const spatialObjects: string[] = [];
+    if (anchor !== undefined) {
+      for (const f of map.notableFeatures) {
+        const distFt =
+          Math.max(Math.abs(anchor.column - f.column), Math.abs(anchor.row - f.row)) * feetPerSq;
+        spatialObjects.push(`${f.label} at (${f.column},${f.row}) [${distFt} ft away]`);
+      }
+      for (const e of map.edges.filter((edge) => edge.kind === 'door')) {
+        const distFt =
+          Math.max(Math.abs(anchor.column - e.column), Math.abs(anchor.row - e.row)) * feetPerSq;
+        const dLabel = formatDoorPlayerFacingLabel(
+          doorAuthorityFromStored(e.doorState),
+          e.orientation,
+        );
+        spatialObjects.push(`${dLabel} at (${e.column},${e.row}) [${distFt} ft away]`);
+      }
+    }
+    const equippedItems =
+      seatedSheet?.equipment.filter((item) => item.equipped).map((item) => item.name) ?? [];
 
     const dispatch = await queryDirectorMechanicsArbiter({
       rawText,
       sceneTitle: map.title,
       sceneDescription: map.sceneBanner ?? undefined,
+      playerPosition: anchor,
+      spatialObjects,
+      equippedItems,
       visibleFeatures,
       doors,
       presentNpcs,

@@ -334,6 +334,10 @@ export interface CharacterProjection {
   readonly appearancePrompt?: string | null;
   /** Portrait updates earned at level-up milestones; spent one per regenerate. Default 0. */
   readonly milestonePortraitCredits?: number;
+  /** True when the character is currently seated in an active combat encounter at a table. */
+  readonly seatedInCombat?: boolean;
+  /** True when the character is eligible to change prepared/known spells under SRD rest/level-up rules. */
+  readonly canChangePreparedSpells?: boolean;
 }
 
 export interface CharacterVaultProjection {

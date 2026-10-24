@@ -48,88 +48,6 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
-const STOP_PROPER_WORDS = new Set([
-  'The',
-  'A',
-  'An',
-  'In',
-  'On',
-  'At',
-  'By',
-  'For',
-  'With',
-  'From',
-  'Into',
-  'Near',
-  'Before',
-  'After',
-  'Under',
-  'Over',
-  'Through',
-  'When',
-  'Where',
-  'While',
-  'Example',
-]);
-
-/** Lightweight premise fact chips for create UX (generalized entity/location/quest extraction). */
-function premiseCommittedFactsMarkup(premise: string): string {
-  const text = premise.trim();
-  if (text.length === 0) {
-    return `<p class="record-meta" data-testid="premise-committed-facts-empty">Committed premise facts will appear here as you type.</p>`;
-  }
-  const facts: string[] = [];
-  const lower = text.toLowerCase();
-  if (/\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/.test(lower)) {
-    const locMatch = lower.match(
-      /\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/,
-    );
-    if (locMatch?.[1]) {
-      facts.push(`Location: ${locMatch[1]}`);
-    }
-  }
-  if (/\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/.test(lower)) {
-    const questMatch = lower.match(
-      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/,
-    );
-    if (questMatch?.[1]) {
-      facts.push(`Quest hook: ${questMatch[1]}`);
-    }
-  }
-  const properMatches = text.matchAll(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g);
-  const seenProper = new Set<string>();
-  for (const match of properMatches) {
-    const candidate = match[1]?.trim() ?? '';
-    if (
-      candidate.length > 2 &&
-      !STOP_PROPER_WORDS.has(candidate) &&
-      !seenProper.has(candidate.toLowerCase())
-    ) {
-      seenProper.add(candidate.toLowerCase());
-      facts.push(`Named: ${candidate}`);
-      if (seenProper.size >= 4) {
-        break;
-      }
-    }
-  }
-  const propMatches = text.matchAll(
-    /\b((?:broken|locked|ancient|silver|iron|red|sealed|gilded|cracked|rusty)\s+(?:[a-z]+\s+)?(?:lantern|door|warehouse|gate|chest|altar|key|satchel|blade|scroll|tome))\b/gi,
-  );
-  for (const match of propMatches) {
-    const prop = match[1]?.trim() ?? '';
-    if (prop.length > 0 && !seenProper.has(prop.toLowerCase())) {
-      seenProper.add(prop.toLowerCase());
-      facts.push(`Notable detail: ${prop}`);
-    }
-  }
-  if (facts.length === 0) {
-    return `<p class="record-meta" data-testid="premise-committed-facts-empty">No named location, quest hook, or entities detected yet.</p>`;
-  }
-  return `<ul class="record-list" data-testid="premise-committed-facts">${facts
-    .map((fact) => `<li data-testid="premise-committed-fact">${escapeHtml(fact)}</li>`)
-    .join('')}</ul>`;
-}
-
 export function mountCampaignCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Create a Campaign');
@@ -179,31 +97,37 @@ export function mountCampaignCreatePage(host: PageHost): void {
   function renderSkeletonPreview(): string {
     if (draftedBlueprint === null) {
       return `
-        <p class="message notice" data-testid="campaign-outline-required-notice">
+        <p class="message notice" data-testid="campaign-outline-required-notice" style="margin-top:0.75rem;">
           Drafting and approving a <strong>Rough Campaign Outline</strong> is required before creating the campaign. Click <strong>Draft Rough Campaign Outline</strong> above to generate 3 options and pick 1.
         </p>`;
     }
     const acts = draftedBlueprint.acts ?? [];
+    const ARCHETYPE_BADGES = [
+      'Unfolding Conspiracy & Intrigue',
+      'Faction Rivalry & Covert Strikes',
+      'Wilderness Expedition & Ancient Lore',
+    ];
     return `
-      <div class="panel" data-testid="campaign-skeleton-preview">
+      <div class="panel" data-testid="campaign-skeleton-preview" style="margin-top:1rem;">
         <h3>Choose 1 of 3 Rough Campaign Outlines</h3>
-        <p class="record-meta">
-          Pick one of the three rough outlines below and approve it. Detailed room layouts, battle maps, NPCs, monster tokens, and internal DM leveling curves remain hidden so nothing is spoiled.
+        <p class="record-meta" style="margin-bottom:0.75rem;">
+          Compare the three campaign arcs side-by-side below. Click any card to inspect its full multi-act story outline and DM guardrails, then approve your favorite.
         </p>
         ${
           outlineOptions.length > 1
-            ? `<div class="option-list" role="radiogroup" aria-label="Rough Campaign Outline choices" data-testid="outline-options-list">
+            ? `<div class="option-list outline-options-grid-3col" role="radiogroup" aria-label="Rough Campaign Outline choices" data-testid="outline-options-list">
                  ${outlineOptions
                    .map((opt, idx) => {
                      const selected = idx === selectedOutlineIndex;
-                     const act1Title = opt.acts[0]?.title ?? `Option ${idx + 1}`;
+                     const badgeLabel = ARCHETYPE_BADGES[idx] ?? `Arc ${idx + 1}`;
                      return `
                        <button type="button"
-                         class="option${selected ? ' selected' : ''}"
+                         class="option outline-choice-card${selected ? ' selected' : ''}"
                          data-testid="outline-option-${idx}"
                          data-outline-index="${idx}"
                          aria-pressed="${selected ? 'true' : 'false'}">
-                         <span class="option-label">Outline Option ${idx + 1}: ${escapeHtml(act1Title)}</span>
+                         <span class="option-badge">${escapeHtml(badgeLabel)}</span>
+                         <span class="option-label">Outline Option ${idx + 1}</span>
                          <span class="option-summary">${escapeHtml(opt.centralTension ?? opt.premiseDigest)}</span>
                        </button>`;
                    })
@@ -211,14 +135,14 @@ export function mountCampaignCreatePage(host: PageHost): void {
                </div>`
             : ''
         }
-        <dl class="account-details" style="margin-top:0.75rem;">
+        <dl class="account-details" style="margin-top:1rem;">
           <div>
             <dt>Premise Digest</dt>
             <dd>${escapeHtml(draftedBlueprint.premiseDigest)}</dd>
           </div>
           <div>
-            <dt>Tone</dt>
-            <dd>${escapeHtml(CAMPAIGN_TONE_LABELS[draftedBlueprint.campaignTone ?? campaignTone])}</dd>
+            <dt>Tone &amp; Level Span</dt>
+            <dd>${escapeHtml(CAMPAIGN_TONE_LABELS[draftedBlueprint.campaignTone ?? campaignTone])} · Levels ${draftedBlueprint.startLevel ?? startLevel}–${draftedBlueprint.targetEndLevel ?? targetEndLevel}</dd>
           </div>
           <div>
             <dt>Central Tension</dt>
@@ -226,11 +150,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
           </div>
           <div>
             <dt>Quest Hook</dt>
-            <dd>${escapeHtml(draftedBlueprint.questHook ?? draftedBlueprint.premiseDigest)}</dd>
+            <dd>${escapeHtml(draftedBlueprint.questHook ?? draftedBlueprint.centralTension ?? draftedBlueprint.premiseDigest)}</dd>
           </div>
         </dl>
-        <div class="stack" style="margin-top:0.75rem;">
-          <h4 class="preview-subheading">High-Level Story Arc (Rough Outline Only)</h4>
+        <div class="stack" style="margin-top:1rem;">
+          <h4 class="preview-subheading">Selected Story Arc — Option #${selectedOutlineIndex + 1} (Loose DM Guardrails)</h4>
           <ul class="record-list" data-testid="rough-outline-acts">
             ${acts
               .map(
@@ -245,34 +169,27 @@ export function mountCampaignCreatePage(host: PageHost): void {
         </div>
         ${
           outlineApproved
-            ? `<p class="message success" data-testid="outline-approved-badge">
-                 Rough Campaign Outline #${selectedOutlineIndex + 1} approved. Ready to create and forge the campaign world.
+            ? `<p class="message success" data-testid="outline-approved-badge" style="margin-top:0.75rem;">
+                 Rough Campaign Outline #${selectedOutlineIndex + 1} approved ✓ — click <strong>Create Campaign &amp; Forge World</strong> below when ready.
                </p>`
             : ''
         }
         ${
           forgingStatus !== null
-            ? `<p class="message notice" role="status" data-testid="campaign-forge-progress">${escapeHtml(forgingStatus)}</p>`
+            ? `<div class="message notice world-forge-theater" role="status" data-testid="campaign-forge-progress" style="margin-top:0.75rem;">
+                 <div class="world-forge-theater-header">
+                   <span class="world-forge-spinner" aria-hidden="true">✦</span>
+                   <strong>Forging Your Campaign World…</strong>
+                 </div>
+                 <p class="world-forge-stage-text">${escapeHtml(forgingStatus)}</p>
+                 <div class="world-forge-progress-bar" aria-hidden="true"><div class="world-forge-progress-fill"></div></div>
+               </div>`
             : ''
         }
-        <div class="actions" style="margin-top:0.75rem;">
+        <div class="actions" style="margin-top:0.85rem;">
           <button type="button" class="${outlineApproved ? 'secondary' : ''}" data-testid="approve-rough-outline"
             ${busy ? 'disabled' : ''}>
             ${outlineApproved ? `Outline #${selectedOutlineIndex + 1} Approved ✓` : `Approve Outline #${selectedOutlineIndex + 1}`}
-          </button>
-          <button type="button" data-testid="approve-and-forge-campaign"
-            aria-disabled="${
-              !busy &&
-              !draftingSkeleton &&
-              candidate !== null &&
-              name.trim().length > 0 &&
-              directorIdentity !== null &&
-              directorPersonality !== null &&
-              draftedBlueprint !== null
-                ? 'false'
-                : 'true'
-            }">
-            ${busy ? 'Forging World Assets…' : 'Approve & Forge World'}
           </button>
         </div>
       </div>`;
@@ -402,6 +319,13 @@ export function mountCampaignCreatePage(host: PageHost): void {
     requirements.textContent = text;
   }
 
+  const FORGE_THEATER_MESSAGES = [
+    'Rolling cosmic fate dice and charting overland trails across the realm…',
+    'Painting overhead tactical battlemaps and lighting tavern lanterns…',
+    'Briefing local contacts, faction informants, and dungeon wardens…',
+    'Stocking secret vaults, rumors, and preparing the Campaign Lobby…',
+  ];
+
   async function submitCreateCampaign(options: { readonly useForgedBlueprint: boolean }): Promise<void> {
     if (options.useForgedBlueprint && draftedBlueprint !== null) {
       outlineApproved = true;
@@ -411,9 +335,18 @@ export function mountCampaignCreatePage(host: PageHost): void {
     }
     busy = true;
     error = null;
+    let forgeStageIdx = 0;
+    let forgeTimer: ReturnType<typeof setInterval> | null = null;
     if (options.useForgedBlueprint) {
-      forgingStatus =
-        'Forging campaign world in the background: preparing unique battle maps, NPC portraits, and reusable monster tokens so they load fast at the table…';
+      forgingStatus = FORGE_THEATER_MESSAGES[0]!;
+      forgeTimer = setInterval(() => {
+        forgeStageIdx = (forgeStageIdx + 1) % FORGE_THEATER_MESSAGES.length;
+        forgingStatus = FORGE_THEATER_MESSAGES[forgeStageIdx]!;
+        const stageEl = container.querySelector<HTMLElement>('.world-forge-stage-text');
+        if (stageEl !== null) {
+          stageEl.textContent = forgingStatus;
+        }
+      }, 1600);
     }
     render();
     try {
@@ -453,6 +386,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
           ? failure.message
           : 'The campaign could not be created.';
     } finally {
+      if (forgeTimer !== null) {
+        clearInterval(forgeTimer);
+      }
       busy = false;
       forgingStatus = null;
       render();
@@ -555,7 +491,6 @@ export function mountCampaignCreatePage(host: PageHost): void {
               The opening scene keeps your core location, quest hook, and named entities when you
               write them here. The Game Director inspires the rest — the premise is not quoted word-for-word.
             </span>
-            ${premiseCommittedFactsMarkup(summary)}
           </label>
           <div class="actions">
             <label class="field">
@@ -637,10 +572,10 @@ export function mountCampaignCreatePage(host: PageHost): void {
 
         <section class="panel" aria-labelledby="world-forge-heading">
           <h2 id="world-forge-heading">5. Rough Campaign Outline &amp; World Forge (Required)</h2>
-          <p class="record-meta">
-            Generate 3 Rough Campaign Outlines from your premise, pick the one you like best, and approve it before creating the campaign. Battle maps, NPCs, and reusable monster tokens are forged in the background upon creation.
+          <p class="record-meta" style="margin:0.35rem 0 0.85rem 0; line-height:1.5;">
+            Generate 3 Rough Campaign Outlines from your premise, pick the one you like best, and approve it before creating the campaign. Battle maps, NPCs, and reusable monster tokens are forged upon creation.
           </p>
-          <div class="actions">
+          <div class="actions" style="margin-bottom:0.5rem;">
             <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
               ${draftingSkeleton || busy || outlineDraftsUsed >= 1 ? 'disabled' : ''}>
               ${
@@ -658,7 +593,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
         <div class="actions">
           <button type="button" data-testid="create-campaign-submit"
             aria-disabled="${canSubmit() ? 'false' : 'true'}">
-            ${busy ? 'Creating…' : 'Create Campaign'}
+            ${busy ? 'Forging Campaign World…' : 'Create Campaign & Forge World'}
           </button>
           <a href="/campaigns" data-link data-testid="cancel-create-campaign">Back to Campaigns</a>
         </div>
@@ -677,27 +612,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
       updateCreateControls();
     });
 
-    const updateFactsDom = () => {
-      const factsHost = container.querySelector<HTMLElement>(
-        '[data-testid="premise-committed-facts"], [data-testid="premise-committed-facts-empty"]',
-      );
-      if (factsHost !== null) {
-        const wrap = document.createElement('div');
-        wrap.innerHTML = premiseCommittedFactsMarkup(summary || premise);
-        const next = wrap.firstElementChild;
-        if (next !== null) {
-          factsHost.replaceWith(next);
-        }
-      }
-    };
-
     const summaryInput = container.querySelector<HTMLTextAreaElement>(
       '[data-testid="campaign-summary"]',
     );
     summaryInput?.addEventListener('input', () => {
       summary = summaryInput.value;
       premise = summaryInput.value;
-      updateFactsDom();
     });
 
     const startLevelInput = container.querySelector<HTMLInputElement>(
@@ -798,6 +718,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
       btn.addEventListener('click', () => {
         const idx = Number.parseInt(btn.dataset.outlineIndex ?? '0', 10);
         if (Number.isFinite(idx) && outlineOptions[idx] !== undefined) {
+          if (selectedOutlineIndex !== idx) {
+            outlineApproved = false;
+          }
           selectedOutlineIndex = idx;
           draftedBlueprint = outlineOptions[idx]!;
           render();

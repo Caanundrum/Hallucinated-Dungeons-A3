@@ -362,12 +362,12 @@ export function renderCharacterSheet(
         </section>`;
 
   const equipmentPanel = `
-        <section class="panel sheet-panel" aria-labelledby="equipment-heading" data-sheet-section="equipment">
+        <section class="panel sheet-panel sheet-panel-full" aria-labelledby="equipment-heading" data-sheet-section="equipment">
           <h2 id="equipment-heading">Equipment and Proficiencies</h2>
           ${
             sheet.equipment.length === 0
               ? '<p data-testid="sheet-equipment">No starting equipment chosen.</p>'
-              : `<ul class="record-list" data-testid="sheet-equipment-list">
+              : `<ul class="record-list equipment-grid-2col" data-testid="sheet-equipment-list">
                   ${sheet.equipment
                     .map((item, index) => {
                       const slug = item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -450,8 +450,8 @@ export function renderCharacterSheet(
       <div class="sheet-column">
         ${combatPanel}
         ${featuresPanel}
-        ${equipmentPanel}
       </div>
+      ${equipmentPanel}
     </div>`;
 }
 

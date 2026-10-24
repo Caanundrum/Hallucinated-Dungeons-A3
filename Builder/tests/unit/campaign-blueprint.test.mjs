@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   buildCampaignBlueprint,
+  draftCampaignBlueprintOptionsWithAi,
   formatBlueprintBeatPrompt,
   sanitizeWotcProductIdentity,
   selectActiveBlueprintBeat,
@@ -220,4 +221,44 @@ test('QA Report Fix HD18-01 through HD18-05: Copper Bell mystery entity roles an
     }
   }
 });
+
+test('Antagonist Wyrm/Boss names never carry leading verbs or spawn in Room 1, and outdoor scenes have no wooden doors', async () => {
+  const options = await draftCampaignBlueprintOptionsWithAi({
+    summary: 'Remove The Five-Crowned Wyrm from the forest crossroads and save the realm.',
+    name: 'Fall of the Wyrm',
+    startLevel: 1,
+    targetEndLevel: 20,
+    campaignTone: 'heroic_fantasy',
+    env: { HD_ENVIRONMENT_CLASS: 'local' },
+  });
+  assert.equal(options.length, 3);
+  for (const bp of options) {
+    for (const npc of bp.namedNpcs) {
+      assert.doesNotMatch(npc, /^(?:Remove|Destroy|Slay|Kill|Defeat)\s+/i);
+    }
+    const room1 = bp.milestones?.[0]?.rooms?.[0];
+    assert.ok(room1);
+    for (const npc of room1.npcs) {
+      assert.doesNotMatch(npc.name, /Five-Crowned Wyrm|Remove The|Destroy The/i);
+    }
+    assert.match(room1.battlemapPrompt ?? '', /Top-down overhead fantasy battlemap/i);
+    for (const act of bp.acts) {
+      assert.doesNotMatch(act.currentActGoal, /Remove The Five-Crowned Wyrm|Destroy The Five-Crowned Wyrm/i);
+      assert.doesNotMatch(act.currentActGoal, /the trouble that brought the party together/i);
+    }
+  }
+
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-wyrm-outdoor',
+    blueprint: options[0],
+    accountIds: ['acc-1'],
+    activateFirstScene: true,
+  });
+  const scene1 = runtime.sceneInstances?.['scene-m1-r1'];
+  assert.ok(scene1);
+  // Outdoor forest crossroads must not have wooden doorways in the middle of the trail
+  const doorEdges = scene1.edges.filter((e) => e.kind === 'door');
+  assert.equal(doorEdges.length, 0, 'Outdoor forest crossroads has 0 door edges');
+});
+
 

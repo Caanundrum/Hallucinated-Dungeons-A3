@@ -21,6 +21,7 @@ import {
   formatDirectorProse,
   formatPlayerFacingTimestamp,
   PLAY_CHANNEL_LABEL,
+  PLAY_CHRONICLE_KINDS,
   storyBodiesEquivalent,
   type DockTab,
   type PartyChatMode,
@@ -407,8 +408,34 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     };
   }
 
+  function isLobbyActive(): boolean {
+    const hasPlayEntries =
+      chronicle?.entries.some((entry) => PLAY_CHRONICLE_KINDS.has(entry.kind)) ?? false;
+    return (
+      seated &&
+      !sessionIsSuspended() &&
+      !lobbyConfirmedReady &&
+      !hasPlayEntries &&
+      (chronicle?.entries.length ?? 0) <= 3 &&
+      encounter === null
+    );
+  }
+
   function syncDmThreadFromChronicle(): void {
     if (!seated) {
+      return;
+    }
+    if (isLobbyActive() && dmThreadOptimistic.length === 0) {
+      dmThread = [
+        {
+          messageId: 'lobby-ready-prompt',
+          speaker: 'dm',
+          speakerLabel: directorIdentityLabel,
+          body: 'Welcome to the campaign lobby! Are any more players joining the table, or is the party ready to start?',
+          createdAt: new Date().toISOString(),
+          kind: 'prompt',
+        },
+      ];
       return;
     }
     const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
@@ -2779,12 +2806,52 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       interpreted.proposedCommandType === 'table.open_door' ||
       interpreted.proposedCommandType === 'table.close_door'
     ) {
+      const doorEdges = mapBundle.edges.filter((edge) => edge.kind === 'door');
+      if (doorEdges.length === 0) {
+        return `There is no doorway here in ${mapBundle.title} — only the open surroundings and trail.`;
+      }
       const targetEdge =
         interpreted.edgeId !== undefined
           ? mapBundle.edges.find((edge) => edge.edgeId === interpreted.edgeId)
-          : mapBundle.edges.find((edge) => edge.kind === 'door');
+          : doorEdges[0];
       if (targetEdge !== undefined && !isAdjacentToDoorEdge(anchor, targetEdge)) {
-        return 'You are not next to the door yet. Move your token adjacent to the doorway on the battle map first, then declare that you open it.';
+        return 'You are not next to the door yet. Move your token adjacent to the doorway on the battle map first (or click the doorway to walk over), then declare that you open it.';
+      }
+    }
+    if (
+      interpreted.proposedCommandType === 'table.sync' ||
+      /\b(?:check|search|inspect|examine|disarm|pick|unlock)\b/i.test(_declaration)
+    ) {
+      const mentionsDoor =
+        /\b(?:door|doorway|lock|keyhole|hinge)\b/i.test(_declaration) ||
+        /\b(?:door|doorway|Trap search on the .*door|Lock attempt)\b/i.test(interpreted.summary);
+      if (mentionsDoor) {
+        const doorEdges = mapBundle.edges.filter((edge) => edge.kind === 'door');
+        if (doorEdges.length === 0) {
+          return `There is no door here in ${mapBundle.title} — only the open surroundings and trail.`;
+        }
+        const adjacentDoor = doorEdges.find((door) => isAdjacentToDoorEdge(anchor, door));
+        if (adjacentDoor === undefined) {
+          return 'You are not next to the doorway yet. Move your token adjacent to the doorway on the battle map first (click the doorway or the square beside it), then check it for traps or locks.';
+        }
+      }
+      const matchedFeature = mapBundle.notableFeatures.find(
+        (feature) =>
+          feature.objectKind !== 'exit' &&
+          feature.objectKind !== 'npc' &&
+          feature.referenceKind !== 'npc' &&
+          feature.label.trim().length > 2 &&
+          (_declaration.toLowerCase().includes(feature.label.toLowerCase()) ||
+            interpreted.summary.toLowerCase().includes(feature.label.toLowerCase())),
+      );
+      if (matchedFeature !== undefined) {
+        const dist = Math.max(
+          Math.abs(anchor.column - matchedFeature.column),
+          Math.abs(anchor.row - matchedFeature.row),
+        );
+        if (dist > 1) {
+          return `You are not next to ${matchedFeature.label} yet (${dist * 5} ft away). Move your token adjacent to it on the battle map first, then inspect or search it.`;
+        }
       }
     }
     if (
@@ -3022,7 +3089,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
          <p class="visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
          <p class="visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>`
       : `<section class="table-turn-banner table-turn-banner-${banner.tone}" data-testid="table-turn-banner" aria-live="polite">
-          <p class="table-turn-title" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
+          <p class="table-turn-title${banner.tone === 'exploration' ? ' visually-hidden' : ''}" data-testid="table-turn-title">${escapeHtml(banner.title)}</p>
           <p class="table-turn-detail visually-hidden" data-testid="table-turn-detail">${escapeHtml(banner.detail)}</p>
           ${bannerExtras}
           <p class="table-turn-presence visually-hidden" data-testid="table-turn-presence">${escapeHtml(compactPresenceLine())}</p>
@@ -3035,13 +3102,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             <p class="record-meta" data-testid="dm-play-identity">${escapeHtml(directorIdentityLabel)}</p>
           </div>
           ${
-            seated &&
-            !sessionIsSuspended() &&
-            !lobbyConfirmedReady &&
-            (chronicle?.entries.length ?? 0) <= 2
+            isLobbyActive()
               ? `<section class="panel-inset" data-testid="table-lobby-banner" aria-label="Campaign Lobby">
                    <p><strong>Campaign Lobby — Are any more players joining before ${escapeHtml(directorIdentityLabel)} sets the scene?</strong></p>
-                   <p class="record-meta">Wait here in the lobby until your party is seated, or confirm everyone is in so ${escapeHtml(directorIdentityLabel)} can set the opening scene in a huge way.</p>
+                   <p class="record-meta">Wait here in the lobby until your party is seated, or confirm everyone is in so ${escapeHtml(directorIdentityLabel)} can reveal the opening scene and kick off the adventure.</p>
                    ${
                      lobbyWaitingForPlayers
                        ? `<p class="message notice" data-testid="lobby-waiting-status">Waiting in the lobby for additional players to join (${escapeHtml(compactPresenceLine())}). Click "No — Everyone is In, Set the Scene!" when ready.</p>`
@@ -3348,9 +3412,20 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
       shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
+      if (explorationMode() && mapBundle !== null && ownSeatId !== null) {
+        const anchor = ownTokenAnchor(mapBundle, ownSeatId);
+        if (anchor !== null && !isAdjacentToDoorEdge(anchor, edge)) {
+          void onSquareSelected({ column: edge.column, row: edge.row });
+          return;
+        }
+      }
     } else {
       movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
+      if (explorationMode() && mapBundle !== null && ownSeatId !== null) {
+        void onSquareSelected({ column: edge.column, row: edge.row });
+        return;
+      }
     }
     render();
   }
@@ -3507,8 +3582,88 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
   }
 
+  async function beginFromLobby(): Promise<void> {
+    if (candidate === null || busy) {
+      return;
+    }
+    lobbyWaitingForPlayers = false;
+    lobbyConfirmedReady = true;
+    syncDmThreadFromChronicle();
+    if (awaitingDirectorScene()) {
+      await maybeAutoBeginAdventure({ force: true });
+    }
+    busy = true;
+    error = null;
+    render();
+    try {
+      const sceneTitle = mapBundle?.title?.trim() || campaignName;
+      const sceneBanner = mapBundle?.sceneBanner?.trim() || 'The party gathers to begin the adventure.';
+      const narration = await requestDirectorNarration({
+        candidateId: candidate.candidateId,
+        campaignId,
+        mechanicsSummary: `Everyone is in the lobby and ready! Set the opening scene in a huge, vivid, cinematic way for ${sceneTitle}: ${sceneBanner} Describe the atmosphere, sights, sounds, who is present, and invite the party to make their opening move.`,
+      });
+      directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
+      try {
+        chronicle = await fetchChronicle(campaignId);
+        dmThreadOptimistic = [];
+        lastChronicleSyncCount = chronicle.entries.length;
+        syncDmThreadFromChronicle();
+      } catch {
+        appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
+      }
+      shell.announce(`${narration.directorIdentityLabel} set the opening scene!`);
+    } catch {
+      // Best-effort opening narration if director service is offline.
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function syncMapStageOverlays(mapChrome: HTMLElement): void {
     mapChrome.classList.toggle('map-roleplay-dimmed', roleplaySpotlight !== null);
+
+    let lobbyCurtain = mapChrome.querySelector<HTMLElement>('[data-testid="table-lobby-curtain"]');
+    if (isLobbyActive()) {
+      const html = `<div class="table-lobby-stage-curtain" data-testid="table-lobby-curtain" role="region" aria-label="Campaign Lobby">
+        <div class="table-lobby-curtain-card">
+          <span class="badge-pill">Campaign Lobby</span>
+          <h3>${escapeHtml(campaignName)}</h3>
+          <p class="lobby-curtain-dm-question">
+            <strong>${escapeHtml(directorIdentityLabel)}:</strong> "Welcome to the table! Are we waiting for more players to join, or is the party seated and ready to start?"
+          </p>
+          <p class="record-meta" data-testid="lobby-curtain-presence">${escapeHtml(compactPresenceLine())}</p>
+          <div class="action-composer-controls">
+            <button type="button" class="table-secondary-action" data-testid="lobby-curtain-wait" aria-pressed="${lobbyWaitingForPlayers}" ${busy ? 'disabled' : ''}>
+              Wait for More Players
+            </button>
+            <button type="button" class="table-primary-action" data-testid="lobby-curtain-begin" ${busy ? 'disabled' : ''}>
+              Everyone is Ready — Start Adventure!
+            </button>
+          </div>
+        </div>
+      </div>`;
+      if (lobbyCurtain === null) {
+        lobbyCurtain = document.createElement('div');
+        mapChrome.appendChild(lobbyCurtain);
+      }
+      lobbyCurtain.outerHTML = html;
+      mapChrome
+        .querySelector<HTMLButtonElement>('[data-testid="lobby-curtain-wait"]')
+        ?.addEventListener('click', () => {
+          lobbyWaitingForPlayers = true;
+          shell.announce('Waiting in the campaign lobby for more players to join.');
+          render();
+        });
+      mapChrome
+        .querySelector<HTMLButtonElement>('[data-testid="lobby-curtain-begin"]')
+        ?.addEventListener('click', () => {
+          void beginFromLobby();
+        });
+    } else if (lobbyCurtain !== null) {
+      lobbyCurtain.remove();
+    }
 
     let travelBanner = mapChrome.querySelector<HTMLElement>('[data-testid="party-travel-banner"]');
     if (partyTravel !== null) {
@@ -4457,43 +4612,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root
       .querySelector<HTMLButtonElement>('[data-testid="lobby-set-the-scene"]')
       ?.addEventListener('click', () => {
-        void (async () => {
-          if (candidate === null || busy) {
-            return;
-          }
-          lobbyWaitingForPlayers = false;
-          lobbyConfirmedReady = true;
-          if (awaitingDirectorScene()) {
-            await maybeAutoBeginAdventure({ force: true });
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const sceneTitle = mapBundle?.title?.trim() || campaignName;
-            const sceneBanner = mapBundle?.sceneBanner?.trim() || 'The party gathers to begin the adventure.';
-            const narration = await requestDirectorNarration({
-              candidateId: candidate.candidateId,
-              campaignId,
-              mechanicsSummary: `Everyone is in the lobby and ready! Set the opening scene in a huge, vivid, cinematic way for ${sceneTitle}: ${sceneBanner} Describe the atmosphere, sights, sounds, who is present, and invite the party to make their opening move.`,
-            });
-            directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
-            try {
-              chronicle = await fetchChronicle(campaignId);
-              dmThreadOptimistic = [];
-              lastChronicleSyncCount = chronicle.entries.length;
-              syncDmThreadFromChronicle();
-            } catch {
-              appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
-            }
-            shell.announce(`${narration.directorIdentityLabel} set the opening scene!`);
-          } catch {
-            // Best-effort opening narration if director service is offline.
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
+        void beginFromLobby();
       });
 
     root
@@ -6584,7 +6703,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     render();
-    if (seated && error === null) {
+    if (seated && error === null && !isLobbyActive()) {
       void maybeAutoBeginAdventure();
     }
   }
