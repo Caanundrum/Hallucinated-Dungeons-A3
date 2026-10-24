@@ -308,10 +308,10 @@ export function mountCampaignSettingsPage(host: PageHost, campaignId: string): v
                  </button>`
               : '<p class="record-meta" data-testid="settings-read-only">Only the campaign owner can edit these settings.</p>'
           }
-          <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="settings-back">Back to campaign</a>
+          <a class="button secondary" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="settings-back">Back to campaign</a>
           ${
             draft.sessionZero.completed
-              ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="settings-open-table">Open table dock</a>`
+              ? `<a class="button" href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="settings-open-table">Open table dock</a>`
               : `<span class="record-meta" data-testid="settings-open-table-gated">Open table after Session Zero defaults are recorded</span>`
           }
           <p class="message notice" data-testid="session-zero-defaults-notice">

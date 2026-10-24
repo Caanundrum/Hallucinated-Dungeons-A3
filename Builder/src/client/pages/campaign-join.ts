@@ -135,12 +135,15 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
         <h1 data-testid="join-table-heading">Join ${escapeHtml(tableName)}</h1>
         ${orientation}
         <div class="actions">
-          <a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="join-open-table">
+          <a class="button" href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="join-open-table">
             Open table
+          </a>
+          <a class="button" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-manage-campaign">
+            Manage Campaign
           </a>
           ${
             createdPrivate
-              ? `<a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-created-invite-link">
+              ? `<a class="button secondary" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-created-invite-link">
                    Copy invite from campaign
                  </a>`
               : ''
@@ -152,7 +155,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
                  </button>`
               : ''
           }
-          <a href="/campaigns" data-link data-testid="join-table-back">Back to tables</a>
+          <a class="button secondary" href="/campaigns" data-link data-testid="join-table-back">Back to Campaigns</a>
         </div>
       </div>`;
     bindJoinDeleteButton();
@@ -289,8 +292,7 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
             aria-disabled="${busy || charactersLoading || characterId.length === 0 ? 'true' : 'false'}">
             ${busy ? 'Joining…' : 'Join Campaign'}
           </button>
-          <a href="/campaigns" data-link data-testid="join-table-back">Back to Campaigns</a>
-          <a href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-manage-campaign">
+          <a class="button" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="join-manage-campaign">
             Manage Campaign
           </a>
           ${
@@ -300,9 +302,10 @@ export function mountCampaignJoinPage(host: PageHost, campaignId: string): void 
                  </button>`
               : ''
           }
-          <a href="/characters/new?returnCampaign=${escapeHtml(campaignId)}" data-link data-testid="join-new-character">
+          <a class="button secondary" href="/characters/new?returnCampaign=${escapeHtml(campaignId)}" data-link data-testid="join-new-character">
             New character
           </a>
+          <a class="button secondary" href="/campaigns" data-link data-testid="join-table-back">Back to Campaigns</a>
         </div>
       </div>`;
     bindJoinDeleteButton();

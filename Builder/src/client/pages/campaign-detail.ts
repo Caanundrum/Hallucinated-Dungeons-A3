@@ -316,12 +316,12 @@ export function mountCampaignDetailPage(host: PageHost, campaignId: string): voi
         </p>
         <p class="message notice" data-testid="campaign-next-step">${escapeHtml(nextStep)}</p>
         <div class="actions">
-          <a href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="open-campaign-settings">Campaign settings</a>
           ${
             sessionZeroComplete
-              ? `<a href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>`
+              ? `<a class="button" href="/campaigns/${escapeHtml(campaignId)}/table" data-link data-testid="open-campaign-table">Open table dock</a>`
               : `<span class="record-meta" data-testid="open-campaign-table-gated">Open table after Session Zero is recorded</span>`
           }
+          <a class="button secondary" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="open-campaign-settings">Campaign settings</a>
           ${
             campaign.isCampaignOwner
               ? `<button type="button" class="danger" data-testid="delete-campaign-top"

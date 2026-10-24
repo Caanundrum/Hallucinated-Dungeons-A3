@@ -2276,7 +2276,13 @@ a:focus-visible {
   align-items: center;
 }
 
-button {
+button,
+.button,
+a.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   font: inherit;
   font-weight: 600;
   border-radius: var(--radius-control);
@@ -2285,24 +2291,38 @@ button {
   cursor: pointer;
   background: var(--amber-action);
   color: var(--abyss-bg);
-  transition: background-color var(--motion-immediate) ease;
+  transition:
+    background-color var(--motion-immediate) ease,
+    border-color var(--motion-immediate) ease,
+    color var(--motion-immediate) ease;
 }
 
-button:hover {
+button:hover,
+.button:hover,
+a.button:hover {
   background: var(--amber-highlight);
+  color: var(--abyss-bg);
 }
 
-button.secondary {
+button.secondary,
+.button.secondary,
+a.button.secondary {
   background: transparent;
   border-color: var(--structural-border);
   color: var(--text-primary);
 }
 
-button.secondary:hover {
+button.secondary:hover,
+.button.secondary:hover,
+a.button.secondary:hover {
+  background: transparent;
   border-color: var(--amber-action);
+  color: var(--text-primary);
 }
 
-button[aria-disabled="true"] {
+button[aria-disabled="true"],
+.button[aria-disabled="true"],
+a.button[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
   pointer-events: none;
