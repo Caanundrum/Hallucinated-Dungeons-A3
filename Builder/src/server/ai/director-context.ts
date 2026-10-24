@@ -140,11 +140,20 @@ export function formatMap(map: MapBundleProjection): string {
     })
     .slice(0, 12);
 
+  const partyTokenLocations = map.tokens
+    .map((token) => {
+      const col = token.footprint?.anchor?.column ?? (token as { column?: number }).column ?? 0;
+      const row = token.footprint?.anchor?.row ?? (token as { row?: number }).row ?? 0;
+      const label = token.label || (token.seatId === map.viewerSeatId ? 'Your token' : token.seatId);
+      return `${label} at (${col}, ${row})`;
+    })
+    .join('; ');
+
   return [
     `Scene: ${map.title}`,
     `Banner: ${map.sceneBanner}`,
     ownToken
-      ? 'Your token is on the current scene map.'
+      ? `Your token is on the current scene map.${partyTokenLocations ? ` Party locations: ${partyTokenLocations}.` : ''}`
       : 'No seated token on the map for this viewer.',
     `Visible squares: ${map.visibleSquareIds.length}; explored: ${map.exploredSquareIds.length}`,
     visibleDoors.length > 0
@@ -183,8 +192,12 @@ function formatMemory(memory: CampaignMemoryProjection | null): string {
 
 function formatRecentEvents(
   events: readonly { readonly eventType: string; readonly summary?: string }[],
+  inCombat = false,
 ): string {
-  const lines = events
+  const filtered = inCombat
+    ? events
+    : events.filter((event) => event.eventType !== 'table.token_moved');
+  const lines = filtered
     .slice(-8)
     .map((event) => event.summary?.trim() || event.eventType)
     .filter((line) => line.length > 0);
@@ -248,7 +261,7 @@ export async function assembleDirectorVisibleContext(options: {
       ? 'Active character sheet: no seated character for this viewer.'
       : formatSheet(progression.sheet),
     formatEncounter(encounter),
-    formatRecentEvents(recentEvents),
+    formatRecentEvents(recentEvents, encounter?.status === 'active'),
     '=== END STATE ===',
   ];
 

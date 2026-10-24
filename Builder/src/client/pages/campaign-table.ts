@@ -439,8 +439,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
+    const rawEntries = chronicle?.entries ?? [];
+    const entriesForThread = explorationMode()
+      ? rawEntries.filter((entry) => entry.kind !== 'token_moved')
+      : rawEntries;
     const fromChronicle = dmThreadFromChronicleEntries({
-      entries: chronicle?.entries ?? [],
+      entries: entriesForThread,
       directorLabel: directorIdentityLabel,
       sceneBanner: scene,
       now: new Date(),
@@ -575,13 +579,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     </ol>`;
   }
 
-  /** Player-meaningful beats get DM narration; setup/turn-advance stays mechanical to avoid busy races. */
+  /** Player-meaningful beats get DM narration; out-of-combat movement and setup/turn-advance stay silent. */
   function shouldAutoNarrateRulesCommand(commandType: string): boolean {
+    if (commandType === 'table.move') {
+      return !explorationMode();
+    }
     return (
       commandType.startsWith('combat.') ||
       commandType.startsWith('inventory.') ||
       commandType.startsWith('progression.') ||
-      commandType === 'table.move' ||
       commandType === 'table.open_door' ||
       commandType === 'table.close_door' ||
       commandType === 'table.build_scene' ||
@@ -4065,13 +4071,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           ? 'You moved to the selected square.'
           : `You moved ${commitPath.length} squares.`,
       );
-      const moveSummary = formatMoveSummary({
-        path: commitPath,
-        map: mapBundle,
-        start,
-      });
-      appendDmThread('system', 'Table', moveSummary, 'mechanics');
-      void narrateIntoDmThread(moveSummary);
+      if (!explorationMode()) {
+        const moveSummary = formatMoveSummary({
+          path: commitPath,
+          map: mapBundle,
+          start,
+        });
+        appendDmThread('system', 'Table', moveSummary, 'mechanics');
+        void narrateIntoDmThread(moveSummary);
+      }
     } catch (failure) {
       movePreviewNote =
         failure instanceof ApiFailure ? failure.message : 'That move could not be completed.';
