@@ -621,12 +621,12 @@ function buildRoomBattlemapPrompt(
   }
   if (templateId.startsWith('landmark_courtyard_ruins')) {
     return sanitizeWotcProductIdentity(
-      `Top-down overhead fantasy battlemap of ${placeName}, weathered stone courtyard ruins, mossy flagstones, broken pillars, and open archways in a ${tone} setting`,
+      `Top-down overhead fantasy battlemap of ${placeName}, weathered stone courtyard ruins, mossy flagstones, broken pillars, and stone colonnades in a ${tone} setting`,
     );
   }
   if (roomRole === 'investigation') {
     return sanitizeWotcProductIdentity(
-      `Top-down overhead fantasy battlemap of a shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east in a ${tone} setting`,
+      `Top-down overhead fantasy battlemap of a shadowed investigation passage beyond ${placeName}, flagstone floor, recessed alcoves and crates in a ${tone} setting`,
     );
   }
   if (roomRole === 'sanctum') {
@@ -635,7 +635,7 @@ function buildRoomBattlemapPrompt(
     );
   }
   return sanitizeWotcProductIdentity(
-    `Top-down overhead fantasy battlemap of ${placeName} entry chamber in a ${tone} setting, warm lantern light, stone and timber floor, doorway leading east`,
+    `Top-down overhead fantasy battlemap of ${placeName} entry chamber in a ${tone} setting, warm lantern light, stone left chamber and timber right chamber divided down the center line`,
   );
 }
 

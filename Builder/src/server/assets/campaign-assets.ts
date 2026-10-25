@@ -62,6 +62,48 @@ export function resolveBattlemapAspectRatio(
   return ratio <= 0.625 ? '9:16' : '3:4';
 }
 
+/**
+ * Strips front-elevation door/archway phrases from raw battlemap prompts so diffusion
+ * models never paint flat wooden door panels, trapdoors, or U-shaped stone arches lying
+ * on the floor plane. Mechanical doors and wall segments are rendered by the canvas stage.
+ */
+export function sanitizeBattlemapPromptForTopDown(rawPrompt: string): string {
+  return rawPrompt
+    .replace(/,\s*doorways?\s+(?:leading\s+)?(?:west\s+and\s+east|east\s+and\s+west|east|west|north|south)\b/gi, '')
+    .replace(/\b(?:open\s+archways?|stone\s+archways?|archways?)\b/gi, 'weathered stone pillars')
+    .replace(
+      /\b(?:a\s+)?(?:closed|locked|sealed|barred|open|wooden|freight|iron|heavy)\s+(?:[a-z]+\s+)?doors?(?:\s+(?:east|west|north|south|ahead|onward))?\b/gi,
+      'an open floor threshold',
+    )
+    .replace(/\bdoorways?\b/gi, 'open floor threshold')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+export function formatBattlemapWallSummary(options: {
+  readonly columns: number;
+  readonly rows: number;
+  readonly edges: readonly {
+    readonly column: number;
+    readonly row: number;
+    readonly orientation: string;
+    readonly kind: string;
+  }[];
+}): string {
+  const wallEdges = options.edges.filter((edge) => edge.kind === 'wall');
+  const doorEdges = options.edges.filter((edge) => edge.kind === 'door');
+  if (wallEdges.length > 0 && doorEdges.length > 0) {
+    const firstWall = wallEdges[0]!;
+    const firstDoor = doorEdges[0]!;
+    const boundaryCol =
+      firstWall.orientation === 'east' ? firstWall.column + 1 : firstWall.column;
+    const horizPct = Math.round((boundaryCol / Math.max(1, options.columns)) * 100);
+    const vertPct = Math.round(((firstDoor.row + 0.5) / Math.max(1, options.rows)) * 100);
+    return `Interior partition wall: a single straight vertical (north-to-south) top-down wall cross-section runs along the ${horizPct}% horizontal center line of the map (after column ${firstWall.column} of ${options.columns}), splitting the map into left (west) and right (east) rooms, with a clean open floor gap in that vertical wall at ${vertPct}% from the top edge. Do NOT render any doors, door panels, trapdoors, hatches, or U-shaped arches lying flat on the floor.`;
+  }
+  return 'Open continuous floor with no interior dividing wall. Do NOT render any freestanding doors, door panels, trapdoors, hatches, or U-shaped arches on the floor.';
+}
+
 export function buildCampaignAssetPrompt(options: {
   readonly kind: CampaignAssetKind;
   readonly rawPrompt: string;
@@ -69,6 +111,7 @@ export function buildCampaignAssetPrompt(options: {
 }): string {
   const clean = options.rawPrompt.trim();
   if (options.kind === 'battlemap') {
+    const sanitized = sanitizeBattlemapPromptForTopDown(clean);
     const layoutNote =
       options.gridLayout !== undefined
         ? ` Grid layout: ${options.gridLayout.columns}x${options.gridLayout.rows} tactical squares${
@@ -77,7 +120,7 @@ export function buildCampaignAssetPrompt(options: {
               : ''
           }.${options.gridLayout.wallSummary ? ` ${options.gridLayout.wallSummary}` : ''}`
         : '';
-    return `Top-down 2D tactical tabletop RPG battlemap, orthographic 90-degree overhead bird's-eye view, rich atmospheric lighting, clear walkable floor space, AAA fantasy CRPG environment art, no grid lines, no text, no watermarks, no UI: ${clean}${layoutNote}`;
+    return `Top-down 2D tactical tabletop RPG battlemap, strict 90-degree orthographic overhead architectural floorplan view, rich atmospheric lighting, clear walkable floor space, AAA fantasy CRPG environment art, walls rendered strictly as top-down cross-section edges, never draw front-elevation doors or U-shaped arches lying flat on the floor, no trapdoors, no grid lines, no text, no watermarks, no UI: ${sanitized}${layoutNote}`;
   }
   if (options.kind === 'npc_portrait') {
     return `Oil-painted medieval fantasy character portrait, head and shoulders, dramatic candle-lit tavern lighting, painterly, no text, no watermark: ${clean}`;

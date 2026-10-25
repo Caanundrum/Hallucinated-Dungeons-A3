@@ -1018,8 +1018,8 @@ function composeInterior(options: {
 
   const hasDividingWall = archetype === 'divided_rooms';
   const wallColumn = hasDividingWall
-    ? Math.max(3, Math.min(columns - 4, Math.floor(columns / 2)))
-    : Math.max(4, Math.floor(columns / 2));
+    ? Math.max(3, Math.min(columns - 4, Math.floor(columns / 2) - 1))
+    : Math.max(4, Math.floor(columns / 2) - 1);
   const doorSpan = Math.max(1, rows - 4);
   const doorRow = Math.max(2, Math.min(rows - 3, 2 + ((seed >>> 2) % doorSpan)));
   const spawnCol = hasDividingWall

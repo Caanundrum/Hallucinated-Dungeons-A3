@@ -1041,15 +1041,14 @@ export async function acceptTableCommand(options: {
           (result.jitCompiledSceneId !== undefined || !arrivedScene.sceneArtUrl)
         ) {
           try {
-            const { generateAndStoreCampaignAsset } = await import(
+            const { formatBattlemapWallSummary, generateAndStoreCampaignAsset } = await import(
               '../assets/campaign-assets.js'
             );
-            const doorEdges = arrivedScene.edges.filter((edge) => edge.kind === 'door');
-            const wallEdges = arrivedScene.edges.filter((edge) => edge.kind === 'wall');
-            const wallSummary =
-              wallEdges.length > 0 && doorEdges.length > 0
-                ? `Interior dividing wall at column ${wallEdges[0]!.column} with doorway at (${doorEdges[0]!.column}, ${doorEdges[0]!.row}).`
-                : 'Open continuous floor with no interior dividing wall.';
+            const wallSummary = formatBattlemapWallSummary({
+              columns: arrivedScene.columns,
+              rows: arrivedScene.rows,
+              edges: arrivedScene.edges,
+            });
             const assetResult = await generateAndStoreCampaignAsset({
               firestore,
               campaignId,

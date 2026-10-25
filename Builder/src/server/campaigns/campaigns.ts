@@ -50,7 +50,10 @@ import {
   isDirectorPersonality,
 } from '../../shared/campaign-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
-import { generateAndStoreCampaignAsset } from '../assets/campaign-assets.js';
+import {
+  formatBattlemapWallSummary,
+  generateAndStoreCampaignAsset,
+} from '../assets/campaign-assets.js';
 import {
   buildMapRuntimeFromBlueprint,
   buildStoredSceneFromRoomBlueprint,
@@ -754,12 +757,11 @@ export async function createCampaign(options: {
             return room;
           }
           const preComposed = buildStoredSceneFromRoomBlueprint(room, campaignId);
-          const doorEdges = preComposed.edges.filter((edge) => edge.kind === 'door');
-          const wallEdges = preComposed.edges.filter((edge) => edge.kind === 'wall');
-          const wallSummary =
-            wallEdges.length > 0 && doorEdges.length > 0
-              ? `Interior dividing wall at column ${wallEdges[0]!.column} with doorway at (${doorEdges[0]!.column}, ${doorEdges[0]!.row}).`
-              : 'Open continuous floor with no interior dividing wall.';
+          const wallSummary = formatBattlemapWallSummary({
+            columns: preComposed.columns,
+            rows: preComposed.rows,
+            edges: preComposed.edges,
+          });
           const roomPrompt =
             typeof room.battlemapPrompt === 'string' && room.battlemapPrompt.trim().length > 0
               ? `${room.battlemapPrompt.trim()} (${campaignTone}, ${name})`

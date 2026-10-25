@@ -21,7 +21,9 @@ import {
 } from '../../dist/server/table/scene-composition.js';
 import {
   buildCampaignAssetPrompt,
+  formatBattlemapWallSummary,
   resolveBattlemapAspectRatio,
+  sanitizeBattlemapPromptForTopDown,
 } from '../../dist/server/assets/campaign-assets.js';
 
 test('sanitizeWotcProductIdentity scrubs non-SRD Product Identity terms', () => {
@@ -317,6 +319,23 @@ test('Packet 2: variable grid dimensions, layout archetypes, reachability, and a
   const r3 = runtime.sceneInstances?.['scene-m1-r3'];
   assert.ok(r1 && r2 && r3);
   assert.equal(r1.layoutArchetype, 'divided_rooms');
+  assert.equal(r1.columns, 12);
+  // East edge of column 5 sits at x = (5 + 1) / 12 = 50% exact horizontal center of the 12-column grid
+  for (const edge of r1.edges) {
+    assert.equal(edge.column, 5, 'Dividing wall & door align on exact 50% horizontal center line (east edge of col 5)');
+    assert.equal(edge.orientation, 'east');
+  }
+  const dividedWallSummary = formatBattlemapWallSummary({
+    columns: r1.columns,
+    rows: r1.rows,
+    edges: r1.edges,
+  });
+  assert.match(dividedWallSummary, /50% horizontal center line/i);
+  assert.match(dividedWallSummary, /Do NOT render any doors, door panels, trapdoors, hatches, or U-shaped arches/i);
+  const sanitizedTopDown = sanitizeBattlemapPromptForTopDown(
+    'Warm inn common room, stone and timber floor, doorway leading east, open archways, and a closed east door',
+  );
+  assert.doesNotMatch(sanitizedTopDown, /\bdoorway\b|\bopen archways\b|\bclosed east door\b/i);
   assert.equal(r2.layoutArchetype, 'corridor');
   assert.equal(r2.columns, 16);
   assert.equal(r2.rows, 8);

@@ -41,7 +41,7 @@ async function advanceDoorCrossStep(page: Page, declaration: string): Promise<vo
 async function crossToFarSideOfDoorway(page: Page): Promise<void> {
   for (let step = 0; step < 12; step += 1) {
     const token = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
-    if (Number(await token.getAttribute('data-anchor-column')) >= 7) break;
+    if (Number(await token.getAttribute('data-anchor-column')) >= 6) break;
     await advanceDoorCrossStep(page, 'I open the unlocked doorway and step through.');
     await expect
       .poll(
@@ -51,7 +51,7 @@ async function crossToFarSideOfDoorway(page: Page): Promise<void> {
         },
         { timeout: 15_000 },
       )
-      .toBeGreaterThanOrEqual(7);
+      .toBeGreaterThanOrEqual(6);
   }
 }
 
@@ -113,7 +113,7 @@ test.describe('Open + step-through doorway cross', () => {
         const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
         return Number(await el.getAttribute('data-anchor-column'));
       }, { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(7);
+      .toBeGreaterThanOrEqual(6);
 
     const endColumn = Number(
       await page.locator('[data-token][data-anchor-column]').first().getAttribute('data-anchor-column'),
@@ -161,7 +161,7 @@ test.describe('Open + step-through doorway cross', () => {
         const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
         return Number(await el.getAttribute('data-anchor-column'));
       }, { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(7);
+      .toBeGreaterThanOrEqual(6);
 
     const activeRoomTitle = (await page.getByTestId('map-scene-banner').innerText()).trim();
 
@@ -173,7 +173,7 @@ test.describe('Open + step-through doorway cross', () => {
         const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
         return Number(await el.getAttribute('data-anchor-column'));
       }, { timeout: 20_000 })
-      .toBeLessThan(7);
+      .toBeLessThan(6);
 
     await expect(page.getByTestId('dm-play-thread')).toContainText(
       /Stepped back through the open doorway/i,
@@ -211,7 +211,7 @@ test.describe('Open + step-through doorway cross', () => {
         const el = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
         return Number(await el.getAttribute('data-anchor-column'));
       }, { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(7);
+      .toBeGreaterThanOrEqual(6);
 
     await page.getByTestId('player-action-input').fill('I enter the room beyond.');
     await page.getByTestId('player-action-input').dispatchEvent('input');
