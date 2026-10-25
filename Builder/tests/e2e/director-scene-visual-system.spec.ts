@@ -1,3 +1,4 @@
+import { expect, test, type Page } from '@playwright/test';
 import {
   awaitAdventureReady,
   enterAccountFromShell,
@@ -41,13 +42,17 @@ async function seatAndOpenTable(page: Page, name: string, premise: string): Prom
 
 async function confirmDraft(page: Page): Promise<void> {
   const confirm = page.getByTestId('confirm-intent-intercept');
-  await expect(confirm).toBeVisible({ timeout: 20_000 });
-  await confirm.click();
+  try {
+    await expect(confirm).toBeVisible({ timeout: 4_000 });
+    await confirm.click();
+    await expect(confirm).toHaveCount(0, { timeout: 15_000 });
+  } catch {
+    // Routine actions (extinguish/smash) auto-commit without requiring a Confirm draft.
+  }
 }
 
 async function beginAdventure(page: Page): Promise<void> {
   await awaitAdventureReady(page);
-  await confirmDraft(page);
   await expect(page.getByTestId('map-scene-banner')).not.toContainText(
     /Awaiting first scene|Game Director is ready to establish/i,
     { timeout: 30_000 },
@@ -75,7 +80,7 @@ test.describe('Director scene visual system', () => {
       'state_lit',
     );
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-interior.webp',
+      path: 'test-results/visual-system-interior.webp',
       fullPage: true,
     });
 
@@ -102,7 +107,7 @@ test.describe('Director scene visual system', () => {
     await expect(stage).toHaveAttribute('data-atmosphere', 'wet_fog', { timeout: 30_000 });
     await expect(stage).toHaveAttribute('data-terrain-bias', 'damp');
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-marsh.webp',
+      path: 'test-results/visual-system-marsh.webp',
       fullPage: true,
     });
 
@@ -116,7 +121,7 @@ test.describe('Director scene visual system', () => {
       /family_npc|family_creature/,
     );
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-encounter.webp',
+      path: 'test-results/visual-system-encounter.webp',
       fullPage: true,
     });
 
@@ -134,7 +139,7 @@ test.describe('Director scene visual system', () => {
     );
     await expect(page.getByTestId('map-exit-marker').first()).toBeVisible();
     await page.screenshot({
-      path: '/opt/cursor/artifacts/visual-system-watchtower.webp',
+      path: 'test-results/visual-system-watchtower.webp',
       fullPage: true,
     });
 

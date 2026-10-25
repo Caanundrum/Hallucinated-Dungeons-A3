@@ -17,7 +17,6 @@ const TABLE_PRIMARY_CONTROLS = [
   'refresh-table-projection',
   'commit-table-sync',
   'commit-table-move',
-  'open-adjacent-door',
   'interpret-action',
 ] as const;
 

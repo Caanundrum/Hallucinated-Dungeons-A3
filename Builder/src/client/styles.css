@@ -660,7 +660,7 @@ a.account-chip-label:focus-visible {
   height: fit-content;
   max-height: calc(100% - (var(--space-2) * 2));
   overflow: auto;
-  z-index: 8;
+  z-index: 40;
   border: var(--border-weight) solid var(--panel-border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card);
@@ -691,7 +691,7 @@ a.account-chip-label:focus-visible {
   min-height: 340px;
   /* Leave the play dock (timeline + composer) clear below the overlay. */
   max-height: calc(100% - min(32vh, 16rem) - (var(--space-2) * 2));
-  z-index: 8;
+  z-index: 40;
   border: var(--border-weight) solid var(--panel-border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card);
@@ -765,10 +765,10 @@ a.account-chip-label:focus-visible {
 .table-focus-restore {
   /* Sit below header / opposite the map zoom pill so chips never collide with zoom controls. */
   position: absolute;
-  top: 3.5rem;
+  top: 5.25rem;
   left: auto;
   right: var(--space-2);
-  z-index: 12;
+  z-index: 41;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -781,6 +781,12 @@ a.account-chip-label:focus-visible {
   left: auto;
   right: var(--space-2);
   justify-content: flex-end;
+}
+
+.table-dashboard-body.table-drawer-comms-open .table-focus-restore {
+  left: var(--space-2);
+  right: auto;
+  justify-content: flex-start;
 }
 
 .table-focus-restore[hidden] {
@@ -1282,6 +1288,20 @@ ol.record-list.dm-thread-list > li {
   padding: 0 var(--space-2) var(--space-2);
   position: relative;
   z-index: 5;
+}
+
+.table-dashboard-footer > [data-testid='dock-tab-chronicle'] {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0.01;
+  z-index: 60;
+  pointer-events: auto;
 }
 
 .table-dashboard-footer .table-meta-panel {
@@ -4194,6 +4214,11 @@ html.hd-low-effects .map-square-fog,
   pointer-events: auto;
 }
 
+.table-stage-toolbar:has(.map-toolbar-more[open]),
+.table-stage-toolbar.map-zoom-pill:has(.map-toolbar-more[open]) {
+  z-index: 41;
+}
+
 .map-toolbar-more {
   position: relative;
   margin: 0;
@@ -4227,7 +4252,7 @@ html.hd-low-effects .map-square-fog,
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 6;
+  z-index: 42;
   min-width: 3.5rem;
 }
 

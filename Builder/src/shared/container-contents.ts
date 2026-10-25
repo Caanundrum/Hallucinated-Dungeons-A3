@@ -26,6 +26,7 @@ export interface ContainerContentsAnswer {
   readonly ok: boolean;
   readonly body: string;
   readonly nextDiscovery: ContentsDiscoveryState;
+  readonly takenItems?: readonly string[];
 }
 
 export function answerContainerContentsQuery(options: {
@@ -78,11 +79,12 @@ export function answerContainerContentsQuery(options: {
         nextDiscovery: 'taken',
       };
     }
-    const first = remaining[0]!;
+    const takenLabels = remaining.map((item) => item.label);
     return {
       ok: true,
-      body: `You can take ${first.label} from ${label}. Inventory commits for taken items are not wired on this table yet — nothing is stowed or removed.`,
-      nextDiscovery: remaining.length <= 1 ? 'taken' : 'searched',
+      body: `You take ${takenLabels.join(', ')} from ${label} and stow ${takenLabels.length === 1 ? 'it' : 'them'} in your pack.`,
+      nextDiscovery: 'taken',
+      takenItems: takenLabels,
     };
   }
 

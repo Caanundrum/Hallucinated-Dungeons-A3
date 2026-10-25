@@ -32,6 +32,9 @@ function toInstance(
     description: composed.description,
     columns: composed.columns,
     rows: composed.rows,
+    ...(composed.layoutArchetype !== undefined
+      ? { layoutArchetype: composed.layoutArchetype }
+      : {}),
     cells: composed.cells,
     edges: composed.edges,
     features: composed.features.map((feature) => ({
@@ -176,6 +179,9 @@ export function updateSceneObjectState(options: {
   readonly objectId: string;
   readonly nextState: string;
   readonly labelWithState: string;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly contents?: readonly string[];
+  readonly heldItems?: readonly string[];
 }): StoredMapRuntime | null {
   const activeId = options.runtime.activeSceneId;
   if (activeId === null || activeId === undefined) {
@@ -191,6 +197,9 @@ export function updateSceneObjectState(options: {
           ...feature,
           state: options.nextState as typeof feature.state,
           label: options.labelWithState,
+          ...(options.lockState !== undefined ? { lockState: options.lockState } : {}),
+          ...(options.contents !== undefined ? { contents: options.contents } : {}),
+          ...(options.heldItems !== undefined ? { heldItems: options.heldItems } : {}),
         }
       : feature,
   );

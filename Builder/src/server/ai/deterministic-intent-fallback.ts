@@ -79,6 +79,7 @@ export interface DeterministicIntentFallbackResult {
   readonly itemId?: string;
   readonly declaredFoes?: readonly { readonly name: string }[];
   readonly arcaneRecovery?: boolean;
+  readonly skillCheckIntent?: import('../../shared/intent-draft-contract.js').SkillCheckIntent;
   readonly deferDirectorNarrate?: boolean;
   readonly authority: ReturnType<typeof resolveIntentAuthority>;
   readonly structured: ReturnType<typeof parsePlayerDeclaration>;
@@ -257,6 +258,16 @@ function mentionsAmbiguousInspectIntent(text: string): boolean {
 function mentionsDoorIntent(text: string): boolean {
   // Negation: "without opening" / "do not open" is not an open-door intent.
   if (declarationNegatesDoorOpen(text)) {
+    return false;
+  }
+  // Explicit scene-exit / travel declarations that mention passing a doorway on the way to an exterior destination
+  // should route to travel_scene rather than open_door.
+  if (
+    /\b(?:leave|travel|head\s+out|step\s+out(?:side)?)\b/i.test(text) &&
+    /\b(?:toward|towards|into|to|for)\s+(?:the\s+)?(?:[a-z]+\s+)*(?:trail|marsh|boardwalk|woods|forest|outside|outdoors|ridge|watchtower|dock|harbor|courtyard|road|street)\b/i.test(
+      text,
+    )
+  ) {
     return false;
   }
   // Scene survey / look-around that only uses doorway as location is perception, not door work.
@@ -547,7 +558,7 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head (out|outside|onward|for|to|down)|go (outside|outdoors|onward|through|to|toward|down)|step (out|outside)|climb|descend|ascend|walk down|take the stairs|down the stairs|up the stairs|enter the|follow the|make for|seek)\b/i.test(
+    (/\b(leave|travel|head (out|outside|onward|for|to|down)|go (outside|outdoors|onward|through|to|toward|down)|step (out|outside)|climb|descend|ascend|walk down|take the (?:stairs|trail|path|road)|down the stairs|up the stairs|enter the|follow the|make for|seek|higher ground)\b/i.test(
       text,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
@@ -555,7 +566,8 @@ export async function resolveDeterministicIntentFallback(
       ))
   ) {
     proposedCommandType = 'table.travel_scene';
-    destinationHint = 'the next area';
+    destinationHint = rawText.slice(0, 200);
+    let summaryDestination = 'the next area';
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
       const { resolveTravelDestinationTitle } = await import('../table/scene-commands.js');
@@ -563,11 +575,12 @@ export async function resolveDeterministicIntentFallback(
       const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false);
       if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
         destinationHint = resolvedTitle.trim();
+        summaryDestination = resolvedTitle.trim();
       }
     } catch {
       // Keep default destinationHint
     }
-    summary = `Ready to travel to ${destinationHint}. Confirm so the Game Director establishes the next place.`;
+    summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
     sceneLoopResolved = true;
   } else if (
     // Door open/passage belongs to door authority — never steal into prop interact
@@ -625,6 +638,38 @@ export async function resolveDeterministicIntentFallback(
         objectId = matched;
         summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
         sceneLoopResolved = true;
+      } else {
+        const active =
+          runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+            ? runtime.sceneInstances?.[runtime.activeSceneId]
+            : undefined;
+        const npcWithHeld = active?.features.find(
+          (f) =>
+            (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+            Array.isArray(f.heldItems) &&
+            f.heldItems.length > 0 &&
+            f.heldItems.some((item: string) =>
+              item
+                .toLowerCase()
+                .split(/\s+/)
+                .some((w: string) => w.length > 2 && text.includes(w)),
+            ),
+        );
+        if (npcWithHeld !== undefined && npcWithHeld.heldItems !== undefined) {
+          const matchedItem =
+            npcWithHeld.heldItems.find((item: string) =>
+              item
+                .toLowerCase()
+                .split(/\s+/)
+                .some((w: string) => w.length > 2 && text.includes(w)),
+            ) ?? npcWithHeld.heldItems[0]!;
+          const npcName = npcWithHeld.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+          proposedCommandType = 'table.transfer_npc_item';
+          objectId = npcWithHeld.objectId;
+          itemId = matchedItem;
+          summary = `Ready to receive ${matchedItem} from ${npcName}. Confirm to stow it in your inventory.`;
+          sceneLoopResolved = true;
+        }
       }
     } catch {
       sceneLoopResolved = false;

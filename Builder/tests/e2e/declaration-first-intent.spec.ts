@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { recordDefaultSessionZero,  enterAccountFromShell, openTableAdvancedControls } from './arena-page.js';
+import {
+  awaitAdventureReady,
+  enterAccountFromShell,
+  joinTableWithFirstCharacter,
+  openTableAdvancedControls,
+} from './arena-page.js';
 
 async function dismissIntroIfPresent(page: Page): Promise<void> {
   const skip = page.getByTestId('skip-intro');
@@ -28,12 +33,9 @@ async function seedMageAtTable(page: Page): Promise<void> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
-  const seatSelect = page.getByTestId('seat-character-select');
-  const characterId = await seatSelect.locator('option').nth(1).getAttribute('value');
-    await recordDefaultSessionZero(page);
-    await seatSelect.selectOption(characterId!);
-  await page.getByTestId('create-seat').click();
-  await page.getByTestId('open-campaign-table').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  await joinTableWithFirstCharacter(page);
+  await awaitAdventureReady(page);
 }
 
 async function advanceToOwnAction(page: Page): Promise<void> {
@@ -60,9 +62,11 @@ test.describe('Declaration-first Intent Intercept', () => {
     await seedMageAtTable(page);
     await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
-    await expect(page.getByTestId('rules-last-result')).toContainText('Encounter began');
+    await expect(page.getByTestId('rules-last-result')).toContainText(
+      /Encounter began|Training Dummy|Practice Goblin/i,
+    );
     await page.getByTestId('roll-initiative').click();
-    await expect(page.getByTestId('encounter-meta')).toContainText(/round [1-9]/, {
+    await expect(page.getByTestId('encounter-meta')).toContainText(/round [1-9]/i, {
       timeout: 15_000,
     });
     await advanceToOwnAction(page);
@@ -84,13 +88,15 @@ test.describe('Declaration-first Intent Intercept', () => {
 
   test('beginning encounter marks an open free-roam draft stale', async ({ page }) => {
     await seedMageAtTable(page);
-    await page.getByTestId('player-action-input').fill('I walk carefully toward the marked square');
+    await page.getByTestId('player-action-input').fill('I attack the Practice Goblin');
     await page.getByTestId('submit-player-action').click();
     await expect(page.getByTestId('intent-intercept')).toBeVisible({ timeout: 15_000 });
 
     await openTableAdvancedControls(page);
     await page.getByTestId('begin-encounter').click();
-    await expect(page.getByTestId('rules-last-result')).toContainText('Encounter began');
+    await expect(page.getByTestId('rules-last-result')).toContainText(
+      /Encounter began|Training Dummy|Practice Goblin/i,
+    );
     await expect(page.getByTestId('intent-intercept')).toHaveAttribute('data-intercept-state', 'stale');
     await expect(page.getByTestId('intent-intercept-stale')).toContainText(/Scene changed|stale/i);
   });

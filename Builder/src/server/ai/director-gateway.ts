@@ -87,6 +87,7 @@ import { findClass } from '../rules/srd-manifest.js';
 import { readPlayerSettings } from '../settings/player-settings.js';
 import { fetchTableState } from '../table/commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
+import { bootstrapBlankFirstScene } from '../table/scene-builder.js';
 import {
   queryDirectorMechanicsArbiter,
   applyDirectorDispatchToMap,
@@ -267,7 +268,7 @@ export function buildNpcDialogueReply(options: {
     /boots?\s+dry/.test(q) ||
     /why should i keep/.test(q)
   ) {
-    return `${name}: "Past that east door the stone stays wet. Keep your boots dry until you know what's pooling beyond — I won't invent a place you haven't opened."`;
+    return `${name}: "Past that east door the stone stays wet, and water is pooling beyond — that's why your boots stay dry only on this side until you open it."`;
   }
   if (/\bwho are you\b|\bwhat are you\b/.test(q)) {
     return `${name}: "Name's ${name}. I map damp places so travelers don't walk blind. You're in ${where}."`;
@@ -320,6 +321,7 @@ function answerContentsQueryNarration(
   const hint = containerLabelHintFromText(playerText) ?? 'the container';
   let open = /\bopen\b/i.test(playerText) || /\binside\b/i.test(playerText);
   let label = hint;
+  let authoredContents: readonly { readonly itemId: string; readonly label: string }[] | null = null;
   if (map !== null) {
     const match = map.notableFeatures.find((feature) => {
       const featureLabel = feature.label.toLowerCase();
@@ -330,8 +332,18 @@ function answerContentsQueryNarration(
       if (match.objectState === 'open') {
         open = true;
       }
-      if (match.objectState === 'closed') {
+      if (
+        match.objectState === 'closed' ||
+        match.objectState === 'locked' ||
+        match.lockState === 'locked'
+      ) {
         open = false;
+      }
+      if (Array.isArray(match.contents)) {
+        authoredContents = match.contents.map((item, idx) => ({
+          itemId: `item-${idx + 1}`,
+          label: item,
+        }));
       }
     }
   }
@@ -344,7 +356,7 @@ function answerContentsQueryNarration(
   const answered = answerContainerContentsQuery({
     containerLabel: label,
     view: {
-      contents: open && !wantsTakeContainer ? [] : null,
+      contents: wantsTakeContainer ? null : (authoredContents ?? (open ? [] : null)),
       discovery: open ? 'visible' : 'hidden',
       open,
     },
@@ -377,6 +389,16 @@ async function resolveDirectorNarrateOutput(options: {
       accountId: options.accountId,
       campaignId: options.campaignId,
     });
+    if (map !== null && map.title === 'Awaiting first scene') {
+      const boot = bootstrapBlankFirstScene();
+      map = {
+        ...map,
+        title: boot.sceneTitle,
+        sceneBanner: boot.sceneBanner,
+        edges: boot.edges,
+        notableFeatures: boot.notableFeatures,
+      };
+    }
   } catch {
     map = null;
   }
@@ -636,7 +658,7 @@ async function resolveDirectorNarrateOutput(options: {
         (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
         /\b(?:passage\s+back\s+to|return\s+to|back\s+to)\b/i.test(f.label),
     );
-    if (sceneNpc === null && (npc !== null || returnExitFeature !== undefined)) {
+    if (sceneNpc === null && returnExitFeature !== undefined) {
       const returnRoomMatch = returnExitFeature?.label.match(
         /\b(?:passage\s+back\s+to|return\s+to|back\s+to)\s+(.+)$/i,
       );
@@ -1048,6 +1070,7 @@ export async function interpretNaturalLanguageIntent(options: {
   let itemId: string | undefined;
   let declaredFoes: readonly { readonly name: string }[] | undefined;
   let arcaneRecovery: boolean | undefined;
+  let skillCheckIntent: import('../../shared/intent-draft-contract.js').SkillCheckIntent | undefined;
   let projectionVersionAtIssue: number | undefined;
 
   let encounter: EncounterProjection | null = null;
@@ -1270,6 +1293,7 @@ export async function interpretNaturalLanguageIntent(options: {
         if (applied.objectId) objectId = applied.objectId;
         if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
         if (applied.destinationHint) destinationHint = applied.destinationHint;
+        if (applied.skillCheckIntent !== undefined) skillCheckIntent = applied.skillCheckIntent;
         aiDispatched = true;
       }
     }
@@ -1304,6 +1328,7 @@ export async function interpretNaturalLanguageIntent(options: {
     if (fallback.itemId !== undefined) itemId = fallback.itemId;
     if (fallback.declaredFoes !== undefined) declaredFoes = fallback.declaredFoes;
     if (fallback.arcaneRecovery !== undefined) arcaneRecovery = fallback.arcaneRecovery;
+    if (fallback.skillCheckIntent !== undefined) skillCheckIntent = fallback.skillCheckIntent;
 
     if (fallback.deferDirectorNarrate) {
       summary = scrubPlayerFacingIntentCopy(
@@ -1402,6 +1427,7 @@ export async function interpretNaturalLanguageIntent(options: {
     ...(itemId !== undefined ? { itemId } : {}),
     ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
     ...(arcaneRecovery === true ? { arcaneRecovery: true } : {}),
+    ...(skillCheckIntent !== undefined ? { skillCheckIntent } : {}),
     ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
     interceptState: 'awaiting_confirmation',
     source: 'action_composer_nl',
@@ -1574,7 +1600,7 @@ export async function narrateVisibleBeat(options: {
   const beatPrompt = await loadBlueprintBeatPrompt(options.firestore, options.campaignId);
   const liveBody = await tryLiveProse(options, {
     systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} ${NARRATOR_CONSTITUTION} Match narration density "${effectiveDensity}" (concise = short; balanced = a beat of flavor; cinematic = richer sensory detail without new facts). Write 2 to 4 complete sentences only — never end mid-clause or on a dangling word like "without".${emphasis}`,
-    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.\nContainer contents rule: If opening an unauthored container (satchel, pack, chest, box), its contents are unauthored and empty. Do NOT invent items, letters, tools, or clues inside it. Never promise or hint at unseen items or what someone left behind.\nDoor state rule: An unlocked door is CLOSED (leaf is shut, latch is unlocked). Never describe a closed door as open, ajar, or swung wide unless its leaf is explicitly "open".${beatPrompt}`,
+    userPrompt: `${context.text}\n\nMechanics summary (authoritative — narrate ONLY this beat; recent table events are background, not this beat):\n${options.mechanicsSummary}\n\nLocation continuity: unless that summary explicitly reports a scene or location change, the current chamber stays current. A doorway step on the same map is not a departure — do not say anyone left the chamber behind or arrived somewhere new. If the summary says the leaf closed, do not describe an open way, clear passage, or trap inspection. If the player declared without touching / no contact, describe only visual inspection — never fingers, feeling, pressing, or brushing the object.\nClosed-world scene manifest rule: NEVER invent keys, chests, levers, traps, or locks in prose that do not exist in the active scene manifest or mechanics summary. If opening an unauthored container (satchel, pack, chest, box), its contents are unauthored and empty. Do NOT invent items, letters, tools, or clues inside it. Never promise or hint at unseen items or what someone left behind.\nDoor state rule: An unlocked door is CLOSED (leaf is shut, latch is unlocked). Never describe a closed door as open, ajar, or swung wide unless its leaf is explicitly "open".${beatPrompt}`,
   });
   const liveCandidate =
     liveBody !== null ? scrubIncompleteDirectorProse(liveBody) : null;

@@ -146,6 +146,6 @@ test.describe('Phase 2c movement, collision, and visibility', () => {
     await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
     await expect(page.getByTestId('commit-table-move')).toBeVisible();
-    await expect(page.getByTestId('open-adjacent-door')).toBeVisible();
+    await expect(page.getByTestId('open-adjacent-door')).toHaveCount(0);
   });
 });

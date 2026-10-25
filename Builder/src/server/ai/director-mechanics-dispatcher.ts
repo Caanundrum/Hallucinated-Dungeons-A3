@@ -15,7 +15,11 @@ import type { DerivedCharacterSheet } from '../../shared/character-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type { DirectorLlmClient } from './gemini-director.js';
 import { pathBesideFeature } from '../table/scene-door-intent.js';
-import type { IntentDraftCommandType } from '../../shared/intent-draft-contract.js';
+import type {
+  IntentDraftCommandType,
+  SkillCheckIntent,
+} from '../../shared/intent-draft-contract.js';
+import { isAdjacentToDoorEdge } from '../../shared/map-presentation.js';
 import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
@@ -34,7 +38,8 @@ export type DispatchActionType =
   | 'dialogue'
   | 'narrate_only'
   | 'combat_action'
-  | 'take_prop';
+  | 'take_prop'
+  | 'give_item';
 
 export interface DirectorDispatchOutput {
   readonly actionType: DispatchActionType;
@@ -66,6 +71,10 @@ export interface DirectorDispatchOutput {
   } | undefined;
   readonly takeProp?: {
     readonly propLabel: string;
+  } | undefined;
+  readonly giveItem?: {
+    readonly npcLabel?: string | undefined;
+    readonly itemLabel: string;
   } | undefined;
 }
 
@@ -271,6 +280,7 @@ export interface AppliedDispatchResult {
   readonly destinationHint?: string | undefined;
   readonly edgeId?: string | undefined;
   readonly objectId?: string | undefined;
+  readonly skillCheckIntent?: SkillCheckIntent | undefined;
 }
 
 export function applyDirectorDispatchToMap(options: {
@@ -292,9 +302,9 @@ export function applyDirectorDispatchToMap(options: {
 
   // 1. Skill check (Stealth, Investigation, Athletics, etc.)
   if (dispatch.actionType === 'skill_check' && dispatch.skillCheck) {
-    const skillName = dispatch.skillCheck.skill.toLowerCase().trim();
+    const skillName = dispatch.skillCheck.skill.toLowerCase().trim().replace(/_/g, '-');
     const skillRecord = seatedSheet?.skills.find(
-      (s) => s.id.toLowerCase() === skillName || s.label.toLowerCase() === skillName,
+      (s) => s.id.toLowerCase() === skillName || s.label.toLowerCase() === skillName.replace(/-/g, ' '),
     );
     const abilityName = dispatch.skillCheck.ability?.toLowerCase() ?? skillRecord?.ability ?? 'dexterity';
     const abilityMod =
@@ -303,25 +313,30 @@ export function applyDirectorDispatchToMap(options: {
     const bonusStr = bonusVal >= 0 ? `+${bonusVal}` : `${bonusVal}`;
     const profLabel = skillRecord?.proficient
       ? `${skillRecord.label} proficient, ${bonusStr}`
-      : `${skillName} ${bonusStr}`;
+      : `${dispatch.skillCheck.skill.toLowerCase().trim()} ${bonusStr}`;
     const dc = dispatch.skillCheck.dc || (skillName === 'stealth' ? 12 : 13);
     const target = dispatch.skillCheck.targetNoun || 'the challenge';
+    const targetLower = target.toLowerCase();
 
     // Spatial & environmental common-sense gate for close door/prop inspections:
+    let matchedDoorEdge = map.edges.find(
+      (e) => e.kind === 'door' && targetLower.includes(e.orientation),
+    );
     if (skillName !== 'stealth' && /\b(?:door|doorway|lock|keyhole)\b/i.test(target)) {
       const doorEdges = map.edges.filter((e) => e.kind === 'door');
-      if (doorEdges.length === 0) {
+      const matchingContainer = map.notableFeatures.find(
+        (f) => f.objectKind === 'container' && targetLower.includes(f.label.toLowerCase().replace(/\s*\([^)]+\)\s*$/, '').trim()),
+      );
+      if (doorEdges.length === 0 && matchingContainer === undefined) {
         return {
           proposedCommandType: 'table.sync',
           summary: `There is no door in ${map.title} to inspect — only the open surroundings and trail.`,
         };
       }
-      if (ownToken !== undefined) {
+      if (ownToken !== undefined && doorEdges.length > 0 && matchingContainer === undefined) {
         const anchor = ownToken.footprint.anchor;
-        const isAdjacent = doorEdges.some(
-          (d) => Math.abs(anchor.column - d.column) <= 1 && Math.abs(anchor.row - d.row) <= 1,
-        );
-        if (!isAdjacent) {
+        const adjacentDoor = doorEdges.find((d) => isAdjacentToDoorEdge(anchor, d));
+        if (adjacentDoor === undefined) {
           const nearest = doorEdges[0]!;
           const distFeet =
             Math.max(Math.abs(anchor.column - nearest.column), Math.abs(anchor.row - nearest.row)) *
@@ -331,8 +346,81 @@ export function applyDirectorDispatchToMap(options: {
             summary: `You are ${distFeet} ft away from the doorway in ${map.title}. Move your token next to the doorway on the battle map first before inspecting it closely for traps or locks.`,
           };
         }
+        matchedDoorEdge = adjacentDoor;
       }
     }
+
+    const matchedFeature = map.notableFeatures.find((f) => {
+      const base = f.label.toLowerCase().replace(/\s*\([^)]+\)\s*$/, '').trim();
+      return base.length > 0 && (targetLower.includes(base) || base.includes(targetLower));
+    });
+
+    const isDoorTarget =
+      matchedDoorEdge !== undefined ||
+      (/\b(?:door|doorway|gate)\b/i.test(target) && matchedFeature === undefined);
+    const isNpcTarget =
+      matchedFeature?.objectKind === 'npc' || matchedFeature?.referenceKind === 'npc';
+    const targetKind: SkillCheckIntent['targetKind'] = isDoorTarget
+      ? 'door'
+      : isNpcTarget
+        ? 'npc'
+        : matchedFeature !== undefined
+          ? 'object'
+          : 'environment';
+    const isLockSkill =
+      skillName === 'sleight-of-hand' ||
+      /thieves|lockpick|pick.*lock/i.test(skillName) ||
+      /\block\b/i.test(target);
+    const isForceSkill = skillName === 'athletics' && (isDoorTarget || matchedFeature?.objectKind === 'container');
+    const isTrapSkill =
+      matchedFeature?.objectKind === 'trap' ||
+      matchedFeature?.objectKind === 'hazard' ||
+      /\btrap|disarm\b/i.test(target);
+    const isSocialGiveSkill =
+      isNpcTarget &&
+      (skillName === 'persuasion' || skillName === 'intimidation' || skillName === 'deception') &&
+      Array.isArray(matchedFeature?.heldItems) &&
+      matchedFeature.heldItems.length > 0;
+
+    const onSuccessMutation: SkillCheckIntent['onSuccessMutation'] = isLockSkill
+      ? isDoorTarget
+        ? 'unlock_door'
+        : 'unlock_object'
+      : isForceSkill
+        ? 'force_open'
+        : isTrapSkill
+          ? 'disarm_trap'
+          : isSocialGiveSkill
+            ? 'npc_give_item'
+            : skillName === 'investigation' || skillName === 'perception'
+              ? 'reveal_info'
+              : 'none';
+
+    const resolvedDc =
+      (isDoorTarget && isLockSkill
+        ? matchedDoorEdge?.lockpickDC
+        : isDoorTarget && isForceSkill
+          ? matchedDoorEdge?.breakDC
+          : matchedFeature !== undefined && isLockSkill
+            ? matchedFeature.lockpickDC
+            : matchedFeature !== undefined && isForceSkill
+              ? matchedFeature.breakDC
+              : undefined) ?? dc;
+
+    const skillCheckIntent: SkillCheckIntent = {
+      skill: skillName,
+      ability: abilityName,
+      dc: resolvedDc,
+      modifier: bonusVal,
+      targetKind,
+      ...(matchedDoorEdge !== undefined
+        ? { targetId: matchedDoorEdge.edgeId }
+        : matchedFeature !== undefined
+          ? { targetId: matchedFeature.objectId }
+          : {}),
+      targetLabel: target,
+      onSuccessMutation,
+    };
 
     let actionVerb = 'Ready to';
     if (skillName === 'stealth') {
@@ -340,13 +428,14 @@ export function applyDirectorDispatchToMap(options: {
     } else if (skillName === 'investigation') {
       actionVerb = `Ready to search ${target} for hidden clues`;
     } else {
-      actionVerb = `Ready to attempt ${skillName} on ${target}`;
+      actionVerb = `Ready to attempt ${dispatch.skillCheck.skill.toLowerCase().trim()} on ${target}`;
     }
 
-    const summary = `${actionVerb} (${profLabel}; DC ${dc}). Confirm to commit this check.`;
+    const summary = `${actionVerb} (${profLabel}; DC ${resolvedDc}). Confirm to commit this check.`;
     return {
       proposedCommandType: 'table.sync',
       summary,
+      skillCheckIntent,
     };
   }
 
@@ -480,7 +569,8 @@ export function applyDirectorDispatchToMap(options: {
       (f) =>
         f.objectKind !== 'npc' &&
         f.objectKind !== 'exit' &&
-        (labelLooksPortableContainer(f.label) ||
+        (f.objectKind === 'item' ||
+          labelLooksPortableContainer(f.label) ||
           ((f.objectKind === 'prop' || labelLooksPortableSceneProp(f.label)) &&
             !HEAVY_FIXTURE_LABEL.test(f.label))),
     );
@@ -505,6 +595,33 @@ export function applyDirectorDispatchToMap(options: {
         proposedCommandType: 'table.take_scene_prop',
         objectId: matched.objectId,
         summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
+      };
+    }
+  }
+
+  // 8. Receive / Transfer Item from Present NPC
+  if (dispatch.actionType === 'give_item' && dispatch.giveItem) {
+    const npcFilter = (dispatch.giveItem.npcLabel ?? '').toLowerCase().trim();
+    const itemFilter = dispatch.giveItem.itemLabel.toLowerCase().trim();
+    const npcFeatures = map.notableFeatures.filter(
+      (f) =>
+        (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+        Array.isArray(f.heldItems) &&
+        f.heldItems.length > 0,
+    );
+    const matchedNpc =
+      (npcFilter.length > 0
+        ? npcFeatures.find((f) => f.label.toLowerCase().includes(npcFilter))
+        : undefined) ?? npcFeatures[0];
+    if (matchedNpc !== undefined && matchedNpc.heldItems !== undefined) {
+      const matchedItem =
+        matchedNpc.heldItems.find((item) => item.toLowerCase().includes(itemFilter)) ??
+        matchedNpc.heldItems[0]!;
+      const cleanNpc = matchedNpc.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+      return {
+        proposedCommandType: 'table.transfer_npc_item',
+        objectId: matchedNpc.objectId,
+        summary: `Ready to receive ${matchedItem} from ${cleanNpc}. Confirm to stow it in your inventory.`,
       };
     }
   }

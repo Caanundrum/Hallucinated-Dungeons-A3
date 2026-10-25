@@ -335,6 +335,16 @@ export function buildAuthoritativeMapBundle(options: {
       objectKind: feature.objectKind,
       objectState: feature.state,
       interactable: feature.interactable,
+      ...(feature.lockState !== undefined ? { lockState: feature.lockState } : {}),
+      ...(feature.keyItemId !== undefined ? { keyItemId: feature.keyItemId } : {}),
+      ...(feature.lockpickDC !== undefined ? { lockpickDC: feature.lockpickDC } : {}),
+      ...(feature.breakDC !== undefined ? { breakDC: feature.breakDC } : {}),
+      ...(feature.inspectDC !== undefined ? { inspectDC: feature.inspectDC } : {}),
+      ...(feature.contents !== undefined ? { contents: feature.contents } : {}),
+      ...(feature.targetEdgeOrObjectId !== undefined
+        ? { targetEdgeOrObjectId: feature.targetEdgeOrObjectId }
+        : {}),
+      ...(feature.heldItems !== undefined ? { heldItems: feature.heldItems } : {}),
     }));
     return {
       campaignId,

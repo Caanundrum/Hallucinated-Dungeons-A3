@@ -116,7 +116,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       await expect(page.locator('.map-terrain-canopy, .map-terrain-canopy-dense').first()).toBeVisible();
     }
     await page.screenshot({
-      path: '/opt/cursor/artifacts/viewport-fit-wooded-canopy.webp',
+      path: 'test-results/viewport-fit-wooded-canopy.webp',
       fullPage: true,
     });
 
@@ -124,7 +124,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
     await page.getByTestId('preview-scene-discovery-cue').click();
     await expect(page.getByTestId('table-stage-slot')).toHaveAttribute('data-scene-cue', /motion|static/);
     await page.screenshot({
-      path: '/opt/cursor/artifacts/viewport-fit-discovery-cue.webp',
+      path: 'test-results/viewport-fit-discovery-cue.webp',
       fullPage: true,
     });
 
@@ -144,7 +144,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       expect(combatBox.y).toBeGreaterThanOrEqual(mapBox.y + mapBox.height - 4);
     }
     await page.screenshot({
-      path: '/opt/cursor/artifacts/viewport-fit-tablet-docked-actions.webp',
+      path: 'test-results/viewport-fit-tablet-docked-actions.webp',
       fullPage: true,
     });
 
@@ -158,7 +158,7 @@ test.describe('Tactical viewport fit and canopy terrain', () => {
       expect(phoneCombat.y).toBeGreaterThanOrEqual(phoneMap.y + phoneMap.height - 4);
     }
     await page.screenshot({
-      path: '/opt/cursor/artifacts/viewport-fit-phone-docked-actions.webp',
+      path: 'test-results/viewport-fit-phone-docked-actions.webp',
       fullPage: true,
     });
   });

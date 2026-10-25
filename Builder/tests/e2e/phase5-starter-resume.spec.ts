@@ -93,7 +93,7 @@ test.describe('Phase 5 blank-table memory and session resume', () => {
     const campaignId = await createBlankTable(page, 'Narration Density Table');
     await joinTableWithFirstCharacter(page);
 
-    await page.getByTestId('nav-account').click();
+    await page.goto('/account');
     await page.getByTestId('account-narration-density').selectOption('concise');
 
     await page.goto(`/campaigns/${campaignId}/table`);
@@ -103,7 +103,7 @@ test.describe('Phase 5 blank-table memory and session resume', () => {
     await expect(page.getByTestId('director-narration')).toBeVisible({ timeout: 15_000 });
     const conciseBody = (await page.getByTestId('director-narration').innerText()).trim();
 
-    await page.getByTestId('nav-account').click();
+    await page.goto('/account');
     await page.getByTestId('account-narration-density').selectOption('cinematic');
 
     await page.goto(`/campaigns/${campaignId}/table`);

@@ -108,6 +108,7 @@ export interface IntentInterpretResponse {
   /** Wizard Arcane Recovery on Short Rest (PQA-214). */
   readonly arcaneRecovery?: boolean;
   readonly projectionVersionAtIssue?: number;
+  readonly skillCheckIntent?: import('./intent-draft-contract.js').SkillCheckIntent;
   readonly interceptState: 'awaiting_confirmation';
   readonly source: 'action_composer_nl';
   readonly manifest: AiPayloadManifest;

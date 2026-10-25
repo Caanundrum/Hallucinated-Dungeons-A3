@@ -128,3 +128,42 @@ test('layoutMapLabels hides prop plaques when declutterProps is set even above 1
   assert.equal(placements.length, 1);
   assert.equal(placements[0]?.id, 'token:1');
 });
+
+test('layoutMapLabels preserves container, lever, trap, and item labels even at Fit zoom with declutterProps', () => {
+  const placements = layoutMapLabels(
+    [
+      ...crowdedAnchors,
+      {
+        id: 'marker:chest',
+        kind: 'marker',
+        x: 240,
+        y: 120,
+        obstacle: { x: 233, y: 113, w: 14, h: 14 },
+        fullLabel: 'Ironbound Chest (locked)',
+        referenceKind: 'prop',
+        objectKind: 'container',
+      },
+      {
+        id: 'marker:lever',
+        kind: 'marker',
+        x: 320,
+        y: 120,
+        obstacle: { x: 313, y: 113, w: 14, h: 14 },
+        fullLabel: 'Wall Lever (closed)',
+        referenceKind: 'prop',
+        objectKind: 'lever',
+      },
+    ],
+    {
+      mapWidth: 576,
+      mapHeight: 384,
+      pixelsPerSquare: 48,
+      zoomScale: 1,
+      declutterProps: true,
+    },
+  );
+
+  assert.equal(placements.some((entry) => entry.id === 'marker:chest'), true);
+  assert.equal(placements.some((entry) => entry.id === 'marker:lever'), true);
+  assert.equal(placements.some((entry) => entry.id === 'marker:hazard'), false);
+});

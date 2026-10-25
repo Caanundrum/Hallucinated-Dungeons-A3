@@ -391,6 +391,39 @@ export function isCampaignTone(value: unknown): value is CampaignTone {
 /** Maximum length of a detailed campaign premise. */
 export const CAMPAIGN_PREMISE_MAX_LENGTH = 2000;
 
+/** Supported spatial room layout archetypes for variable-grid scene composition. */
+export const ROOM_LAYOUT_ARCHETYPES = [
+  'open_chamber',
+  'divided_rooms',
+  'alcove_hall',
+  'outdoor_clearing',
+  'corridor',
+] as const;
+export type RoomLayoutArchetype = (typeof ROOM_LAYOUT_ARCHETYPES)[number];
+
+/** Structured interactable prop definition in a CampaignRoomBlueprint. */
+export interface CampaignRoomBlueprintProp {
+  readonly propId?: string;
+  readonly label: string;
+  readonly objectKind:
+    | 'container'
+    | 'lever'
+    | 'trap'
+    | 'item'
+    | 'prop'
+    | 'cover'
+    | 'hazard'
+    | 'light';
+  readonly objectState?: string;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
+  readonly inspectDC?: number | null;
+  readonly contents?: readonly string[];
+  readonly targetEdgeOrObjectId?: string | null;
+}
+
 /** One room node in the pre-generated Campaign World Forge scene graph. */
 export interface CampaignRoomBlueprint {
   readonly sceneId: string;
@@ -399,18 +432,26 @@ export interface CampaignRoomBlueprint {
   readonly title: string;
   readonly summary: string;
   readonly templateId: string;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
   readonly battlemapPrompt: string;
   readonly sceneArtUrl?: string | null;
   readonly exits: readonly {
     readonly edgeLabel: string;
     readonly targetSceneId: string;
     readonly direction: 'north' | 'east' | 'south' | 'west';
+    readonly lockState?: 'unlocked' | 'locked';
+    readonly keyItemId?: string | null;
+    readonly lockpickDC?: number | null;
+    readonly breakDC?: number | null;
   }[];
   readonly npcs: readonly {
     readonly name: string;
     readonly role: string;
     readonly portraitPrompt: string;
     readonly avatarUrl?: string | null;
+    readonly heldItems?: readonly string[];
   }[];
   readonly encounters: readonly {
     readonly name: string;
@@ -419,6 +460,7 @@ export interface CampaignRoomBlueprint {
     readonly xpAward: number;
   }[];
   readonly props: readonly string[];
+  readonly structuredProps?: readonly CampaignRoomBlueprintProp[];
   readonly xpAwardOnDiscovery: number;
   readonly isMilestoneClimax: boolean;
 }

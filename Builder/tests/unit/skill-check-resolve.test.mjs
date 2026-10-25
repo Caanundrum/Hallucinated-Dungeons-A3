@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   buildSkillCheckDraftSummary,
   resolveSkillAttemptFromSummary,
+  resolveStructuredSkillCheck,
 } from '../../dist/server/table/skill-check-resolve.js';
 
 function stubSheet(options = {}) {
@@ -92,3 +93,44 @@ test('non-skill sync summaries do not resolve as checks', () => {
     null,
   );
 });
+
+test('Packet 4: resolveStructuredSkillCheck resolves typed SkillCheckIntent payloads without regex parsing', () => {
+  const sheet = stubSheet({ tools: true });
+  const unlockRes = resolveStructuredSkillCheck(
+    sheet,
+    {
+      skill: 'sleight-of-hand',
+      ability: 'dexterity',
+      dc: 14,
+      modifier: 3,
+      targetKind: 'object',
+      targetId: 'chest-1',
+      targetLabel: 'Ironbound Chest',
+      onSuccessMutation: 'unlock_object',
+    },
+    (_mode, mod) => ({ natural: 12, total: 12 + mod }),
+  );
+  assert.equal(unlockRes.succeeded, true);
+  assert.equal(unlockRes.lockYielded, true);
+  assert.deepEqual(unlockRes.rolls, [12]);
+  assert.match(unlockRes.summary, /the lock yields/i);
+
+  const failRes = resolveStructuredSkillCheck(
+    sheet,
+    {
+      skill: 'athletics',
+      ability: 'strength',
+      dc: 15,
+      modifier: 1,
+      targetKind: 'door',
+      targetId: 'e:6:4:east',
+      targetLabel: 'wooden doorway east',
+      onSuccessMutation: 'force_open',
+    },
+    (_mode, mod) => ({ natural: 8, total: 8 + mod }),
+  );
+  assert.equal(failRes.succeeded, false);
+  assert.equal(failRes.lockYielded, false);
+  assert.match(failRes.summary, /holds fast/i);
+});
+

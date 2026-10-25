@@ -5,6 +5,7 @@
  * destinations compose landmark layouts; surfaces render from one contract.
  */
 
+import type { RoomLayoutArchetype } from '../../shared/campaign-contract.js';
 import {
   edgeId,
   type DoorState,
@@ -57,6 +58,9 @@ export const SCENE_OBJECT_KINDS = [
   'light',
   'cover',
   'container',
+  'lever',
+  'trap',
+  'item',
   'hazard',
   'prop',
   'creature',
@@ -73,6 +77,11 @@ export const SCENE_OBJECT_STATES = [
   'broken',
   'open',
   'closed',
+  'locked',
+  'unlocked',
+  'pulled',
+  'spotted',
+  'taken',
   'active',
   'disarmed',
   'present',
@@ -88,6 +97,14 @@ export interface ComposedSceneFeature {
   readonly objectKind: SceneObjectKind;
   readonly state: SceneObjectState;
   readonly interactable: boolean;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
+  readonly inspectDC?: number | null;
+  readonly contents?: readonly string[];
+  readonly targetEdgeOrObjectId?: string | null;
+  readonly heldItems?: readonly string[];
 }
 
 export interface ComposedSceneExit {
@@ -115,6 +132,7 @@ export interface ComposedScene {
   readonly description: string;
   readonly columns: number;
   readonly rows: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
   readonly cells: readonly MapCellRecord[];
   readonly edges: readonly MapEdgeRecord[];
   readonly features: readonly ComposedSceneFeature[];
@@ -123,6 +141,135 @@ export interface ComposedScene {
   readonly doorStates: Record<string, DoorState>;
   /** Actor ids that must appear both in fiction and on the tactical map. */
   readonly inhabitantObjectIds: readonly string[];
+}
+
+/** Clamp grid axis dimensions to server safety bounds [8, 32]. */
+export function clampGridDimension(value: number | undefined, fallback: number): number {
+  const raw = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.max(8, Math.min(32, Math.round(raw)));
+}
+
+/** Canonical grid dimensions for a room layout archetype. */
+export function defaultDimensionsForArchetype(
+  archetype: RoomLayoutArchetype,
+  seed: number = 0,
+): { readonly columns: number; readonly rows: number } {
+  switch (archetype) {
+    case 'open_chamber':
+      return { columns: 16, rows: 12 };
+    case 'divided_rooms':
+      return { columns: 16, rows: 12 };
+    case 'alcove_hall':
+      return { columns: 16, rows: 16 };
+    case 'outdoor_clearing':
+      return { columns: 20, rows: 16 };
+    case 'corridor':
+      return seed % 2 === 0 ? { columns: 18, rows: 8 } : { columns: 8, rows: 16 };
+  }
+}
+
+/**
+ * Deterministic BFS reachability + door-alignment check across composed room geometry.
+ * Verifies:
+ * 1. Every walkable ('floor' | 'difficult') cell is cardinally reachable from spawn when doors are open.
+ * 2. When dividing walls exist, every 'door' edge sits aligned with an adjacent wall or perimeter boundary.
+ */
+export function verifySceneZonesReachable(options: {
+  readonly columns: number;
+  readonly rows: number;
+  readonly cells: readonly MapCellRecord[];
+  readonly edges: readonly MapEdgeRecord[];
+  readonly spawn: MapSquareCoordinate;
+}): boolean {
+  const { columns, rows, cells, edges, spawn } = options;
+  const blockedCells = new Set<string>();
+  const walkableCells = new Set<string>();
+  for (const cell of cells) {
+    const key = `${cell.column},${cell.row}`;
+    if (cell.terrain === 'blocked') {
+      blockedCells.add(key);
+    } else {
+      walkableCells.add(key);
+    }
+  }
+  const spawnKey = `${spawn.column},${spawn.row}`;
+  if (!walkableCells.has(spawnKey)) {
+    return false;
+  }
+
+  const wallEdges = new Set<string>();
+  for (const edge of edges) {
+    if (edge.kind === 'wall') {
+      wallEdges.add(`${edge.column},${edge.row},${edge.orientation}`);
+    }
+  }
+
+  const hasWallBetween = (c1: number, r1: number, c2: number, r2: number): boolean => {
+    if (c2 === c1 + 1 && r2 === r1) {
+      return wallEdges.has(`${c1},${r1},east`) || wallEdges.has(`${c2},${r2},west`);
+    }
+    if (c2 === c1 - 1 && r2 === r1) {
+      return wallEdges.has(`${c2},${r2},east`) || wallEdges.has(`${c1},${r1},west`);
+    }
+    if (r2 === r1 + 1 && c2 === c1) {
+      return wallEdges.has(`${c1},${r1},south`) || wallEdges.has(`${c2},${r2},north`);
+    }
+    if (r2 === r1 - 1 && c2 === c1) {
+      return wallEdges.has(`${c2},${r2},south`) || wallEdges.has(`${c1},${r1},north`);
+    }
+    return false;
+  };
+
+  if (wallEdges.size > 0) {
+    for (const edge of edges) {
+      if (edge.kind !== 'door') continue;
+      if (edge.orientation === 'east' || edge.orientation === 'west') {
+        const upAligned =
+          wallEdges.has(`${edge.column},${edge.row - 1},${edge.orientation}`) ||
+          blockedCells.has(`${edge.column},${edge.row - 1}`);
+        const downAligned =
+          wallEdges.has(`${edge.column},${edge.row + 1},${edge.orientation}`) ||
+          blockedCells.has(`${edge.column},${edge.row + 1}`);
+        if (!upAligned && !downAligned) {
+          return false;
+        }
+      } else {
+        const leftAligned =
+          wallEdges.has(`${edge.column - 1},${edge.row},${edge.orientation}`) ||
+          blockedCells.has(`${edge.column - 1},${edge.row}`);
+        const rightAligned =
+          wallEdges.has(`${edge.column + 1},${edge.row},${edge.orientation}`) ||
+          blockedCells.has(`${edge.column + 1},${edge.row}`);
+        if (!leftAligned && !rightAligned) {
+          return false;
+        }
+      }
+    }
+  }
+
+  const visited = new Set<string>([spawnKey]);
+  const queue: MapSquareCoordinate[] = [spawn];
+  const dirs = [
+    { dc: 1, dr: 0 },
+    { dc: -1, dr: 0 },
+    { dc: 0, dr: 1 },
+    { dc: 0, dr: -1 },
+  ];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const { dc, dr } of dirs) {
+      const nc = cur.column + dc;
+      const nr = cur.row + dr;
+      if (nc < 0 || nc >= columns || nr < 0 || nr >= rows) continue;
+      const nKey = `${nc},${nr}`;
+      if (visited.has(nKey) || !walkableCells.has(nKey)) continue;
+      if (hasWallBetween(cur.column, cur.row, nc, nr)) continue;
+      visited.add(nKey);
+      queue.push({ column: nc, row: nr });
+    }
+  }
+
+  return visited.size === walkableCells.size;
 }
 
 export function sceneContractSummary(scene: ComposedScene): string {
@@ -274,6 +421,7 @@ export interface PremiseContinuity {
     | 'cottage'
     | 'town'
     | 'marsh'
+    | 'forest'
     | null;
   readonly locationPhrase: string | null;
   readonly questHook: string | null;
@@ -768,7 +916,7 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
       mood: 'Ropes creak; water slaps the piles.',
       description: 'A wide pier stretches over dark water with a moored skiff and stacked crates.',
       columns: 16,
-      rows: 6,
+      rows: 8,
       layout: 'docks',
       coverLabel: 'Mooring crate',
       statefulLabel: 'Skiff painter',
@@ -787,8 +935,8 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
       lighting: 'dim',
       mood: 'Drip and echo replace the sky.',
       description: 'Irregular stone closes around a torch stub and a side passage.',
-      columns: 13,
-      rows: 9,
+      columns: 14,
+      rows: 10,
       layout: 'cavern',
       coverLabel: 'Stalagmite cluster',
       statefulLabel: 'Rope bridge span',
@@ -807,8 +955,8 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
       lighting: 'daylight',
       mood: 'The span hangs over a cold drop.',
       description: 'A long bridge run has a damaged mid-span and clear approaches at both ends.',
-      columns: 14,
-      rows: 5,
+      columns: 18,
+      rows: 8,
       layout: 'bridge',
       coverLabel: 'Broken parapet',
       statefulLabel: 'Damaged mid-span',
@@ -827,8 +975,8 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
       lighting: 'daylight',
       mood: 'Grass pushes through cracked flagstones.',
       description: 'An open ruin courtyard holds a toppled plinth and a half-buried chest.',
-      columns: 12,
-      rows: 10,
+      columns: 16,
+      rows: 12,
       layout: 'ruins',
       coverLabel: 'Toppled plinth',
       statefulLabel: 'Half-buried chest',
@@ -842,7 +990,7 @@ function pickLandmarkFamily(hint: string, seed: number): LandmarkFamily {
   return pickLandmarkFamily('watchtower', seed);
 }
 
-/** Canonical interior grid — dimensions 12×8 with seed-varied wall/door/spawn layout. */
+/** Default fallback interior grid when no blueprint layout archetype or dimensions are passed. */
 const INTERIOR_COLUMNS = 12;
 const INTERIOR_ROWS = 8;
 
@@ -850,25 +998,54 @@ function composeInterior(options: {
   readonly sceneId: string;
   readonly premise: string;
   readonly seedKey: string;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
   const family = dressInteriorFamilyWithPremise(
     pickInteriorFamily(options.premise, seed),
     options.premise,
   );
-  const columns = INTERIOR_COLUMNS;
-  const rows = INTERIOR_ROWS;
+  const archetype: RoomLayoutArchetype = options.layoutArchetype ?? 'divided_rooms';
+  const defaultDims =
+    options.layoutArchetype !== undefined
+      ? defaultDimensionsForArchetype(options.layoutArchetype, seed)
+      : { columns: INTERIOR_COLUMNS, rows: INTERIOR_ROWS };
+  const columns = clampGridDimension(options.columns, defaultDims.columns);
+  const rows = clampGridDimension(options.rows, defaultDims.rows);
   const cells = perimeterCells(columns, rows);
-  // Seed-varied interior layout so each campaign has a distinct wall, door, spawn, and NPC placement.
-  const wallColumn = 5 + (seed % 2);
-  const doorRow = 2 + ((seed >>> 2) % 4);
-  const spawnCol = Math.max(2, wallColumn - 2 - ((seed >>> 4) % 2));
+
+  const hasDividingWall = archetype === 'divided_rooms';
+  const wallColumn = hasDividingWall
+    ? Math.max(3, Math.min(columns - 4, Math.floor(columns / 2)))
+    : Math.max(4, Math.floor(columns / 2));
+  const doorSpan = Math.max(1, rows - 4);
+  const doorRow = Math.max(2, Math.min(rows - 3, 2 + ((seed >>> 2) % doorSpan)));
+  const spawnCol = hasDividingWall
+    ? Math.max(2, wallColumn - 2 - ((seed >>> 4) % 2))
+    : Math.max(2, Math.min(columns - 3, 2 + ((seed >>> 4) % 2)));
   const spawnRow = Math.max(2, Math.min(rows - 3, doorRow + (((seed >>> 6) % 3) - 1)));
   const spawn = { column: spawnCol, row: spawnRow };
-  const { edges, doorEdgeId } = eastDoorWall(wallColumn, doorRow, 1, rows - 2);
+
+  let edges: MapEdgeRecord[] = [];
+  let doorEdgeId = '';
+  if (hasDividingWall) {
+    const divided = eastDoorWall(wallColumn, doorRow, 1, rows - 2);
+    edges = divided.edges;
+    doorEdgeId = divided.doorEdgeId;
+  } else if (archetype === 'alcove_hall' && columns >= 12 && rows >= 10) {
+    const c1 = Math.max(3, Math.floor(columns / 3));
+    const c2 = Math.min(columns - 4, Math.floor((columns * 2) / 3));
+    setTerrain(cells, c1, 2, 'blocked');
+    setTerrain(cells, c2, 2, 'blocked');
+    setTerrain(cells, c1, rows - 3, 'blocked');
+    setTerrain(cells, c2, rows - 3, 'blocked');
+  }
+
   setTerrain(
     cells,
-    Math.min(wallColumn, spawn.column + 1),
+    Math.min(columns - 2, Math.min(wallColumn, spawn.column + 1)),
     Math.min(rows - 2, spawn.row + 1),
     'difficult',
   );
@@ -880,16 +1057,17 @@ function composeInterior(options: {
   const passageExitId = `${options.sceneId}:exit-passage`;
   const lightPos = {
     column: spawn.column,
-    row: spawn.row >= 3 ? spawn.row - 2 : spawn.row + 2,
+    row: spawn.row >= 2 ? spawn.row - 1 : Math.min(rows - 2, spawn.row + 1),
   };
   const coverPos = {
     column: Math.max(1, spawn.column - 1),
-    row: spawn.row >= 2 ? spawn.row - 1 : spawn.row + 1,
+    row: spawn.row >= 2 ? spawn.row - 1 : Math.min(rows - 2, spawn.row + 1),
   };
   const poiPos = {
-    column: Math.min(wallColumn, spawn.column + 1),
+    column: Math.min(columns - 2, Math.min(wallColumn, spawn.column + 1)),
     row: spawn.row,
   };
+  const farColumn = Math.min(columns - 2, wallColumn + 3);
   const features: ComposedSceneFeature[] = [
     {
       objectId: lightId,
@@ -921,11 +1099,11 @@ function composeInterior(options: {
       state: family.poiState,
       interactable: true,
     },
-    // East chamber — behind the closed dividing door.
+    // East chamber / far side container.
     {
       objectId: chestId,
-      column: Math.min(columns - 2, wallColumn + 3),
-      row: 2 + ((seed >>> 8) % 2),
+      column: farColumn,
+      row: Math.min(rows - 2, 2 + ((seed >>> 8) % 2)),
       label: 'Sturdy oak chest',
       referenceKind: 'prop',
       objectKind: 'container',
@@ -934,8 +1112,8 @@ function composeInterior(options: {
     },
     {
       objectId: passageExitId,
-      column: Math.min(columns - 2, wallColumn + 3),
-      row: 4 + ((seed >>> 9) % 2),
+      column: farColumn,
+      row: Math.min(rows - 2, 4 + ((seed >>> 9) % 2)),
       label: family.exitLabel?.includes('Cellar') || /cellar|stairs|passage/i.test(family.exitLabel ?? '')
         ? (family.exitLabel ?? 'Cellar stairs')
         : 'Cellar stairs',
@@ -951,7 +1129,7 @@ function composeInterior(options: {
   ) {
     features.push({
       objectId: `${options.sceneId}:service-counter`,
-      column: Math.min(wallColumn, spawn.column + 1),
+      column: Math.min(columns - 2, Math.min(wallColumn, spawn.column + 1)),
       row: lightPos.row,
       label: 'Service counter',
       referenceKind: 'prop',
@@ -998,6 +1176,7 @@ function composeInterior(options: {
     description: family.description,
     columns,
     rows,
+    layoutArchetype: archetype,
     cells,
     edges,
     features,
@@ -1038,11 +1217,19 @@ function composeExterior(options: {
   readonly destinationHint: string;
   readonly seedKey: string;
   readonly returnToSceneId: string | null;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
   const family = pickExteriorFamily(options.destinationHint, seed);
-  const columns = 12 + (seed % 3);
-  const rows = 6 + (seed % 2);
+  const archetype: RoomLayoutArchetype = options.layoutArchetype ?? 'outdoor_clearing';
+  const defaultDims =
+    options.layoutArchetype !== undefined
+      ? defaultDimensionsForArchetype(options.layoutArchetype, seed)
+      : { columns: 12 + (seed % 3), rows: 8 + (seed % 2) };
+  const columns = clampGridDimension(options.columns, defaultDims.columns);
+  const rows = clampGridDimension(options.rows, defaultDims.rows);
   const cells = perimeterCells(columns, rows);
   for (let column = 2; column < columns - 2; column += 1) {
     if (column % 3 === 0) {
@@ -1050,13 +1237,8 @@ function composeExterior(options: {
     }
   }
   const spawn = { column: 2, row: Math.floor(rows / 2) };
-  const forwardColumn = columns - 3;
-  const { edges, doorEdgeId } = eastDoorWall(
-    forwardColumn,
-    spawn.row,
-    Math.max(1, spawn.row - 1),
-    Math.min(rows - 2, spawn.row + 1),
-  );
+  // Outdoor clearings do not place floating wall segments in the middle of open space.
+  const edges: MapEdgeRecord[] = [];
 
   const coverPos = nearSpawn(spawn, columns, rows, 1, -1);
   const poiPos = nearSpawn(spawn, columns, rows, 2, 0);
@@ -1095,6 +1277,7 @@ function composeExterior(options: {
     description: family.description,
     columns,
     rows,
+    layoutArchetype: archetype,
     cells,
     edges,
     features,
@@ -1117,7 +1300,7 @@ function composeExterior(options: {
         returnToSceneId: options.returnToSceneId,
       },
     ],
-    doorStates: doorEdgeId ? { [doorEdgeId]: 'open' } : {},
+    doorStates: {},
     inhabitantObjectIds: [],
   };
 }
@@ -1127,14 +1310,18 @@ function composeEncounter(options: {
   readonly destinationHint: string;
   readonly seedKey: string;
   readonly returnToSceneId: string | null;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
   const family = pickEncounterFamily(seed);
-  const columns = 11 + (seed % 2);
-  const rows = 8 + (seed % 2);
+  const archetype: RoomLayoutArchetype = options.layoutArchetype ?? 'open_chamber';
+  const columns = clampGridDimension(options.columns, 11 + (seed % 2));
+  const rows = clampGridDimension(options.rows, 8 + (seed % 2));
   const cells = perimeterCells(columns, rows);
-  setTerrain(cells, 5, 3, 'difficult');
-  setTerrain(cells, 6, 4, 'difficult');
+  setTerrain(cells, Math.min(columns - 2, 5), Math.min(rows - 2, 3), 'difficult');
+  setTerrain(cells, Math.min(columns - 2, 6), Math.min(rows - 2, 4), 'difficult');
   const spawn = { column: 2, row: Math.floor(rows / 2) };
   const creaturePos = nearSpawn(spawn, columns, rows, 2, 0);
   const hazardPos = nearSpawn(spawn, columns, rows, 1, 1);
@@ -1185,6 +1372,7 @@ function composeEncounter(options: {
     description: family.description,
     columns,
     rows,
+    layoutArchetype: archetype,
     cells,
     edges: [],
     features,
@@ -1207,10 +1395,15 @@ function composeLandmark(options: {
   readonly destinationHint: string;
   readonly seedKey: string;
   readonly returnToSceneId: string | null;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
 }): ComposedScene {
   const seed = hashSeed(options.seedKey);
   const family = pickLandmarkFamily(options.destinationHint, seed);
-  const { columns, rows } = family;
+  const archetype: RoomLayoutArchetype = options.layoutArchetype ?? 'open_chamber';
+  const columns = clampGridDimension(options.columns, family.columns);
+  const rows = clampGridDimension(options.rows, family.rows);
   const cells = perimeterCells(columns, rows);
   const spawn = { column: 2, row: Math.floor(rows / 2) };
   const features: ComposedSceneFeature[] = [];
@@ -1270,17 +1463,17 @@ function composeLandmark(options: {
   } else if (family.layout === 'cavern') {
     for (let row = 2; row < rows - 2; row += 1) {
       for (let column = 3; column < columns - 3; column += 1) {
-        if ((column + row + seed) % 5 === 0) {
-          setTerrain(cells, column, row, 'blocked');
-        } else if ((column + row) % 4 === 0) {
+        if ((column + row + seed) % 7 === 0) {
           setTerrain(cells, column, row, 'difficult');
         }
       }
     }
-    const side = eastDoorWall(columns - 3, spawn.row, Math.max(1, spawn.row - 1), Math.min(rows - 2, spawn.row + 1));
-    edges.push(...side.edges);
-    if (side.doorEdgeId) {
-      doorStates = { [side.doorEdgeId]: 'open' };
+    if (archetype === 'divided_rooms') {
+      const side = eastDoorWall(columns - 3, spawn.row, 1, rows - 2);
+      edges.push(...side.edges);
+      if (side.doorEdgeId) {
+        doorStates = { [side.doorEdgeId]: 'open' };
+      }
     }
     exits.push(
       {
@@ -1393,6 +1586,7 @@ function composeLandmark(options: {
     description: family.description,
     columns,
     rows,
+    layoutArchetype: archetype,
     cells,
     edges,
     features,
@@ -1476,6 +1670,9 @@ export function composeDirectorScene(options: {
   readonly destinationHint?: string;
   readonly seedKey: string;
   readonly returnToSceneId?: string | null;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
 }): ComposedScene {
   const premise = options.premise?.trim() || 'an unfolding adventure';
   const hint = options.destinationHint?.trim() || premise;
@@ -1485,6 +1682,9 @@ export function composeDirectorScene(options: {
       sceneId: options.sceneId,
       premise,
       seedKey: options.seedKey,
+      ...(options.columns !== undefined ? { columns: options.columns } : {}),
+      ...(options.rows !== undefined ? { rows: options.rows } : {}),
+      ...(options.layoutArchetype !== undefined ? { layoutArchetype: options.layoutArchetype } : {}),
     });
   } else if (options.kind === 'encounter') {
     composed = composeEncounter({
@@ -1492,6 +1692,9 @@ export function composeDirectorScene(options: {
       destinationHint: hint,
       seedKey: `${options.seedKey}:enc`,
       returnToSceneId: options.returnToSceneId ?? null,
+      ...(options.columns !== undefined ? { columns: options.columns } : {}),
+      ...(options.rows !== undefined ? { rows: options.rows } : {}),
+      ...(options.layoutArchetype !== undefined ? { layoutArchetype: options.layoutArchetype } : {}),
     });
   } else if (options.kind === 'landmark') {
     composed = composeLandmark({
@@ -1499,6 +1702,9 @@ export function composeDirectorScene(options: {
       destinationHint: hint,
       seedKey: `${options.seedKey}:landmark`,
       returnToSceneId: options.returnToSceneId ?? null,
+      ...(options.columns !== undefined ? { columns: options.columns } : {}),
+      ...(options.rows !== undefined ? { rows: options.rows } : {}),
+      ...(options.layoutArchetype !== undefined ? { layoutArchetype: options.layoutArchetype } : {}),
     });
   } else {
     composed = composeExterior({
@@ -1506,6 +1712,9 @@ export function composeDirectorScene(options: {
       destinationHint: hint,
       seedKey: `${options.seedKey}:ext`,
       returnToSceneId: options.returnToSceneId ?? null,
+      ...(options.columns !== undefined ? { columns: options.columns } : {}),
+      ...(options.rows !== undefined ? { rows: options.rows } : {}),
+      ...(options.layoutArchetype !== undefined ? { layoutArchetype: options.layoutArchetype } : {}),
     });
   }
   // System-wide: every contract exit becomes a visible tactical primitive.
@@ -1515,7 +1724,7 @@ export function composeDirectorScene(options: {
 export function featureLabelWithState(feature: ComposedSceneFeature): string {
   const base = feature.label
     .replace(
-      /\s*\((?:lit|unlit|intact|broken|open|closed|active|disarmed|present)\)\s*$/i,
+      /\s*\((?:lit|unlit|intact|broken|open|closed|locked|unlocked|pulled|spotted|taken|active|disarmed|present)\)\s*$/i,
       '',
     )
     .trim();
@@ -1525,8 +1734,15 @@ export function featureLabelWithState(feature: ComposedSceneFeature): string {
   if (feature.objectKind === 'light') {
     return `${base} (${feature.state === 'unlit' ? 'unlit' : 'lit'})`;
   }
-  if (feature.objectKind === 'cover' || feature.objectKind === 'container') {
+  if (feature.objectKind === 'container') {
+    const effectiveState = feature.lockState === 'locked' && feature.state !== 'open' ? 'locked' : feature.state;
+    return `${base} (${effectiveState})`;
+  }
+  if (feature.objectKind === 'cover' || feature.objectKind === 'lever' || feature.objectKind === 'trap') {
     return `${base} (${feature.state})`;
+  }
+  if (feature.objectKind === 'item') {
+    return feature.state === 'taken' ? `${base} (taken)` : base;
   }
   if (feature.objectKind === 'hazard') {
     return `${base} (${feature.state})`;
@@ -1554,10 +1770,31 @@ export function nextObjectState(
     if (/\b(light|relight|ignite|kindle)\b/.test(text)) return 'lit';
     return feature.state === 'lit' ? 'unlit' : 'lit';
   }
+  if (feature.objectKind === 'lever') {
+    if (/\b(pull|flip|toggle|switch|activate|turn|use|push)\b/.test(text)) {
+      return feature.state === 'pulled' || feature.state === 'active' || feature.state === 'open'
+        ? 'closed'
+        : 'pulled';
+    }
+    return feature.state === 'pulled' ? 'closed' : 'pulled';
+  }
+  if (feature.objectKind === 'trap') {
+    if (/\b(disarm|disable|safe|clear)\b/.test(text)) return 'disarmed';
+    if (/\b(spot|inspect|examine|search)\b/.test(text)) return 'spotted';
+    return feature.state === 'active' ? 'disarmed' : 'active';
+  }
+  if (feature.objectKind === 'item') {
+    if (/\b(take|grab|pick\s+up|collect|claim)\b/.test(text)) return 'taken';
+    return 'taken';
+  }
   if (feature.objectKind === 'cover' || feature.objectKind === 'container') {
     if (/\b(break|smash|kick|shatter|destroy)\b/.test(text)) return 'broken';
-    if (/\b(open)\b/.test(text) && feature.objectKind === 'container') {
-      return feature.state === 'closed' ? 'open' : feature.state === 'open' ? 'closed' : 'open';
+    if (/\b(open|unlock|loot|search)\b/.test(text) && feature.objectKind === 'container') {
+      return feature.state === 'closed' || feature.state === 'unlocked' || feature.state === 'locked'
+        ? 'open'
+        : feature.state === 'open'
+          ? 'closed'
+          : 'open';
     }
     if (/\b(close|shut)\b/.test(text) && feature.objectKind === 'container') return 'closed';
     if (/\b(move|clear|shift|push)\b/.test(text)) return 'broken';

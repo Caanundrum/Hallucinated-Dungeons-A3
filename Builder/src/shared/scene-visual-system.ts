@@ -278,14 +278,62 @@ export function objectVisualFamily(feature: MapNotableFeatureRecord): {
     };
   }
   const label = feature.label.toLowerCase();
+  const looksLikeLever =
+    kind === 'lever' || /\b(?:lever|switch|winch|crank|valve|pull-chain|mechanism)\b/i.test(label);
+  if (looksLikeLever) {
+    return {
+      family: 'family_lever',
+      stateVariant:
+        state === 'open' || state === 'active' || state === 'pulled'
+          ? 'state_active'
+          : 'state_closed',
+    };
+  }
+  const looksLikeTrap =
+    kind === 'trap' || /\b(?:trap|tripwire|pressure\s+plate|snare|spike\s+pit|dart\s+slot)\b/i.test(label);
+  if (looksLikeTrap) {
+    return {
+      family: 'family_trap',
+      stateVariant:
+        state === 'disarmed'
+          ? 'state_disarmed'
+          : state === 'spotted'
+            ? 'state_spotted'
+            : 'state_active',
+    };
+  }
+  const looksLikeItem =
+    kind === 'item' || /\b(?:key|scroll|potion|amulet|ring|gem|coin|note|letter|shard|relic)\b/i.test(label);
+  if (
+    looksLikeItem &&
+    kind !== 'container' &&
+    kind !== 'exit' &&
+    kind !== 'npc' &&
+    kind !== 'creature' &&
+    feature.referenceKind !== 'exit' &&
+    feature.referenceKind !== 'npc' &&
+    feature.referenceKind !== 'creature' &&
+    !/\b(?:chest|crate|box|barrel|satchel|pack|bag)\b/i.test(label)
+  ) {
+    return {
+      family: 'family_item',
+      stateVariant: state === 'taken' ? 'state_taken' : 'state_present',
+    };
+  }
   const looksLikeContainer =
     kind === 'container' ||
-    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(label);
+    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|coffer|strongbox)\b/i.test(label);
   if (looksLikeContainer) {
     return {
       family: 'family_container',
       stateVariant:
-        state === 'broken' ? 'state_broken' : state === 'open' ? 'state_open' : 'state_closed',
+        state === 'broken'
+          ? 'state_broken'
+          : state === 'open'
+            ? 'state_open'
+            : state === 'locked'
+              ? 'state_locked'
+              : 'state_closed',
     };
   }
   if (kind === 'hazard' || feature.referenceKind === 'hazard') {

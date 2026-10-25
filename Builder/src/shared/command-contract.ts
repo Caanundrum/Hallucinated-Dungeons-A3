@@ -14,6 +14,7 @@ import type {
   CharacterProgressionProjection,
   EncounterProjection,
 } from './rules-combat-contract.js';
+import type { SkillCheckIntent } from './intent-draft-contract.js';
 import type { NpcSpotlightProjection } from './table-contention-contract.js';
 
 /** Commands accepted by the canonical table command gateway. */
@@ -26,6 +27,7 @@ export const TABLE_COMMAND_TYPES = [
   'table.begin_adventure',
   'table.interact_object',
   'table.take_scene_prop',
+  'table.transfer_npc_item',
   'table.travel_scene',
   'encounter.begin',
   'initiative.roll',
@@ -53,6 +55,7 @@ export const TABLE_EVENT_TYPES = [
   'table.scene_built',
   'table.object_changed',
   'table.scene_prop_taken',
+  'table.npc_item_transferred',
   'table.scene_traveled',
   'encounter.started',
   'initiative.rolled',
@@ -97,6 +100,8 @@ export interface TableCommandRequest {
   readonly premise?: string;
   /** Player-facing beat summary stored on the event and Chronicle. */
   readonly summary?: string;
+  /** Structured skill check intent for deterministic roll + mutation resolution. */
+  readonly skillCheckIntent?: SkillCheckIntent;
   /** Phase 3 mechanical payload. Outcomes remain server-authored. */
   readonly targetCombatantId?: string;
   readonly attackId?: string;

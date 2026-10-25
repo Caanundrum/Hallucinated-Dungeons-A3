@@ -133,6 +133,9 @@ export interface MapEdgeRecord {
   readonly orientation: EdgeOrientation;
   readonly kind: EdgeKind;
   readonly doorState: DoorState | null;
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
 }
 
 export interface MapCellRecord {
@@ -171,6 +174,14 @@ export interface MapNotableFeatureRecord {
   readonly objectState?: string;
   /** When true, ordinary play may change this object's state. */
   readonly interactable?: boolean;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
+  readonly inspectDC?: number | null;
+  readonly contents?: readonly string[];
+  readonly targetEdgeOrObjectId?: string | null;
+  readonly heldItems?: readonly string[];
 }
 
 /** Non-authoritative map reference markers for lighting / atmosphere / actors. */

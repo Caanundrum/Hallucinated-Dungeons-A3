@@ -100,7 +100,7 @@ test.describe('Open + step-through doorway cross', () => {
     await expect(doorHit).toBeVisible();
     await doorHit.click();
     await expect(page.getByTestId('door-selection-detail')).toContainText(/closed/i);
-    await page.screenshot({ path: '/opt/cursor/artifacts/door-closed-before.png' }).catch(() => {});
+    await page.screenshot({ path: 'test-results/door-closed-before.png' }).catch(() => {});
 
     const token = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
     await expect(token).toBeVisible();
@@ -119,14 +119,14 @@ test.describe('Open + step-through doorway cross', () => {
       await page.locator('[data-token][data-anchor-column]').first().getAttribute('data-anchor-column'),
     );
     expect(endColumn).toBeGreaterThan(startColumn);
-    await page.screenshot({ path: '/opt/cursor/artifacts/token-far-after-cross.png' }).catch(() => {});
+    await page.screenshot({ path: 'test-results/token-far-after-cross.png' }).catch(() => {});
 
     await expect(page.getByTestId('dm-play-thread')).toContainText(
       /Opened the door and stepped through the doorway/i,
       { timeout: 20_000 },
     );
     await page.getByTestId('dm-play-thread').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: '/opt/cursor/artifacts/story-after-cross-clean.png' }).catch(() => {});
+    await page.screenshot({ path: 'test-results/story-after-cross-clean.png' }).catch(() => {});
     const threadText = await page.getByTestId('dm-play-thread').innerText();
     // Post-commit Story must not still ask the player to Confirm the crossing.
     expect(threadText).not.toMatch(/Confirm to (?:open it and )?cross|Confirm to commit the step/i);
@@ -191,7 +191,7 @@ test.describe('Open + step-through doorway cross', () => {
       .filter({ hasText: /Stepped back through the open doorway/i });
     await expect(dmReverse).toHaveCount(1);
 
-    await page.screenshot({ path: '/opt/cursor/artifacts/reverse-cross-token.png' }).catch(() => {});
+    await page.screenshot({ path: 'test-results/reverse-cross-token.png' }).catch(() => {});
   });
 
   test('enter room beyond while already past doorway clarifies once', async ({ page }) => {

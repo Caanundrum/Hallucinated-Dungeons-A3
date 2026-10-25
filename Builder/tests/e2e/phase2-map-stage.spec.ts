@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { recordDefaultSessionZero, enterAccountFromShell, readCandidate} from './arena-page.js';
+import { awaitAdventureReady, recordDefaultSessionZero, enterAccountFromShell, readCandidate} from './arena-page.js';
 
 /**
  * Phase 2 chunk 2b: map schemas projected by the server and rendered by a
@@ -38,17 +38,18 @@ async function createQuickCharacter(page: Page, name: string): Promise<void> {
 async function createCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('nav-campaigns').click();
   await page.getByTestId('start-campaign').click();
-  // Phase 5 defaults create to the Emberferry Crossing starter pack; this
-  // suite asserts the blank table's procedural placeholder presentation, so
-  // it must explicitly pick the blank template.
-  await page.getByTestId('adventure-template-blank').click();
   await page.getByTestId('campaign-name').fill(name);
   await page.getByTestId('campaign-name').dispatchEvent('change');
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  const campaignId = match![1]!;
+  await page.goto(`/campaigns/${campaignId}`);
   await expect(page.getByTestId('campaign-detail-heading')).toHaveText(name);
-  return page.url().split('/').pop()!;
+  return campaignId;
 }
 
 async function seatOwnCharacter(page: Page): Promise<void> {
@@ -71,10 +72,13 @@ test.describe('Phase 2b map schemas and Pixi stage', () => {
     await seatOwnCharacter(page);
 
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('map-bundle-meta')).toContainText('Local starter chamber');
+    await awaitAdventureReady(page);
+    await expect(page.getByTestId('map-bundle-meta')).toContainText(/Shared scene checkpoint:/);
     await expect(page.getByTestId('map-bundle-meta')).toContainText('12×8 squares');
     await expect(page.getByTestId('map-bundle-meta')).toContainText('5 ft/square');
-    await expect(page.getByTestId('map-bundle-meta')).toContainText('procedural local placeholder');
+    await expect(page.getByTestId('map-bundle-meta')).toContainText(
+      /procedural local placeholder|Emberferry starter presentation/,
+    );
 
     await expect(page.getByTestId('table-stage-semantic')).toBeVisible();
     await expect(page.getByTestId('table-stage-semantic').locator('[data-token]')).toHaveCount(1);
@@ -114,7 +118,9 @@ test.describe('Phase 2b map schemas and Pixi stage', () => {
     expect(mapBody.cells.length).toBe(96);
     expect(mapBody.edges.some((edge) => edge.kind === 'door')).toBe(true);
     expect(mapBody.tokens.some((token) => token.label === 'Map Stage Scout')).toBe(true);
-    expect(mapBody.artProvenance).toBe('procedural_local_placeholder');
+    expect(['procedural_local_placeholder', 'original_phase5_starter_v1']).toContain(
+      mapBody.artProvenance,
+    );
 
     // Prove we did not pull in the banned React-Pixi bridge.
     const banned = await page.evaluate(() => {

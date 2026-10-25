@@ -61,12 +61,16 @@ import {
   type StoredMapRuntime,
 } from './map-runtime.js';
 import {
+  actorHoldsMatchingKey,
   beginAdventureRuntime,
   interactObjectRuntime,
   loadCampaignPremise,
   takeScenePropRuntime,
+  transferNpcItemRuntime,
   travelSceneRuntime,
 } from './scene-commands.js';
+import { featureLabelWithState } from './scene-composition.js';
+import { updateSceneObjectState } from './scene-runtime.js';
 import { activeSceneInstance } from './map-runtime.js';
 import { validateWalkPath, visibleSquaresFrom } from './path-validator.js';
 import {
@@ -75,7 +79,11 @@ import {
   stripDoorStateLabelSuffix,
 } from '../../shared/play-authority-contract.js';
 import type { MapBundleProjection, MapEdgeRecord, MapSquareCoordinate } from '../../shared/map-contract.js';
-import { resolveSkillAttemptFromSummary } from './skill-check-resolve.js';
+import type { SkillCheckIntent } from '../../shared/intent-draft-contract.js';
+import {
+  resolveSkillAttemptFromSummary,
+  resolveStructuredSkillCheck,
+} from './skill-check-resolve.js';
 import type { CharacterProgressionProjection } from '../../shared/rules-combat-contract.js';
 
 /** Apply runtime doorStates onto edge records so vision respects open/closed leaves. */
@@ -521,6 +529,8 @@ export async function acceptTableCommand(options: {
   readonly summary?: string;
   /** Confirmed player declaration — chronicled only after Confirm (TQA-005). */
   readonly declaration?: string;
+  /** Structured skill check payload (Packet 4). */
+  readonly skillCheckIntent?: SkillCheckIntent;
 } & RulesCommandFields): Promise<TableCommandAcceptResponse> {
   const {
     firestore,
@@ -550,6 +560,7 @@ export async function acceptTableCommand(options: {
     arcaneRecovery,
     summary: playBeatSummary,
     declaration: playDeclaration,
+    skillCheckIntent,
   } = options;
 
   const trimmedPlaySummary =
@@ -603,6 +614,7 @@ export async function acceptTableCommand(options: {
     commandType !== 'table.begin_adventure' &&
     commandType !== 'table.interact_object' &&
     commandType !== 'table.take_scene_prop' &&
+    commandType !== 'table.transfer_npc_item' &&
     commandType !== 'table.travel_scene'
   ) {
     throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That table command type is not supported.');
@@ -703,6 +715,7 @@ export async function acceptTableCommand(options: {
     summary: string;
     rolls: readonly number[];
     lockYielded: boolean;
+    succeeded?: boolean;
   } | null = null;
   let unlockEdgeId: string | undefined;
   let nextSceneRuntime: StoredMapRuntime | undefined;
@@ -749,6 +762,27 @@ export async function acceptTableCommand(options: {
     }
   }
 
+  const loadActorInventoryState = async () => {
+    try {
+      const source = await loadCharacterRulesSource(firestore, seat.characterId);
+      const progressionSnap = await firestore
+        .collection(COLLECTIONS.characterProgressions)
+        .doc(seat.characterId)
+        .get();
+      const priorProgression = progressionSnap.exists
+        ? (progressionSnap.data() as StoredProgression)
+        : initialStoredProgression(source);
+      const baseSheet = baseSheetFor(source);
+      const equipmentNames =
+        priorProgression.equipmentOverrides !== undefined
+          ? priorProgression.equipmentOverrides.map((item) => item.name)
+          : baseSheet.equipment.map((item) => item.name);
+      return { source, priorProgression, baseSheet, equipmentNames };
+    } catch {
+      return null;
+    }
+  };
+
   if (commandType === 'table.interact_object') {
     const declarationForInteract = trimmedDeclaration ?? trimmedPlaySummary ?? '';
     // Defense in depth: door open/passage/close must never mutate scene props.
@@ -772,10 +806,12 @@ export async function acceptTableCommand(options: {
       );
     }
     try {
+      const actorInventory = await loadActorInventoryState();
       const result = interactObjectRuntime({
         runtime: mapContext.runtime,
         objectId: targetObjectId,
         declaration: declarationForInteract,
+        ...(actorInventory !== null ? { actorEquipment: actorInventory.equipmentNames } : {}),
       });
       nextSceneRuntime = result.runtime;
       sceneChronicleBody = result.chronicle;
@@ -786,6 +822,21 @@ export async function acceptTableCommand(options: {
         priorState: result.priorState,
         nextState: result.nextState,
       };
+      if (result.lootedItems.length > 0 && actorInventory !== null) {
+        let overrides = actorInventory.priorProgression.equipmentOverrides;
+        for (const itemName of result.lootedItems) {
+          overrides = appendEquipmentOverride({
+            baseEquipment: actorInventory.baseSheet.equipment,
+            ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+            itemName,
+          });
+        }
+        nextProgression = {
+          ...actorInventory.priorProgression,
+          ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+      }
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
       if (code === 'NO_ACTIVE_SCENE') {
@@ -800,10 +851,70 @@ export async function acceptTableCommand(options: {
           'That object is not interactable on this scene.',
         );
       }
+      if (code === 'OBJECT_LOCKED') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That container is locked. Use the matching key, pick the lock (Sleight of Hand), or force it open (Athletics).',
+        );
+      }
       if (code === 'OBJECT_STATE_UNCHANGED') {
         throw new TableCommandError(
           ERROR_CODES.BAD_REQUEST,
           'That object is already in that state.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (commandType === 'table.transfer_npc_item') {
+    try {
+      const transferred = transferNpcItemRuntime({
+        runtime: mapContext.runtime,
+        ...(typeof objectId === 'string' && objectId.length > 0 ? { objectId } : {}),
+        ...(typeof itemId === 'string' && itemId.length > 0
+          ? { itemHint: itemId }
+          : trimmedDeclaration !== undefined
+            ? { itemHint: trimmedDeclaration }
+            : {}),
+      });
+      nextSceneRuntime = transferred.runtime;
+      takenEquipmentName = transferred.itemLabel;
+      sceneChronicleBody = `${transferred.npcName} hands over ${transferred.itemLabel}, which is stowed in your inventory.`;
+      eventType = 'table.npc_item_transferred';
+      objectMutation = {
+        objectId: transferred.objectId,
+        baseLabel: transferred.itemLabel,
+        priorState: 'npc_held',
+        nextState: 'inventory',
+      };
+      const actorInventory = await loadActorInventoryState();
+      if (actorInventory !== null) {
+        const equipmentOverrides = appendEquipmentOverride({
+          baseEquipment: actorInventory.baseSheet.equipment,
+          ...(actorInventory.priorProgression.equipmentOverrides !== undefined
+            ? { equipmentOverrides: actorInventory.priorProgression.equipmentOverrides }
+            : {}),
+          itemName: transferred.itemLabel,
+        });
+        nextProgression = {
+          ...actorInventory.priorProgression,
+          equipmentOverrides,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'NO_ACTIVE_SCENE') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'Begin the adventure before receiving items from an NPC.',
+        );
+      }
+      if (code === 'NPC_HAS_NO_HELD_ITEMS') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That NPC does not have any items to hand over right now.',
         );
       }
       throw error;
@@ -918,8 +1029,57 @@ export async function acceptTableCommand(options: {
           : [{ seatId: seat.seatId, column: 2, row: 2 }],
         ...(priorProgression !== null ? { partyXp: priorProgression.experiencePoints } : {}),
         ...(typeof requiredXpThreshold === 'number' ? { requiredXpThreshold } : {}),
+        ...(mapContext.campaignBlueprint !== null
+          ? { blueprint: mapContext.campaignBlueprint }
+          : {}),
       });
       nextSceneRuntime = result.runtime;
+      if (process.env.HD_ENVIRONMENT_CLASS === 'milestone') {
+        const arrivedScene = activeSceneInstance(nextSceneRuntime);
+        if (
+          arrivedScene !== null &&
+          (result.jitCompiledSceneId !== undefined || !arrivedScene.sceneArtUrl)
+        ) {
+          try {
+            const { generateAndStoreCampaignAsset } = await import(
+              '../assets/campaign-assets.js'
+            );
+            const doorEdges = arrivedScene.edges.filter((edge) => edge.kind === 'door');
+            const wallEdges = arrivedScene.edges.filter((edge) => edge.kind === 'wall');
+            const wallSummary =
+              wallEdges.length > 0 && doorEdges.length > 0
+                ? `Interior dividing wall at column ${wallEdges[0]!.column} with doorway at (${doorEdges[0]!.column}, ${doorEdges[0]!.row}).`
+                : 'Open continuous floor with no interior dividing wall.';
+            const assetResult = await generateAndStoreCampaignAsset({
+              firestore,
+              campaignId,
+              kind: 'battlemap',
+              prompt: `${arrivedScene.title}. ${arrivedScene.description ?? arrivedScene.sceneBanner}`,
+              fallbackTemplateId: arrivedScene.templateId,
+              gridLayout: {
+                columns: arrivedScene.columns,
+                rows: arrivedScene.rows,
+                ...(arrivedScene.layoutArchetype !== undefined
+                  ? { layoutArchetype: arrivedScene.layoutArchetype }
+                  : {}),
+                wallSummary,
+              },
+            });
+            nextSceneRuntime = {
+              ...nextSceneRuntime,
+              sceneInstances: {
+                ...(nextSceneRuntime.sceneInstances ?? {}),
+                [arrivedScene.sceneId]: {
+                  ...arrivedScene,
+                  sceneArtUrl: assetResult.assetUrl,
+                },
+              },
+            };
+          } catch {
+            // Keep fallback sceneArtUrl on generation error.
+          }
+        }
+      }
       buildSceneTitle = result.composed?.title ?? activeSceneInstance(result.runtime)?.title ?? null;
       sceneChronicleBody = result.chronicle;
       eventType = 'table.scene_traveled';
@@ -1061,12 +1221,6 @@ export async function acceptTableCommand(options: {
     if (edge.doorState === 'open') {
       throw new TableCommandError(ERROR_CODES.BAD_REQUEST, 'That door is already open.');
     }
-    if (edge.doorState === 'locked') {
-      throw new TableCommandError(
-        ERROR_CODES.BAD_REQUEST,
-        'That door is locked. Declare a lock attempt before opening it.',
-      );
-    }
     const token = map.tokens.find((entry) => entry.seatId === seat.seatId);
     if (token === undefined) {
       throw new TableCommandError(ERROR_CODES.NOT_SEATED, 'No token is bound to your seat.');
@@ -1080,6 +1234,20 @@ export async function acceptTableCommand(options: {
         ERROR_CODES.ILLEGAL_PATH,
         'Move adjacent to the door before opening it.',
       );
+    }
+    if (edge.doorState === 'locked') {
+      const actorInventory = await loadActorInventoryState();
+      const matchedKey = actorHoldsMatchingKey(
+        actorInventory?.equipmentNames,
+        edge.keyItemId ?? 'key',
+      );
+      if (matchedKey === null) {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That door is locked. Declare a lock attempt before opening it.',
+        );
+      }
+      sceneChronicleBody = `Unlocked the wooden doorway ${edge.orientation} using ${matchedKey} and opened it.`;
     }
     openEdgeId = edgeId;
     doorTargetLabel = `wooden doorway ${edge.orientation}`;
@@ -1189,22 +1357,158 @@ export async function acceptTableCommand(options: {
         map.edges,
       );
     }
-    if (trimmedPlaySummary !== undefined && /^Ready to /i.test(trimmedPlaySummary)) {
+    if (
+      skillCheckIntent !== undefined ||
+      (trimmedPlaySummary !== undefined && /^Ready to /i.test(trimmedPlaySummary))
+    ) {
       let sheet = null;
+      const actorInventory = await loadActorInventoryState();
       try {
-        const source = await loadCharacterRulesSource(firestore, seat.characterId);
-        sheet = baseSheetFor(source);
+        if (actorInventory !== null) {
+          sheet = projectProgression(actorInventory.source, actorInventory.priorProgression).sheet;
+        } else {
+          const source = await loadCharacterRulesSource(firestore, seat.characterId);
+          sheet = baseSheetFor(source);
+        }
       } catch {
         sheet = null;
       }
-      skillResolution = resolveSkillAttemptFromSummary(sheet, trimmedPlaySummary);
-      if (skillResolution?.lockYielded === true) {
-        const unlockTarget = resolveUnlockTargetEdge(
-          map,
-          token?.footprint.anchor ?? null,
-        );
+      skillResolution =
+        skillCheckIntent !== undefined
+          ? resolveStructuredSkillCheck(sheet, skillCheckIntent)
+          : resolveSkillAttemptFromSummary(sheet, trimmedPlaySummary!);
+
+      if (
+        skillResolution?.lockYielded === true &&
+        (skillCheckIntent === undefined || skillCheckIntent.targetKind === 'door')
+      ) {
+        const explicitEdge =
+          skillCheckIntent?.targetId !== undefined
+            ? map.edges.find((e) => e.edgeId === skillCheckIntent.targetId && e.kind === 'door')
+            : undefined;
+        const unlockTarget =
+          explicitEdge ??
+          resolveUnlockTargetEdge(
+            map,
+            token?.footprint.anchor ?? null,
+          );
         if (unlockTarget !== null) {
           unlockEdgeId = unlockTarget.edgeId;
+        }
+      }
+
+      if (skillResolution?.succeeded === true && skillCheckIntent !== undefined) {
+        const activeScene = activeSceneInstance(mapContext.runtime);
+        if (
+          activeScene !== null &&
+          (skillCheckIntent.onSuccessMutation === 'unlock_object' ||
+            skillCheckIntent.onSuccessMutation === 'force_open') &&
+          skillCheckIntent.targetKind === 'object'
+        ) {
+          const targetFeature =
+            (skillCheckIntent.targetId !== undefined
+              ? activeScene.features.find((f) => f.objectId === skillCheckIntent.targetId)
+              : undefined) ??
+            activeScene.features.find(
+              (f) => f.objectKind === 'container' && (f.lockState === 'locked' || f.state === 'locked'),
+            );
+          if (targetFeature !== undefined) {
+            const looted = [...(targetFeature.contents ?? [])];
+            const nextLabel = featureLabelWithState({
+              ...targetFeature,
+              state: 'open',
+              lockState: 'unlocked',
+            });
+            const updatedRuntime = updateSceneObjectState({
+              runtime: mapContext.runtime,
+              objectId: targetFeature.objectId,
+              nextState: 'open',
+              labelWithState: nextLabel,
+              lockState: 'unlocked',
+              contents: [],
+            });
+            if (updatedRuntime !== null) {
+              nextSceneRuntime = updatedRuntime;
+            }
+            if (looted.length > 0 && actorInventory !== null) {
+              let overrides = actorInventory.priorProgression.equipmentOverrides;
+              for (const itemName of looted) {
+                overrides = appendEquipmentOverride({
+                  baseEquipment: actorInventory.baseSheet.equipment,
+                  ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+                  itemName,
+                });
+              }
+              nextProgression = {
+                ...actorInventory.priorProgression,
+                ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+                updatedAt: new Date().toISOString(),
+              };
+              skillResolution = {
+                ...skillResolution,
+                summary: `${skillResolution.summary} Looted into inventory: ${looted.join(', ')}.`,
+              };
+            }
+          }
+        } else if (
+          activeScene !== null &&
+          skillCheckIntent.onSuccessMutation === 'disarm_trap'
+        ) {
+          const targetTrap =
+            (skillCheckIntent.targetId !== undefined
+              ? activeScene.features.find((f) => f.objectId === skillCheckIntent.targetId)
+              : undefined) ??
+            activeScene.features.find(
+              (f) => (f.objectKind === 'trap' || f.objectKind === 'hazard') && f.state !== 'disarmed',
+            );
+          if (targetTrap !== undefined) {
+            const nextLabel = featureLabelWithState({
+              ...targetTrap,
+              state: 'disarmed',
+            });
+            const updatedRuntime = updateSceneObjectState({
+              runtime: mapContext.runtime,
+              objectId: targetTrap.objectId,
+              nextState: 'disarmed',
+              labelWithState: nextLabel,
+            });
+            if (updatedRuntime !== null) {
+              nextSceneRuntime = updatedRuntime;
+            }
+          }
+        } else if (
+          activeScene !== null &&
+          skillCheckIntent.onSuccessMutation === 'npc_give_item'
+        ) {
+          try {
+            const transferred = transferNpcItemRuntime({
+              runtime: mapContext.runtime,
+              ...(skillCheckIntent.targetId !== undefined
+                ? { objectId: skillCheckIntent.targetId }
+                : {}),
+            });
+            nextSceneRuntime = transferred.runtime;
+            if (actorInventory !== null) {
+              const equipmentOverrides = appendEquipmentOverride({
+                baseEquipment: actorInventory.baseSheet.equipment,
+                ...(actorInventory.priorProgression.equipmentOverrides !== undefined
+                  ? { equipmentOverrides: actorInventory.priorProgression.equipmentOverrides }
+                  : {}),
+                itemName: transferred.itemLabel,
+              });
+              nextProgression = {
+                ...actorInventory.priorProgression,
+                equipmentOverrides,
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            skillResolution = {
+              ...skillResolution,
+              summary: `${skillResolution.summary} ${transferred.npcName} hands over ${transferred.itemLabel}, which is stowed in your inventory.`,
+            };
+          } catch {
+            // NPC had no held items to transfer.
+          }
         }
       }
     }
@@ -1513,7 +1817,9 @@ export async function acceptTableCommand(options: {
     const receiptTargetKind =
       commandType === 'table.open_door' || commandType === 'table.close_door'
         ? 'door'
-        : commandType === 'table.interact_object' || commandType === 'table.take_scene_prop'
+        : commandType === 'table.interact_object' ||
+            commandType === 'table.take_scene_prop' ||
+            commandType === 'table.transfer_npc_item'
           ? 'object'
           : commandType === 'table.move'
             ? 'token_path'
@@ -1720,7 +2026,10 @@ export async function acceptTableCommand(options: {
           sceneChronicleBody ??
           `${seat.characterName || 'A player'} changed an object on the scene.`,
       });
-    } else if (eventType === 'table.scene_prop_taken') {
+    } else if (
+      eventType === 'table.scene_prop_taken' ||
+      eventType === 'table.npc_item_transferred'
+    ) {
       await appendChronicleEntry({
         firestore,
         campaignId,

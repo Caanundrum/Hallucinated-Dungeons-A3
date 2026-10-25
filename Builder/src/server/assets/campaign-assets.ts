@@ -39,13 +39,45 @@ export interface StoredCampaignAsset {
   readonly createdAt: string;
 }
 
+export type BattlemapAspectRatio = '1:1' | '4:3' | '16:9' | '3:4' | '9:16';
+
+export interface BattlemapGridLayout {
+  readonly columns: number;
+  readonly rows: number;
+  readonly layoutArchetype?: string;
+  readonly wallSummary?: string;
+}
+
+export function resolveBattlemapAspectRatio(
+  columns: number,
+  rows: number,
+): BattlemapAspectRatio {
+  const ratio = columns / Math.max(1, rows);
+  if (Math.abs(ratio - 1) <= 0.15) {
+    return '1:1';
+  }
+  if (ratio > 1) {
+    return ratio >= 1.6 ? '16:9' : '4:3';
+  }
+  return ratio <= 0.625 ? '9:16' : '3:4';
+}
+
 export function buildCampaignAssetPrompt(options: {
   readonly kind: CampaignAssetKind;
   readonly rawPrompt: string;
+  readonly gridLayout?: BattlemapGridLayout;
 }): string {
   const clean = options.rawPrompt.trim();
   if (options.kind === 'battlemap') {
-    return `Top-down 2D tactical tabletop RPG battlemap, orthographic 90-degree overhead bird's-eye view, rich atmospheric lighting, clear walkable floor space, AAA fantasy CRPG environment art, no grid lines, no text, no watermarks, no UI: ${clean}`;
+    const layoutNote =
+      options.gridLayout !== undefined
+        ? ` Grid layout: ${options.gridLayout.columns}x${options.gridLayout.rows} tactical squares${
+            options.gridLayout.layoutArchetype
+              ? ` (${options.gridLayout.layoutArchetype.replace(/_/g, ' ')})`
+              : ''
+          }.${options.gridLayout.wallSummary ? ` ${options.gridLayout.wallSummary}` : ''}`
+        : '';
+    return `Top-down 2D tactical tabletop RPG battlemap, orthographic 90-degree overhead bird's-eye view, rich atmospheric lighting, clear walkable floor space, AAA fantasy CRPG environment art, no grid lines, no text, no watermarks, no UI: ${clean}${layoutNote}`;
   }
   if (options.kind === 'npc_portrait') {
     return `Oil-painted medieval fantasy character portrait, head and shoulders, dramatic candle-lit tavern lighting, painterly, no text, no watermark: ${clean}`;
@@ -57,6 +89,7 @@ async function tryImagenRest(options: {
   readonly apiKey: string;
   readonly model: string;
   readonly prompt: string;
+  readonly aspectRatio?: BattlemapAspectRatio;
   readonly fetchImpl: typeof fetch;
 }): Promise<{ readonly mimeType: string; readonly base64Data: string } | null> {
   const controller = new AbortController();
@@ -69,7 +102,7 @@ async function tryImagenRest(options: {
         headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
         body: JSON.stringify({
           instances: [{ prompt: options.prompt }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' },
+          parameters: { sampleCount: 1, aspectRatio: options.aspectRatio ?? '1:1' },
         }),
         signal: controller.signal,
       },
@@ -103,7 +136,7 @@ export async function tryVertexImagenAdc(options: {
   readonly env: PortraitEnvironment;
   readonly model: string;
   readonly prompt: string;
-  readonly aspectRatio?: '1:1' | '16:9' | '4:3';
+  readonly aspectRatio?: BattlemapAspectRatio;
 }): Promise<{ readonly mimeType: string; readonly base64Data: string } | null> {
   return tryGeminiImageGeneration({
     env: options.env,
@@ -186,6 +219,7 @@ export async function generateAndStoreCampaignAsset(options: {
   readonly kind: CampaignAssetKind;
   readonly prompt: string;
   readonly fallbackTemplateId?: string;
+  readonly gridLayout?: BattlemapGridLayout;
   /** Optional shared cache key (e.g. SRD monster id like 'kobold' or 'goblin') to reuse across campaigns. */
   readonly reusableKey?: string;
   readonly env?: PortraitEnvironment;
@@ -217,8 +251,14 @@ export async function generateAndStoreCampaignAsset(options: {
   const fullPrompt = buildCampaignAssetPrompt({
     kind: options.kind,
     rawPrompt: options.prompt,
+    ...(options.gridLayout !== undefined ? { gridLayout: options.gridLayout } : {}),
   });
-  const aspectRatio = options.kind === 'battlemap' ? '16:9' : '1:1';
+  const aspectRatio: BattlemapAspectRatio =
+    options.kind === 'battlemap'
+      ? options.gridLayout !== undefined
+        ? resolveBattlemapAspectRatio(options.gridLayout.columns, options.gridLayout.rows)
+        : '4:3'
+      : '1:1';
 
   let generated: { readonly mimeType: string; readonly base64Data: string } | null = null;
   const apiKey = portraitApiKey(env);
@@ -227,6 +267,7 @@ export async function generateAndStoreCampaignAsset(options: {
       apiKey,
       model,
       prompt: fullPrompt,
+      aspectRatio,
       fetchImpl: options.fetchImpl ?? fetch,
     });
   }

@@ -3,6 +3,7 @@
  */
 
 import type { DerivedCharacterSheet } from '../../shared/character-contract.js';
+import type { SkillCheckIntent } from '../../shared/intent-draft-contract.js';
 import { textRequestsLockPicking } from '../../shared/play-authority-contract.js';
 import { rollD20 } from '../rules/engine/dice.js';
 
@@ -11,6 +12,10 @@ export interface SkillAttemptResolution {
   readonly rolls: readonly number[];
   /** True when a lock attempt was rolled and succeeded (A2 → map unlock). */
   readonly lockYielded: boolean;
+  /** True when the primary check succeeded against its DC. */
+  readonly succeeded?: boolean;
+  /** Structured intent when resolved via a typed SkillCheckIntent payload. */
+  readonly intent?: SkillCheckIntent;
 }
 
 const DEFAULT_TRAP_DC = 13;
@@ -397,3 +402,150 @@ export function resolveSkillAttemptFromSummary(
 
   return { summary: parts.join(' '), rolls, lockYielded };
 }
+
+/**
+ * Build a structured SkillCheckIntent from a deterministic player declaration and sheet.
+ */
+export function buildSkillCheckIntentFromText(
+  sheet: DerivedCharacterSheet | null,
+  text: string,
+  options: {
+    readonly targetId?: string;
+    readonly targetKind?: SkillCheckIntent['targetKind'];
+    readonly targetLabel?: string;
+    readonly dcOverride?: number;
+  } = {},
+): SkillCheckIntent | null {
+  const wantsStealth = /\b(?:hide|hiding|conceal|take\s+cover|stealth|crouch\s+behind|duck\s+behind|sneak(?:s|ing)?|slip(?:s|ping)?)\b/i.test(
+    text,
+  );
+  const wantsLock =
+    !/\bpick(?:ing|ed)?\s+up\b/i.test(text) &&
+    (textRequestsLockPicking(text) || (/\block\b/.test(text) && !/\bunlocked\b/.test(text)));
+  const wantsForce = /\b(?:force|break|smash|kick\s+in|bash|shoulder)\b/i.test(text);
+  const wantsTrap = /(trap|disarm)/.test(text);
+  const wantsSearch = /\b(?:search(?:es|ing)?|investigat(?:e|es|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)?)\b/i.test(
+    text,
+  );
+
+  if (!wantsStealth && !wantsLock && !wantsForce && !wantsTrap && !wantsSearch) {
+    return null;
+  }
+
+  const skillId = wantsStealth
+    ? 'stealth'
+    : wantsLock
+      ? 'sleight-of-hand'
+      : wantsForce
+        ? 'athletics'
+        : 'investigation';
+  const ability =
+    skillId === 'stealth' || skillId === 'sleight-of-hand'
+      ? 'dexterity'
+      : skillId === 'athletics'
+        ? 'strength'
+        : 'intelligence';
+  const dc =
+    options.dcOverride ??
+    (wantsStealth ? 12 : wantsLock || wantsForce ? DEFAULT_LOCK_DC : DEFAULT_TRAP_DC);
+  const bonus = sheet !== null ? skillBonus(sheet, skillId).bonus : 0;
+  const targetKind: SkillCheckIntent['targetKind'] =
+    options.targetKind ??
+    (/\b(?:door|doorway|gate|entry)\b/i.test(text)
+      ? 'door'
+      : wantsStealth
+        ? 'environment'
+        : 'object');
+  const onSuccessMutation: SkillCheckIntent['onSuccessMutation'] = wantsLock
+    ? targetKind === 'door'
+      ? 'unlock_door'
+      : 'unlock_object'
+    : wantsForce
+      ? 'force_open'
+      : wantsTrap
+        ? 'disarm_trap'
+        : wantsSearch
+          ? 'reveal_info'
+          : 'none';
+
+  return {
+    skill: skillId,
+    ability,
+    dc,
+    modifier: bonus,
+    targetKind,
+    ...(options.targetId !== undefined ? { targetId: options.targetId } : {}),
+    ...(options.targetLabel !== undefined ? { targetLabel: options.targetLabel } : {}),
+    onSuccessMutation,
+  };
+}
+
+/**
+ * Resolve a structured SkillCheckIntent payload directly without regex parsing.
+ */
+export function resolveStructuredSkillCheck(
+  sheet: DerivedCharacterSheet | null,
+  intent: SkillCheckIntent,
+  customRollD20?: (mode: 'normal', modifier: number) => { natural: number; total: number },
+): SkillAttemptResolution {
+  const normalizedSkill = intent.skill.toLowerCase().trim().replace(/_/g, '-');
+  const mapped = DISPATCHED_SKILL_MAP[normalizedSkill] ?? {
+    id: normalizedSkill,
+    label: intent.skill.charAt(0).toUpperCase() + intent.skill.slice(1).replace(/[-_]/g, ' '),
+  };
+  const computedSkill = sheet !== null ? skillBonus(sheet, mapped.id) : null;
+  const modifier =
+    typeof intent.modifier === 'number' && Number.isFinite(intent.modifier)
+      ? intent.modifier
+      : (computedSkill?.bonus ?? 0);
+  const dc = Math.max(5, Math.min(30, intent.dc || 13));
+  const roller = customRollD20 ?? rollD20;
+  const roll = roller('normal', modifier);
+  const succeeded = roll.total >= dc;
+  const targetLabel = intent.targetLabel ?? intent.targetId ?? 'the target';
+  const lockYielded =
+    succeeded &&
+    (intent.onSuccessMutation === 'unlock_door' ||
+      intent.onSuccessMutation === 'unlock_object' ||
+      (intent.onSuccessMutation === 'force_open' &&
+        (intent.targetKind === 'door' || intent.targetKind === 'object')));
+
+  let outcomeClause = succeeded ? 'you succeed on the check' : 'the attempt falls short';
+  if (
+    intent.onSuccessMutation === 'unlock_door' ||
+    intent.onSuccessMutation === 'unlock_object'
+  ) {
+    outcomeClause = succeeded ? 'the lock yields' : 'the lock holds';
+  } else if (intent.onSuccessMutation === 'force_open') {
+    outcomeClause = succeeded
+      ? `${targetLabel} gives way and forces open`
+      : `${targetLabel} holds fast against the force`;
+  } else if (intent.onSuccessMutation === 'disarm_trap') {
+    outcomeClause = succeeded
+      ? `you safely disarm or clear ${targetLabel}`
+      : `you fail to disarm ${targetLabel}`;
+  } else if (intent.onSuccessMutation === 'npc_give_item') {
+    outcomeClause = succeeded
+      ? `${targetLabel} is persuaded and hands over the item`
+      : `${targetLabel} remains unconvinced`;
+  } else if (mapped.id === 'stealth') {
+    outcomeClause = succeeded
+      ? 'you succeed in using cover and stay unseen by those nearby'
+      : 'cover is insufficient to stay fully hidden';
+  } else if (mapped.id === 'investigation') {
+    outcomeClause = succeeded
+      ? `you examine ${targetLabel} thoroughly and uncover key details`
+      : `you find no hidden mechanisms or unusual marks on ${targetLabel}`;
+  }
+
+  const summary = `${mapped.label} check on ${targetLabel} (${mapped.label} ${formatBonus(modifier)}): d20 ${roll.natural} ${formatBonus(modifier)} = ${roll.total} vs DC ${dc} — ${outcomeClause}.`;
+
+  return {
+    summary,
+    rolls: [roll.natural],
+    lockYielded,
+    succeeded,
+    intent,
+  };
+}
+

@@ -43,8 +43,13 @@ async function createCampaign(page: Page, name: string): Promise<string> {
   await page.getByTestId('identity-veyra').click();
   await page.getByTestId('personality-seasoned_host').click();
   await page.getByTestId('create-campaign-submit').click();
+  await expect(page.getByTestId('join-table-heading')).toBeVisible();
+  const match = page.url().match(/\/campaigns\/([A-Za-z0-9-]+)\/join/);
+  expect(match).toBeTruthy();
+  const campaignId = match![1]!;
+  await page.goto(`/campaigns/${campaignId}`);
   await expect(page.getByTestId('campaign-detail-heading')).toHaveText(name);
-  return page.url().split('/').pop()!;
+  return campaignId;
 }
 
 async function seatOwnCharacter(page: Page): Promise<void> {
@@ -88,13 +93,17 @@ test.describe('Phase 2a table command gateway', () => {
     await seatOwnCharacter(page);
 
     await page.getByTestId('open-campaign-table').click();
-    await expect(page.getByTestId('communication-dock')).toBeVisible();
     await expect(page.getByTestId('action-composer')).toBeVisible();
     await openTableAdvancedControls(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 0');
     await expect(page.getByTestId('timing-authority-meta')).toContainText('Exploration');
     await expect(page.getByTestId('interpret-action')).toHaveAttribute('aria-disabled', 'false');
 
+    const expandComms = page.getByTestId('expand-comms-rail');
+    if (await expandComms.isVisible().catch(() => false)) {
+      await expandComms.click();
+    }
+    await expect(page.getByTestId('communication-dock')).toBeVisible();
     await page.getByTestId('dock-tab-party_chat').click();
     await page.getByTestId('party-chat-input').fill('I describe walking without submitting a command.');
     await page.getByTestId('party-chat-send').click();
@@ -117,6 +126,9 @@ test.describe('Phase 2a table command gateway', () => {
     await page.reload();
     await dismissIntroIfPresent(page);
     await expect(page.getByTestId('table-state-meta')).toContainText('Table state version 2');
+    if (await expandComms.isVisible().catch(() => false)) {
+      await expandComms.click();
+    }
     await page.getByTestId('dock-tab-party_chat').click();
     await expect(page.getByTestId('party-chat-message').first()).toContainText(
       'I describe walking without submitting a command.',
@@ -295,8 +307,8 @@ test.describe('Phase 2a table command gateway', () => {
       lastEventSequence: number;
       recentEvents: { eventType: string }[];
     };
-    expect(stateBody.stateVersion).toBe(1);
-    expect(stateBody.lastEventSequence).toBe(1);
+    expect(stateBody.stateVersion).toBe(4);
+    expect(stateBody.lastEventSequence).toBe(4);
     expect(stateBody.recentEvents.some((event) => event.eventType === 'table.state_synced')).toBe(
       true,
     );

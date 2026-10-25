@@ -5,9 +5,11 @@ import {
   appendEquipmentOverride,
 } from '../../dist/server/rules/engine/encounter-runtime.js';
 import {
+  interactObjectRuntime,
   isPortableSceneContainer,
   matchTakeContainerByDeclaration,
   takeScenePropRuntime,
+  transferNpcItemRuntime,
 } from '../../dist/server/table/scene-commands.js';
 import { removeSceneObject } from '../../dist/server/table/scene-runtime.js';
 
@@ -170,3 +172,74 @@ test('FRESH-07: matchTakeContainerByDeclaration and takeScenePropRuntime support
   assert.equal(taken.equipmentName, 'Iron key');
   assert.equal(taken.runtime.sceneInstances['scene-1'].features.length, 0);
 });
+
+test('Packet 3: interactObjectRuntime enforces lockState, unlocks with matching key, and loots container contents', () => {
+  const runtime = runtimeWithFeatures([
+    {
+      objectId: 'obj:chest',
+      column: 4,
+      row: 3,
+      label: 'Ironbound Chest (locked)',
+      referenceKind: 'prop',
+      objectKind: 'container',
+      state: 'locked',
+      lockState: 'locked',
+      keyItemId: 'Brass Key',
+      contents: ['Silver Signet Ring', 'Healing Draught'],
+      interactable: true,
+    },
+  ]);
+
+  // Without matching key, opening a locked chest throws OBJECT_LOCKED
+  assert.throws(
+    () =>
+      interactObjectRuntime({
+        runtime,
+        objectId: 'obj:chest',
+        declaration: 'I open the ironbound chest.',
+        actorEquipment: ['Longsword'],
+      }),
+    /OBJECT_LOCKED/,
+  );
+
+  // With matching key in inventory, chest unlocks, opens, and returns lootedItems while clearing contents
+  const unlocked = interactObjectRuntime({
+    runtime,
+    objectId: 'obj:chest',
+    declaration: 'I unlock and open the ironbound chest.',
+    actorEquipment: ['Longsword', 'Brass Key'],
+  });
+  assert.equal(unlocked.nextState, 'open');
+  assert.equal(unlocked.unlockedWithKey, 'Brass Key');
+  assert.deepEqual(unlocked.lootedItems, ['Silver Signet Ring', 'Healing Draught']);
+  const updatedFeature = unlocked.runtime.sceneInstances['scene-1'].features[0];
+  assert.equal(updatedFeature.lockState, 'unlocked');
+  assert.deepEqual(updatedFeature.contents, []);
+});
+
+test('Packet 3: transferNpcItemRuntime transfers heldItem from NPC and removes it from npc.heldItems', () => {
+  const runtime = runtimeWithFeatures([
+    {
+      objectId: 'npc:elira',
+      column: 2,
+      row: 3,
+      label: 'Warden Elira',
+      referenceKind: 'npc',
+      objectKind: 'npc',
+      state: 'present',
+      heldItems: ['Brass Key', 'Watch Signet'],
+      interactable: true,
+    },
+  ]);
+
+  const transferred = transferNpcItemRuntime({
+    runtime,
+    objectId: 'npc:elira',
+    itemHint: 'Brass Key',
+  });
+  assert.equal(transferred.itemLabel, 'Brass Key');
+  assert.equal(transferred.npcName, 'Warden Elira');
+  const updatedNpc = transferred.runtime.sceneInstances['scene-1'].features[0];
+  assert.deepEqual(updatedNpc.heldItems, ['Watch Signet']);
+});
+

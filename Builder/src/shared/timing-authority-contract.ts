@@ -5,7 +5,7 @@
  * Authority / Action Composer plumbing. Clients never mint authorities.
  */
 
-import type { IntentDraftCommandType } from './intent-draft-contract.js';
+import type { IntentDraftCommandType, SkillCheckIntent } from './intent-draft-contract.js';
 import type { AreaTarget } from './rules-combat-contract.js';
 
 export const TIMING_AUTHORITY_SCHEMA_VERSION = 'phase3-timing-v1' as const;
@@ -104,6 +104,7 @@ export interface ActionDraftSuggestion {
   readonly projectionVersionAtIssue?: number;
   /** Player declaration text shown on Intent Intercept; persisted across reload. */
   readonly playerDeclaration?: string;
+  readonly skillCheckIntent?: SkillCheckIntent;
   readonly interceptState: IntentInterceptState;
   readonly createdAt: string;
 }

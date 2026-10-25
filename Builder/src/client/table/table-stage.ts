@@ -379,6 +379,7 @@ function paintSemanticSvg(
         obstacle: { x: cx - 7, y: cy - 7, w: 14, h: 14 },
         fullLabel,
         referenceKind: feature.referenceKind ?? 'prop',
+        objectKind: feature.objectKind ?? null,
       };
     }),
     ...map.edges
@@ -498,11 +499,14 @@ function paintSemanticSvg(
       visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
     const isTorch = visual.family === 'family_light';
     const isContainer = visual.family === 'family_container';
+    const isLever = visual.family === 'family_lever';
+    const isTrap = visual.family === 'family_trap';
+    const isItem = visual.family === 'family_item';
     const isProp = visual.family === 'family_prop';
     const isUnlit = visual.stateVariant === 'state_unlit';
     const isBroken = visual.stateVariant === 'state_broken';
     const isCover = visual.family === 'family_cover';
-    const isHazard = visual.family === 'family_hazard';
+    const isHazard = visual.family === 'family_hazard' || isTrap;
     const isDampHazard = isHazard && visuals.terrainBias === 'damp';
     const fill = isExit
       ? '#6ea8c9'
@@ -510,21 +514,33 @@ function paintSemanticSvg(
         ? '#c45c5c'
         : visual.family === 'family_creature'
           ? '#b84a3a'
-          : isHazard
+          : isTrap
             ? visual.stateVariant === 'state_disarmed'
               ? '#8a7a62'
-              : '#c47a4a'
-            : isTorch
-              ? isUnlit
-                ? '#5a5048'
-                : '#f0c043'
-              : isContainer
-                ? visual.stateVariant === 'state_open'
-                  ? '#d4b06a'
-                  : '#c4a060'
-                : isBroken
-                  ? '#6a5844'
-                  : '#e0c070';
+              : '#e05838'
+            : isHazard
+              ? visual.stateVariant === 'state_disarmed'
+                ? '#8a7a62'
+                : '#c47a4a'
+              : isTorch
+                ? isUnlit
+                  ? '#5a5048'
+                  : '#f0c043'
+                : isLever
+                  ? visual.stateVariant === 'state_active'
+                    ? '#52b788'
+                    : '#d4a373'
+                  : isItem
+                    ? '#f4d35e'
+                    : isContainer
+                      ? visual.stateVariant === 'state_open'
+                        ? '#d4b06a'
+                        : visual.stateVariant === 'state_locked'
+                          ? '#b5654d'
+                          : '#c4a060'
+                      : isBroken
+                        ? '#6a5844'
+                        : '#e0c070';
     const dampWash =
       !hasPaintedArt && (isDampHazard || (isHazard && /damp|wet|slick/i.test(feature.label)))
         ? `<ellipse class="map-damp-wash" cx="${x}" cy="${y + 6}" rx="${pixelsPerSquare * 0.72}" ry="${pixelsPerSquare * 0.42}" fill="url(#map-damp-wash)" opacity="0.85" pointer-events="none" aria-hidden="true" />
@@ -577,25 +593,38 @@ function paintSemanticSvg(
            </g>`
         : `<polygon class="map-exit-chevron" points="${x},${y - 10} ${x + 7},${y + 2} ${x - 7},${y + 2}" fill="#d7eef8" stroke="#1a1208" stroke-width="1" pointer-events="none" aria-hidden="true" />`
       : '';
-    // Quiet markers: when painted battlemap art is active, avoid drawing opaque geometric prop icons over the art.
-    const containerMark = !hasPaintedArt && isContainer
+    // Always render crisp interactable and prop icons on top of painted battlemap backgrounds.
+    const containerMark = isContainer
       ? `<g class="map-container-mark" pointer-events="none" aria-hidden="true">
            <rect class="map-poi-core" x="${x - 7}" y="${y - 5}" width="14" height="11" rx="3.5" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
            <path d="M ${x - 4} ${y - 5} Q ${x} ${y - 9} ${x + 4} ${y - 5}" fill="none" stroke="#1a1208" stroke-width="1.25" />
+           ${visual.stateVariant === 'state_locked' ? `<circle cx="${x}" cy="${y + 1}" r="1.8" fill="#1a1208" />` : ''}
          </g>`
       : '';
-    const propDiamond = !hasPaintedArt && isProp && !isContainer
+    const leverMark = isLever
+      ? `<g class="map-lever-mark" pointer-events="none" aria-hidden="true">
+           <rect class="map-poi-core" x="${x - 6}" y="${y + 2}" width="12" height="4" rx="1.5" fill="#4a3b2c" stroke="#1a1208" stroke-width="1.25" />
+           <line x1="${x}" y1="${y + 3}" x2="${visual.stateVariant === 'state_active' ? x + 5 : x - 5}" y2="${y - 6}" stroke="${fill}" stroke-width="2.5" stroke-linecap="round" />
+           <circle cx="${visual.stateVariant === 'state_active' ? x + 5 : x - 5}" cy="${y - 6}" r="2.2" fill="${fill}" stroke="#1a1208" stroke-width="1" />
+         </g>`
+      : '';
+    const trapMark = isTrap
+      ? `<polygon class="map-poi-core map-trap-mark" points="${x},${y - 8} ${x + 7},${y + 6} ${x - 7},${y + 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" pointer-events="none" aria-hidden="true" />`
+      : '';
+    const itemMark = isItem
+      ? `<g class="map-item-mark" pointer-events="none" aria-hidden="true">
+           <circle class="map-poi-core" cx="${x}" cy="${y}" r="5.5" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />
+           <circle cx="${x}" cy="${y}" r="2" fill="#1a1208" />
+         </g>`
+      : '';
+    const propDiamond = isProp && !isContainer && !isLever && !isTrap && !isItem
       ? `<polygon class="map-poi-core map-prop-diamond" points="${x},${y - 7} ${x + 6},${y} ${x},${y + 7} ${x - 6},${y}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
       : '';
     const coreDisc = doorOwnedExit
-      ? ''
-      : hasPaintedArt
-        ? !isNpcPortrait
-          ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="8" fill="${isExit || isActor ? fill : 'transparent'}" fill-opacity="${isExit || isActor ? '0.85' : '0'}" stroke="rgba(248, 231, 176, 0.28)" stroke-width="1" />`
-          : ''
-        : !isContainer && !isProp && !isNpcPortrait
-          ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
-          : '';
+      ? `<circle class="map-poi-core map-poi-exit-anchor" cx="${x}" cy="${y}" r="8" fill="transparent" stroke="none" aria-hidden="true" />`
+      : !isContainer && !isLever && !isTrap && !isItem && !isProp && !isNpcPortrait
+        ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
+        : '';
     const testId = isExit
       ? 'map-exit-marker'
       : isActor
@@ -604,24 +633,28 @@ function paintSemanticSvg(
           ? 'map-light-marker'
           : isContainer
             ? 'map-container-marker'
-            : 'map-poi-marker';
+            : isLever
+              ? 'map-lever-marker'
+              : isTrap
+                ? 'map-trap-marker'
+                : isItem
+                  ? 'map-item-marker'
+                  : 'map-poi-marker';
     const boundEdgeAttr =
       boundDoor !== null ? ` data-bound-edge="${escapeHtml(boundDoor.edgeId)}"` : '';
     const cleanLabel = feature.label.replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '').trim();
     const accessibleName = doorOwnedExit
       ? `Exit marker for ${cleanLabel} (${formatEdgeAccessibleLabel(boundDoor, map.edges)})`
       : feature.label;
-    // Door edges own the interactive name; exit dots bound to a door are markers only (146/147).
-    const interactiveAttrs = doorOwnedExit
-      ? `role="img" aria-label="${escapeHtml(accessibleName)}"`
-      : `tabindex="0" role="button" aria-label="${escapeHtml(accessibleName)}"`;
+    // Visual-only object markers: never click-to-interact.
+    const interactiveAttrs = `role="img" aria-label="${escapeHtml(accessibleName)}"`;
     const exitStateDisplay =
       doorOwnedExit && boundDoor.doorState !== 'open'
         ? boundDoor.doorState === 'locked'
           ? 'closed, locked'
           : 'closed'
         : visual.stateVariant.replace(/^state_/, '');
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isLever ? ' map-poi-lever' : ''}${isTrap ? ' map-poi-trap' : ''}${isItem ? ' map-poi-item' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -629,6 +662,9 @@ function paintSemanticSvg(
       ${npcPortrait}
       ${exitChevron}
       ${containerMark}
+      ${leverMark}
+      ${trapMark}
+      ${itemMark}
       ${propDiamond}
       ${coreDisc}
       <title>${escapeHtml(cleanLabel)} · ${escapeHtml(kindLabel)} · ${escapeHtml(exitStateDisplay)}</title>
@@ -1386,9 +1422,16 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           if (layers === null || paintSeq !== pixiPaintSeq) {
             return;
           }
+          const texW = Math.max(1, texture.width);
+          const texH = Math.max(1, texture.height);
+          const coverScale = Math.max(width / texW, height / texH);
           const art = new Sprite(texture);
-          art.width = width;
-          art.height = height;
+          art.scale.set(coverScale, coverScale);
+          art.x = (width - texW * coverScale) / 2;
+          art.y = (height - texH * coverScale) / 2;
+          const artMask = new Graphics().rect(0, 0, width, height).fill(0xffffff);
+          art.mask = artMask;
+          layers.terrain_art.addChildAt(artMask, 0);
           layers.terrain_art.addChildAt(art, 0);
         })
         .catch(() => undefined);
@@ -1411,6 +1454,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     layers.grid_reference.addChild(grid);
 
     const structural = new Graphics();
+    structural.eventMode = 'none';
     for (const edge of map.edges) {
       const x = edge.column * pixelsPerSquare;
       const y = edge.row * pixelsPerSquare;
@@ -1479,46 +1523,86 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const x = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const y = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
       const visual = objectVisualFamily(feature);
-      const isHazard = visual.family === 'family_hazard';
+      const isTrap = visual.family === 'family_trap';
+      const isHazard = visual.family === 'family_hazard' || isTrap;
       const isActor = visual.family === 'family_creature' || visual.family === 'family_npc';
       const isExit =
         visual.family === 'family_exit_passage' || visual.family === 'family_exit_vertical';
-      if (sceneArtUrl !== null && !isActor && !isExit) {
-        continue;
-      }
       const isContainer = visual.family === 'family_container';
+      const isLever = visual.family === 'family_lever';
+      const isItem = visual.family === 'family_item';
       const isProp = visual.family === 'family_prop';
       const isUnlit = visual.stateVariant === 'state_unlit';
       const marker = new Graphics();
+      marker.eventMode = 'none';
       const color = isExit
         ? 0x6ea8c9
         : visual.family === 'family_creature'
           ? 0xb84a3a
           : isActor
             ? 0xc45c5c
-            : isHazard
-              ? 0xc47a4a
-              : visual.family === 'family_light'
-                ? isUnlit
-                  ? 0x5a5048
-                  : 0xf0c043
-                : isContainer
-                  ? 0xc4a060
-                  : visual.stateVariant === 'state_broken'
-                    ? 0x6a5844
-                    : 0xe0c070;
+            : isTrap
+              ? visual.stateVariant === 'state_disarmed'
+                ? 0x8a7a62
+                : 0xe05838
+              : isHazard
+                ? 0xc47a4a
+                : visual.family === 'family_light'
+                  ? isUnlit
+                    ? 0x5a5048
+                    : 0xf0c043
+                  : isLever
+                    ? visual.stateVariant === 'state_active'
+                      ? 0x52b788
+                      : 0xd4a373
+                    : isItem
+                      ? 0xf4d35e
+                      : isContainer
+                        ? visual.stateVariant === 'state_locked'
+                          ? 0xb5654d
+                          : 0xc4a060
+                        : visual.stateVariant === 'state_broken'
+                          ? 0x6a5844
+                          : 0xe0c070;
       if (isContainer) {
-        marker.roundRect(x - 7, y - 5, 14, 11, 3.5).fill({ color, alpha: 0.95 });
+        marker
+          .roundRect(x - 7, y - 5, 14, 11, 3.5)
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.5, color: 0x1a1208, alpha: 0.95 });
+      } else if (isLever) {
+        marker
+          .roundRect(x - 6, y + 2, 12, 4, 1.5)
+          .fill({ color: 0x4a3b2c, alpha: 0.95 })
+          .stroke({ width: 1.25, color: 0x1a1208, alpha: 0.95 });
+        marker
+          .circle(visual.stateVariant === 'state_active' ? x + 4 : x - 4, y - 5, 3.5)
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.25, color: 0x1a1208, alpha: 0.95 });
+      } else if (isTrap) {
+        marker
+          .poly([x, y - 8, x + 7, y + 6, x - 7, y + 6])
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.5, color: 0x1a1208, alpha: 0.95 });
+      } else if (isItem) {
+        marker
+          .circle(x, y, 5.5)
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.5, color: 0x1a1208, alpha: 0.95 });
       } else if (isProp) {
         marker
           .poly([x, y - 7, x + 6, y, x, y + 7, x - 6, y])
-          .fill({ color, alpha: 0.95 });
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.5, color: 0x1a1208, alpha: 0.95 });
       } else {
-        marker.circle(x, y, isActor || isExit ? 8 : 6).fill({ color, alpha: 0.95 });
+        marker
+          .circle(x, y, isActor || isExit ? 8 : 6)
+          .fill({ color, alpha: 0.95 })
+          .stroke({ width: 1.5, color: 0x1a1208, alpha: 0.95 });
       }
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
-      // Prop text lives on decluttered SVG chips; keep Pixi marks quiet at Fit.
+      const isPrimaryInteractable =
+        isContainer || isLever || isTrap || isItem || isActor || isExit;
       const featureLabel = new Text({
         text: feature.label,
         style: {
@@ -1528,7 +1612,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           fontStyle: 'italic',
         },
       });
-      featureLabel.visible = !shouldDeclutterProps();
+      featureLabel.eventMode = 'none';
+      featureLabel.visible = isPrimaryInteractable || !shouldDeclutterProps();
       featureLabel.x = x + 8;
       featureLabel.y = y - 6;
       layer.addChild(featureLabel);

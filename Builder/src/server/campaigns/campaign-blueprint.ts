@@ -29,6 +29,7 @@ export type PremiseLocationKind =
   | 'workshop'
   | 'cottage'
   | 'marsh'
+  | 'forest'
   | 'town';
 
 export interface PremiseLocation {
@@ -83,6 +84,9 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   }
   if (/\b(marsh|bog|fen)\b/.test(text)) {
     return { locationKind: 'marsh', locationPhrase: 'a marsh settlement' };
+  }
+  if (/\b(forest|woods|grove|crossroads|clearing)\b/.test(text)) {
+    return { locationKind: 'forest', locationPhrase: 'a forest crossroads' };
   }
   if (/\b(town|village|city|settlement)\b/.test(text)) {
     return { locationKind: 'town', locationPhrase: 'a busy town' };
@@ -456,6 +460,8 @@ function actTemplateHints(kind: PremiseLocationKind | null): {
       return { opening: 'interior_cottage', investigation: 'exterior_forest_path' };
     case 'marsh':
       return { opening: 'interior_warehouse', investigation: 'exterior_marsh_trail' };
+    case 'forest':
+      return { opening: 'exterior_forest_path', investigation: 'landmark_courtyard_ruins' };
     case 'town':
       return { opening: 'interior_warehouse', investigation: 'exterior_village_street' };
     default:
@@ -620,16 +626,16 @@ function buildRoomBattlemapPrompt(
   }
   if (roomRole === 'investigation') {
     return sanitizeWotcProductIdentity(
-      `Shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east in a ${tone} setting`,
+      `Top-down overhead fantasy battlemap of a shadowed investigation passage beyond ${placeName}, flagstone floor, alcoves and crates, doorways west and east in a ${tone} setting`,
     );
   }
   if (roomRole === 'sanctum') {
     return sanitizeWotcProductIdentity(
-      `Dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework in a ${tone} setting`,
+      `Top-down overhead fantasy battlemap of a dramatic sanctum chamber beneath ${placeName}, ritual braziers, carved pillars, ancient stonework in a ${tone} setting`,
     );
   }
   return sanitizeWotcProductIdentity(
-    `${placeName} entry chamber in a ${tone} setting, warm lantern light, stone and timber floor, doorway leading east`,
+    `Top-down overhead fantasy battlemap of ${placeName} entry chamber in a ${tone} setting, warm lantern light, stone and timber floor, doorway leading east`,
   );
 }
 
@@ -747,11 +753,24 @@ function buildMilestoneGraph(options: {
               `The heart of the sanctum in ${placeName}, where the climax of milestone ${m} awaits.`,
             );
 
+    const room1ExitLocked = /\b(?:locked|sealed|barred)\b/i.test(exitLabel);
+    const keyPropFromPremise = options.entities.props.find((p) => /\bkey\b/i.test(p));
+    const room1KeyItem = sanitizeWotcProductIdentity(
+      keyPropFromPremise ? capitalizeLabel(keyPropFromPremise) : 'Brass Sanctum Key',
+    );
     const room1Exits: CampaignRoomBlueprint['exits'][number][] = [
       {
         edgeLabel: capitalizeLabel(exitLabel),
         targetSceneId: room2Id,
         direction: 'east',
+        ...(room1ExitLocked
+          ? {
+              lockState: 'locked' as const,
+              keyItemId: room1KeyItem,
+              lockpickDC: 12 + m,
+              breakDC: 14 + m,
+            }
+          : { lockState: 'unlocked' as const }),
       },
     ];
     if (m > 1) {
@@ -759,6 +778,7 @@ function buildMilestoneGraph(options: {
         edgeLabel: 'Stairway back to the upper reach',
         targetSceneId: `scene-m${m - 1}-r3`,
         direction: 'west',
+        lockState: 'unlocked',
       });
     }
 
@@ -767,11 +787,13 @@ function buildMilestoneGraph(options: {
         edgeLabel: `Passage back to ${placeName}`,
         targetSceneId: room1Id,
         direction: 'east',
+        lockState: 'unlocked',
       },
       {
         edgeLabel: 'Sanctum archway',
         targetSceneId: room3Id,
         direction: 'north',
+        lockState: 'unlocked',
       },
     ];
 
@@ -780,6 +802,7 @@ function buildMilestoneGraph(options: {
         edgeLabel: 'Archway back to the outer passage',
         targetSceneId: room2Id,
         direction: 'west',
+        lockState: 'unlocked',
       },
     ];
     if (m < totalMilestones) {
@@ -787,6 +810,7 @@ function buildMilestoneGraph(options: {
         edgeLabel: 'Descending stone archway to the deeper reaches',
         targetSceneId: `scene-m${m + 1}-r1`,
         direction: 'east',
+        lockState: 'unlocked',
       });
     }
 
@@ -802,6 +826,7 @@ function buildMilestoneGraph(options: {
               portraitPrompt: sanitizeWotcProductIdentity(
                 `${missingTarget}, missing person awaiting rescue in ${placeName}, ${toneLabel.toLowerCase()} fantasy portrait`,
               ),
+              heldItems: ['Courier Signet Seal'],
             },
           ]
         : [];
@@ -812,6 +837,14 @@ function buildMilestoneGraph(options: {
             `${room3Summary} ${missingTarget} is held here, awaiting rescue alongside ${options.hook}.`,
           )
         : room3Summary;
+
+    const room1Archetype = room1Template.startsWith('exterior_')
+      ? ('outdoor_clearing' as const)
+      : room1Template.startsWith('landmark_')
+        ? ('open_chamber' as const)
+        : ('divided_rooms' as const);
+    const room1Cols = room1Archetype === 'outdoor_clearing' ? 16 : m === 1 ? 12 : 16;
+    const room1Rows = room1Archetype === 'outdoor_clearing' ? 12 : m === 1 ? 8 : 12;
 
     const rooms: CampaignRoomBlueprint[] = [
       {
@@ -825,6 +858,9 @@ function buildMilestoneGraph(options: {
             : `${npcName} keeps watch over ${placeName} where ${options.hook} begins to surface.`,
         ),
         templateId: room1Template,
+        columns: room1Cols,
+        rows: room1Rows,
+        layoutArchetype: room1Archetype,
         battlemapPrompt: buildRoomBattlemapPrompt(room1Template, placeName, toneLabel, 'opening'),
         exits: room1Exits,
         npcs: [
@@ -834,10 +870,21 @@ function buildMilestoneGraph(options: {
             portraitPrompt: sanitizeWotcProductIdentity(
               `${npcName}, ${m === 1 ? 'key contact' : 'local witness'} in ${placeName}, ${toneLabel.toLowerCase()} fantasy portrait`,
             ),
+            heldItems: [room1KeyItem],
           },
         ],
         encounters: [],
         props: [propLabel],
+        structuredProps: [
+          {
+            propId: `${room1Id}:east-chest`,
+            label: 'Sturdy oak chest',
+            objectKind: 'container',
+            objectState: 'closed',
+            lockState: 'unlocked',
+            contents: [capitalizeLabel(propLabel), 'Healing Draught'],
+          },
+        ],
         xpAwardOnDiscovery: r1Xp,
         isMilestoneClimax: false,
       },
@@ -848,6 +895,9 @@ function buildMilestoneGraph(options: {
         title: room2Title,
         summary: room2Summary,
         templateId: options.investigationTemplate,
+        columns: 16,
+        rows: 8,
+        layoutArchetype: 'corridor',
         battlemapPrompt: buildRoomBattlemapPrompt(
           options.investigationTemplate,
           placeName,
@@ -865,6 +915,22 @@ function buildMilestoneGraph(options: {
           },
         ],
         props: [secondPropLabel],
+        structuredProps: [
+          {
+            propId: `${room2Id}:chest-1`,
+            label: 'Ironbound supply chest',
+            objectKind: 'container',
+            objectState: 'closed',
+            lockState: 'unlocked',
+            contents: [capitalizeLabel(secondPropLabel), 'Vault Key'],
+          },
+          {
+            propId: `${room2Id}:lever-1`,
+            label: 'Rusted wall lever',
+            objectKind: 'lever',
+            objectState: 'closed',
+          },
+        ],
         xpAwardOnDiscovery: r2Xp,
         isMilestoneClimax: false,
       },
@@ -875,6 +941,9 @@ function buildMilestoneGraph(options: {
         title: room3Title,
         summary: room3SummaryFinal,
         templateId: 'interior_stone_crypt',
+        columns: 16,
+        rows: 16,
+        layoutArchetype: 'open_chamber',
         battlemapPrompt: buildRoomBattlemapPrompt(
           'interior_stone_crypt',
           placeName,
@@ -892,6 +961,16 @@ function buildMilestoneGraph(options: {
           },
         ],
         props: ['ancient altar', propLabel],
+        structuredProps: [
+          {
+            propId: `${room3Id}:sanctum-coffer`,
+            label: 'Sanctum reliquary coffer',
+            objectKind: 'container',
+            objectState: 'closed',
+            lockState: 'unlocked',
+            contents: ['Ancient Sanctum Relic', capitalizeLabel(propLabel)],
+          },
+        ],
         xpAwardOnDiscovery: r3Xp,
         isMilestoneClimax: true,
       },
@@ -1015,12 +1094,8 @@ export function buildCampaignBlueprint(
           : `the looming shadow over ${setting}`);
 
   const FALLBACK_OPENING_TEMPLATES = [
-    'exterior_village_street',
-    'exterior_forest_path',
+    'starter_stone_chamber',
     'interior_inn_common',
-    'landmark_foggy_docks',
-    'landmark_courtyard_ruins',
-    'exterior_marsh_trail',
     'interior_workshop',
   ] as const;
   let seedAcc = 2166136261;

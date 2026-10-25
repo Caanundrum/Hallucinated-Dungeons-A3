@@ -48,6 +48,88 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
+const STOP_PROPER_WORDS = new Set([
+  'The',
+  'A',
+  'An',
+  'In',
+  'On',
+  'At',
+  'By',
+  'For',
+  'With',
+  'From',
+  'Into',
+  'Near',
+  'Before',
+  'After',
+  'Under',
+  'Over',
+  'Through',
+  'When',
+  'Where',
+  'While',
+  'Example',
+]);
+
+/** Lightweight premise fact chips for create UX (generalized entity/location/quest extraction). */
+function premiseCommittedFactsMarkup(premise: string): string {
+  const text = premise.trim();
+  if (text.length === 0) {
+    return `<p class="record-meta" data-testid="premise-committed-facts-empty">Committed premise facts will appear here as you type.</p>`;
+  }
+  const facts: string[] = [];
+  const lower = text.toLowerCase();
+  if (/\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/.test(lower)) {
+    const locMatch = lower.match(
+      /\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/,
+    );
+    if (locMatch?.[1]) {
+      facts.push(`Location: ${locMatch[1]}`);
+    }
+  }
+  if (/\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/.test(lower)) {
+    const questMatch = lower.match(
+      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/,
+    );
+    if (questMatch?.[1]) {
+      facts.push(`Quest hook: ${questMatch[1]}`);
+    }
+  }
+  const properMatches = text.matchAll(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g);
+  const seenProper = new Set<string>();
+  for (const match of properMatches) {
+    const candidate = match[1]?.trim() ?? '';
+    if (
+      candidate.length > 2 &&
+      !STOP_PROPER_WORDS.has(candidate) &&
+      !seenProper.has(candidate.toLowerCase())
+    ) {
+      seenProper.add(candidate.toLowerCase());
+      facts.push(`Named: ${candidate}`);
+      if (seenProper.size >= 4) {
+        break;
+      }
+    }
+  }
+  const propMatches = text.matchAll(
+    /\b((?:broken|locked|ancient|silver|iron|red|sealed|gilded|cracked|rusty)\s+(?:[a-z]+\s+)?(?:lantern|door|warehouse|gate|chest|altar|key|satchel|blade|scroll|tome))\b/gi,
+  );
+  for (const match of propMatches) {
+    const prop = match[1]?.trim() ?? '';
+    if (prop.length > 0 && !seenProper.has(prop.toLowerCase())) {
+      seenProper.add(prop.toLowerCase());
+      facts.push(`Notable detail: ${prop}`);
+    }
+  }
+  if (facts.length === 0) {
+    return `<p class="record-meta" data-testid="premise-committed-facts-empty">No named location, quest hook, or entities detected yet.</p>`;
+  }
+  return `<ul class="record-list" data-testid="premise-committed-facts">${facts
+    .map((fact) => `<li data-testid="premise-committed-fact">${escapeHtml(fact)}</li>`)
+    .join('')}</ul>`;
+}
+
 export function mountCampaignCreatePage(host: PageHost): void {
   const { container, shell, candidate } = host;
   shell.setDocumentTitle('Create a Campaign');
@@ -89,8 +171,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       name.trim().length > 0 &&
       directorIdentity !== null &&
       directorPersonality !== null &&
-      draftedBlueprint !== null &&
-      outlineApproved
+      (draftedBlueprint === null || outlineApproved)
     );
   }
 
@@ -295,9 +376,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     if (directorPersonality === null) {
       missing.push('a Game Director personality');
     }
-    if (draftedBlueprint === null) {
-      missing.push('a drafted Rough Campaign Outline');
-    } else if (!outlineApproved) {
+    if (draftedBlueprint !== null && !outlineApproved) {
       missing.push('approval of your Rough Campaign Outline');
     }
 
@@ -351,6 +430,9 @@ export function mountCampaignCreatePage(host: PageHost): void {
     render();
     try {
       const summaryValue = (summary.trim() || premise.trim()).slice(0, CAMPAIGN_SUMMARY_MAX_LENGTH);
+      const premiseValue = options.useForgedBlueprint
+        ? effectivePremise()
+        : (summary.trim() || premise.trim()).slice(0, CAMPAIGN_PREMISE_MAX_LENGTH);
       const campaign = await createCampaign({
         candidateId: candidate.candidateId,
         name: name.trim(),
@@ -361,13 +443,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
         ...(visibility === 'public' && joinPassword.trim().length > 0
           ? { joinPassword: joinPassword.trim() }
           : {}),
-        premise: effectivePremise(),
+        premise: premiseValue,
         startLevel,
         targetEndLevel,
         campaignTone,
-        forgeWorldAssets: true,
         ...(options.useForgedBlueprint && draftedBlueprint !== null
-          ? { approvedBlueprint: draftedBlueprint }
+          ? { approvedBlueprint: draftedBlueprint, forgeWorldAssets: true }
           : {}),
       });
       shell.announce(
@@ -429,9 +510,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     if (directorPersonality === null) {
       missing.push('a Game Director personality');
     }
-    if (draftedBlueprint === null) {
-      missing.push('a drafted Rough Campaign Outline');
-    } else if (!outlineApproved) {
+    if (draftedBlueprint !== null && !outlineApproved) {
       missing.push('approval of your Rough Campaign Outline');
     }
 
@@ -491,6 +570,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
               The opening scene keeps your core location, quest hook, and named entities when you
               write them here. The Game Director inspires the rest — the premise is not quoted word-for-word.
             </span>
+            ${premiseCommittedFactsMarkup(summary)}
           </label>
           <div class="actions">
             <label class="field">
@@ -612,12 +692,27 @@ export function mountCampaignCreatePage(host: PageHost): void {
       updateCreateControls();
     });
 
+    const updateFactsDom = () => {
+      const factsHost = container.querySelector<HTMLElement>(
+        '[data-testid="premise-committed-facts"], [data-testid="premise-committed-facts-empty"]',
+      );
+      if (factsHost !== null) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = premiseCommittedFactsMarkup(summary || premise);
+        const next = wrap.firstElementChild;
+        if (next !== null) {
+          factsHost.replaceWith(next);
+        }
+      }
+    };
+
     const summaryInput = container.querySelector<HTMLTextAreaElement>(
       '[data-testid="campaign-summary"]',
     );
     summaryInput?.addEventListener('input', () => {
       summary = summaryInput.value;
       premise = summaryInput.value;
+      updateFactsDom();
     });
 
     const startLevelInput = container.querySelector<HTMLInputElement>(

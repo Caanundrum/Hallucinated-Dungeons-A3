@@ -95,7 +95,7 @@ test.describe('Rogue Expertise and kit overlap', () => {
     await page.getByTestId('mastery-check-Dagger').click();
     await page.getByTestId('mastery-check-Shortsword').click();
     await page.screenshot({
-      path: '/opt/cursor/artifacts/recheck-expertise-controls.png',
+      path: 'test-results/recheck-expertise-controls.png',
       fullPage: true,
     });
     await waitForWizardContinue(page);
@@ -113,7 +113,7 @@ test.describe('Rogue Expertise and kit overlap', () => {
     await expect(page.getByTestId('sheet-equipment-list')).toContainText(/Dagger/);
     await expect(page.getByTestId('sheet-equipment-qty-dagger')).toHaveText('2');
     await page.screenshot({
-      path: '/opt/cursor/artifacts/recheck2_dagger_qty_two.png',
+      path: 'test-results/recheck2_dagger_qty_two.png',
       fullPage: false,
     });
   });

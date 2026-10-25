@@ -184,10 +184,15 @@ export function materializeContractExits<
       }
     }
     // Only add a door when none exists on this bearing and none is already nearby.
+    const exitLooksLikeDoor = /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(
+      exit.label,
+    );
+    const alreadyHasAnyDoor = edges.some((edge) => edge.kind === 'door');
     if (
       !options.suppressSyntheticDoors &&
       existingOriented === undefined &&
-      !nearbyDoor(edges, place.column, place.row)
+      !nearbyDoor(edges, place.column, place.row) &&
+      (!alreadyHasAnyDoor || exitLooksLikeDoor)
     ) {
       const id = edgeId(place.column, place.row, place.orientation);
       if (!edges.some((edge) => edge.edgeId === id)) {
@@ -229,6 +234,7 @@ export function attachExitsToComposedScene(scene: ComposedScene): ComposedScene 
 /** Apply exit materialization to a stored scene instance at projection time. */
 export function attachExitsToStoredScene(scene: StoredSceneInstance): StoredSceneInstance {
   const isOutdoorScene =
+    scene.layoutArchetype === 'outdoor_clearing' ||
     scene.templateId.startsWith('exterior_') ||
     scene.templateId === 'starter_trail_crossroads' ||
     scene.environment === 'forest_path' ||
@@ -237,11 +243,13 @@ export function attachExitsToStoredScene(scene: StoredSceneInstance): StoredScen
   const hasExplicitDoorExit = scene.exits.some((exit) =>
     /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
   );
-  const suppressSyntheticDoors = isOutdoorScene && !hasExplicitDoorExit;
-  const cleanedEdges = suppressSyntheticDoors
-    ? scene.edges.filter((edge) => edge.kind !== 'door')
-    : scene.edges;
-  const cleanedDoorStates = suppressSyntheticDoors ? {} : scene.doorStates;
+  const isNonDividedArchetype =
+    scene.layoutArchetype !== undefined && scene.layoutArchetype !== 'divided_rooms';
+  const suppressSyntheticDoors =
+    (isOutdoorScene && !hasExplicitDoorExit) || (isNonDividedArchetype && !hasExplicitDoorExit);
+  const cleanedEdges =
+    isOutdoorScene && !hasExplicitDoorExit ? [] : scene.edges;
+  const cleanedDoorStates = isOutdoorScene && !hasExplicitDoorExit ? {} : scene.doorStates;
   const materialized = materializeContractExits({
     spawn: scene.spawn,
     columns: scene.columns,

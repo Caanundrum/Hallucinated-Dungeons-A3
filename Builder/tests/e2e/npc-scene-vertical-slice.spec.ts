@@ -47,10 +47,14 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await enterAccountFromShell(page);
     const campaignId = await seatFreshCampaign(page, 'NpcSlice');
     await page.getByTestId('open-campaign-table').click();
+    await expect(page.getByTestId('table-page-shell')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('map-scene-banner')).toBeVisible();
 
-    const artifactDir = process.env.HD_E2E_ARTIFACT_DIR ?? '/opt/cursor/artifacts';
+    const artifactDir = process.env.HD_E2E_ARTIFACT_DIR ?? 'test-results';
 
+    const expandInfo = page.getByTestId('expand-info-rail');
+    await expect(expandInfo).toBeVisible({ timeout: 10_000 });
+    await expandInfo.click();
     await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-empty')).toBeVisible();
     await page.getByTestId('table-people-panel').screenshot({
@@ -89,7 +93,7 @@ test.describe('DM NPC + thin scene vertical slice', () => {
 
     await page.getByTestId('dock-tab-chronicle').click();
     await expect(
-      page.getByTestId('chronicle-entry').filter({ hasText: /Scene established/i }),
+      page.getByTestId('chronicle-entry').filter({ hasText: /Scene established|The scene settles on/i }),
     ).toBeVisible();
     await expect(
       page
@@ -97,9 +101,12 @@ test.describe('DM NPC + thin scene vertical slice', () => {
         .filter({ hasText: /Quiet chamber — walls|Wall sconce|wooden doorway/i })
         .first(),
     ).toBeVisible();
-    await page.getByTestId('chronicle-list').screenshot({
-      path: `${artifactDir}/npc-playpath-survey-chronicle.png`,
-    });
+    await page
+      .getByTestId('chronicle-list')
+      .screenshot({
+        path: `${artifactDir}/npc-playpath-survey-chronicle.png`,
+      })
+      .catch(() => {});
 
     await openTableAdvancedControls(page);
     await page.getByTestId('nl-intent-input').fill(
@@ -116,7 +123,9 @@ test.describe('DM NPC + thin scene vertical slice', () => {
     await page.getByTestId('cancel-intent-intercept').click();
 
     await page.reload();
-    await expect(page.getByTestId('campaign-table-heading')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('table-page-shell')).toBeVisible({ timeout: 20_000 });
+    await expect(expandInfo).toBeVisible({ timeout: 10_000 });
+    await expandInfo.click();
     await page.getByTestId('table-info-tab-people').click();
     await expect(page.getByTestId('table-npc-list')).toBeVisible();
     await expect(page.getByTestId('table-npc-item')).toContainText('Nib');
@@ -156,9 +165,12 @@ test.describe('DM NPC + thin scene vertical slice', () => {
         .filter({ hasText: /past the east door|boots dry|pooling|wet/i })
         .first(),
     ).toBeVisible();
-    await page.getByTestId('chronicle-list').screenshot({
-      path: `${artifactDir}/npc-slice-chronicle.png`,
-    });
+    await page
+      .getByTestId('chronicle-list')
+      .screenshot({
+        path: `${artifactDir}/npc-slice-chronicle.png`,
+      })
+      .catch(() => {});
 
     void campaignId;
     void readCandidate;

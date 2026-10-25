@@ -7,6 +7,7 @@
 
 import type { Firestore } from 'firebase-admin/firestore';
 
+import type { RoomLayoutArchetype } from '../../shared/campaign-contract.js';
 import type {
   DoorState,
   MapCellRecord,
@@ -39,6 +40,14 @@ export interface StoredSceneFeature {
   readonly objectKind: SceneObjectKind;
   readonly state: SceneObjectState;
   readonly interactable: boolean;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
+  readonly inspectDC?: number | null;
+  readonly contents?: readonly string[];
+  readonly targetEdgeOrObjectId?: string | null;
+  readonly heldItems?: readonly string[];
 }
 
 export interface StoredSceneExit {
@@ -47,6 +56,10 @@ export interface StoredSceneExit {
   readonly destinationHint: string;
   readonly returnToSceneId?: string | null;
   readonly targetSceneId?: string | null;
+  readonly lockState?: 'unlocked' | 'locked';
+  readonly keyItemId?: string | null;
+  readonly lockpickDC?: number | null;
+  readonly breakDC?: number | null;
 }
 
 export interface StoredSceneInstance {
@@ -62,6 +75,7 @@ export interface StoredSceneInstance {
   readonly description?: string;
   readonly columns: number;
   readonly rows: number;
+  readonly layoutArchetype?: RoomLayoutArchetype;
   readonly cells: readonly MapCellRecord[];
   readonly edges: readonly MapEdgeRecord[];
   readonly features: readonly StoredSceneFeature[];

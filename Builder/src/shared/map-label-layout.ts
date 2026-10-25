@@ -16,6 +16,7 @@ export interface MapLabelAnchor {
   /** Full canonical label (may include kind suffix). */
   readonly fullLabel: string;
   readonly referenceKind?: string | null;
+  readonly objectKind?: string | null;
 }
 
 export interface MapLabelPlacement {
@@ -149,13 +150,19 @@ export function layoutMapLabels(
     return left.id.localeCompare(right.id);
   });
 
-  // At Fit / near-Fit, keep tokens + exits; hide prop plaques until the player zooms in.
+  // At Fit / near-Fit, keep tokens + exits + primary interactables; hide minor decorative prop plaques until zoomed in.
   const hideProps = options.declutterProps === true || zoom < 1.05;
   const visible = hideProps
     ? ordered.filter(
         (anchor) =>
           anchor.kind === 'token' ||
           anchor.referenceKind === 'exit' ||
+          anchor.referenceKind === 'npc' ||
+          anchor.objectKind === 'container' ||
+          anchor.objectKind === 'lever' ||
+          anchor.objectKind === 'trap' ||
+          anchor.objectKind === 'item' ||
+          anchor.objectKind === 'npc' ||
           /^door:/.test(anchor.id),
       )
     : ordered;

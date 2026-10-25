@@ -51,7 +51,10 @@ import {
 } from '../../shared/campaign-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { generateAndStoreCampaignAsset } from '../assets/campaign-assets.js';
-import { buildMapRuntimeFromBlueprint } from '../table/scene-commands.js';
+import {
+  buildMapRuntimeFromBlueprint,
+  buildStoredSceneFromRoomBlueprint,
+} from '../table/scene-commands.js';
 import { mergeExplored, upsertTokenPosition, type StoredMapRuntime } from '../table/map-runtime.js';
 import {
   CharacterNotFoundError,
@@ -731,9 +734,32 @@ export async function createCampaign(options: {
     (isHostedMilestone && shouldForgeWorld);
   if (shouldForgeWorld && (campaignBlueprint.milestones?.length ?? 0) > 0) {
     const firstMilestone = campaignBlueprint.milestones![0]!;
+    const startRoom =
+      firstMilestone.rooms.find((r) => r.sceneId === 'scene-m1-r1') ?? firstMilestone.rooms[0];
+    const headlightSceneIds = new Set<string>();
+    if (startRoom !== undefined) {
+      headlightSceneIds.add(startRoom.sceneId);
+      for (const exit of startRoom.exits ?? []) {
+        if (typeof exit.targetSceneId === 'string' && exit.targetSceneId.length > 0) {
+          headlightSceneIds.add(exit.targetSceneId);
+        }
+      }
+    }
     if (firstMilestone.rooms.length > 0 && shouldGenerateRoomMaps) {
       const updatedRooms = await Promise.all(
         firstMilestone.rooms.map(async (room) => {
+          // Rolling Headlights: only generate heavy battlemap/portrait/token assets upfront
+          // for the starting room and its immediate adjacent exits.
+          if (!headlightSceneIds.has(room.sceneId)) {
+            return room;
+          }
+          const preComposed = buildStoredSceneFromRoomBlueprint(room, campaignId);
+          const doorEdges = preComposed.edges.filter((edge) => edge.kind === 'door');
+          const wallEdges = preComposed.edges.filter((edge) => edge.kind === 'wall');
+          const wallSummary =
+            wallEdges.length > 0 && doorEdges.length > 0
+              ? `Interior dividing wall at column ${wallEdges[0]!.column} with doorway at (${doorEdges[0]!.column}, ${doorEdges[0]!.row}).`
+              : 'Open continuous floor with no interior dividing wall.';
           const roomPrompt =
             typeof room.battlemapPrompt === 'string' && room.battlemapPrompt.trim().length > 0
               ? `${room.battlemapPrompt.trim()} (${campaignTone}, ${name})`
@@ -744,6 +770,14 @@ export async function createCampaign(options: {
             kind: 'battlemap',
             prompt: roomPrompt,
             fallbackTemplateId: room.templateId,
+            gridLayout: {
+              columns: preComposed.columns,
+              rows: preComposed.rows,
+              ...(preComposed.layoutArchetype !== undefined
+                ? { layoutArchetype: preComposed.layoutArchetype }
+                : {}),
+              wallSummary,
+            },
           });
           const updatedNpcs = await Promise.all(
             (room.npcs ?? []).map(async (npc) => {
@@ -821,11 +855,24 @@ export async function createCampaign(options: {
     membership,
   );
   if (shouldForgeWorld && (campaignBlueprint.milestones?.length ?? 0) > 0) {
+    const firstMilestone = campaignBlueprint.milestones![0]!;
+    const startRoom =
+      firstMilestone.rooms.find((r) => r.sceneId === 'scene-m1-r1') ?? firstMilestone.rooms[0];
+    const headlightSceneIds = new Set<string>();
+    if (startRoom !== undefined) {
+      headlightSceneIds.add(startRoom.sceneId);
+      for (const exit of startRoom.exits ?? []) {
+        if (typeof exit.targetSceneId === 'string' && exit.targetSceneId.length > 0) {
+          headlightSceneIds.add(exit.targetSceneId);
+        }
+      }
+    }
     const initialRuntime = buildMapRuntimeFromBlueprint({
       campaignId,
       blueprint: campaignBlueprint,
       accountIds: [accountId],
       activateFirstScene: true,
+      ...(headlightSceneIds.size > 0 ? { onlySceneIds: Array.from(headlightSceneIds) } : {}),
     });
     batch.set(firestore.collection(COLLECTIONS.campaignTableProjections).doc(campaignId), {
       ...initialRuntime,

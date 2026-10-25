@@ -3033,6 +3033,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           declaration?: unknown;
           declaredFoes?: unknown;
           arcaneRecovery?: unknown;
+          skillCheckIntent?: unknown;
         };
         if (!isValidRequestId(payload.requestId)) {
           sendError(response, ERROR_CODES.REQUEST_ID_INVALID);
@@ -3099,6 +3100,9 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
             : {}),
           ...(declaredFoes !== undefined && declaredFoes.length > 0 ? { declaredFoes } : {}),
           ...(arcaneRecovery ? { arcaneRecovery: true } : {}),
+          ...(typeof payload.skillCheckIntent === 'object' && payload.skillCheckIntent !== null
+            ? { skillCheckIntent: payload.skillCheckIntent as never }
+            : {}),
         });
         sendJson(response, result.duplicate ? 200 : 201, result);
         return;

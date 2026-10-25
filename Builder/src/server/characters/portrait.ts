@@ -170,7 +170,7 @@ export async function tryGeminiImageGeneration(options: {
   readonly env: PortraitEnvironment;
   readonly model?: string;
   readonly prompt: string;
-  readonly aspectRatio?: '1:1' | '16:9' | '4:3';
+  readonly aspectRatio?: '1:1' | '16:9' | '4:3' | '3:4' | '9:16';
   readonly baseImage?: { readonly mimeType: string; readonly base64Data: string } | null;
 }): Promise<{ readonly mimeType: string; readonly base64Data: string } | null> {
   if (options.env.HD_PORTRAIT_GENERATION === 'off') {

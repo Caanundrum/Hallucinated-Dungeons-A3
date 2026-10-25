@@ -1084,6 +1084,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
         testId: 'ability-method-options',
         entries: [
           {
+            id: 'standard-array',
+            label: 'Standard array (15, 14, 13, 12, 10, 8)',
+            summary: 'Assign the fixed six values 15, 14, 13, 12, 10, and 8 to your abilities.',
+          },
+          {
             id: 'point-buy',
             label: 'Point buy',
             summary: `Spend ${POINT_BUY_BUDGET} points on scores from 8 to 15. Every ability starts at 8 (0 pts), and you see live point costs as you adjust.`,
@@ -1094,7 +1099,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
             summary: `Up to ${MAX_ABILITY_ROLL_ATTEMPTS} rolls. Each roll replaces the last — earlier pools are gone.`,
           },
         ],
-        selected: method === 'standard-array' ? 'point-buy' : method,
+        selected: method,
       })}
       ${
         method !== 'rolled'
@@ -1180,7 +1185,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
                         data-testid="point-buy-dec-${ability}"
                         ${!canDecrement ? 'disabled' : ''}
                         aria-label="Decrease ${escapeHtml(ABILITY_LABELS[ability])}">−</button>
-                      <span class="point-buy-score-badge" data-testid="ability-select-${ability}">${displayScore ?? 8}</span>
+                      <span class="point-buy-score-badge" data-testid="ability-badge-${ability}">${displayScore ?? 8}</span>
                       <button type="button" class="secondary compact point-buy-step-btn"
                         data-point-buy-ability="${ability}" data-point-buy-delta="1"
                         data-testid="point-buy-inc-${ability}"

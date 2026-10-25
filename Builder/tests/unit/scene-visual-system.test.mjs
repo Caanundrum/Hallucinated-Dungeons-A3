@@ -75,6 +75,38 @@ describe('Director scene visual system', () => {
       referenceKind: 'npc',
       objectState: 'present',
     }).family, 'family_npc');
+    assert.deepEqual(objectVisualFamily({
+      column: 4,
+      row: 4,
+      label: 'Iron Chest (locked)',
+      objectKind: 'container',
+      referenceKind: 'prop',
+      objectState: 'locked',
+    }), { family: 'family_container', stateVariant: 'state_locked' });
+    assert.deepEqual(objectVisualFamily({
+      column: 5,
+      row: 5,
+      label: 'Wall Lever (pulled)',
+      objectKind: 'lever',
+      referenceKind: 'prop',
+      objectState: 'pulled',
+    }), { family: 'family_lever', stateVariant: 'state_active' });
+    assert.deepEqual(objectVisualFamily({
+      column: 6,
+      row: 6,
+      label: 'Tripwire (spotted)',
+      objectKind: 'trap',
+      referenceKind: 'hazard',
+      objectState: 'spotted',
+    }), { family: 'family_trap', stateVariant: 'state_spotted' });
+    assert.deepEqual(objectVisualFamily({
+      column: 7,
+      row: 7,
+      label: 'Brass Key',
+      objectKind: 'item',
+      referenceKind: 'prop',
+      objectState: 'intact',
+    }), { family: 'family_item', stateVariant: 'state_present' });
   });
 
   it('makes wet, wooded canopy, and enclosed timber terrain fills differ', () => {

@@ -414,3 +414,63 @@ test('Codex Retest [F26-01, R26-03, F26-02, R26-02]: deterministic parsing and d
   assert.equal(authR2602.actionSequence[0]?.kind, 'inspect');
   assert.equal(authR2602.actionSequence[0]?.outcomeHint, 'investigate_mark');
 });
+
+test('Packet 4: applyDirectorDispatchToMap enforces orthogonal door adjacency and attaches structured skillCheckIntent', () => {
+  const mapDiagonal = {
+    ...mockTavernMap(),
+    tokens: [
+      {
+        tokenId: 'token-kaelen',
+        seatId: 'seat-kaelen',
+        label: 'Kaelen Vance',
+        // (5, 3) is diagonally offset from door at (6, 4) east — NOT orthogonally adjacent to the door edge!
+        footprint: { anchor: { column: 5, row: 3 } },
+      },
+    ],
+  };
+
+  const lockDispatch = {
+    actionType: 'skill_check',
+    skillCheck: {
+      skill: 'sleight_of_hand',
+      ability: 'dexterity',
+      dc: 13,
+      targetNoun: 'locked east doorway',
+    },
+  };
+
+  const blocked = applyDirectorDispatchToMap({
+    dispatch: lockDispatch,
+    map: mapDiagonal,
+    seatedSheet: kaelenSheet(),
+    knownNpcs: [],
+  });
+  assert.ok(blocked);
+  assert.match(blocked.summary, /Move your token next to the doorway/i);
+  assert.equal(blocked.skillCheckIntent, undefined);
+
+  // Now move token to (6, 4) — orthogonally adjacent to e:6:4:east
+  const mapAdjacent = {
+    ...mockTavernMap(),
+    tokens: [
+      {
+        tokenId: 'token-kaelen',
+        seatId: 'seat-kaelen',
+        label: 'Kaelen Vance',
+        footprint: { anchor: { column: 6, row: 4 } },
+      },
+    ],
+  };
+  const allowed = applyDirectorDispatchToMap({
+    dispatch: lockDispatch,
+    map: mapAdjacent,
+    seatedSheet: kaelenSheet(),
+    knownNpcs: [],
+  });
+  assert.ok(allowed);
+  assert.ok(allowed.skillCheckIntent);
+  assert.equal(allowed.skillCheckIntent.targetKind, 'door');
+  assert.equal(allowed.skillCheckIntent.targetId, 'e:6:4:east');
+  assert.equal(allowed.skillCheckIntent.onSuccessMutation, 'unlock_door');
+});
+

@@ -14,6 +14,15 @@ import {
 } from '../../dist/server/table/scene-commands.js';
 import { isTrustedAvatarUrl } from '../../dist/shared/portrait-contract.js';
 import { resolveSceneArtUrl } from '../../dist/shared/map-contract.js';
+import {
+  clampGridDimension,
+  defaultDimensionsForArchetype,
+  verifySceneZonesReachable,
+} from '../../dist/server/table/scene-composition.js';
+import {
+  buildCampaignAssetPrompt,
+  resolveBattlemapAspectRatio,
+} from '../../dist/server/assets/campaign-assets.js';
 
 test('sanitizeWotcProductIdentity scrubs non-SRD Product Identity terms', () => {
   const raw =
@@ -256,9 +265,145 @@ test('Antagonist Wyrm/Boss names never carry leading verbs or spawn in Room 1, a
   });
   const scene1 = runtime.sceneInstances?.['scene-m1-r1'];
   assert.ok(scene1);
-  // Outdoor forest crossroads must not have wooden doorways in the middle of the trail
+  // Outdoor forest crossroads must not have wooden doorways or orphan wall segments in the middle of the trail
   const doorEdges = scene1.edges.filter((e) => e.kind === 'door');
+  const wallEdges = scene1.edges.filter((e) => e.kind === 'wall');
   assert.equal(doorEdges.length, 0, 'Outdoor forest crossroads has 0 door edges');
+  assert.equal(wallEdges.length, 0, 'Outdoor forest crossroads has 0 orphan wall edges');
 });
+
+test('Packet 2: variable grid dimensions, layout archetypes, reachability, and aspect-aligned map prompts', () => {
+  assert.equal(clampGridDimension(4, 12), 8);
+  assert.equal(clampGridDimension(40, 12), 32);
+  assert.equal(clampGridDimension(16, 12), 16);
+  assert.deepEqual(defaultDimensionsForArchetype('open_chamber'), { columns: 16, rows: 12 });
+  assert.deepEqual(defaultDimensionsForArchetype('alcove_hall'), { columns: 16, rows: 16 });
+  assert.deepEqual(defaultDimensionsForArchetype('outdoor_clearing'), { columns: 20, rows: 16 });
+
+  assert.equal(resolveBattlemapAspectRatio(16, 16), '1:1');
+  assert.equal(resolveBattlemapAspectRatio(16, 12), '4:3');
+  assert.equal(resolveBattlemapAspectRatio(18, 8), '16:9');
+  assert.equal(resolveBattlemapAspectRatio(12, 16), '3:4');
+  assert.equal(resolveBattlemapAspectRatio(8, 16), '9:16');
+
+  const prompt = buildCampaignAssetPrompt({
+    kind: 'battlemap',
+    rawPrompt: 'Ancient sanctum chamber',
+    gridLayout: {
+      columns: 16,
+      rows: 16,
+      layoutArchetype: 'open_chamber',
+      wallSummary: 'Open continuous floor with no interior dividing wall.',
+    },
+  });
+  assert.match(prompt, /16x16 tactical squares \(open chamber\)/i);
+  assert.match(prompt, /Open continuous floor with no interior dividing wall/i);
+
+  const bp = buildCampaignBlueprint({
+    summary: 'At the Blue Heron tavern, Mara Venn waits for a missing courier behind a locked red door.',
+    name: 'Blue Heron Mystery',
+    startLevel: 1,
+    targetEndLevel: 2,
+    campaignTone: 'mystery_investigation',
+  });
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-packet2',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    activateFirstScene: true,
+  });
+  const r1 = runtime.sceneInstances?.['scene-m1-r1'];
+  const r2 = runtime.sceneInstances?.['scene-m1-r2'];
+  const r3 = runtime.sceneInstances?.['scene-m1-r3'];
+  assert.ok(r1 && r2 && r3);
+  assert.equal(r1.layoutArchetype, 'divided_rooms');
+  assert.equal(r2.layoutArchetype, 'corridor');
+  assert.equal(r2.columns, 16);
+  assert.equal(r2.rows, 8);
+  assert.equal(r3.layoutArchetype, 'open_chamber');
+  assert.equal(r3.columns, 16);
+  assert.equal(r3.rows, 16);
+  assert.equal(r2.edges.length, 0, 'Corridor without door exit has no center dividing wall');
+  assert.equal(r3.edges.length, 0, 'Open sanctum chamber has no center dividing wall');
+  for (const scene of [r1, r2, r3]) {
+    assert.equal(
+      verifySceneZonesReachable({
+        columns: scene.columns,
+        rows: scene.rows,
+        cells: scene.cells,
+        edges: scene.edges,
+        spawn: scene.spawn,
+      }),
+      true,
+      `All walkable squares in ${scene.sceneId} must be reachable from spawn`,
+    );
+  }
+});
+
+test('Packet 3 & Packet 5: Three-Way Lock Rule and Rolling Headlights Just-In-Time (JIT) compilation', () => {
+  const bp = buildCampaignBlueprint({
+    summary: 'At the Blue Heron tavern, Mara Venn holds the brass key to a locked red door.',
+    name: 'Rolling Headlights Campaign',
+    startLevel: 1,
+    targetEndLevel: 3,
+    campaignTone: 'mystery_investigation',
+  });
+
+  // Packet 5: Rolling Headlights pre-compiles only scene-m1-r1 and scene-m1-r2 at creation time
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-headlights',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    activateFirstScene: true,
+    onlySceneIds: ['scene-m1-r1', 'scene-m1-r2'],
+  });
+  assert.ok(runtime.sceneInstances?.['scene-m1-r1']);
+  assert.ok(runtime.sceneInstances?.['scene-m1-r2']);
+  assert.equal(runtime.sceneInstances?.['scene-m1-r3'], undefined);
+  assert.equal(runtime.sceneInstances?.['scene-m2-r1'], undefined);
+
+  // Packet 3: Three-Way Lock Rule — locked door in scene-m1-r1 has keyItemId, lockpickDC, breakDC,
+  // and the key exists in an NPC's heldItems or unlocked container/item in the scene.
+  const r1 = runtime.sceneInstances['scene-m1-r1'];
+  const lockedDoor = r1.edges.find((e) => e.kind === 'door' && r1.doorStates[e.edgeId] === 'locked');
+  assert.ok(lockedDoor, 'Locked premise produces a locked door edge');
+  assert.ok(lockedDoor.keyItemId, 'Locked door has a keyItemId');
+  assert.equal(typeof lockedDoor.lockpickDC, 'number');
+  assert.equal(typeof lockedDoor.breakDC, 'number');
+  const keyExistsOnScene = r1.features.some(
+    (f) =>
+      (f.heldItems ?? []).includes(lockedDoor.keyItemId) ||
+      (f.contents ?? []).includes(lockedDoor.keyItemId) ||
+      (f.objectKind === 'item' && f.label.includes(lockedDoor.keyItemId)),
+  );
+  assert.equal(keyExistsOnScene, true, 'Matching keyItemId exists on an NPC or container/item in the scene');
+
+  // Travel from scene-m1-r1 -> scene-m1-r2 (already in headlights)
+  const step1 = travelSceneRuntime({
+    runtime,
+    campaignId: 'camp-headlights',
+    accountId: 'acc-1',
+    destinationHint: 'scene-m1-r2',
+    blueprint: bp,
+  });
+  assert.equal(step1.runtime.activeSceneId, 'scene-m1-r2');
+
+  // Travel from scene-m1-r2 -> scene-m1-r3: JIT compiles scene-m1-r3 AND its forward headlight scene-m2-r1!
+  const step2 = travelSceneRuntime({
+    runtime: step1.runtime,
+    campaignId: 'camp-headlights',
+    accountId: 'acc-1',
+    destinationHint: 'scene-m1-r3',
+    blueprint: bp,
+  });
+  assert.equal(step2.runtime.activeSceneId, 'scene-m1-r3');
+  assert.equal(step2.jitCompiledSceneId, 'scene-m1-r3');
+  assert.ok(step2.runtime.sceneInstances?.['scene-m1-r3']);
+  assert.ok(
+    step2.runtime.sceneInstances?.['scene-m2-r1'],
+    'Rolling Headlights pre-compiled forward exit scene-m2-r1 when arriving in scene-m1-r3',
+  );
+});
+
 
 

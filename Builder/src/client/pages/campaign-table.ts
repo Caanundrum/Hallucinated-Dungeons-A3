@@ -46,6 +46,7 @@ import {
 } from '../../shared/play-authority-contract.js';
 import {
   declarationIsDoorOpenOrPassage,
+  declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
 import type {
   PresentationCueKind,
@@ -138,7 +139,7 @@ function isSyncClarificationOnly(
   return (
     interpreted.proposedCommandType === 'table.sync' &&
     interpreted.path === undefined &&
-    !/^Ready to /i.test(scrubbedSummary)
+    !/^Ready to |^Intent Intercept draft:/i.test(scrubbedSummary)
   );
 }
 
@@ -185,7 +186,7 @@ function doorDetailCopy(edge: MapEdgeRecord, mapTitle: string): string {
   const scene = mapTitle.trim().length > 0 ? mapTitle : 'this chamber';
   const label = formatEdgeAccessibleLabel(edge);
   const stateLabel = formatDoorAuthorityStateSuffix(doorAuthorityFromStored(edge.doorState));
-  return `Selected ${label} in ${scene} (${stateLabel}).`;
+  return `Selected ${label} in ${scene} (${stateLabel}). Declare an interaction in the play channel.`;
 }
 
 export function mountCampaignTablePage(host: PageHost, campaignId: string): void {
@@ -340,8 +341,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (
       title === 'Blank table' ||
       provenance === 'blank_table' ||
-      provenance === 'none' ||
-      provenance === 'procedural_local_placeholder'
+      provenance === 'none'
     ) {
       return '';
     }
@@ -570,9 +570,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             message.messageId === 'opening-prompt' || message.kind === 'prompt'
               ? 'Just now'
               : formatTimestamp(message.createdAt);
+          const isLatestNarration =
+            options.listTestId === 'dm-play-thread-list' &&
+            index === lastDmIndex &&
+            message.kind !== 'prompt';
           return `<li class="dm-thread-message dm-thread-${escapeHtml(message.speaker)}" data-testid="${testId}">
             <span class="record-note"><strong>${escapeHtml(message.speakerLabel)}</strong></span>
-            <p>${escapeHtml(formatDirectorProse(message.body))}</p>
+            <p${isLatestNarration ? ' data-testid="director-narration"' : ''}>${escapeHtml(formatDirectorProse(message.body))}</p>
             <span class="record-meta" data-testid="dm-thread-timestamp">${escapeHtml(stamped)}</span>
           </li>`;
         })
@@ -610,29 +614,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       map: options.map,
       start: options.start,
     });
-  }
-
-  function selectedDoorOpenAffordance(): {
-    readonly edge: MapEdgeRecord;
-    readonly adjacent: boolean;
-    readonly canOpen: boolean;
-  } | null {
-    if (mapBundle === null || selectedEdgeId === null) {
-      return null;
-    }
-    const edge = mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
-    if (edge === undefined || edge.kind !== 'door' || edge.doorState === 'open') {
-      return null;
-    }
-    const ownToken = mapBundle.tokens.find((token) => token.seatId === ownSeatId);
-    const adjacent =
-      ownToken !== undefined && isAdjacentToDoorEdge(ownToken.footprint.anchor, edge);
-    const canOpen =
-      adjacent &&
-      edge.doorState !== 'locked' &&
-      seated &&
-      !sessionIsSuspended();
-    return { edge, adjacent, canOpen };
   }
 
   function persistIntentDraft(draft: ActionDraftSuggestion | null): void {
@@ -759,6 +740,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ? { declaredFoes: interpreted.declaredFoes.map((foe) => ({ name: foe.name })) }
         : {}),
       ...(interpreted.arcaneRecovery === true ? { arcaneRecovery: true } : {}),
+      ...(interpreted.skillCheckIntent !== undefined
+        ? { skillCheckIntent: interpreted.skillCheckIntent }
+        : {}),
       ...(projectionVersionAtIssue !== undefined ? { projectionVersionAtIssue } : {}),
       ...(lastSubmittedDeclaration.trim().length > 0
         ? { playerDeclaration: lastSubmittedDeclaration.trim() }
@@ -2715,12 +2699,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     readonly announce?: boolean;
   }): Promise<boolean> {
     if (
-      (!options?.force && autoBeginAttempted) ||
       !seated ||
       sessionIsSuspended() ||
       candidate === null ||
       tableState === null ||
-      busy
+      busy ||
+      (!options?.force && (autoBeginAttempted || tableState.stateVersion > 0))
     ) {
       return false;
     }
@@ -2798,7 +2782,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     _declaration: string,
   ): string | null {
     if (interpreted.proposedCommandType === 'table.move') {
-      return 'Movement within a room is controlled by clicking a square on the battle map rather than by words (declare travel or use an exit to change scenes). Click a square on the map to move your token first, then declare what you do!';
+      const isDoorMove =
+        interpreted.edgeId !== undefined ||
+        /\b(?:door|doorway|through)\b/i.test(interpreted.summary) ||
+        declarationIsDoorOpenOrPassage(_declaration);
+      if (!isDoorMove) {
+        return 'Movement within a room is controlled by clicking a square on the battle map rather than by words (declare travel or use an exit to change scenes). Click a square on the map to move your token first, then declare what you do!';
+      }
     }
     if (mapBundle === null || ownSeatId === null) {
       return null;
@@ -2824,12 +2814,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
     }
     if (
-      interpreted.proposedCommandType === 'table.sync' ||
-      /\b(?:check|search|inspect|examine|disarm|pick|unlock)\b/i.test(_declaration)
+      interpreted.proposedCommandType === 'table.sync' &&
+      /\b(?:check|search|inspect|examine|disarm|pick|unlock)\b/i.test(_declaration) &&
+      !/\b(?:asks?|says?|tells?|speaks?|calls?)\b/i.test(_declaration)
     ) {
       const mentionsDoor =
-        /\b(?:door|doorway|lock|keyhole|hinge)\b/i.test(_declaration) ||
-        /\b(?:door|doorway|Trap search on the .*door|Lock attempt)\b/i.test(interpreted.summary);
+        /\b(?:door|doorway|lock|keyhole|hinge)\b/i.test(_declaration) &&
+        /\b(?:Trap search on the .*door|Lock attempt|door|doorway)\b/i.test(interpreted.summary);
       if (mentionsDoor) {
         const doorEdges = mapBundle.edges.filter((edge) => edge.kind === 'door');
         if (doorEdges.length === 0) {
@@ -2861,7 +2852,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     if (
       interpreted.proposedCommandType === 'table.interact_object' ||
-      interpreted.proposedCommandType === 'table.take_scene_prop'
+      interpreted.proposedCommandType === 'table.take_scene_prop' ||
+      interpreted.proposedCommandType === 'table.transfer_npc_item'
     ) {
       const targetFeature =
         interpreted.objectId !== undefined
@@ -2887,11 +2879,16 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           (combatant) => combatant.side === 'foe' && combatant.currentHitPoints > 0,
         ) ?? [];
       if (foeCombatants.length > 0) {
+        const combatPos = ownCombatant()?.position ?? anchor;
         const anyAdjacent = foeCombatants.some(
           (foe) =>
             Math.max(
               Math.abs(anchor.column - foe.position.column),
               Math.abs(anchor.row - foe.position.row),
+            ) <= 1 ||
+            Math.max(
+              Math.abs(combatPos.column - foe.position.column),
+              Math.abs(combatPos.row - foe.position.row),
             ) <= 1,
         );
         if (!anyAdjacent) {
@@ -2923,8 +2920,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     error = null;
     render();
     try {
-      const resumeAfterOpenCross = false;
-      const resumeApproachThenOpen = false;
+      const resumeAfterOpenCross =
+        draft.proposedCommandType === 'table.open_door' &&
+        declarationText.length > 0 &&
+        !declarationNegatesDoorOpen(declarationText) &&
+        /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+      const nonAdjectivalDeclaration = declarationText.replace(
+        /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
+        'doorway',
+      );
+      const resumeApproachThenOpen =
+        draft.proposedCommandType === 'table.move' &&
+        draft.edgeId !== undefined &&
+        !declarationNegatesDoorOpen(declarationText) &&
+        /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
+          nonAdjectivalDeclaration,
+        );
       const summaryForCommand =
         draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
           ? draft.summary.trim()
@@ -2944,6 +2955,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         ...(draft.destinationHint !== undefined ? { destinationHint: draft.destinationHint } : {}),
         ...(draft.returnToPrevious === true ? { returnToPrevious: true } : {}),
         ...(draft.premise !== undefined ? { premise: draft.premise } : {}),
+        ...(draft.itemId !== undefined ? { itemId: draft.itemId } : {}),
+        ...(draft.skillCheckIntent !== undefined ? { skillCheckIntent: draft.skillCheckIntent } : {}),
         ...(summaryForCommand !== undefined ? { summary: summaryForCommand } : {}),
         ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
       });
@@ -3008,7 +3021,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
       if (
         shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-        /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
+        /^Trap search|^Lock attempt|Investigation|Sleight of Hand|Opened the door and stepped through the doorway|Stepped (?:back )?through the open doorway/i.test(
+          narrationSummary,
+        )
       ) {
         enqueueNarration(narrationSummary, accepted.event.rolls ?? []);
       } else {
@@ -3286,9 +3301,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const gateHint = sessionIsSuspended()
       ? 'Session suspended — resume from the campaign page before playing.'
       : composerGateHint();
-    const hasClosedDoor =
-      mapBundle !== null &&
-      mapBundle.edges.some((edge) => edge.kind === 'door' && edge.doorState !== 'open');
     const moveDestinations =
       mapBundle === null || !seated
         ? []
@@ -3372,11 +3384,6 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           aria-describedby="composer-gate-hint">
           ${busy ? 'Moving…' : 'Commit move'}
         </button>
-        <button type="button" data-testid="open-adjacent-door"
-          aria-disabled="${syncDisabled || !hasClosedDoor}"
-          aria-describedby="composer-gate-hint">
-          Open adjacent door
-        </button>
         <button type="button" data-testid="interpret-action"
           aria-disabled="${interpretDisabled}"
           aria-describedby="composer-gate-hint">
@@ -3417,20 +3424,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (edge.kind === 'door') {
       // Visible copy lives in door-selection-detail; announce once for assistive tech.
       shell.announce(doorDetailCopy(edge, mapBundle?.title ?? ''));
-      if (explorationMode() && mapBundle !== null && ownSeatId !== null) {
-        const anchor = ownTokenAnchor(mapBundle, ownSeatId);
-        if (anchor !== null && !isAdjacentToDoorEdge(anchor, edge)) {
-          void onSquareSelected({ column: edge.column, row: edge.row });
-          return;
-        }
-      }
     } else {
       movePreviewNote = `Selected ${formatEdgeAccessibleLabel(edge, mapBundle?.edges ?? [])}. Declare an interaction in the play channel.`;
       shell.announce(movePreviewNote);
-      if (explorationMode() && mapBundle !== null && ownSeatId !== null) {
-        void onSquareSelected({ column: edge.column, row: edge.row });
-        return;
-      }
     }
     render();
   }
@@ -3594,30 +3590,33 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     lobbyWaitingForPlayers = false;
     lobbyConfirmedReady = true;
     syncDmThreadFromChronicle();
+    let didAutoBegin = false;
     if (awaitingDirectorScene()) {
-      await maybeAutoBeginAdventure({ force: true });
+      didAutoBegin = await maybeAutoBeginAdventure({ force: true });
     }
     busy = true;
     error = null;
     render();
     try {
-      const sceneTitle = mapBundle?.title?.trim() || campaignName;
-      const sceneBanner = mapBundle?.sceneBanner?.trim() || 'The party gathers to begin the adventure.';
-      const narration = await requestDirectorNarration({
-        candidateId: candidate.candidateId,
-        campaignId,
-        mechanicsSummary: `Everyone is in the lobby and ready! Set the opening scene in a huge, vivid, cinematic way for ${sceneTitle}: ${sceneBanner} Describe the atmosphere, sights, sounds, who is present, and invite the party to make their opening move.`,
-      });
-      directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
+      if (!didAutoBegin) {
+        const sceneTitle = mapBundle?.title?.trim() || campaignName;
+        const sceneBanner = mapBundle?.sceneBanner?.trim() || 'The party gathers to begin the adventure.';
+        const narration = await requestDirectorNarration({
+          candidateId: candidate.candidateId,
+          campaignId,
+          mechanicsSummary: `Everyone is in the lobby and ready! Set the opening scene in a huge, vivid, cinematic way for ${sceneTitle}: ${sceneBanner} Describe the atmosphere, sights, sounds, who is present, and invite the party to make their opening move.`,
+        });
+        directorIdentityLabel = narration.directorIdentityLabel || directorIdentityLabel;
+      }
       try {
         chronicle = await fetchChronicle(campaignId);
         dmThreadOptimistic = [];
         lastChronicleSyncCount = chronicle.entries.length;
         syncDmThreadFromChronicle();
       } catch {
-        appendDmThread('dm', narration.directorIdentityLabel, narration.body, 'narration');
+        // Best-effort chronicle sync.
       }
-      shell.announce(`${narration.directorIdentityLabel} set the opening scene!`);
+      shell.announce(`${directorIdentityLabel} set the opening scene!`);
     } catch {
       // Best-effort opening narration if director service is offline.
     } finally {
@@ -5176,26 +5175,19 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               text: declaration,
               moveTarget,
             });
+            const [nextChronicle, nextMemory] = await Promise.all([
+              fetchChronicle(campaignId).catch(() => chronicle),
+              fetchCampaignMemory(campaignId).catch(() => memory),
+            ]);
+            chronicle = nextChronicle;
+            memory = nextMemory;
             const scrubbedSummary = playerFacingMechanicsCopy(interpreted.summary);
-            const rangeGateMessage = checkTokenActionRangeAndAdjacency(interpreted, declaration);
-            if (rangeGateMessage !== null) {
-              setIntentDraft(null);
-              appendDmThread('player', 'You', declaration, 'declaration');
-              appendDmThread('dm', directorIdentityLabel, rangeGateMessage, 'ruling_hint');
-              shell.announce(rangeGateMessage);
-            } else {
-              const draft = draftFromInterpret({
-                ...interpreted,
-                summary: scrubbedSummary,
-              });
-              if (explorationMode() && isRoutineExplorationDraft(draft)) {
-                setIntentDraft(null);
-                await autoCommitExplorationDraft(draft, declaration);
-              } else {
-                setIntentDraft(draft);
-                shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
-              }
-            }
+            const draft = draftFromInterpret({
+              ...interpreted,
+              summary: scrubbedSummary,
+            });
+            setIntentDraft(draft);
+            shell.announce('Natural-language Intent Intercept draft ready for confirmation.');
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -5213,6 +5205,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       ?.addEventListener('click', () => {
         void (async () => {
           if (candidate === null || busy) return;
+          lobbyWaitingForPlayers = false;
+          lobbyConfirmedReady = true;
           busy = true;
           error = null;
           render();
@@ -5621,133 +5615,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       });
 
     root
-      .querySelectorAll<HTMLButtonElement>('[data-testid="open-selected-door"]')
-      .forEach((button) => {
-        button.addEventListener('click', () => {
-        void (async () => {
-          const affordance = selectedDoorOpenAffordance();
-          if (
-            candidate === null ||
-            busy ||
-            !seated ||
-            tableState === null ||
-            mapBundle === null ||
-            affordance === null ||
-            !affordance.canOpen
-          ) {
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            if (!affordance.adjacent && explorationMode()) {
-              await resumeCompoundDeclarationAfterBuild(
-                `open the ${affordance.edge.orientation} door`,
-                { narrateSteps: true, stopAfterOpenDoor: true },
-              );
-              selectedEdgeId = affordance.edge.edgeId;
-              shell.announce('Door opened on the table.');
-              return;
-            }
-            const accepted = await submitTableCommand({
-              candidateId: candidate.candidateId,
-              campaignId,
-              requestId: crypto.randomUUID(),
-              commandType: 'table.open_door',
-              expectedStateVersion: tableState.stateVersion,
-              ...(explorationMode() || timingAuthority === null
-                ? {}
-                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
-              edgeId: affordance.edge.edgeId,
-            });
-            tableState = accepted.table;
-            mapBundle = await fetchCampaignMap(campaignId);
-            selectedEdgeId = affordance.edge.edgeId;
-            shell.announce('Door opened on the table.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-      });
-
-    root
-      .querySelector<HTMLButtonElement>('[data-testid="open-adjacent-door"]')
-      ?.addEventListener('click', () => {
-        void (async () => {
-          if (
-            candidate === null ||
-            busy ||
-            !seated ||
-            tableState === null ||
-            mapBundle === null ||
-            !canMoveOnMap()
-          ) {
-            return;
-          }
-          const ownToken = mapBundle.tokens.find((token) => token.seatId === ownSeatId);
-          const door = mapBundle.edges.find((edge) => {
-            if (edge.kind !== 'door' || edge.doorState === 'open') {
-              return false;
-            }
-            if (ownToken === undefined) {
-              return true;
-            }
-            const anchor = ownToken.footprint.anchor;
-            const adjacent =
-              (edge.orientation === 'east' &&
-                edge.row === anchor.row &&
-                (edge.column === anchor.column || edge.column === anchor.column - 1)) ||
-              (edge.orientation === 'north' &&
-                edge.column === anchor.column &&
-                (edge.row === anchor.row || edge.row === anchor.row - 1));
-            return adjacent;
-          });
-          if (door === undefined) {
-            error =
-              mapBundle.edges.some((edge) => edge.kind === 'door' && edge.doorState !== 'open')
-                ? 'No closed door is adjacent to your token.'
-                : 'No closed door is visible on your map projection.';
-            render();
-            return;
-          }
-          busy = true;
-          error = null;
-          render();
-          try {
-            const accepted = await submitTableCommand({
-              candidateId: candidate.candidateId,
-              campaignId,
-              requestId: crypto.randomUUID(),
-              commandType: 'table.open_door',
-              expectedStateVersion: tableState.stateVersion,
-              ...(explorationMode() || timingAuthority === null
-                ? {}
-                : { timingAuthorityId: timingAuthority.timingAuthorityId }),
-              edgeId: door.edgeId,
-            });
-            tableState = accepted.table;
-            mapBundle = await fetchCampaignMap(campaignId);
-            shell.announce('Door opened on the table.');
-          } catch (failure) {
-            error =
-              failure instanceof ApiFailure ? failure.message : 'The door could not be opened.';
-          } finally {
-            busy = false;
-            render();
-          }
-        })();
-      });
-
-    root
       .querySelector<HTMLButtonElement>('[data-testid="interpret-action"]')
       ?.addEventListener('click', () => {
-        if (!holdsOwnAuthority() || timingAuthority === null) {
+        if (!explorationMode() && (!holdsOwnAuthority() || timingAuthority === null)) {
           return;
         }
         if (moveTarget !== null) {
@@ -5773,8 +5643,15 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           render();
           return;
         }
-        error = 'Select a destination square on the map before planning a move.';
-        setIntentDraft(null);
+        setIntentDraft({
+          draftId: crypto.randomUUID(),
+          source: 'action_composer_interpret',
+          campaignId,
+          proposedCommandType: 'table.sync',
+          summary: 'Intent Intercept draft: commit a table sync (no move target selected).',
+          interceptState: 'awaiting_confirmation',
+          createdAt: new Date().toISOString(),
+        });
         render();
       });
 
@@ -5931,8 +5808,22 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           const declarationText =
             (intentDraft?.playerDeclaration ?? lastSubmittedDeclaration).trim();
           const resumeAfterSceneBuild = draft.proposedCommandType === 'table.build_scene';
-          const resumeAfterOpenCross = false;
-          const resumeApproachThenOpen = false;
+          const resumeAfterOpenCross =
+            draft.proposedCommandType === 'table.open_door' &&
+            declarationText.length > 0 &&
+            !declarationNegatesDoorOpen(declarationText) &&
+            /\b(walk|go|step|approach|enter|through|beyond|room beyond)\b/i.test(declarationText);
+          const nonAdjectivalDeclaration = declarationText.replace(
+            /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
+            'doorway',
+          );
+          const resumeApproachThenOpen =
+            draft.proposedCommandType === 'table.move' &&
+            draft.edgeId !== undefined &&
+            !declarationNegatesDoorOpen(declarationText) &&
+            /\b(?:opens?|opening|push(?:es|ing)?\s+open|swing(?:s|ing)?\s+open)\b/i.test(
+              nonAdjectivalDeclaration,
+            );
           // Intent drafts stay local until Confirm; only skill-check sync needs the Ready-to summary.
           const summaryForCommand =
             draft.proposedCommandType === 'table.sync' && draft.summary.trim().length > 0
@@ -5957,6 +5848,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
                 : {}),
               ...(draft.returnToPrevious === true ? { returnToPrevious: true } : {}),
               ...(draft.premise !== undefined ? { premise: draft.premise } : {}),
+              ...(draft.itemId !== undefined ? { itemId: draft.itemId } : {}),
+              ...(draft.skillCheckIntent !== undefined
+                ? { skillCheckIntent: draft.skillCheckIntent }
+                : {}),
               ...(summaryForCommand !== undefined ? { summary: summaryForCommand } : {}),
               ...(declarationText.length > 0 ? { declaration: declarationText } : {}),
             });
@@ -6026,7 +5921,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               }
               if (
                 shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-                /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(narrationSummary)
+                /^Trap search|^Lock attempt|Investigation|Sleight of Hand|Opened the door and stepped through the doorway|Stepped (?:back )?through the open doorway/i.test(
+                  narrationSummary,
+                )
               ) {
                 enqueueNarration(narrationSummary, accepted.event.rolls ?? []);
               } else {
@@ -6034,7 +5931,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
               }
             } else if (
               shouldAutoNarrateRulesCommand(draft.proposedCommandType) ||
-              /^Trap search|^Lock attempt|Investigation|Sleight of Hand/i.test(resolvedSummary)
+              /^Trap search|^Lock attempt|Investigation|Sleight of Hand|Opened the door and stepped through the doorway|Stepped (?:back )?through the open doorway/i.test(
+                resolvedSummary,
+              )
             ) {
               enqueueNarration(resolvedSummary, accepted.event.rolls ?? []);
             } else {
@@ -6240,18 +6139,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
     const mapChrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
     if (mapChrome !== null) {
-      let mapDoorActions = mapChrome.querySelector<HTMLElement>('[data-testid="map-door-actions"]');
-      const affordance = selectedDoorOpenAffordance();
-      const showMapOpen = affordance !== null && affordance.canOpen;
-      if (showMapOpen) {
-        if (mapDoorActions === null) {
-          mapDoorActions = document.createElement('div');
-          mapDoorActions.className = 'table-map-door-actions';
-          mapDoorActions.dataset.testid = 'map-door-actions';
-          mapChrome.appendChild(mapDoorActions);
-        }
-        mapDoorActions.innerHTML = `<button type="button" class="table-primary-action" data-testid="open-selected-door" aria-disabled="${busy}">Open doorway</button>`;
-      } else if (mapDoorActions !== null) {
+      const mapDoorActions = mapChrome.querySelector<HTMLElement>('[data-testid="map-door-actions"]');
+      if (mapDoorActions !== null) {
         mapDoorActions.remove();
       }
       syncMapStageOverlays(mapChrome);
@@ -6317,6 +6206,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     }
 
     footer.innerHTML = `
+      <button type="button" data-testid="dock-tab-chronicle">Chronicle</button>
       <div class="visually-hidden" data-testid="presence-section"${presenceOpen ? ' data-open="true"' : ''}>
         <section aria-labelledby="presence-heading">
           <h2 id="presence-heading">Who is connected</h2>
@@ -6325,12 +6215,39 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <p class="record-meta" data-testid="table-state-meta"
           data-state-version="${tableState?.stateVersion ?? 0}"
           data-event-sequence="${tableState?.lastEventSequence ?? 0}">
-          ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
+          Table state version ${tableState?.stateVersion ?? 0} · ${escapeHtml(turnBanner().title)} · ${escapeHtml(mapBundle?.title ?? 'Blank table')}
         </p>
         <p class="record-meta" data-testid="shared-scene-status">
           Everyone at this table sees the same current scene.
         </p>
         <p class="record-meta" data-testid="map-bundle-meta">${mapMeta}</p>
+        ${
+          mapBundle === null || mapBundle.notableFeatures.length === 0
+            ? ''
+            : `<ul class="record-list compact" data-testid="map-notable-features">
+                ${mapBundle.notableFeatures
+                  .map(
+                    (feature) => `
+                  <li data-testid="map-notable-feature">
+                    ${escapeHtml(feature.label)}
+                  </li>`,
+                  )
+                  .join('')}
+              </ul>`
+        }
+        <section data-testid="chronicle-pane">
+          <ol class="record-list" data-testid="chronicle-list">
+            ${(chronicle?.entries ?? [])
+              .map(
+                (entry) => `
+              <li data-testid="chronicle-entry">
+                <span class="record-meta">${escapeHtml(entry.kind === 'director_ruling' ? 'Director narration' : entry.kind)}</span>
+                <p>${escapeHtml(formatDirectorProse(entry.body))}</p>
+              </li>`,
+              )
+              .join('')}
+          </ol>
+        </section>
       </div>`;
 
     if (toolsWereActive && advancedOpen) {

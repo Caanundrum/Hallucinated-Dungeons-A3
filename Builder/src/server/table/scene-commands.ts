@@ -75,11 +75,14 @@ export function buildStoredSceneFromRoomBlueprint(
     premise: composePremise,
     destinationHint: room.title,
     seedKey: `${campaignId}:${room.sceneId}:${room.title}`,
+    ...(room.columns !== undefined ? { columns: room.columns } : {}),
+    ...(room.rows !== undefined ? { rows: room.rows } : {}),
+    ...(room.layoutArchetype !== undefined ? { layoutArchetype: room.layoutArchetype } : {}),
   });
   const squares: { column: number; row: number }[] = [];
   for (let row = composed.spawn.row - 2; row <= composed.spawn.row + 2; row += 1) {
     for (let column = composed.spawn.column - 2; column <= composed.spawn.column + 2; column += 1) {
-      if (column >= 0 && row >= 0) {
+      if (column >= 0 && row >= 0 && column < composed.columns && row < composed.rows) {
         squares.push({ column, row });
       }
     }
@@ -100,25 +103,67 @@ export function buildStoredSceneFromRoomBlueprint(
           label: exit.edgeLabel,
           destinationHint: exit.edgeLabel,
           targetSceneId: exit.targetSceneId,
+          ...(exit.lockState !== undefined ? { lockState: exit.lockState } : {}),
+          ...(exit.keyItemId !== undefined ? { keyItemId: exit.keyItemId } : {}),
+          ...(exit.lockpickDC !== undefined ? { lockpickDC: exit.lockpickDC } : {}),
+          ...(exit.breakDC !== undefined ? { breakDC: exit.breakDC } : {}),
         }))
       : composed.exits;
   const hasExplicitDoorExit = exits.some((exit) =>
     /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
   );
-  const suppressOutdoorDoors = kind === 'exterior' && !hasExplicitDoorExit;
+  const isNonDividedArchetype =
+    room.layoutArchetype !== undefined && room.layoutArchetype !== 'divided_rooms';
+  const suppressOutdoorDoors =
+    ((kind === 'exterior' || room.layoutArchetype === 'outdoor_clearing') && !hasExplicitDoorExit) ||
+    (isNonDividedArchetype && !hasExplicitDoorExit);
   const primaryDoorEdge = composed.edges.find((edge) => edge.kind === 'door');
-  const roomEdges = suppressOutdoorDoors
-    ? composed.edges.filter((edge) => edge.kind !== 'door')
+  const rawRoomEdges = suppressOutdoorDoors
+    ? []
     : room.exits.length === 1 && primaryDoorEdge !== undefined
       ? composed.edges.filter((edge) => edge.kind !== 'door' || edge.edgeId === primaryDoorEdge.edgeId)
       : composed.edges;
+
+  const firstBlueprintExit = room.exits[0];
+  const explicitExitLocked =
+    firstBlueprintExit?.lockState === 'locked' ||
+    /\b(?:locked|sealed|barred)\b/i.test(firstBlueprintExit?.edgeLabel ?? '');
+  const requiredKeys = new Set<string>();
+
+  const roomEdges = rawRoomEdges.map((edge) => {
+    if (edge.kind !== 'door') {
+      return edge;
+    }
+    const baseState = explicitExitLocked
+      ? 'locked'
+      : (composed.doorStates[edge.edgeId] ?? edge.doorState ?? 'closed');
+    if (baseState === 'locked') {
+      const keyItemId = firstBlueprintExit?.keyItemId ?? 'Brass Key';
+      const lockpickDC = firstBlueprintExit?.lockpickDC ?? 13;
+      const breakDC = firstBlueprintExit?.breakDC ?? 15;
+      requiredKeys.add(keyItemId);
+      return {
+        ...edge,
+        doorState: 'locked' as const,
+        keyItemId,
+        lockpickDC,
+        breakDC,
+      };
+    }
+    return {
+      ...edge,
+      doorState: baseState,
+    };
+  });
+
   const roomDoorStates: Record<string, (typeof composed.doorStates)[string]> = {};
   for (const edge of roomEdges) {
     if (edge.kind === 'door') {
-      roomDoorStates[edge.edgeId] = composed.doorStates[edge.edgeId] ?? edge.doorState ?? 'closed';
+      roomDoorStates[edge.edgeId] = edge.doorState ?? 'closed';
     }
   }
-  const baseFeatures = composed.features
+
+  const baseFeatures: StoredSceneFeature[] = composed.features
     .filter(
       (feature) =>
         (room.exits.length === 0 ||
@@ -131,10 +176,23 @@ export function buildStoredSceneFromRoomBlueprint(
         room.npcs.length > 0 &&
         (feature.objectKind === 'npc' || feature.referenceKind === 'npc')
       ) {
+        const primaryNpc = room.npcs[0]!;
         const state = feature.state?.trim() || 'present';
         return {
           ...feature,
-          label: `${room.npcs[0]!.name} — ${state}`,
+          label: `${primaryNpc.name} — ${state}`,
+          ...(primaryNpc.heldItems !== undefined ? { heldItems: [...primaryNpc.heldItems] } : {}),
+        };
+      }
+      if (feature.objectKind === 'container') {
+        const defaultContents =
+          feature.contents && feature.contents.length > 0
+            ? [...feature.contents]
+            : ['Silver Signet Ring', 'Healing Draught'];
+        return {
+          ...feature,
+          label: featureLabelWithState(feature),
+          contents: defaultContents,
         };
       }
       return {
@@ -142,6 +200,7 @@ export function buildStoredSceneFromRoomBlueprint(
         label: featureLabelWithState(feature),
       };
     });
+
   if (
     room.npcs.length > 0 &&
     !baseFeatures.some((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
@@ -161,8 +220,217 @@ export function buildStoredSceneFromRoomBlueprint(
       objectKind: 'npc',
       state: 'present',
       interactable: true,
+      ...(primaryNpc.heldItems !== undefined ? { heldItems: [...primaryNpc.heldItems] } : {}),
     });
   }
+
+  // Materialize structuredProps and string props from the room blueprint onto the grid.
+  const structuredProps = room.structuredProps ?? [];
+  structuredProps.forEach((prop, index) => {
+    const cleanLabel = prop.label.trim();
+    if (cleanLabel.length === 0) return;
+    const alreadyExists = baseFeatures.some(
+      (f) => f.label.toLowerCase().includes(cleanLabel.toLowerCase()),
+    );
+    if (alreadyExists) {
+      for (let i = 0; i < baseFeatures.length; i += 1) {
+        const f = baseFeatures[i]!;
+        if (f.label.toLowerCase().includes(cleanLabel.toLowerCase())) {
+          if (prop.lockState === 'locked' && prop.keyItemId) {
+            requiredKeys.add(prop.keyItemId);
+          }
+          baseFeatures[i] = {
+            ...f,
+            objectKind: prop.objectKind,
+            ...(prop.lockState !== undefined ? { lockState: prop.lockState } : {}),
+            ...(prop.keyItemId !== undefined ? { keyItemId: prop.keyItemId } : {}),
+            ...(prop.lockpickDC !== undefined ? { lockpickDC: prop.lockpickDC } : {}),
+            ...(prop.breakDC !== undefined ? { breakDC: prop.breakDC } : {}),
+            ...(prop.inspectDC !== undefined ? { inspectDC: prop.inspectDC } : {}),
+            ...(prop.contents !== undefined ? { contents: [...prop.contents] } : {}),
+            ...(prop.targetEdgeOrObjectId !== undefined
+              ? { targetEdgeOrObjectId: prop.targetEdgeOrObjectId }
+              : {}),
+          };
+        }
+      }
+      return;
+    }
+    const isLocked = prop.lockState === 'locked';
+    const keyItemId = isLocked ? (prop.keyItemId ?? 'Brass Key') : (prop.keyItemId ?? null);
+    if (isLocked && keyItemId) {
+      requiredKeys.add(keyItemId);
+    }
+    const state =
+      (prop.objectState as StoredSceneFeature['state'] | undefined) ??
+      (prop.objectKind === 'container'
+        ? isLocked
+          ? 'locked'
+          : 'closed'
+        : prop.objectKind === 'lever'
+          ? 'closed'
+          : prop.objectKind === 'trap'
+            ? 'active'
+            : prop.objectKind === 'light'
+              ? 'lit'
+              : 'intact');
+    const referenceKind =
+      prop.objectKind === 'light'
+        ? 'lighting'
+        : prop.objectKind === 'cover'
+          ? 'cover'
+          : prop.objectKind === 'hazard' || prop.objectKind === 'trap'
+            ? 'hazard'
+            : 'prop';
+    const col = Math.max(
+      1,
+      Math.min(composed.columns - 2, composed.spawn.column + 1 + (index % 2)),
+    );
+    const row = Math.max(
+      1,
+      Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? -1 : 1)),
+    );
+    const feature: StoredSceneFeature = {
+      objectId: prop.propId ?? `${room.sceneId}:prop-${index + 1}`,
+      column: col,
+      row,
+      label: featureLabelWithState({
+        objectId: prop.propId ?? `${room.sceneId}:prop-${index + 1}`,
+        column: col,
+        row,
+        label: cleanLabel,
+        referenceKind,
+        objectKind: prop.objectKind,
+        state,
+        interactable: true,
+        ...(prop.lockState !== undefined ? { lockState: prop.lockState } : {}),
+      }),
+      referenceKind,
+      objectKind: prop.objectKind,
+      state,
+      interactable: true,
+      ...(prop.lockState !== undefined ? { lockState: prop.lockState } : {}),
+      ...(keyItemId !== null ? { keyItemId } : {}),
+      ...(isLocked ? { lockpickDC: prop.lockpickDC ?? 13, breakDC: prop.breakDC ?? 15 } : {}),
+      ...(prop.inspectDC !== undefined ? { inspectDC: prop.inspectDC } : {}),
+      ...(prop.contents !== undefined
+        ? { contents: [...prop.contents] }
+        : prop.objectKind === 'container'
+          ? { contents: ['Silver Signet Ring', 'Healing Draught'] }
+          : {}),
+      ...(prop.targetEdgeOrObjectId !== undefined
+        ? { targetEdgeOrObjectId: prop.targetEdgeOrObjectId }
+        : {}),
+    };
+    baseFeatures.push(feature);
+  });
+
+  // Also ensure any plain string props in room.props are represented on baseFeatures.
+  room.props.forEach((rawProp, index) => {
+    const clean = rawProp.trim();
+    if (clean.length === 0) return;
+    const alreadyExists = baseFeatures.some((f) =>
+      f.label.toLowerCase().includes(clean.toLowerCase()),
+    );
+    if (alreadyExists) return;
+    const lower = clean.toLowerCase();
+    const objectKind: StoredSceneFeature['objectKind'] =
+      /\b(?:chest|crate|box|barrel|satchel|pack|bag|coffer|urn|ledger)\b/.test(lower)
+        ? 'container'
+        : /\b(?:lever|switch|winch|crank|valve|mechanism)\b/.test(lower)
+          ? 'lever'
+          : /\b(?:trap|tripwire|snare|pressure\s+plate)\b/.test(lower)
+            ? 'trap'
+            : /\b(?:key|scroll|potion|amulet|ring|gem|coin|letter|shard|relic)\b/.test(lower)
+              ? 'item'
+              : /\b(?:lantern|torch|sconce|brazier|lamp|candle)\b/.test(lower)
+                ? 'light'
+                : 'prop';
+    const state: StoredSceneFeature['state'] =
+      objectKind === 'container'
+        ? 'closed'
+        : objectKind === 'lever'
+          ? 'closed'
+          : objectKind === 'trap'
+            ? 'active'
+            : objectKind === 'light'
+              ? 'lit'
+              : 'intact';
+    const referenceKind =
+      objectKind === 'light'
+        ? 'lighting'
+        : objectKind === 'trap'
+          ? 'hazard'
+          : 'prop';
+    const col = Math.max(
+      1,
+      Math.min(composed.columns - 2, composed.spawn.column + 1 + ((index + 1) % 2)),
+    );
+    const row = Math.max(
+      1,
+      Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? 1 : -1)),
+    );
+    baseFeatures.push({
+      objectId: `${room.sceneId}:blueprint-prop-${index + 1}`,
+      column: col,
+      row,
+      label: featureLabelWithState({
+        objectId: `${room.sceneId}:blueprint-prop-${index + 1}`,
+        column: col,
+        row,
+        label: clean,
+        referenceKind,
+        objectKind,
+        state,
+        interactable: true,
+      }),
+      referenceKind,
+      objectKind,
+      state,
+      interactable: true,
+      ...(objectKind === 'container'
+        ? { contents: ['Silver Signet Ring', 'Healing Draught'] }
+        : {}),
+    });
+  });
+
+  // Enforce the Three-Way Lock Rule: every required keyItemId for a locked door/container
+  // must exist in an NPC's heldItems, an unlocked container's contents, or a floor item.
+  for (const keyItem of requiredKeys) {
+    const keyLower = keyItem.toLowerCase();
+    const existsInScene = baseFeatures.some(
+      (f) =>
+        (f.heldItems ?? []).some((item) => item.toLowerCase() === keyLower) ||
+        (f.lockState !== 'locked' &&
+          f.state !== 'locked' &&
+          (f.contents ?? []).some((item) => item.toLowerCase() === keyLower)) ||
+        (f.objectKind === 'item' && f.label.toLowerCase().includes(keyLower)),
+    );
+    if (!existsInScene) {
+      const npcIdx = baseFeatures.findIndex(
+        (f) => f.objectKind === 'npc' || f.referenceKind === 'npc',
+      );
+      if (npcIdx >= 0) {
+        const npc = baseFeatures[npcIdx]!;
+        baseFeatures[npcIdx] = {
+          ...npc,
+          heldItems: [...(npc.heldItems ?? []), keyItem],
+        };
+      } else {
+        baseFeatures.push({
+          objectId: `${room.sceneId}:key-${requiredKeys.size}`,
+          column: Math.max(1, composed.spawn.column + 1),
+          row: composed.spawn.row,
+          label: keyItem,
+          referenceKind: 'prop',
+          objectKind: 'item',
+          state: 'intact',
+          interactable: true,
+        });
+      }
+    }
+  }
+
   return {
     sceneId: room.sceneId,
     templateId: room.templateId,
@@ -175,6 +443,9 @@ export function buildStoredSceneFromRoomBlueprint(
     description: room.summary,
     columns: composed.columns,
     rows: composed.rows,
+    ...(composed.layoutArchetype !== undefined
+      ? { layoutArchetype: composed.layoutArchetype }
+      : {}),
     cells: composed.cells,
     edges: roomEdges,
     features: baseFeatures,
@@ -205,10 +476,19 @@ export function buildMapRuntimeFromBlueprint(options: {
   readonly accountIds?: readonly string[];
   readonly seatTokens?: readonly StoredTokenPosition[];
   readonly activateFirstScene?: boolean;
+  /** Optional Rolling Headlights filter: when supplied, only pre-compiles these sceneIds. */
+  readonly onlySceneIds?: readonly string[];
 }): StoredMapRuntime {
+  const allowedIds =
+    options.onlySceneIds !== undefined && options.onlySceneIds.length > 0
+      ? new Set(options.onlySceneIds)
+      : null;
   const sceneInstances: Record<string, StoredSceneInstance> = {};
   for (const milestone of options.blueprint.milestones ?? []) {
     for (const room of milestone.rooms) {
+      if (allowedIds !== null && !allowedIds.has(room.sceneId)) {
+        continue;
+      }
       const isFirst = room.sceneId === 'scene-m1-r1';
       sceneInstances[room.sceneId] = buildStoredSceneFromRoomBlueprint(room, options.campaignId, {
         ...(options.accountIds !== undefined ? { accountIds: options.accountIds } : {}),
@@ -391,10 +671,31 @@ export function beginAdventureRuntime(options: {
   };
 }
 
+export function actorHoldsMatchingKey(
+  actorEquipment: readonly string[] | undefined,
+  keyItemId: string | null | undefined,
+): string | null {
+  if (actorEquipment === undefined || actorEquipment.length === 0) {
+    return null;
+  }
+  if (typeof keyItemId === 'string' && keyItemId.trim().length > 0) {
+    const targetLower = keyItemId.trim().toLowerCase();
+    const exactOrSub = actorEquipment.find((item) => {
+      const lower = item.trim().toLowerCase();
+      return lower === targetLower || lower.includes(targetLower) || targetLower.includes(lower);
+    });
+    if (exactOrSub !== undefined) {
+      return exactOrSub;
+    }
+  }
+  return null;
+}
+
 export function interactObjectRuntime(options: {
   readonly runtime: StoredMapRuntime;
   readonly objectId: string;
   readonly declaration: string;
+  readonly actorEquipment?: readonly string[];
 }): {
   readonly runtime: StoredMapRuntime;
   readonly chronicle: string;
@@ -403,6 +704,8 @@ export function interactObjectRuntime(options: {
   readonly nextState: string;
   readonly objectId: string;
   readonly baseLabel: string;
+  readonly lootedItems: readonly string[];
+  readonly unlockedWithKey?: string;
 } {
   const active = activeSceneInstance(options.runtime);
   if (active === null) {
@@ -417,30 +720,165 @@ export function interactObjectRuntime(options: {
   if (next === null || next === feature.state) {
     throw new Error('OBJECT_STATE_UNCHANGED');
   }
+  const isLocked = feature.lockState === 'locked' || feature.state === 'locked';
+  let unlockedWithKey: string | undefined;
+  if (isLocked && next === 'open') {
+    const matchingKey = actorHoldsMatchingKey(options.actorEquipment, feature.keyItemId);
+    if (matchingKey === null) {
+      throw new Error('OBJECT_LOCKED');
+    }
+    unlockedWithKey = matchingKey;
+  }
+  const lootedItems =
+    feature.objectKind === 'container' && next === 'open'
+      ? [...(feature.contents ?? [])]
+      : [];
+  const nextLockState =
+    isLocked && (next === 'open' || next === 'broken') ? ('unlocked' as const) : feature.lockState;
   const baseLabel = feature.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
-  const labeled = featureLabelWithState({ ...feature, state: next });
-  const runtime = updateSceneObjectState({
+  const labeled = featureLabelWithState({
+    ...feature,
+    state: next,
+    ...(nextLockState !== undefined ? { lockState: nextLockState } : {}),
+  });
+  let runtime = updateSceneObjectState({
     runtime: options.runtime,
     objectId: options.objectId,
     nextState: next,
     labelWithState: labeled,
+    ...(nextLockState !== undefined ? { lockState: nextLockState } : {}),
+    ...(feature.objectKind === 'container' && next === 'open' ? { contents: [] } : {}),
   });
   if (runtime === null) {
     throw new Error('NO_ACTIVE_SCENE');
   }
+  // If a lever/switch with targetEdgeOrObjectId is pulled, unlock/open its target edge or container.
+  if (
+    feature.objectKind === 'lever' &&
+    (next === 'pulled' || next === 'active' || next === 'open') &&
+    typeof feature.targetEdgeOrObjectId === 'string' &&
+    feature.targetEdgeOrObjectId.length > 0
+  ) {
+    const targetId = feature.targetEdgeOrObjectId;
+    const updatedActive = activeSceneInstance(runtime);
+    if (updatedActive !== null) {
+      const targetEdge = updatedActive.edges.find((edge) => edge.edgeId === targetId);
+      if (targetEdge !== undefined) {
+        const nextDoors = {
+          ...runtime.doorStates,
+          [targetId]: 'open' as const,
+        };
+        runtime = {
+          ...runtime,
+          doorStates: nextDoors,
+          sceneInstances: {
+            ...runtime.sceneInstances,
+            [updatedActive.sceneId]: {
+              ...updatedActive,
+              doorStates: { ...updatedActive.doorStates, [targetId]: 'open' },
+            },
+          },
+        };
+      } else {
+        const targetObj = updatedActive.features.find((f) => f.objectId === targetId);
+        if (targetObj !== undefined) {
+          const unlockedLabel = featureLabelWithState({
+            ...targetObj,
+            state: 'unlocked',
+            lockState: 'unlocked',
+          });
+          const afterTarget = updateSceneObjectState({
+            runtime,
+            objectId: targetId,
+            nextState: 'unlocked',
+            labelWithState: unlockedLabel,
+            lockState: 'unlocked',
+          });
+          if (afterTarget !== null) {
+            runtime = afterTarget;
+          }
+        }
+      }
+    }
+  }
   const scene = instanceToComposed(activeSceneInstance(runtime)!);
+  const baseBeat = directorNarrationBeat('interact', {
+    scene,
+    objectLabel: baseLabel,
+    objectState: next,
+  });
+  const keyClause = unlockedWithKey ? ` Unlocked using ${unlockedWithKey}.` : '';
+  const lootClause =
+    lootedItems.length > 0 ? ` Looted into inventory: ${lootedItems.join(', ')}.` : '';
   return {
     runtime,
-    chronicle: directorNarrationBeat('interact', {
-      scene,
-      objectLabel: baseLabel,
-      objectState: next,
-    }),
+    chronicle: `${baseBeat}${keyClause}${lootClause}`,
     label: labeled,
     priorState,
     nextState: next,
     objectId: options.objectId,
     baseLabel,
+    lootedItems,
+    ...(unlockedWithKey !== undefined ? { unlockedWithKey } : {}),
+  };
+}
+
+export function transferNpcItemRuntime(options: {
+  readonly runtime: StoredMapRuntime;
+  readonly objectId?: string;
+  readonly itemHint?: string;
+}): {
+  readonly runtime: StoredMapRuntime;
+  readonly itemLabel: string;
+  readonly npcName: string;
+  readonly objectId: string;
+} {
+  const active = activeSceneInstance(options.runtime);
+  if (active === null) {
+    throw new Error('NO_ACTIVE_SCENE');
+  }
+  const npcsWithItems = active.features.filter(
+    (feature) =>
+      (feature.objectKind === 'npc' || feature.referenceKind === 'npc') &&
+      Array.isArray(feature.heldItems) &&
+      feature.heldItems.length > 0,
+  );
+  const targetNpc =
+    (options.objectId !== undefined
+      ? active.features.find((f) => f.objectId === options.objectId)
+      : undefined) ?? npcsWithItems[0];
+  if (
+    targetNpc === undefined ||
+    !Array.isArray(targetNpc.heldItems) ||
+    targetNpc.heldItems.length === 0
+  ) {
+    throw new Error('NPC_HAS_NO_HELD_ITEMS');
+  }
+  const hintLower = (options.itemHint ?? '').trim().toLowerCase();
+  const matchedItem =
+    (hintLower.length > 0
+      ? targetNpc.heldItems.find(
+          (item) =>
+            item.toLowerCase().includes(hintLower) || hintLower.includes(item.toLowerCase()),
+        )
+      : undefined) ?? targetNpc.heldItems[0]!;
+  const remainingItems = targetNpc.heldItems.filter((item) => item !== matchedItem);
+  const updated = updateSceneObjectState({
+    runtime: options.runtime,
+    objectId: targetNpc.objectId,
+    nextState: targetNpc.state,
+    labelWithState: targetNpc.label,
+    heldItems: remainingItems,
+  });
+  if (updated === null) {
+    throw new Error('NO_ACTIVE_SCENE');
+  }
+  const npcName = targetNpc.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+  return {
+    runtime: updated,
+    itemLabel: matchedItem,
+    npcName,
+    objectId: targetNpc.objectId,
   };
 }
 
@@ -531,18 +969,40 @@ function resolveGraphTargetExit(
   return graphExits[0]?.targetSceneId ?? null;
 }
 
+function findRoomInBlueprint(
+  blueprint: CampaignBlueprint | null | undefined,
+  sceneId: string,
+) {
+  if (!blueprint?.milestones) return null;
+  for (const milestone of blueprint.milestones) {
+    for (const room of milestone.rooms) {
+      if (room.sceneId === sceneId) {
+        return room;
+      }
+    }
+  }
+  return null;
+}
+
 export function resolveTravelDestinationTitle(
   runtime: StoredMapRuntime,
   destinationHint: string,
   returnToPrevious = false,
+  blueprint?: CampaignBlueprint | null,
 ): string | null {
   const active = activeSceneInstance(runtime);
   if (active === null) {
     return null;
   }
   const graphTargetId = resolveGraphTargetExit(active, destinationHint, returnToPrevious);
-  if (graphTargetId !== null && runtime.sceneInstances?.[graphTargetId] !== undefined) {
-    return runtime.sceneInstances[graphTargetId]!.title;
+  if (graphTargetId !== null) {
+    if (runtime.sceneInstances?.[graphTargetId] !== undefined) {
+      return runtime.sceneInstances[graphTargetId]!.title;
+    }
+    const blueprintRoom = findRoomInBlueprint(blueprint, graphTargetId);
+    if (blueprintRoom !== null) {
+      return blueprintRoom.title;
+    }
   }
   if (returnToPrevious) {
     const stack = runtime.sceneStack ?? [];
@@ -563,11 +1023,13 @@ export function travelSceneRuntime(options: {
   readonly seatTokens?: readonly StoredTokenPosition[];
   readonly partyXp?: number;
   readonly requiredXpThreshold?: number;
+  readonly blueprint?: CampaignBlueprint | null;
 }): {
   readonly runtime: StoredMapRuntime;
   readonly composed: ComposedScene | null;
   readonly chronicle: string;
   readonly xpAwarded?: number;
+  readonly jitCompiledSceneId?: string;
 } {
   const active = activeSceneInstance(options.runtime);
   if (active === null) {
@@ -576,14 +1038,56 @@ export function travelSceneRuntime(options: {
   const returnToPrevious = options.returnToPrevious === true;
   const seatTokens = options.seatTokens ?? active.tokenPositions;
 
-  // Check if the current scene has a pre-forged multi-map graph exit target.
+  // Check if the current scene has a multi-map graph exit target (pre-forged or JIT from blueprint).
   const graphTargetId = resolveGraphTargetExit(
     active,
     options.destinationHint,
     returnToPrevious,
   );
-  if (graphTargetId !== null && options.runtime.sceneInstances?.[graphTargetId] !== undefined) {
-    let targetScene = options.runtime.sceneInstances[graphTargetId]!;
+  let workingSceneInstances = { ...(options.runtime.sceneInstances ?? {}) };
+  let jitCompiledSceneId: string | undefined;
+  if (
+    graphTargetId !== null &&
+    workingSceneInstances[graphTargetId] === undefined &&
+    options.blueprint !== undefined &&
+    options.blueprint !== null
+  ) {
+    const room = findRoomInBlueprint(options.blueprint, graphTargetId);
+    if (room !== null) {
+      workingSceneInstances[graphTargetId] = buildStoredSceneFromRoomBlueprint(
+        room,
+        options.campaignId,
+        {
+          accountIds: [options.accountId],
+          seatTokens,
+          visited: false,
+        },
+      );
+      jitCompiledSceneId = graphTargetId;
+      // Rolling Headlights: also pre-compile any immediate forward exit rooms from this room.
+      for (const exit of room.exits) {
+        if (
+          exit.targetSceneId &&
+          workingSceneInstances[exit.targetSceneId] === undefined
+        ) {
+          const nextRoom = findRoomInBlueprint(options.blueprint, exit.targetSceneId);
+          if (nextRoom !== null) {
+            workingSceneInstances[exit.targetSceneId] = buildStoredSceneFromRoomBlueprint(
+              nextRoom,
+              options.campaignId,
+              {
+                accountIds: [options.accountId],
+                seatTokens,
+                visited: false,
+              },
+            );
+          }
+        }
+      }
+    }
+  }
+  if (graphTargetId !== null && workingSceneInstances[graphTargetId] !== undefined) {
+    let targetScene = workingSceneInstances[graphTargetId]!;
     let redirectedNote = '';
     if (
       targetScene.isMilestoneClimax === true &&
@@ -591,7 +1095,7 @@ export function travelSceneRuntime(options: {
       options.requiredXpThreshold !== undefined &&
       options.partyXp < options.requiredXpThreshold
     ) {
-      const unvisitedSideRoom = Object.values(options.runtime.sceneInstances).find(
+      const unvisitedSideRoom = Object.values(workingSceneInstances).find(
         (candidate) =>
           candidate.milestoneIndex === targetScene.milestoneIndex &&
           candidate.isMilestoneClimax !== true &&
@@ -627,7 +1131,7 @@ export function travelSceneRuntime(options: {
       row: targetScene.spawn.row,
     }));
     const instances: Record<string, StoredSceneInstance> = {
-      ...(options.runtime.sceneInstances ?? {}),
+      ...workingSceneInstances,
       [active.sceneId]: {
         ...active,
         tokenPositions: options.runtime.tokenPositions,
@@ -668,6 +1172,7 @@ export function travelSceneRuntime(options: {
         objectLabel: options.destinationHint,
       })}${redirectedNote}`,
       xpAwarded,
+      ...(jitCompiledSceneId !== undefined ? { jitCompiledSceneId } : {}),
     };
   }
 
@@ -758,6 +1263,9 @@ export function travelSceneRuntime(options: {
 }
 
 export function isPortableSceneContainer(feature: StoredSceneFeature): boolean {
+  if (feature.objectKind === 'item') {
+    return true;
+  }
   if (feature.objectKind === 'container') {
     return labelLooksPortableContainer(feature.label);
   }
@@ -932,7 +1440,16 @@ export function matchInteractableByDeclaration(
       ) {
         score += 4;
       }
-      if (kind === 'hazard' && /\b(trap|tripwire|bramble|hazard|disarm|stones)\b/.test(text)) {
+      if (
+        kind === 'lever' &&
+        /\b(lever|switch|pull|flip|toggle|winch|crank|valve|mechanism)\b/.test(text)
+      ) {
+        score += 4;
+      }
+      if (
+        (kind === 'hazard' || kind === 'trap') &&
+        /\b(trap|tripwire|bramble|hazard|disarm|stones)\b/.test(text)
+      ) {
         score += 4;
       }
       if (
@@ -941,7 +1458,7 @@ export function matchInteractableByDeclaration(
       ) {
         score += 3;
       }
-      if (/\b(extinguish|douse|light|break|smash|move|open|close|disarm)\b/.test(text)) {
+      if (/\b(extinguish|douse|light|break|smash|move|open|close|disarm|pull|flip|toggle)\b/.test(text)) {
         score += 1;
       }
       return { objectId: feature.objectId, score };

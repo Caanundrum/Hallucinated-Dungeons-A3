@@ -15,6 +15,7 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'table.begin_adventure',
   'table.interact_object',
   'table.take_scene_prop',
+  'table.transfer_npc_item',
   'table.travel_scene',
   'combat.attack',
   'combat.cast_spell',
@@ -26,6 +27,26 @@ export const INTENT_DRAFT_COMMAND_TYPES = [
   'combat.long_rest',
 ] as const;
 export type IntentDraftCommandType = (typeof INTENT_DRAFT_COMMAND_TYPES)[number];
+
+/** Structured skill check payload attached to drafts and table commands. */
+export interface SkillCheckIntent {
+  readonly skill: string;
+  readonly ability: string;
+  readonly dc: number;
+  readonly modifier: number;
+  readonly targetKind: 'door' | 'object' | 'npc' | 'environment';
+  readonly targetId?: string;
+  readonly targetLabel?: string;
+  readonly onSuccessMutation:
+    | 'unlock_door'
+    | 'unlock_object'
+    | 'disarm_trap'
+    | 'force_open'
+    | 'npc_give_item'
+    | 'reveal_info'
+    | 'none';
+  readonly keyOrItemId?: string;
+}
 
 export function isIntentDraftCommandType(value: unknown): value is IntentDraftCommandType {
   return (
