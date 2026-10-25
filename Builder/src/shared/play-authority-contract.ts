@@ -19,6 +19,7 @@ import type { IntentDraftCommandType } from './intent-draft-contract.js';
 import { declarationNegatesDoorOpen } from './resolved-action-receipt.js';
 import {
   actionableDirectorFallback,
+  classifyClause,
   filterActionsByConstraints,
   understandUtterance,
   utteranceLooksLikeQuestion,
@@ -391,27 +392,30 @@ export function resolveIntentAuthority(
   }
 
   if (actionable.length === 0) {
-    // Free exploration: rich sensory / roleplay prose must never bounce with a
-    // robotic verb menu — pass the declaration to the Game Director instead.
+    // Free exploration & semantic intent translation: any non-empty player declaration
+    // (including imperative phrasing) routes to the Game Director rather than a refusal lecture.
     const looksLikeExplorationProse =
-      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|peer(?:s|ing)?|search(?:es|ing)?|observe(?:s|ing)?|notice(?:s|ing)?|study|studying|feel(?:s|ing)?|smell(?:s|ing)?|taste(?:s|ing)?|whisper(?:s|ing)?|murmur(?:s|ing)?|investigat(?:e|es|ing)?|hide|hiding|hid|conceal(?:s|ing|ed)?|take\s+cover)\b/i.test(
+      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?|listen(?:s|ing)?|peer(?:s|ing)?|search(?:es|ing)?|observe(?:s|ing)?|notice(?:s|ing)?|study|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|scan(?:s|ning)?|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|smell(?:s|ing)?|sniff(?:s|ing)?|taste(?:s|ing)?|whisper(?:s|ing)?|murmur(?:s|ing)?|investigat(?:e|es|ing)?|hide|hiding|hid|conceal(?:s|ing|ed)?|take\s+cover)\b/i.test(
         parsed.rawText,
       ) &&
       !/\b(?:attack|strike|cast|fireball|unlock|pick\s+the\s+lock)\b/i.test(parsed.rawText);
-    if (looksLikeExplorationProse) {
+    if (looksLikeExplorationProse || parsed.rawText.trim().length > 0) {
       return {
         disposition: 'director_narrate_only',
         actionSequence: [
           {
             kind: 'inspect',
             targetRef: null,
-            outcomeHint: 'sensory_sequence',
+            outcomeHint: looksLikeExplorationProse ? 'sensory_sequence' : 'roleplay_action',
           },
         ],
         ignoredWorldFacts,
         clarificationPrompt: null,
         summary:
-          'You look and listen — the Game Director narrates what you perceive. No move or attack is prepared.',
+          (looksLikeExplorationProse
+            ? 'You look and listen — the Game Director narrates what you perceive. No move or attack is prepared.'
+            : 'You act within the scene — the Game Director narrates what unfolds from your action.') +
+          inventIgnoredNote,
         proposedCommandType: 'table.sync',
       };
     }
@@ -434,6 +438,8 @@ export function resolveIntentAuthority(
         step.outcomeHint === 'door_state' ||
         step.outcomeHint === 'scene_perception' ||
         step.outcomeHint === 'sensory_sequence' ||
+        step.outcomeHint === 'read_text' ||
+        step.outcomeHint === 'roleplay_action' ||
         step.outcomeHint === 'stay_put' ||
         step.outcomeHint === 'who_is_present' ||
         step.outcomeHint === 'map_state_correction' ||
@@ -604,6 +610,17 @@ export function resolveIntentAuthority(
               ? 'You listen at the doorway — the Game Director narrates what you hear. No open or move is prepared.'
               : 'You check the doorway without opening it — the Game Director narrates its visible state. No open or move is prepared.'
             : 'You look and listen — the Game Director narrates what is perceptible.') + inventIgnoredNote,
+      proposedCommandType: 'table.sync',
+    };
+  }
+
+  if (only.kind === 'dialogue' || only.kind === 'other') {
+    return {
+      disposition: 'director_narrate_only',
+      actionSequence: [only],
+      ignoredWorldFacts,
+      clarificationPrompt: null,
+      summary: summaryForActionStep(only) + inventIgnoredNote,
       proposedCommandType: 'table.sync',
     };
   }
@@ -1102,7 +1119,9 @@ export function parsePlayerDeclaration(
   }
 
   const wantsInvestigation =
-    /\b(?:investigat(?:e|es|ing)?|using\s+(?:my\s+)?investigation)\b/i.test(trimmed) ||
+    /\b(?:investigat(?:e|es|ing)?|decipher(?:s|ing)?|translat(?:e|es|ing)|using\s+(?:my\s+)?investigation)\b/i.test(
+      trimmed,
+    ) ||
     (/\b(?:inspect(?:s|ing)?|examin(?:e|es|ing)?|check(?:s|ing)?|feel(?:s|ing)?|probe|probing)\b/i.test(
       trimmed,
     ) &&
@@ -1110,11 +1129,15 @@ export function parsePlayerDeclaration(
         trimmed,
       ));
   const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed) && !observingScene;
+  const wantsRead =
+    /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through)\b/i.test(
+      trimmed,
+    );
 
-  // Targeted prop examine / listen (lantern, window, shutters) — Director narrates.
+  // Targeted prop examine / read / listen — Director narrates or routes to object/skill check.
   if (
     actionSequence.length === 0 &&
-    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?\s+at|listen(?:s|ing)?|peer(?:s|ing)?|study|studying|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
+    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+at|listen(?:s|ing)?|eavesdrop(?:s|ping)?|peer(?:s|ing)?|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|smell(?:s|ing)?|sniff(?:s|ing)?|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
       trimmed,
     ) &&
     !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(trimmed) &&
@@ -1132,37 +1155,43 @@ export function parsePlayerDeclaration(
       // room listens stay scene perception so Director narrates the declared props.
       outcomeHint: listenMentionsDoor
         ? 'listen'
-        : /\blisten\b/i.test(trimmed)
+        : /\b(?:listen|eavesdrop)\b/i.test(trimmed)
           ? 'sensory_sequence'
           : wantsInvestigation
             ? 'investigate_mark'
             : wantsSearch
               ? 'active_search'
-              : 'scene_perception',
+              : wantsRead
+                ? 'read_text'
+                : 'scene_perception',
     });
   }
 
   // Take / pick up / carry — container prop vs item from inside (VDM-005).
+  const isRestOrIdiomTake =
+    /\b(?:short\s*rest|long\s*rest)\b/i.test(trimmed) ||
+    /\btake(?:s|ing)?\s+(?:a\s+)?(?:short\s+rest|long\s+rest|rest|cover|look|breath|step|moment|seat|turn|aim)\b/i.test(
+      trimmed,
+    );
   const takeVerb =
-    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(trimmed);
+    !isRestOrIdiomTake &&
+    /\b(?:take|grab|pocket|stow|carry|lift|loot|retrieve|collect|pick(?:ing|ed)?\s+up)\b/i.test(
+      trimmed,
+    );
   const negatesTakeFrom =
     /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing))\b[\s\S]{0,40}\b(?:from|inside|contents?)\b/i.test(
       trimmed,
     ) ||
     /\bnot\s+taking\s+anything\s+from\b/i.test(trimmed);
-  if (
-    actionSequence.length === 0 &&
-    takeVerb &&
-    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|cypher|cipher|bell|lantern|lamp|ledger|scroll|note|journal|book|tome|map|seal|amulet|ring|coin|gem|relic|vial|potion|dagger|blade|rope|compass|medallion|badge|token|item|object|clue)\b/i.test(
-      trimmed,
-    )
-  ) {
+  if (actionSequence.length === 0 && takeVerb && !wantsOpenDoor && !wantsCloseDoor && !wantsUnlock) {
     const containerNoun =
-      /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(trimmed);
+      /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch|coffer|trunk|cabinet)\b/i.test(
+        trimmed,
+      );
     const takeFromContainer =
       containerNoun &&
       !negatesTakeFrom &&
-      /\b(?:take|grab|pocket|stow)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(
+      /\b(?:take|grab|pocket|stow|loot|retrieve)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch|coffer|trunk|cabinet)\b/i.test(
         trimmed,
       );
     const takeContainer =
@@ -1207,15 +1236,31 @@ export function parsePlayerDeclaration(
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'map_state_correction' });
   }
 
+  const unquotedActionText = trimmed.replace(/"[^"]*"|[“”][^“”]*[“”]/g, ' ').trim();
+  const isQuotedSpeechOrAsk =
+    /"[^"]+"|[“”][^“”]+[“”]/u.test(trimmed) &&
+    /\b(?:ask(?:s|ing)?|say(?:s|ing)?|speak(?:s|ing)?|talk(?:s|ing)?|tell(?:s|ing)?|whisper(?:s|ing)?|inquir(?:e|es|ing)|call(?:s|ing)?)\b/i.test(
+      unquotedActionText,
+    );
+  if (isQuotedSpeechOrAsk && !actionSequence.some((step) => step.kind === 'dialogue')) {
+    actionSequence.unshift({
+      kind: 'dialogue',
+      targetRef: addressee,
+      outcomeHint: null,
+    });
+  }
+
   const wantsMove =
-    (/(\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b|\breturns?\b|\bretreats?\b|\bhead\s+back\b|\bgo\s+back\b)/i.test(
-      trimmed,
+    !isQuotedSpeechOrAsk &&
+    (/(\bmoves?\b|\bwalks?\b|\bgoes?\b|\bsteps?\b|\bapproaches?\b|\benters?\b|\bheading\b|\bheads?\b|\bproceeds?\b|\bproceeding\b|\bfollows?\b|\bfollowing\b|\btraces?\b|\btracing\b|\bclimbs?\b|\bclimbing\b|\bdescends?\b|\bascends?\b|\bcross(?:es|ing)?\s+into\b|\bventur(?:e|es|ing)\s+into\b|\bleav(?:e|es|ing)\s+toward\b|\breturns?\b|\bretreats?\b|\bhead\s+back\b|\bgo\s+back\b)/i.test(
+      unquotedActionText,
     ) ||
       wantsBesideDoor) &&
     !wantsUnlock &&
     !wantsTrapOrHazardSearch &&
     !wantsInvestigation &&
     !wantsSearch &&
+    !wantsRead &&
     !wantsHide;
   if (wantsMove) {
     if (!actionSequence.some((step) => step.kind === 'move')) {
@@ -1290,6 +1335,69 @@ export function parsePlayerDeclaration(
     (constraints.forbidMove || understanding.speechAct === 'ooc_instruction')
   ) {
     bounded = [{ kind: 'inspect', targetRef: null, outcomeHint: 'stay_put' }];
+  }
+
+  // Semantic-to-primitive fallback (handles imperative phrasing, physical object manipulation,
+  // consumable usage, pursuit/transitions, and roleplay declarations).
+  if (bounded.length === 0 && trimmed.length > 0) {
+    const classified = classifyClause(trimmed);
+    switch (classified.kind) {
+      case 'open_door':
+        bounded = [{ kind: 'open_door', targetRef: null, outcomeHint: classified.outcomeHint }];
+        break;
+      case 'close_door':
+        bounded = [{ kind: 'close_door', targetRef: null, outcomeHint: classified.outcomeHint }];
+        break;
+      case 'unlock_door':
+        bounded = [{ kind: 'unlock_door', targetRef: null, outcomeHint: classified.outcomeHint }];
+        break;
+      case 'travel':
+      case 'move':
+        bounded = [{ kind: 'move', targetRef: null, outcomeHint: classified.outcomeHint }];
+        break;
+      case 'attack':
+        bounded = [{ kind: 'attack', targetRef: null, outcomeHint: null }];
+        break;
+      case 'cast':
+        bounded = [{ kind: 'cast', targetRef: null, outcomeHint: null }];
+        break;
+      case 'use_item':
+        bounded = [{ kind: 'use_item', targetRef: null, outcomeHint: classified.outcomeHint }];
+        break;
+      case 'rest':
+        bounded = [{ kind: 'rest', targetRef: null, outcomeHint: null }];
+        break;
+      case 'speak':
+        bounded = [{ kind: 'dialogue', targetRef: addressee, outcomeHint: null }];
+        break;
+      case 'take_item':
+        bounded = [{ kind: 'inspect', targetRef: null, outcomeHint: 'take_item' }];
+        break;
+      case 'interact':
+        bounded = [
+          {
+            kind: 'inspect',
+            targetRef: null,
+            outcomeHint: classified.outcomeHint ?? 'interact_object',
+          },
+        ];
+        break;
+      case 'inspect':
+      case 'narrate_only':
+      default:
+        bounded = [
+          {
+            kind: 'inspect',
+            targetRef: null,
+            outcomeHint: classified.outcomeHint ?? 'roleplay_action',
+          },
+        ];
+        break;
+    }
+    bounded = filterActionsByConstraints(bounded, constraints);
+    if (bounded.length === 0) {
+      bounded = [{ kind: 'inspect', targetRef: null, outcomeHint: 'roleplay_action' }];
+    }
   }
 
   actionSequence.length = 0;

@@ -82,6 +82,12 @@ export interface DirectorAddressResponse {
     readonly draftId: string;
     readonly summary: string;
     readonly proposedCommandType: IntentDraftCommandType;
+    readonly path?: readonly { readonly column: number; readonly row: number }[];
+    readonly edgeId?: string;
+    readonly objectId?: string;
+    readonly destinationHint?: string;
+    readonly returnToPrevious?: boolean;
+    readonly skillCheckIntent?: import('./intent-draft-contract.js').SkillCheckIntent;
   } | null;
   readonly manifest: AiPayloadManifest;
   readonly createdAt: string;

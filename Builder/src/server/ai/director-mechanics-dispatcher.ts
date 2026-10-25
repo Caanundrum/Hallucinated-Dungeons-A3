@@ -15,6 +15,10 @@ import type { DerivedCharacterSheet } from '../../shared/character-contract.js';
 import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type { DirectorLlmClient } from './gemini-director.js';
 import { pathBesideFeature } from '../table/scene-door-intent.js';
+import {
+  scoreFeatureLabelMatch,
+  stripFeatureStateSuffix,
+} from '../table/scene-commands.js';
 import type {
   IntentDraftCommandType,
   SkillCheckIntent,
@@ -34,6 +38,7 @@ export type DispatchActionType =
   | 'skill_check'
   | 'move_feature'
   | 'door_action'
+  | 'interact_object'
   | 'travel_scene'
   | 'dialogue'
   | 'narrate_only'
@@ -56,6 +61,10 @@ export interface DirectorDispatchOutput {
   readonly doorAction?: {
     readonly doorLabel: string;
     readonly operation: 'open' | 'close' | 'unlock';
+  } | undefined;
+  readonly interactObject?: {
+    readonly objectLabel: string;
+    readonly operation?: string | undefined;
   } | undefined;
   readonly travelScene?: {
     readonly destinationHint?: string | undefined;
@@ -89,16 +98,18 @@ Core D&D 5e Adjudication Rules:
    - If an NPC is addressed by name (e.g. "Warden Elira"), capture their name in addressee.
 3. Ability Checks (The DM's Call):
    - The DM calls for an ability check only when an action has uncertainty and a meaningful consequence of failure.
-   - Routine, safe actions (walking across an empty room, leaning on a counter, asking a friendly question, listening in a quiet room) do NOT require checks (use "move_feature", "dialogue", or "narrate_only").
+   - Routine, safe actions (walking across an empty room, leaning on a counter, asking a friendly question, listening in a quiet room, reading an open document or carried item label) do NOT require checks (use "move_feature", "dialogue", or "narrate_only").
    - Sneaking, slipping, or hiding past watchful NPCs or guards requires an active Dexterity (Stealth) check (default DC 12).
-   - Thoroughly searching furniture, passages, compartments, or floorboards for hidden items or clues requires an Intelligence (Investigation) check (default DC 13).
+   - Thoroughly searching furniture, passages, compartments, or floorboards for hidden items or clues, or deciphering coded markings, requires an Intelligence (Investigation) check (default DC 13).
    - For Investigation or Search checks, skillCheck.targetNoun MUST be the physical location, passage, doorway, or object being searched (e.g. "eastern passage", "ironbound chest", "service counter"), NEVER an absent person mentioned in phrases like "clues left by the courier".
    - Picking locks or disarming traps requires a Dexterity (Thieves' Tools) check.
-4. Taking / Picking Up Visible Portable Props:
-   - When a player declares taking, picking up, grabbing, pocketing, or stowing a visible portable item or container on the map (such as an iron key, bloodstained cypher, courier satchel, lantern, bell, scroll, or ledger), choose "take_prop" and set takeProp.propLabel to the item's label.
+4. Physical Manipulation of Scene Objects ("interact_object" vs "take_prop"):
+   - When a player declares opening, unsealing, unlatching, prying, pulling, pushing, flipping, turning, lighting, or extinguishing a scene prop, container, or mechanism (that is not a room doorway), choose "interact_object" and set interactObject.objectLabel to the exact object label (prioritizing the head noun when two objects share a leading adjective).
+   - When a player declares taking, picking up, grabbing, pocketing, or stowing a visible portable item or container on the map, choose "take_prop" and set takeProp.propLabel to the item's label.
    - Never choose "take_prop" for heavy room furniture (tables, counters, crates, chests, barrels).
-5. Scene Travel & Return:
+5. Scene Travel, Pursuit & Return:
    - Declarations like "I return up the cellar stairs to Drowned Crow Tavern", "I head back through the passage", or "I retreat to the previous room" trigger scene travel (use "travel_scene" with returnToPrevious: true).
+   - Declarations that follow a trail, tracks, or lead toward an exit/chamber, or head/proceed/climb into another room/passage, trigger scene travel (use "travel_scene" with destinationHint set to the target exit or chamber).
 6. Initiating Combat vs. Threatening Tone:
    - Determine the course of action from the full meaning of what the player describes rather than matching isolated words.
    - Carefully distinguish a threatening, aggressive, or intimidating tone in dialogue/posturing (e.g. warning an NPC, glaring, resting a hand on a hilt, making a verbal threat, demanding answers) from actually initiating combat. A threatening tone is NEVER combat — route it to "dialogue" or a Charisma (Intimidation) "skill_check" (or set combatAction.isThreatOnly = true).
@@ -110,7 +121,7 @@ Core D&D 5e Adjudication Rules:
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "actionType": "skill_check" | "move_feature" | "door_action" | "travel_scene" | "dialogue" | "narrate_only" | "combat_action" | "take_prop",
+  "actionType": "skill_check" | "move_feature" | "door_action" | "interact_object" | "travel_scene" | "dialogue" | "narrate_only" | "combat_action" | "take_prop" | "give_item",
   "reasoning": string,
   "skillCheck": {
     "skill": string,
@@ -124,6 +135,10 @@ Respond ONLY with a valid JSON object matching this schema:
   "doorAction": {
     "doorLabel": string,
     "operation": "open" | "close" | "unlock"
+  },
+  "interactObject": {
+    "objectLabel": string,
+    "operation": string
   },
   "travelScene": {
     "destinationHint": string,
@@ -281,6 +296,24 @@ export interface AppliedDispatchResult {
   readonly edgeId?: string | undefined;
   readonly objectId?: string | undefined;
   readonly skillCheckIntent?: SkillCheckIntent | undefined;
+  readonly deferDirectorNarrate?: boolean | undefined;
+}
+
+function findBestFeatureByHeadNoun(
+  features: MapBundleProjection['notableFeatures'],
+  targetQuery: string,
+): MapBundleProjection['notableFeatures'][number] | undefined {
+  const scored = features
+    .map((f) => ({ feature: f, match: scoreFeatureLabelMatch(targetQuery, f.label) }))
+    .filter((entry) => entry.match.score > 0)
+    .sort((a, b) => b.match.score - a.match.score);
+  const anyHeadOrSecondary = scored.some(
+    (s) => s.match.headNounMatch || s.match.secondaryNounMatches > 0,
+  );
+  const filtered = anyHeadOrSecondary
+    ? scored.filter((s) => s.match.headNounMatch || s.match.secondaryNounMatches > 0)
+    : scored;
+  return filtered[0]?.feature;
 }
 
 export function applyDirectorDispatchToMap(options: {
@@ -324,8 +357,9 @@ export function applyDirectorDispatchToMap(options: {
     );
     if (skillName !== 'stealth' && /\b(?:door|doorway|lock|keyhole)\b/i.test(target)) {
       const doorEdges = map.edges.filter((e) => e.kind === 'door');
-      const matchingContainer = map.notableFeatures.find(
-        (f) => f.objectKind === 'container' && targetLower.includes(f.label.toLowerCase().replace(/\s*\([^)]+\)\s*$/, '').trim()),
+      const matchingContainer = findBestFeatureByHeadNoun(
+        map.notableFeatures.filter((f) => f.objectKind === 'container'),
+        target,
       );
       if (doorEdges.length === 0 && matchingContainer === undefined) {
         return {
@@ -350,10 +384,7 @@ export function applyDirectorDispatchToMap(options: {
       }
     }
 
-    const matchedFeature = map.notableFeatures.find((f) => {
-      const base = f.label.toLowerCase().replace(/\s*\([^)]+\)\s*$/, '').trim();
-      return base.length > 0 && (targetLower.includes(base) || base.includes(targetLower));
-    });
+    const matchedFeature = findBestFeatureByHeadNoun(map.notableFeatures, target);
 
     const isDoorTarget =
       matchedDoorEdge !== undefined ||
@@ -407,6 +438,11 @@ export function applyDirectorDispatchToMap(options: {
               ? matchedFeature.breakDC
               : undefined) ?? dc;
 
+    const resolvedTargetLabel =
+      matchedFeature !== undefined
+        ? stripFeatureStateSuffix(matchedFeature.label) || target
+        : target;
+
     const skillCheckIntent: SkillCheckIntent = {
       skill: skillName,
       ability: abilityName,
@@ -418,17 +454,17 @@ export function applyDirectorDispatchToMap(options: {
         : matchedFeature !== undefined
           ? { targetId: matchedFeature.objectId }
           : {}),
-      targetLabel: target,
+      targetLabel: resolvedTargetLabel,
       onSuccessMutation,
     };
 
     let actionVerb = 'Ready to';
     if (skillName === 'stealth') {
-      actionVerb = `Ready to sneak past ${target} using cover`;
+      actionVerb = `Ready to sneak past ${resolvedTargetLabel} using cover`;
     } else if (skillName === 'investigation') {
-      actionVerb = `Ready to search ${target} for hidden clues`;
+      actionVerb = `Ready to search ${resolvedTargetLabel} for hidden clues`;
     } else {
-      actionVerb = `Ready to attempt ${dispatch.skillCheck.skill.toLowerCase().trim()} on ${target}`;
+      actionVerb = `Ready to attempt ${dispatch.skillCheck.skill.toLowerCase().trim()} on ${resolvedTargetLabel}`;
     }
 
     const summary = `${actionVerb} (${profLabel}; DC ${resolvedDc}). Confirm to commit this check.`;
@@ -442,11 +478,8 @@ export function applyDirectorDispatchToMap(options: {
   // 2. Feature / Prop Movement (e.g. Service Counter)
   if (dispatch.actionType === 'move_feature' && dispatch.moveFeature && ownToken) {
     const targetLabel = dispatch.moveFeature.featureLabel.toLowerCase().trim();
-    let targetFeature = map.notableFeatures.find((f) => {
-      const fl = f.label.toLowerCase();
-      return fl.includes(targetLabel) || targetLabel.includes(fl);
-    });
-    let displayLabel = targetFeature?.label ?? null;
+    let targetFeature = findBestFeatureByHeadNoun(map.notableFeatures, targetLabel);
+    let displayLabel = targetFeature ? stripFeatureStateSuffix(targetFeature.label) : null;
     if (
       targetFeature === undefined &&
       /\b(?:service\s+counter|counter|bar)\b/i.test(targetLabel)
@@ -529,6 +562,14 @@ export function applyDirectorDispatchToMap(options: {
         };
       }
     }
+    return {
+      proposedCommandType: 'table.sync',
+      deferDirectorNarrate: true,
+      summary:
+        addressee && addressee.length > 0
+          ? `Speak with ${addressee} — the Game Director answers in the play thread.`
+          : 'Speak — the Game Director answers in the play thread.',
+    };
   }
 
   // 5. Door Action (Open / Close Door)
@@ -550,10 +591,50 @@ export function applyDirectorDispatchToMap(options: {
     }
   }
 
+  // 5b. Interact with Scene Object (Head-Noun Priority & Bound objectId)
+  if (dispatch.actionType === 'interact_object' && dispatch.interactObject) {
+    const requested = dispatch.interactObject.objectLabel.trim();
+    const op = dispatch.interactObject.operation;
+    const interactableFeatures = map.notableFeatures.filter(
+      (f) => f.objectKind !== 'npc' && f.objectKind !== 'exit',
+    );
+    const matched = findBestFeatureByHeadNoun(interactableFeatures, requested);
+    if (matched !== undefined) {
+      const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
+      const alreadyOpen = /\(open\)\s*$/i.test(matched.label);
+      const alreadyClosed = /\(closed\)\s*$/i.test(matched.label);
+      if (
+        op === 'inspect' ||
+        (op === 'open' && alreadyOpen) ||
+        (op === 'close' && alreadyClosed)
+      ) {
+        return {
+          proposedCommandType: 'table.sync',
+          deferDirectorNarrate: true,
+          summary: `Examine the ${cleanLabel} — the Game Director describes what you find.`,
+        };
+      }
+      return {
+        proposedCommandType: 'table.interact_object',
+        objectId: matched.objectId,
+        summary: `Ready to ${op === 'open' ? 'open' : op === 'close' ? 'close' : 'interact with'} the ${cleanLabel}. Confirm to update its state on the table.`,
+      };
+    }
+    return {
+      proposedCommandType: 'table.sync',
+      deferDirectorNarrate: true,
+      summary: `Interact with ${requested || 'the object'} — the Game Director narrates what unfolds.`,
+    };
+  }
+
   // 6. Combat Initiation (only when genuinely initiating combat, never for a threatening tone)
   if (dispatch.actionType === 'combat_action') {
     if (dispatch.combatAction?.isThreatOnly === true) {
-      return null;
+      return {
+        proposedCommandType: 'table.sync',
+        deferDirectorNarrate: true,
+        summary: 'You act within the scene — the Game Director narrates what unfolds.',
+      };
     }
     const target = dispatch.combatAction?.targetLabel?.trim() ?? '';
     return {
@@ -575,22 +656,10 @@ export function applyDirectorDispatchToMap(options: {
             !HEAVY_FIXTURE_LABEL.test(f.label))),
     );
     const matched =
-      portableFeatures.find((f) => {
-        const fl = f.label.toLowerCase();
-        return (
-          fl.includes(requested) ||
-          requested.includes(fl) ||
-          requested
-            .split(/\s+/)
-            .some((w) => w.length > 2 && !/^(?:the|and|contested)$/i.test(w) && fl.includes(w))
-        );
-      }) ?? (portableFeatures.length === 1 ? portableFeatures[0] : undefined);
+      findBestFeatureByHeadNoun(portableFeatures, requested) ??
+      (portableFeatures.length === 1 ? portableFeatures[0] : undefined);
     if (matched) {
-      const cleanLabel =
-        matched.label
-          .replace(/\s*[—(].*$/, '')
-          .replace(/^contested\s+/i, '')
-          .trim() || matched.label.trim();
+      const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
       return {
         proposedCommandType: 'table.take_scene_prop',
         objectId: matched.objectId,
@@ -617,13 +686,22 @@ export function applyDirectorDispatchToMap(options: {
       const matchedItem =
         matchedNpc.heldItems.find((item) => item.toLowerCase().includes(itemFilter)) ??
         matchedNpc.heldItems[0]!;
-      const cleanNpc = matchedNpc.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+      const cleanNpc = stripFeatureStateSuffix(matchedNpc.label);
       return {
         proposedCommandType: 'table.transfer_npc_item',
         objectId: matchedNpc.objectId,
         summary: `Ready to receive ${matchedItem} from ${cleanNpc}. Confirm to stow it in your inventory.`,
       };
     }
+  }
+
+  // 9. Narrate Only (Sensory / Reading / Roleplay / In-World Flavored Action)
+  if (dispatch.actionType === 'narrate_only') {
+    return {
+      proposedCommandType: 'table.sync',
+      deferDirectorNarrate: true,
+      summary: 'You look and listen — the Game Director narrates what unfolds.',
+    };
   }
 
   return null;

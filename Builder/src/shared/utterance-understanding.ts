@@ -216,7 +216,7 @@ export function classifyUtteranceSpeechAct(text: string): UtteranceSpeechAct {
   const constraints = extractUtteranceConstraints(trimmed);
   const looksQuestion = utteranceLooksLikeQuestion(trimmed);
   const hasActionVerb =
-    /\b(?:i\s+)?(?:open|close|move|walk|step|attack|cast|search|inspect|examine|take|hide|wait|listen|draw|unlock|pick|rest|strike|hit|sneak|sneaks|sneaking|slip|slips|slipping|return|returns|returning|retreat|retreats)\b/i.test(
+    /\b(?:i\s+)?(?:open|close|move|walk|step|attack|cast|search|inspect|examine|take|hide|wait|listen|draw|unlock|pick|rest|strike|hit|sneak|sneaks|sneaking|slip|slips|slipping|return|returns|returning|retreat|retreats|read|reads|reading|peruse|peruses|perusing|decipher|deciphers|deciphering|translate|translates|translating|study|studies|studying|scan|scans|scanning|smell|smells|smelling|sniff|sniffs|sniffing|peer|peers|peering|check|checks|checking|feel|feels|feeling|touch|touches|touching|tap|taps|tapping|test|tests|testing|pry|pries|prying|force|forces|forcing|wedge|smash|smashes|break|breaks|pull|pulls|push|pushes|flip|flips|turn|turns|rotate|rotates|twist|twists|press|presses|light|lights|ignite|ignites|extinguish|extinguishes|douse|douses|grab|grabs|loot|loots|follow|follows|following|trace|traces|tracing|head|heads|heading|proceed|proceeds|proceeding|continue|continues|enter|enters|entering|leave|leaves|leaving|climb|climbs|climbing|cross|crosses|crossing|drink|drinks|drinking|quaff|quaffs|consume|consumes|use|uses|using|unseal|unseals|unlatch|unlatches)\b/i.test(
       trimmed,
     );
 
@@ -451,22 +451,248 @@ export function resolveConditionalDoorIntent(options: {
   return 'unchanged';
 }
 
-/** Player-facing fallback that always names a next step. */
+export type SemanticIntentPrimitive =
+  | 'inspect'
+  | 'interact'
+  | 'open_door'
+  | 'close_door'
+  | 'unlock_door'
+  | 'take_item'
+  | 'travel'
+  | 'move'
+  | 'speak'
+  | 'attack'
+  | 'cast'
+  | 'use_item'
+  | 'rest'
+  | 'narrate_only';
+
+export type SemanticIntentCategory =
+  | 'sensory_reading'
+  | 'physical_manipulation'
+  | 'directional_pursuit'
+  | 'dialogue'
+  | 'combat'
+  | 'roleplay_observation';
+
+export interface ClauseSemanticClassification {
+  readonly kind: SemanticIntentPrimitive;
+  readonly category: SemanticIntentCategory;
+  readonly outcomeHint: string | null;
+}
+
+/**
+ * Translates any natural-language player clause (first-person, third-person, or imperative)
+ * into a canonical engine primitive without keyword-list gatekeeping.
+ */
+export function classifyClause(text: string): ClauseSemanticClassification {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return {
+      kind: 'narrate_only',
+      category: 'roleplay_observation',
+      outcomeHint: 'roleplay_action',
+    };
+  }
+  const unquoted = trimmed.replace(/"[^"]*"|[“”][^“”]*[“”]/g, ' ').trim();
+  const clauseText = unquoted.length > 0 ? unquoted : trimmed;
+
+  // 1. Rest intent
+  if (/\b(?:short\s*rest|long\s*rest|camp\s+for\s+the\s+night)\b/i.test(trimmed)) {
+    return { kind: 'rest', category: 'roleplay_observation', outcomeHint: null };
+  }
+
+  // 2. Spellcasting intent
+  if (
+    !/\b(?:arcane\s+recovery|spell\s+slots?)\b/i.test(trimmed) &&
+    /\b(?:cast(?:s|ing)?|fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds|magic\s*missile|mage\s*hand|prestidigitation|detect\s*magic)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return { kind: 'cast', category: 'combat', outcomeHint: null };
+  }
+
+  // 3. Combat / attack intent (excluding negated combat)
+  const constraints = extractUtteranceConstraints(trimmed);
+  if (
+    !constraints.forbidAttack &&
+    !constraints.forbidCombat &&
+    !constraints.prepareWithoutAttack &&
+    /\b(?:attack(?:s|ing)?|strik(?:e|es|ing)|stab(?:s|bing)?|slash(?:es|ing)?|shoot(?:s|ing)?|cleav(?:e|es|ing)|lung(?:e|es|ing)\s+at)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return { kind: 'attack', category: 'combat', outcomeHint: null };
+  }
+
+  // 4. Dialogue / speech intent
+  if (
+    /\b(?:ask(?:s|ing)?|tell(?:s|ing)?|speak(?:s|ing)?\s+(?:to|with)|talk(?:s|ing)?\s+(?:to|with)|greet(?:s|ing)?|question(?:s|ing)?|inquir(?:e|es|ing)|address(?:es|ing)?|call(?:s|ing)?\s+out(?:\s+to)?|say(?:s|ing)?\s+to)\b/i.test(
+      clauseText,
+    )
+  ) {
+    return { kind: 'speak', category: 'dialogue', outcomeHint: null };
+  }
+
+  // 5. Consumable / item usage intent (e.g. "Drink healing draught", "Use healer's kit")
+  if (
+    /\b(?:drink(?:s|ing)?|quaff(?:s|ing)?|sip(?:s|ping)?|swallow(?:s|ing)?|consum(?:e|es|ing)|apply|applying|bandag(?:e|es|ing))\b/i.test(
+      trimmed,
+    ) ||
+    (/\buse(?:s|ing)?\b/i.test(trimmed) &&
+      /\b(?:draught|potion|elixir|vial|tonic|poultice|salve|kit|scroll|antitoxin|ration)\b/i.test(
+        trimmed,
+      ))
+  ) {
+    return {
+      kind: 'use_item',
+      category: 'physical_manipulation',
+      outcomeHint: 'consume_item',
+    };
+  }
+
+  // 6. Sensory / Cognitive / Reading Intent (prioritized before physical manipulation when reading/examining/listening)
+  const hasSensoryOrReadingVerb =
+    /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|study|studies|studying|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|listen(?:s|ing)?|eavesdrop(?:s|ping)?|smell(?:s|ing)?|sniff(?:s|ing)?|peer(?:s|ing)?|squint(?:s|ing)?|check(?:s|ing)?|examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+(?:at|into|over|around)|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|prob(?:e|es|ing)|survey(?:s|ing)?|observ(?:e|es|ing)|notic(?:e|es|ing)|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
+      trimmed,
+    );
+  const hasExplicitOpenOrManipulateVerb =
+    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|pull(?:s|ing)?|push(?:es|ing)?|flip(?:s|ping)?|turn(?:s|ing)?|rotat(?:e|es|ing)|twist(?:s|ing)?|light(?:s|ing)?|ignit(?:e|es|ing)|extinguish(?:es|ing)?|dous(?:e|es|ing)|tak(?:e|es|ing)|grab(?:s|bing)?|loot(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
+      trimmed,
+    );
+
+  if (hasSensoryOrReadingVerb && !hasExplicitOpenOrManipulateVerb) {
+    const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?|threshold)\b/i.test(trimmed);
+    const isReading =
+      /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|scan(?:s|ning)?)\b/i.test(
+        trimmed,
+      );
+    const isListening = /\b(?:listen(?:s|ing)?|eavesdrop(?:s|ping)?)\b/i.test(trimmed);
+    const isAnalytical =
+      /\b(?:decipher(?:s|ing)?|translat(?:e|es|ing)|investigat(?:e|es|ing)?|traps?|hidden|secret|concealed|mechanism)\b/i.test(
+        trimmed,
+      );
+    const isSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed);
+    return {
+      kind: 'inspect',
+      category: 'sensory_reading',
+      outcomeHint:
+        isListening && mentionsDoor
+          ? 'listen'
+          : isListening
+            ? 'sensory_sequence'
+            : isReading
+              ? 'read_text'
+              : isAnalytical
+                ? 'investigate_mark'
+                : isSearch
+                  ? 'active_search'
+                  : 'scene_perception',
+    };
+  }
+
+  // 7. Directional / Pursuit / Transition Intent ("follow the trail toward...", "head to...", "climb up to...")
+  const hasPursuitOrTransitionVerb =
+    /\b(?:follow(?:s|ing)?|trac(?:e|es|ing)|head(?:s|ing)?\s+(?:to|toward|into|through|back|up|down)|proceed(?:s|ing)?\s+(?:to|toward|into|through)|continu(?:e|es|ing)\s+(?:to|toward|into|through)|enter(?:s|ing)?|leav(?:e|es|ing)\s+(?:toward|for|through|into)|climb(?:s|ing)?\s+(?:up|down|to|into)|descend(?:s|ing)?|ascend(?:s|ing)?|cross(?:es|ing)?\s+(?:into|through|over)|ventur(?:e|es|ing)\s+(?:into|toward)|make(?:s|ing)?\s+(?:my|our|their|his|her)\s+way\s+(?:to|toward|into)|return(?:s|ing)?\s+(?:to|up|down|through)|retreat(?:s|ing)?\s+(?:to|into|through))\b/i.test(
+      trimmed,
+    );
+  if (hasPursuitOrTransitionVerb) {
+    const isTrailOrSceneLead =
+      /\b(?:follow(?:s|ing)?|trac(?:e|es|ing))\b[\s\S]{0,48}\b(?:trail|tracks?|marks?|lead|path|footprints?|spoor|route|signs?|passage|corridor|stairs?|archway|chamber|room|hall|door(?:way)?|exit)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(?:toward|into|to|through)\s+(?:the\s+)?[\w\s'-]{2,40}\b(?:chamber|room|hall|vault|sanctum|passage|corridor|stairs?|archway|tower|cellar|crypt|exit|wing|gallery|landing|bridge)\b/i.test(
+        trimmed,
+      );
+    return {
+      kind: isTrailOrSceneLead ? 'travel' : 'move',
+      category: 'directional_pursuit',
+      outcomeHint: isTrailOrSceneLead ? 'pursue_route' : null,
+    };
+  }
+
+  // 8. Physical Manipulation Intent
+  if (hasExplicitOpenOrManipulateVerb) {
+    const withoutOpenAdjective = trimmed.replace(
+      /\b(?:open(?:ed)?|sealed|closed|locked|unlocked)\s+(?:[a-z-]+\s+){0,2}(?:door|doorway|gate|entry(?:way)?|[a-z]+)\b/gi,
+      (match) => {
+        // Keep the verb if the match is at the very start of an imperative ("Open the ...")
+        if (/^(?:open|unseal|unlock|close)\b/i.test(match) && trimmed.startsWith(match)) {
+          return match;
+        }
+        return match.replace(/^(?:open(?:ed)?|sealed|closed|locked|unlocked)\s+/i, '');
+      },
+    );
+    const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenAdjective);
+    if (
+      /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|collect(?:s|ing)?|loot(?:s|ing)?|retriev(?:e|es|ing)|stow(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
+        trimmed,
+      )
+    ) {
+      return {
+        kind: 'take_item',
+        category: 'physical_manipulation',
+        outcomeHint: 'take_item',
+      };
+    }
+    if (mentionsDoor) {
+      if (/\b(?:close(?:s|d|ing)?|shut(?:s|ting)?)\b/i.test(trimmed)) {
+        return { kind: 'close_door', category: 'physical_manipulation', outcomeHint: null };
+      }
+      if (
+        /\b(?:unlock(?:s|ing)?|pick(?:s|ing)?\s+(?:the\s+)?lock|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
+          trimmed,
+        )
+      ) {
+        return { kind: 'unlock_door', category: 'physical_manipulation', outcomeHint: null };
+      }
+      return { kind: 'open_door', category: 'physical_manipulation', outcomeHint: null };
+    }
+    const isForceful =
+      /\b(?:pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|shatter(?:s|ing)?)\b/i.test(
+        trimmed,
+      );
+    return {
+      kind: 'interact',
+      category: 'physical_manipulation',
+      outcomeHint: isForceful ? 'force_manipulate' : 'interact_object',
+    };
+  }
+
+  // 9. Ordinary movement verbs
+  if (
+    !constraints.forbidMove &&
+    /\b(?:move(?:s|ing)?|walk(?:s|ing)?|step(?:s|ping)?|go(?:es|ing)?|approach(?:es|ing)?)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return { kind: 'move', category: 'directional_pursuit', outcomeHint: null };
+  }
+
+  // 10. In-world roleplay / flavored action fallback (imperative or declarative)
+  return {
+    kind: 'narrate_only',
+    category: 'roleplay_observation',
+    outcomeHint: 'roleplay_action',
+  };
+}
+
+/** Player-facing fallback that always names an in-world Director response without a 5-verb syntax lecture. */
 export function actionableDirectorFallback(understanding: UtteranceUnderstanding): string {
   if (understanding.wantsKnowledgeRecap) {
-    return 'Ask the Director for a short recap of what your character already knows, or declare one concrete action in the scene.';
+    return 'The Game Director recaps what your character already knows in the scene, or resolves your next concrete action.';
   }
   if (understanding.wantsContentsQuery) {
-    return 'Say which container you examine and whether you only look, search inside, or take something.';
+    return 'You peer inside to check its contents — the Game Director describes what is visible.';
   }
   if (understanding.speechAct === 'question' || understanding.speechAct === 'rules_query') {
-    return 'Ask the Director that question in Ask the Director, or rephrase as a single in-world action to resolve on the table.';
+    return 'The Game Director answers your question from established scene facts and table rules.';
   }
   if (understanding.constraints.prepareWithoutAttack) {
     return 'You can ready a weapon without opening combat. Confirm a ready/draw declaration, or name a foe only when you mean to attack.';
   }
   if (understanding.constraints.forbidMove) {
-    return 'Staying put. Say what you do from where you stand — look, listen, speak, or interact — without moving.';
+    return 'Staying put. The Game Director narrates what you perceive or do from where you stand without moving.';
   }
-  return 'Say one clear action your character attempts (move, open, inspect, speak, attack), or ask the Director a question in Ask the Director.';
+  return 'You act within the scene — the Game Director narrates what unfolds from your action.';
 }

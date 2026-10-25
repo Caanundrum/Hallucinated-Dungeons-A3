@@ -335,7 +335,9 @@ export function buildStoredSceneFromRoomBlueprint(
     if (alreadyExists) return;
     const lower = clean.toLowerCase();
     const objectKind: StoredSceneFeature['objectKind'] =
-      /\b(?:chest|crate|box|barrel|satchel|pack|bag|coffer|urn|ledger)\b/.test(lower)
+      /\b(?:chest|crate|box|barrel|satchel|pack|bag|coffer|urn|pouch|trunk|cabinet|casket|lockbox|reliquary)\b/.test(
+        lower,
+      )
         ? 'container'
         : /\b(?:lever|switch|winch|crank|valve|mechanism)\b/.test(lower)
           ? 'lever'
@@ -346,16 +348,17 @@ export function buildStoredSceneFromRoomBlueprint(
               : /\b(?:lantern|torch|sconce|brazier|lamp|candle)\b/.test(lower)
                 ? 'light'
                 : 'prop';
-    const state: StoredSceneFeature['state'] =
-      objectKind === 'container'
-        ? 'closed'
-        : objectKind === 'lever'
-          ? 'closed'
-          : objectKind === 'trap'
-            ? 'active'
-            : objectKind === 'light'
-              ? 'lit'
-              : 'intact';
+    const startsClosed =
+      objectKind === 'container' ||
+      objectKind === 'lever' ||
+      /\b(?:sealed|closed|locked|shuttered|latched|clasped|bound)\b/.test(lower);
+    const state: StoredSceneFeature['state'] = startsClosed
+      ? 'closed'
+      : objectKind === 'trap'
+        ? 'active'
+        : objectKind === 'light'
+          ? 'lit'
+          : 'intact';
     const referenceKind =
       objectKind === 'light'
         ? 'lighting'
@@ -1011,6 +1014,10 @@ export function resolveTravelDestinationTitle(
       return runtime.sceneInstances[lastId]!.title;
     }
   }
+  const matchedExit = matchPresentedExit(active.exits, destinationHint);
+  if (matchedExit !== null && matchedExit.destinationHint.trim().length > 0) {
+    return matchedExit.destinationHint.trim();
+  }
   return null;
 }
 
@@ -1275,7 +1282,284 @@ export function isPortableSceneContainer(feature: StoredSceneFeature): boolean {
   return false;
 }
 
-/** Match a portable container or quest prop for inventory take (courier satchel, pack, bag, pouch, key, cypher, bell, etc.). */
+const COMMON_MODIFIER_ADJECTIVES = new Set([
+  'sealed',
+  'locked',
+  'unlocked',
+  'closed',
+  'open',
+  'opened',
+  'broken',
+  'intact',
+  'lit',
+  'unlit',
+  'iron',
+  'ironbound',
+  'wooden',
+  'oak',
+  'oaken',
+  'stone',
+  'carved',
+  'brass',
+  'copper',
+  'silver',
+  'golden',
+  'gold',
+  'ancient',
+  'old',
+  'rusty',
+  'rusted',
+  'heavy',
+  'sturdy',
+  'small',
+  'large',
+  'dark',
+  'dim',
+  'bright',
+  'ornate',
+  'dusty',
+  'weathered',
+  'worn',
+  'cracked',
+  'folded',
+  'bloodstained',
+  'tattered',
+  'hidden',
+  'secret',
+  'contested',
+  'shuttered',
+  'latched',
+  'clasped',
+  'bound',
+]);
+
+export function stripFeatureStateSuffix(label: string): string {
+  return label
+    .replace(/\s*\([^)]+\)\s*$/, '')
+    .replace(/\s*—\s*(?:open|closed|locked|unlocked|intact|broken|lit|unlit|present|active|disarmed|spotted).*$/i, '')
+    .replace(/^contested\s+/i, '')
+    .trim();
+}
+
+export interface FeatureLabelMatchScore {
+  readonly score: number;
+  readonly exactPhraseMatch: boolean;
+  readonly headNounMatch: boolean;
+  readonly secondaryNounMatches: number;
+  readonly modifierMatches: number;
+  readonly baseLabel: string;
+  readonly headNoun: string;
+}
+
+/**
+ * Scores how well a player declaration matches a scene feature label using
+ * exact-phrase and head-noun priority over shared leading modifier adjectives.
+ */
+export function scoreFeatureLabelMatch(
+  declaration: string,
+  featureLabel: string,
+): FeatureLabelMatchScore {
+  const baseLabel = stripFeatureStateSuffix(featureLabel);
+  const baseLower = baseLabel.toLowerCase();
+  const tokens = baseLower
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !/^(?:the|a|an|of|in|on|at|to|for|with|and)$/i.test(w));
+
+  if (tokens.length === 0) {
+    return {
+      score: 0,
+      exactPhraseMatch: false,
+      headNounMatch: false,
+      secondaryNounMatches: 0,
+      modifierMatches: 0,
+      baseLabel,
+      headNoun: '',
+    };
+  }
+
+  const headNoun = tokens[tokens.length - 1]!;
+  const prefixTokens = tokens.slice(0, -1);
+  const exactPhraseMatch =
+    baseLower.length >= 3 &&
+    new RegExp(`\\b${baseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(declaration);
+  const headNounMatch = declarationMentionsLabelWord(declaration, headNoun);
+
+  let secondaryNounMatches = 0;
+  let modifierMatches = 0;
+  for (const tok of prefixTokens) {
+    if (!declarationMentionsLabelWord(declaration, tok)) {
+      continue;
+    }
+    if (COMMON_MODIFIER_ADJECTIVES.has(tok)) {
+      modifierMatches += 1;
+    } else {
+      secondaryNounMatches += 1;
+    }
+  }
+
+  // If a multi-word feature ONLY matched a leading modifier adjective (e.g., "sealed" or "iron")
+  // and its head noun is NOT in the declaration, check whether the declaration followed that
+  // modifier with a different noun ("sealed <other-noun>"). If so, this feature is a modifier
+  // collision and must score 0.
+  if (!exactPhraseMatch && !headNounMatch && secondaryNounMatches === 0 && modifierMatches > 0) {
+    const matchedModifiers = prefixTokens.filter(
+      (tok) => COMMON_MODIFIER_ADJECTIVES.has(tok) && declarationMentionsLabelWord(declaration, tok),
+    );
+    const followedByDifferentNoun = matchedModifiers.some((mod) => {
+      const escapedMod = mod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const m = new RegExp(`\\b${escapedMod}\\s+([a-z][a-z0-9'-]{2,})\\b`, 'i').exec(declaration);
+      if (m === null) {
+        return false;
+      }
+      const followingWord = m[1]!.toLowerCase();
+      return !tokens.includes(followingWord);
+    });
+    if (followedByDifferentNoun) {
+      return {
+        score: 0,
+        exactPhraseMatch: false,
+        headNounMatch: false,
+        secondaryNounMatches: 0,
+        modifierMatches: 0,
+        baseLabel,
+        headNoun,
+      };
+    }
+  }
+
+  let score = 0;
+  if (exactPhraseMatch) {
+    score += 100;
+  }
+  if (headNounMatch) {
+    score += 45;
+  }
+  score += secondaryNounMatches * 15;
+  score += modifierMatches * 3;
+
+  return {
+    score,
+    exactPhraseMatch,
+    headNounMatch,
+    secondaryNounMatches,
+    modifierMatches,
+    baseLabel,
+    headNoun,
+  };
+}
+
+export function rankInteractablesByDeclaration(
+  runtime: StoredMapRuntime,
+  declaration: string,
+): ReadonlyArray<{
+  readonly objectId: string;
+  readonly label: string;
+  readonly baseLabel: string;
+  readonly score: number;
+  readonly headNounMatch: boolean;
+}> {
+  const active = activeSceneInstance(runtime);
+  if (active === null) {
+    return [];
+  }
+  if (
+    declarationIsDoorOpenOrPassage(declaration) ||
+    declarationNegatesDoorOpen(declaration)
+  ) {
+    return [];
+  }
+  const text = declaration.toLowerCase();
+  const interactable = active.features.filter(
+    (feature) =>
+      feature.interactable &&
+      feature.objectKind !== 'npc' &&
+      feature.objectKind !== 'creature' &&
+      feature.objectKind !== 'exit',
+  );
+
+  const rawScores = interactable.map((feature) => {
+    const labelScore = scoreFeatureLabelMatch(declaration, feature.label);
+    return { feature, labelScore };
+  });
+
+  const anyHeadOrSecondaryNounMatched = rawScores.some(
+    (entry) => entry.labelScore.headNounMatch || entry.labelScore.secondaryNounMatches > 0,
+  );
+
+  const ranked = rawScores
+    .map(({ feature, labelScore }) => {
+      // If another feature in the scene matched its head/secondary noun, discard modifier-only matches.
+      if (
+        anyHeadOrSecondaryNounMatched &&
+        !labelScore.headNounMatch &&
+        labelScore.secondaryNounMatches === 0
+      ) {
+        return {
+          objectId: feature.objectId,
+          label: feature.label,
+          baseLabel: labelScore.baseLabel,
+          score: 0,
+          headNounMatch: false,
+        };
+      }
+
+      let score = labelScore.score;
+      const kind = feature.objectKind;
+
+      // Category-level bonuses only apply when no other feature matched by head noun,
+      // or when this feature itself matched a noun token.
+      if (!anyHeadOrSecondaryNounMatched) {
+        if (
+          kind === 'light' &&
+          /\b(extinguish|douse|snuff|put out|relight|ignite|kindle|light the|lamp|lantern|torch|cresset|hearth|sconce)\b/.test(
+            text,
+          )
+        ) {
+          score += 8;
+        } else if (
+          kind === 'lever' &&
+          /\b(lever|switch|winch|crank|valve|mechanism)\b/.test(text)
+        ) {
+          score += 8;
+        } else if (
+          (kind === 'hazard' || kind === 'trap') &&
+          /\b(trap|tripwire|bramble|hazard|disarm)\b/.test(text)
+        ) {
+          score += 8;
+        }
+      } else if (labelScore.headNounMatch || labelScore.secondaryNounMatches > 0) {
+        if (kind === 'light' && /\b(lamp|lantern|light|torch|cresset|hearth|sconce)\b/.test(text)) {
+          score += 4;
+        }
+        if (
+          kind === 'container' &&
+          /\b(crate|chest|box|counter|workbench|freight|satchel|coffer|trunk)\b/.test(text)
+        ) {
+          score += 4;
+        }
+        if (
+          kind === 'lever' &&
+          /\b(lever|switch|pull|flip|toggle|winch|crank|valve|mechanism)\b/.test(text)
+        ) {
+          score += 4;
+        }
+      }
+
+      return {
+        objectId: feature.objectId,
+        label: feature.label,
+        baseLabel: labelScore.baseLabel,
+        score,
+        headNounMatch: labelScore.headNounMatch,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked;
+}
+
 export function matchTakeContainerByDeclaration(
   runtime: StoredMapRuntime,
   declaration: string,
@@ -1288,41 +1572,17 @@ export function matchTakeContainerByDeclaration(
   if (portable.length === 0) {
     return null;
   }
-  const text = declaration.toLowerCase();
   const scored = portable
     .map((feature) => {
-      const label = feature.label.toLowerCase();
-      let score = 0;
-      const matchedWords = label
-        .replace(/[^a-z0-9\s'-]/g, ' ')
-        .split(/\s+/)
-        .filter(
-          (word) =>
-            word.length > 2 &&
-            !/^(?:the|and|for|with|open|closed|intact|lit|unlit|present|active|contested)$/i.test(
-              word,
-            ) &&
-            declarationMentionsLabelWord(declaration, word),
-        );
-      score += matchedWords.length * 3;
-      if (/\b(?:courier\s+satchel|satchel)\b/.test(text) && /\bsatchel\b/.test(label)) {
-        score += 4;
-      }
-      if (/\b(?:pack|bag|pouch)\b/.test(text) && /\b(?:pack|bag|pouch)\b/.test(label)) {
-        score += 3;
-      }
-      if (/\bkey\b/.test(text) && /\bkey\b/.test(label)) {
-        score += 4;
-      }
-      if (/\b(?:cypher|cipher)\b/.test(text) && /\b(?:cypher|cipher)\b/.test(label)) {
-        score += 4;
-      }
-      return { objectId: feature.objectId, score };
+      const match = scoreFeatureLabelMatch(declaration, feature.label);
+      return { objectId: feature.objectId, score: match.score, headNounMatch: match.headNounMatch };
     })
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
-  if (scored[0] !== undefined) {
-    return scored[0].objectId;
+  const anyHeadMatch = scored.some((s) => s.headNounMatch);
+  const filtered = anyHeadMatch ? scored.filter((s) => s.headNounMatch) : scored;
+  if (filtered[0] !== undefined) {
+    return filtered[0].objectId;
   }
   // Single portable container/prop + take language, but not when naming furniture crates/chests.
   const namesFurnitureContainer =
@@ -1367,11 +1627,7 @@ export function takeScenePropRuntime(options: {
   if (runtime === null) {
     throw new Error('OBJECT_NOT_FOUND');
   }
-  const rawBase =
-    feature.label
-      .replace(/\s*[—(].*$/, '')
-      .replace(/^contested\s+/i, '')
-      .trim() || feature.label.trim();
+  const rawBase = stripFeatureStateSuffix(feature.label) || feature.label.trim();
   const baseLabel =
     rawBase.length > 0 ? rawBase.charAt(0).toUpperCase() + rawBase.slice(1) : rawBase;
   return {
@@ -1387,83 +1643,6 @@ export function matchInteractableByDeclaration(
   runtime: StoredMapRuntime,
   declaration: string,
 ): string | null {
-  const active = activeSceneInstance(runtime);
-  if (active === null) {
-    return null;
-  }
-  // Doorway open/passage language is door authority — never fuzzy-match props
-  // (e.g. "wood" from "Wood pile" inside "wooden doorway").
-  if (
-    declarationIsDoorOpenOrPassage(declaration) ||
-    declarationNegatesDoorOpen(declaration)
-  ) {
-    return null;
-  }
-  const text = declaration.toLowerCase();
-  const interactable = active.features.filter((feature) => feature.interactable);
-  if (
-    /\b(extinguish|douse|snuff|put out|relight|ignite|kindle|light the|lamp|lantern|torch|cresset|hearth)\b/.test(
-      text,
-    )
-  ) {
-    const light = interactable.find((feature) => feature.objectKind === 'light');
-    if (light !== undefined) {
-      return light.objectId;
-    }
-  }
-  const scored = interactable
-    .map((feature) => {
-      const label = feature.label.toLowerCase();
-      const kind = feature.objectKind;
-      let score = 0;
-      // Word-boundary only — "wood" must not hit inside "wooden".
-      if (
-        label
-          .split(/\s+/)
-          .some((word) => declarationMentionsLabelWord(declaration, word))
-      ) {
-        score += 3;
-      }
-      if (kind === 'light' && /\b(lamp|lantern|light|torch|cresset|hearth|sconce)\b/.test(text)) {
-        score += 4;
-      }
-      if (
-        kind === 'cover' &&
-        /\b(rubble|bench|crate|debris|log|cart|wood|masonry|parapet|span|plinth)\b/.test(text) &&
-        !/\b(?:door|doorway|gate|entry(?:way)?)\b/.test(text)
-      ) {
-        score += 4;
-      }
-      if (
-        kind === 'container' &&
-        /\b(crate|chest|box|counter|workbench|freight)\b/.test(text)
-      ) {
-        score += 4;
-      }
-      if (
-        kind === 'lever' &&
-        /\b(lever|switch|pull|flip|toggle|winch|crank|valve|mechanism)\b/.test(text)
-      ) {
-        score += 4;
-      }
-      if (
-        (kind === 'hazard' || kind === 'trap') &&
-        /\b(trap|tripwire|bramble|hazard|disarm|stones)\b/.test(text)
-      ) {
-        score += 4;
-      }
-      if (
-        kind === 'prop' &&
-        /\b(shutter|window|niche|painter|skiff|rope|bridge|arrow-loop|loop)\b/.test(text)
-      ) {
-        score += 3;
-      }
-      if (/\b(extinguish|douse|light|break|smash|move|open|close|disarm|pull|flip|toggle)\b/.test(text)) {
-        score += 1;
-      }
-      return { objectId: feature.objectId, score };
-    })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
-  return scored[0]?.objectId ?? null;
+  const ranked = rankInteractablesByDeclaration(runtime, declaration);
+  return ranked[0]?.objectId ?? null;
 }

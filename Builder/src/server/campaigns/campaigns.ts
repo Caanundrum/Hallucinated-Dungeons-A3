@@ -71,6 +71,7 @@ import {
   resolveDirectorConfiguration,
 } from './director-catalog.js';
 import { buildCampaignBlueprint, sanitizeWotcProductIdentity } from './campaign-blueprint.js';
+import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
 import { resolveSceneArtUrl } from '../../shared/map-contract.js';
 import { resolveStarterPackForTemplate, seedCampaignMemoryForTemplate } from './campaign-memory.js';
 import { levelForExperience } from '../rules/engine/xp-progression.js';
@@ -674,12 +675,21 @@ export async function createCampaign(options: {
     ? options.campaignTone
     : 'heroic_fantasy';
 
+  let excludeCharacterNames: string[] = [];
+  try {
+    const vault = await readVault({ firestore, accountId });
+    excludeCharacterNames = vault.characters.map((c) => c.name);
+  } catch {
+    excludeCharacterNames = [];
+  }
+
   const baseBlueprint = buildCampaignBlueprint({
     summary: premiseText || summary,
     name,
     startLevel,
     targetEndLevel,
     campaignTone,
+    excludeCharacterNames,
   });
   const approvedObj =
     typeof options.approvedBlueprint === 'object' && options.approvedBlueprint !== null
@@ -691,6 +701,11 @@ export async function createCampaign(options: {
       ? {
           ...baseBlueprint,
           ...approvedObj,
+          namedNpcs: Array.isArray(approvedObj.namedNpcs)
+            ? approvedObj.namedNpcs.filter(
+                (npcName) => !matchesExcludedCharacterName(npcName, excludeCharacterNames),
+              )
+            : baseBlueprint.namedNpcs,
           premiseDigest:
             typeof approvedObj.premiseDigest === 'string'
               ? sanitizeWotcProductIdentity(approvedObj.premiseDigest)
@@ -714,6 +729,12 @@ export async function createCampaign(options: {
                           typeof r.summary === 'string'
                             ? sanitizeWotcProductIdentity(r.summary)
                             : '',
+                        npcs: Array.isArray(r.npcs)
+                          ? r.npcs.filter(
+                              (npc: { readonly name?: string }) =>
+                                !matchesExcludedCharacterName(npc.name ?? '', excludeCharacterNames),
+                            )
+                          : [],
                         xpAwardOnDiscovery:
                           typeof r.xpAwardOnDiscovery === 'number' &&
                           Number.isFinite(r.xpAwardOnDiscovery)
@@ -1456,6 +1477,13 @@ export async function createSeat(options: {
         ...(proj.exploredByAccount ?? {}),
         [accountId]: mergeExplored(proj.exploredByAccount?.[accountId], squares),
       };
+      const cleanedFeatures = (activeScene.features ?? []).filter(
+        (feature) =>
+          !(
+            (feature.objectKind === 'npc' || feature.referenceKind === 'npc') &&
+            matchesExcludedCharacterName(feature.label, [character.identity.name])
+          ),
+      );
       await projectionRef.set(
         {
           ...proj,
@@ -1465,6 +1493,7 @@ export async function createSeat(options: {
             ...(proj.sceneInstances ?? {}),
             [activeScene.sceneId]: {
               ...activeScene,
+              features: cleanedFeatures,
               tokenPositions: nextTokens,
               exploredByAccount: nextExplored,
             },

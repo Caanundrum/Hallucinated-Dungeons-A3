@@ -19,6 +19,7 @@ import {
   extractCampaignFactsFromPremise,
   mergeCampaignFacts,
 } from '../../shared/campaign-facts.js';
+import { COLLECTIONS } from '../persistence/firestore.js';
 import { loadCampaignMemory } from '../campaigns/campaign-memory.js';
 import { fetchRulesState } from '../rules/engine/rules-commands.js';
 import { fetchCampaignMap } from '../table/map-projection.js';
@@ -31,6 +32,8 @@ export interface DirectorVisibleContextPack {
   readonly includedIds: readonly string[];
   readonly sceneTitle: string;
   readonly directorPromptLead: string;
+  readonly recentChronicleSummaries?: readonly string[];
+  readonly campaignPremise?: string | null;
 }
 
 function truncate(text: string, max: number): string {
@@ -67,6 +70,11 @@ function formatSheet(sheet: DerivedCharacterSheet, characterName?: string): stri
       ? `Level 1 slots: ${sheet.spellcasting.level1SlotCount}; save DC ${sheet.spellcasting.spellSaveDc.value}`
       : null,
     `Features: ${sheet.features.map((feature) => feature.name).join(', ') || 'none'}`,
+    `Carried equipment: ${
+      sheet.equipment
+        .map((item) => (item.statsSummary ? `${item.name} (${item.statsSummary})` : item.name))
+        .join(', ') || 'none'
+    }`,
   ]
     .filter((line): line is string => line !== null)
     .join('\n');
@@ -165,14 +173,31 @@ export function formatMap(map: MapBundleProjection): string {
   ].join('\n');
 }
 
-function formatMemory(memory: CampaignMemoryProjection | null): string {
+function formatMemory(
+  memory: CampaignMemoryProjection | null,
+  excludedCharacterNames: readonly string[] = [],
+): string {
   if (memory === null) {
     return 'Campaign memory: unavailable.';
   }
+  const normalizedExcluded = new Set(
+    excludedCharacterNames
+      .flatMap((name) => {
+        const clean = name.trim().toLowerCase();
+        const first = clean.split(/\s+/)[0] ?? '';
+        return first.length >= 3 ? [clean, first] : [clean];
+      })
+      .filter((n) => n.length > 0),
+  );
   const chapter =
     memory.chapters.find((entry) => entry.chapterId === memory.currentChapterId) ?? null;
   const npcs = memory.npcs
-    .filter((npc) => npc.audience !== 'secret')
+    .filter((npc) => {
+      if (npc.audience === 'secret') return false;
+      const clean = npc.name.trim().toLowerCase();
+      const first = clean.split(/\s+/)[0] ?? '';
+      return !normalizedExcluded.has(clean) && !(first.length >= 3 && normalizedExcluded.has(first));
+    })
     .slice(0, 8)
     .map((npc) => `${npc.name} (${npc.role}): ${npc.motive}`)
     .join('\n');
@@ -219,6 +244,8 @@ export async function assembleDirectorVisibleContext(options: {
   let encounter: EncounterProjection | null = null;
   let memory: CampaignMemoryProjection | null = null;
   let recentEvents: readonly { readonly eventType: string; readonly summary?: string }[] = [];
+  let recentChronicleSummaries: string[] = [];
+  let campaignPremise: string | null = null;
 
   try {
     map = await fetchCampaignMap({ firestore, accountId, campaignId });
@@ -253,17 +280,65 @@ export async function assembleDirectorVisibleContext(options: {
     memory = null;
   }
 
+  try {
+    const campSnap = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+    if (campSnap.exists) {
+      const data = campSnap.data() ?? {};
+      if (typeof data.summary === 'string' && data.summary.trim().length > 0) {
+        campaignPremise = data.summary.trim();
+      }
+    }
+  } catch {
+    campaignPremise = null;
+  }
+
+  try {
+    const chronSnap = await firestore
+      .collection(COLLECTIONS.chronicleEntries)
+      .where('campaignId', '==', campaignId)
+      .get();
+    const sorted = chronSnap.docs
+      .map(
+        (doc) =>
+          doc.data() as {
+            body?: string;
+            summary?: string;
+            visibility?: string;
+            sequence?: number;
+          },
+      )
+      .filter(
+        (d) =>
+          d.visibility !== 'private' &&
+          typeof (d.body ?? d.summary) === 'string' &&
+          (d.body ?? d.summary)!.trim().length > 0,
+      )
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    recentChronicleSummaries = sorted.slice(-8).map((d) => (d.body ?? d.summary)!.trim());
+  } catch {
+    recentChronicleSummaries = [];
+  }
+
+  const seatedCharacterNames = (map?.tokens ?? [])
+    .filter((t) => Boolean(t.seatId))
+    .map((t) => t.label)
+    .filter((label): label is string => typeof label === 'string' && label.trim().length > 0);
+
   const blocks = [
     '=== AUTHORITATIVE VISIBLE GAME STATE (do not invent beyond this) ===',
+    campaignPremise ? `Campaign Premise: ${campaignPremise}` : null,
     map === null ? 'Scene: map unavailable for this viewer.' : formatMap(map),
-    formatMemory(memory),
+    formatMemory(memory, seatedCharacterNames),
     progression === null
       ? 'Active character sheet: no seated character for this viewer.'
       : formatSheet(progression.sheet),
     formatEncounter(encounter),
     formatRecentEvents(recentEvents, encounter?.status === 'active'),
+    recentChronicleSummaries.length > 0
+      ? `Recent Chronicle & Established Clues:\n${recentChronicleSummaries.map((line) => `- ${line}`).join('\n')}`
+      : null,
     '=== END STATE ===',
-  ];
+  ].filter((block): block is string => block !== null);
 
   const sceneTitle = map?.title ?? 'the table';
   const text = truncate(blocks.join('\n\n'), MAX_CONTEXT_CHARS);
@@ -272,7 +347,14 @@ export async function assembleDirectorVisibleContext(options: {
       ? 'The party is gathered at the table.'
       : `${map.sceneBanner} (${map.title})`;
 
-  return { text, includedIds, sceneTitle, directorPromptLead };
+  return {
+    text,
+    includedIds,
+    sceneTitle,
+    directorPromptLead,
+    recentChronicleSummaries,
+    campaignPremise,
+  };
 }
 
 export function buildPremiseFactCorpus(

@@ -40,7 +40,9 @@ import {
   createCampaign,
   draftCampaignBlueprint,
   fetchDirectorCatalog,
+  fetchVault,
 } from '../api.js';
+import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
@@ -73,7 +75,10 @@ const STOP_PROPER_WORDS = new Set([
 ]);
 
 /** Lightweight premise fact chips for create UX (generalized entity/location/quest extraction). */
-function premiseCommittedFactsMarkup(premise: string): string {
+function premiseCommittedFactsMarkup(
+  premise: string,
+  excludeCharacterNames: readonly string[] = [],
+): string {
   const text = premise.trim();
   if (text.length === 0) {
     return `<p class="record-meta" data-testid="premise-committed-facts-empty">Committed premise facts will appear here as you type.</p>`;
@@ -87,10 +92,17 @@ function premiseCommittedFactsMarkup(premise: string): string {
     if (locMatch?.[1]) {
       facts.push(`Location: ${locMatch[1]}`);
     }
+  } else {
+    const prepLocMatch = lower.match(
+      /\b(?:at|in|inside|beneath|under|within)\s+the\s+(?:[a-z]+\s+)?([a-z]{4,})\b/,
+    );
+    if (prepLocMatch?.[1]) {
+      facts.push(`Location: ${prepLocMatch[1]}`);
+    }
   }
-  if (/\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/.test(lower)) {
+  if (/\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual|investigate|mystery)\b/.test(lower)) {
     const questMatch = lower.match(
-      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual)\b/,
+      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual|investigate|mystery)\b/,
     );
     if (questMatch?.[1]) {
       facts.push(`Quest hook: ${questMatch[1]}`);
@@ -103,7 +115,8 @@ function premiseCommittedFactsMarkup(premise: string): string {
     if (
       candidate.length > 2 &&
       !STOP_PROPER_WORDS.has(candidate) &&
-      !seenProper.has(candidate.toLowerCase())
+      !seenProper.has(candidate.toLowerCase()) &&
+      !matchesExcludedCharacterName(candidate, excludeCharacterNames)
     ) {
       seenProper.add(candidate.toLowerCase());
       facts.push(`Named: ${candidate}`);
@@ -145,6 +158,8 @@ export function mountCampaignCreatePage(host: PageHost): void {
   let selectedOutlineIndex = 0;
   let outlineDraftsUsed = 0;
   let outlineApproved = false;
+  let outlinesStale = false;
+  let ownedCharacterNames: string[] = [];
   let draftedBlueprint: CampaignBlueprint | null = null;
   let draftingSkeleton = false;
   let forgingStatus: string | null = null;
@@ -447,9 +462,11 @@ export function mountCampaignCreatePage(host: PageHost): void {
         startLevel,
         targetEndLevel,
         campaignTone,
-        ...(options.useForgedBlueprint && draftedBlueprint !== null
+        ...(options.useForgedBlueprint && draftedBlueprint !== null && !outlinesStale
           ? { approvedBlueprint: draftedBlueprint, forgeWorldAssets: true }
-          : {}),
+          : options.useForgedBlueprint
+            ? { forgeWorldAssets: true }
+            : {}),
       });
       shell.announce(
         visibility === 'private'
@@ -570,7 +587,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
               The opening scene keeps your core location, quest hook, and named entities when you
               write them here. The Game Director inspires the rest — the premise is not quoted word-for-word.
             </span>
-            ${premiseCommittedFactsMarkup(summary)}
+            ${premiseCommittedFactsMarkup(summary, ownedCharacterNames)}
           </label>
           <div class="actions">
             <label class="field">
@@ -657,16 +674,25 @@ export function mountCampaignCreatePage(host: PageHost): void {
           </p>
           <div class="actions" style="margin-bottom:0.5rem;">
             <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
-              ${draftingSkeleton || busy || outlineDraftsUsed >= 1 ? 'disabled' : ''}>
+              ${draftingSkeleton || busy || (outlineDraftsUsed >= 1 && !outlinesStale) ? 'disabled' : ''}>
               ${
                 draftingSkeleton
                   ? 'Drafting 3 Rough Campaign Outlines…'
-                  : outlineDraftsUsed >= 1
-                    ? '3 Rough Campaign Outlines Generated (Pick 1 Below)'
-                    : 'Draft Rough Campaign Outline (Generates 3 Choices)'
+                  : outlinesStale
+                    ? 'Regenerate Rough Campaign Outlines (Premise Updated)'
+                    : outlineDraftsUsed >= 1
+                      ? '3 Rough Campaign Outlines Generated (Pick 1 Below)'
+                      : 'Draft Rough Campaign Outline (Generates 3 Choices)'
               }
             </button>
           </div>
+          ${
+            outlinesStale
+              ? `<p class="message notice" data-testid="outlines-stale-notice" style="margin-bottom:0.5rem;">
+                   Your premise or title changed since these outlines were drafted. Click <strong>Regenerate Rough Campaign Outlines</strong> above to refresh them.
+                 </p>`
+              : ''
+          }
           ${renderSkeletonPreview()}
         </section>
 
@@ -686,11 +712,29 @@ export function mountCampaignCreatePage(host: PageHost): void {
         }
       </div>`;
 
+    const markOutlinesStaleOnEdit = () => {
+      if (draftedBlueprint !== null || outlineDraftsUsed >= 1) {
+        outlineDraftsUsed = 0;
+        outlinesStale = true;
+        const draftBtn = container.querySelector<HTMLButtonElement>(
+          '[data-testid="draft-campaign-skeleton"]',
+        );
+        if (draftBtn !== null) {
+          draftBtn.disabled = false;
+          draftBtn.textContent = 'Regenerate Rough Campaign Outlines (Premise Updated)';
+        }
+      }
+    };
+
     const nameInput = container.querySelector<HTMLInputElement>('[data-testid="campaign-name"]');
-    nameInput?.addEventListener('input', () => {
+    const handleNameEdit = () => {
+      if (nameInput === null) return;
       name = nameInput.value;
+      markOutlinesStaleOnEdit();
       updateCreateControls();
-    });
+    };
+    nameInput?.addEventListener('input', handleNameEdit);
+    nameInput?.addEventListener('change', handleNameEdit);
 
     const updateFactsDom = () => {
       const factsHost = container.querySelector<HTMLElement>(
@@ -698,7 +742,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       );
       if (factsHost !== null) {
         const wrap = document.createElement('div');
-        wrap.innerHTML = premiseCommittedFactsMarkup(summary || premise);
+        wrap.innerHTML = premiseCommittedFactsMarkup(summary || premise, ownedCharacterNames);
         const next = wrap.firstElementChild;
         if (next !== null) {
           factsHost.replaceWith(next);
@@ -709,11 +753,16 @@ export function mountCampaignCreatePage(host: PageHost): void {
     const summaryInput = container.querySelector<HTMLTextAreaElement>(
       '[data-testid="campaign-summary"]',
     );
-    summaryInput?.addEventListener('input', () => {
+    const handleSummaryEdit = () => {
+      if (summaryInput === null) return;
       summary = summaryInput.value;
       premise = summaryInput.value;
+      markOutlinesStaleOnEdit();
       updateFactsDom();
-    });
+      updateCreateControls();
+    };
+    summaryInput?.addEventListener('input', handleSummaryEdit);
+    summaryInput?.addEventListener('change', handleSummaryEdit);
 
     const startLevelInput = container.querySelector<HTMLInputElement>(
       '[data-testid="campaign-start-level"]',
@@ -733,6 +782,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
           endLevelInput.min = String(startLevel);
           endLevelInput.value = String(targetEndLevel);
         }
+        markOutlinesStaleOnEdit();
         if (draftedBlueprint !== null) {
           draftedBlueprint = null;
           render();
@@ -745,6 +795,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
       if (Number.isFinite(parsed)) {
         targetEndLevel = Math.max(startLevel, Math.min(20, parsed));
         endLevelInput.value = String(targetEndLevel);
+        markOutlinesStaleOnEdit();
         if (draftedBlueprint !== null) {
           draftedBlueprint = null;
           render();
@@ -758,6 +809,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
     toneSelect?.addEventListener('change', () => {
       if (isCampaignTone(toneSelect.value)) {
         campaignTone = toneSelect.value;
+        markOutlinesStaleOnEdit();
         if (draftedBlueprint !== null) {
           draftedBlueprint = null;
           render();
@@ -797,6 +849,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
             draftedBlueprint = outlineOptions[0] ?? response.blueprint;
             outlineDraftsUsed = 1;
             outlineApproved = false;
+            outlinesStale = false;
           } catch (failure) {
             error =
               failure instanceof ApiFailure
@@ -947,7 +1000,12 @@ export function mountCampaignCreatePage(host: PageHost): void {
     error = null;
     render();
     try {
-      catalog = await fetchDirectorCatalog();
+      const [loadedCatalog, vault] = await Promise.all([
+        fetchDirectorCatalog(),
+        fetchVault().catch(() => null),
+      ]);
+      catalog = loadedCatalog;
+      ownedCharacterNames = vault !== null ? vault.characters.map((c) => c.name) : [];
     } catch (failure) {
       catalog = null;
       error =

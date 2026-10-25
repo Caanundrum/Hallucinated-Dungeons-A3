@@ -53,6 +53,7 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { CampaignNotFoundError } from './errors.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import { emptyMapRuntime } from '../table/map-runtime.js';
+import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
 import { classifyNpcRoles } from './campaign-blueprint.js';
 
 export class CampaignMemoryError extends Error {
@@ -395,22 +396,31 @@ function blankSession(campaignId: string, now: Date): StoredSessionState {
   };
 }
 
-function seedNpcsFromBlueprint(blueprint: CampaignBlueprint): CampaignNpcRecordProjection[] {
+function seedNpcsFromBlueprint(
+  blueprint: CampaignBlueprint,
+  excludeCharacterNames: readonly string[] = [],
+): CampaignNpcRecordProjection[] {
   const premiseText = [blueprint.premiseDigest, blueprint.questHook].filter(Boolean).join('\n\n');
-  const { missingNpcs, presentNpcs } = classifyNpcRoles(blueprint.namedNpcs ?? [], premiseText);
+  const filteredNamedNpcs = (blueprint.namedNpcs ?? []).filter(
+    (name) => !matchesExcludedCharacterName(name, excludeCharacterNames),
+  );
+  const { missingNpcs, presentNpcs } = classifyNpcRoles(filteredNamedNpcs, premiseText);
 
   const roomNpcRoles = new Map<string, string>();
   for (const m of blueprint.milestones ?? []) {
     for (const r of m.rooms ?? []) {
       for (const n of r.npcs ?? []) {
-        if (!roomNpcRoles.has(n.name.toLowerCase())) {
+        if (
+          !matchesExcludedCharacterName(n.name, excludeCharacterNames) &&
+          !roomNpcRoles.has(n.name.toLowerCase())
+        ) {
           roomNpcRoles.set(n.name.toLowerCase(), n.role);
         }
       }
     }
   }
 
-  return (blueprint.namedNpcs ?? []).map((name) => {
+  return filteredNamedNpcs.map((name) => {
     const lower = name.toLowerCase();
     const isMissing =
       missingNpcs.some((m) => m.toLowerCase() === lower) ||
@@ -650,11 +660,26 @@ export async function loadCampaignMemory(
   accountId: string,
 ): Promise<CampaignMemoryProjection> {
   await requireMembership(firestore, campaignId, accountId);
-  const [stored, session] = await Promise.all([
+  const [stored, session, seatSnap] = await Promise.all([
     loadStoredMemory(firestore, campaignId),
     loadStoredSession(firestore, campaignId),
+    firestore.collection(COLLECTIONS.campaignSeats).where('campaignId', '==', campaignId).get(),
   ]);
-  const reconciled = reconcileFinaleState(stored, new Date());
+  const seatedCharacterNames = seatSnap.docs
+    .map((doc) => (doc.data() as { characterName?: unknown }).characterName)
+    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+  let reconciled = reconcileFinaleState(stored, new Date());
+  if (
+    seatedCharacterNames.length > 0 &&
+    reconciled.npcs.some((npc) => matchesExcludedCharacterName(npc.name, seatedCharacterNames))
+  ) {
+    reconciled = {
+      ...reconciled,
+      npcs: reconciled.npcs.filter(
+        (npc) => !matchesExcludedCharacterName(npc.name, seatedCharacterNames),
+      ),
+    };
+  }
   if (reconciled !== stored) {
     await firestore.collection(COLLECTIONS.campaignMemory).doc(campaignId).set(reconciled);
   }

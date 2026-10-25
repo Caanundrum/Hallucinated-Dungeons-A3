@@ -2067,11 +2067,19 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         const campaignTone = isCampaignTone(payload.campaignTone)
           ? payload.campaignTone
           : 'heroic_fantasy';
+        let excludeCharacterNames: string[] = [];
+        try {
+          const vault = await readVault({ firestore, accountId });
+          excludeCharacterNames = vault.characters.map((c) => c.name);
+        } catch {
+          excludeCharacterNames = [];
+        }
         const outlines = await draftCampaignBlueprintOptionsWithAi({
           summary: premise,
           startLevel,
           targetEndLevel,
           campaignTone,
+          excludeCharacterNames,
         });
         const blueprint = outlines[0]!;
         sendJson(response, 200, { blueprint, outlines });

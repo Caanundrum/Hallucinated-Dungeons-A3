@@ -8,6 +8,7 @@ import type {
   CharacterProgressionProjection,
   EncounterProjection,
 } from '../../../shared/rules-combat-contract.js';
+import { describeEquipmentItemMechanics } from '../../../shared/container-contents.js';
 import { COLLECTIONS } from '../../persistence/firestore.js';
 import { deriveSheet } from '../character-rules.js';
 import {
@@ -185,8 +186,18 @@ export function applyProgressionTrackers(
           const baseMatch = sheet.equipment.find(
             (entry) => entry.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
           );
+          const fallbackMeta =
+            baseMatch?.statsSummary !== undefined
+              ? null
+              : describeEquipmentItemMechanics(item.name);
           return {
             ...(baseMatch ?? {}),
+            ...(fallbackMeta !== null
+              ? {
+                  itemKind: baseMatch?.itemKind ?? fallbackMeta.itemKind,
+                  statsSummary: fallbackMeta.statsSummary,
+                }
+              : {}),
             name: item.name,
             quantity: Math.max(0, item.quantity),
             ...(item.equipped === undefined ? {} : { equipped: item.equipped }),

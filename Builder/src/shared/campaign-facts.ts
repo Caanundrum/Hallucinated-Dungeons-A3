@@ -24,6 +24,56 @@ export interface CampaignFactAnswer {
   readonly playerFacingBody: string;
 }
 
+/**
+ * Returns true when a candidate proper name matches any excluded player character name
+ * (either full name or given/first name of length >= 3).
+ */
+export function matchesExcludedCharacterName(
+  candidate: string,
+  excludeCharacterNames?: readonly string[],
+): boolean {
+  if (!excludeCharacterNames || excludeCharacterNames.length === 0) {
+    return false;
+  }
+  const cleanCandidate = candidate
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, '')
+    .trim();
+  if (cleanCandidate.length === 0) {
+    return false;
+  }
+  const candidateTokens = cleanCandidate.split(/\s+/).filter((t) => t.length >= 3);
+  const candidateFirst = candidateTokens[0] ?? '';
+
+  for (const rawExcluded of excludeCharacterNames) {
+    const cleanExcluded = rawExcluded.trim().toLowerCase();
+    if (cleanExcluded.length === 0) {
+      continue;
+    }
+    if (cleanCandidate === cleanExcluded) {
+      return true;
+    }
+    const excludedTokens = cleanExcluded.split(/\s+/).filter((t) => t.length >= 3);
+    const excludedFirst = excludedTokens[0] ?? '';
+    if (excludedFirst.length >= 3 && cleanCandidate === excludedFirst) {
+      return true;
+    }
+    if (candidateFirst.length >= 3 && candidateFirst === cleanExcluded) {
+      return true;
+    }
+    if (
+      excludedFirst.length >= 3 &&
+      candidateFirst.length >= 3 &&
+      candidateFirst === excludedFirst &&
+      (candidateTokens.length === 1 || excludedTokens.length === 1)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Seed facts from adventure premise text — never invent beyond explicit cues. */
 export function extractCampaignFactsFromPremise(
   premise: string,

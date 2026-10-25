@@ -35,6 +35,7 @@ import {
   type UnresolvedChoice,
   type WizardStep,
 } from '../../shared/character-contract.js';
+import { describeEquipmentItemMechanics } from '../../shared/container-contents.js';
 import { randomInt } from 'node:crypto';
 import {
   ARMOR,
@@ -1473,9 +1474,11 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       };
     }
 
+    const gearMeta = describeEquipmentItemMechanics(entry.name);
     return {
       ...entry,
-      itemKind: 'gear' as const,
+      itemKind: gearMeta.itemKind,
+      statsSummary: gearMeta.statsSummary,
     };
   });
 

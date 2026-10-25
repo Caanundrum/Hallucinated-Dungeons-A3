@@ -938,18 +938,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (host === null) {
       return;
     }
-    // Align the latest beat's start into view so a tall card is not mid-clipped (VDM-001).
-    const lastBeat = host.querySelector<HTMLElement>('li:last-child');
-    if (lastBeat !== null) {
-      const pad = 4;
-      const hostRect = host.getBoundingClientRect();
-      const beatRect = lastBeat.getBoundingClientRect();
-      const beatTopInHost = beatRect.top - hostRect.top + host.scrollTop;
-      const targetTop = Math.max(0, beatTopInHost - pad);
-      const maxTop = Math.max(0, host.scrollHeight - host.clientHeight);
-      host.scrollTo({ top: Math.min(targetTop, maxTop), behavior });
+    const maxTop = Math.max(0, host.scrollHeight - host.clientHeight);
+    if (behavior === 'auto') {
+      host.scrollTop = host.scrollHeight;
     } else {
-      host.scrollTo({ top: host.scrollHeight, behavior });
+      host.scrollTo({ top: maxTop, behavior });
     }
     dmThreadFollowLatest = true;
     updateDmThreadJumpVisibility();
@@ -1011,6 +1004,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     bindDmPlayThreadScroll();
     bindActionDockScrollLock();
     if (dmThreadFollowLatest) {
+      scrollDmPlayThreadToLatest('auto');
       requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
     } else {
       updateDmThreadJumpVisibility();
@@ -2119,9 +2113,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
 
     if (activeTab === 'director_address') {
       return `
-        <div class="dock-pane" data-testid="director-address-pane">
+        <div class="dock-pane director-address-single-scroll" data-testid="director-address-pane">
+          <div class="director-address-header">
+            <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
+            <button type="button" class="table-secondary-action" data-testid="collapse-director-address">Collapse</button>
+          </div>
           <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
-          <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
           ${
             askDmConsulting
               ? `<p class="ask-dm-shimmer" data-testid="ask-dm-consulting" aria-live="polite">Consulting ancient lore…</p>`
@@ -4273,6 +4270,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     bindDmPlayThreadScroll();
     bindActionDockScrollLock();
     if (dmThreadFollowLatest) {
+      scrollDmPlayThreadToLatest('auto');
       requestAnimationFrame(() => scrollDmPlayThreadToLatest('auto'));
     } else {
       updateDmThreadJumpVisibility();
@@ -5109,9 +5107,23 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         } finally {
           askDmConsulting = false;
           render();
+          requestAnimationFrame(() => {
+            const pane = container.querySelector<HTMLElement>('[data-testid="director-address-pane"]');
+            if (pane !== null) {
+              pane.scrollTop = pane.scrollHeight;
+            }
+          });
         }
       })();
     };
+
+    root
+      .querySelector<HTMLButtonElement>('[data-testid="collapse-director-address"]')
+      ?.addEventListener('click', () => {
+        commsRailCollapsed = true;
+        render();
+        shell.announce('Director consult drawer collapsed.');
+      });
 
     directorInput?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
@@ -5395,6 +5407,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           }
           const declaration = playerActionDraft.trim();
           lastSubmittedDeclaration = declaration;
+          dmThreadFollowLatest = true;
           busy = true;
           error = null;
           playerActionDraft = '';

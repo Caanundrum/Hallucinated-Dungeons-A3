@@ -492,14 +492,13 @@ export async function resolveDeterministicIntentFallback(
         text,
       ));
   const emptyClarifyYieldsToGateway =
-    authority.disposition === 'clarify' &&
-    authority.actionSequence.length === 0 &&
+    (authority.disposition === 'clarify' || authority.disposition === 'director_narrate_only') &&
     structured.addressee === null &&
     !structured.isInterrogative &&
     hasDedicatedGatewayBranch;
   // Clarify / narrate-only must never fall into the keyword combat/travel cascade.
   const authorityShortCircuit =
-    authority.disposition === 'director_narrate_only' ||
+    (authority.disposition === 'director_narrate_only' && !emptyClarifyYieldsToGateway) ||
     authority.disposition === 'reject_world_authorship' ||
     (authority.disposition === 'clarify' && !emptyClarifyYieldsToGateway) ||
     utterance.speechAct === 'question' ||
@@ -558,7 +557,7 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head (out|outside|onward|for|to|down)|go (outside|outdoors|onward|through|to|toward|down)|step (out|outside)|climb|descend|ascend|walk down|take the (?:stairs|trail|path|road)|down the stairs|up the stairs|enter the|follow the|make for|seek|higher ground)\b/i.test(
+    (/\b(leave|travel|head\s+(?:out|outside|onward|for|to|down|up|toward|towards|into)|go\s+(?:outside|outdoors|onward|through|to|toward|towards|down|up|into)|step\s+(?:out|outside)|climb|descend|ascend|walk\s+down|take\s+the\s+(?:stairs|trail|path|road)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:trail|tracks|path|marks?|lead|footprints?|way|corridor|passage|tunnel|hall|stairs?)|proceed\s+(?:to|toward|towards|into)|continue\s+(?:to|toward|towards|into|onward)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
       text,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
@@ -567,7 +566,11 @@ export async function resolveDeterministicIntentFallback(
   ) {
     proposedCommandType = 'table.travel_scene';
     destinationHint = rawText.slice(0, 200);
-    let summaryDestination = 'the next area';
+    const towardMatch = /\b(?:toward|towards|into|to)\s+(?:the\s+)?([a-z][\w\s'-]{2,40}?)(?:[.?!]|$)/i.exec(
+      rawText,
+    );
+    let summaryDestination =
+      towardMatch?.[1]?.trim() ? `the ${towardMatch[1].trim()}` : 'the next area';
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
       const { resolveTravelDestinationTitle } = await import('../table/scene-commands.js');
@@ -583,31 +586,87 @@ export async function resolveDeterministicIntentFallback(
     summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
     sceneLoopResolved = true;
   } else if (
-    // Door open/passage belongs to door authority — never steal into prop interact
-    // via "open the" + fuzzy label match (wood ⊂ wooden → Wood pile).
+    !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
+      text,
+    ) &&
     !declarationIsDoorOpenOrPassage(rawText) &&
     !declarationNegatesDoorOpen(rawText) &&
     !mentionsDoorIntent(text) &&
-    /\b(extinguish|douse|snuff|relight|ignite|kindle|break|smash|kick|shatter|move the|clear the|open the|close the|disarm)\b/i.test(
+    /\b(extinguish|douse|snuff|relight|ignite|kindle|light\s+the|break|smash|kick|shatter|move\s+the|clear\s+the|open|unseal|unlatch|unlock|pry|force|wedge|close|shut|disarm|pull|push|flip|toggle|turn|rotate|twist|press|activate|read|peruse)\b/i.test(
       text,
-    )
+    ) &&
+    !/\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text)
   ) {
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
-      const { matchInteractableByDeclaration } = await import('../table/scene-commands.js');
+      const {
+        rankInteractablesByDeclaration,
+        stripFeatureStateSuffix,
+      } = await import('../table/scene-commands.js');
+      const { nextObjectState } = await import('../table/scene-composition.js');
       const runtime = await loadMapRuntime(options.firestore, options.campaignId);
-      const matched = matchInteractableByDeclaration(runtime, text);
-      if (matched !== null) {
-        proposedCommandType = 'table.interact_object';
-        objectId = matched;
-        summary =
-          'Ready to change that object on the scene. Confirm to update its state on the table.';
+      const ranked = rankInteractablesByDeclaration(runtime, rawText);
+      const active =
+        runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+          ? runtime.sceneInstances?.[runtime.activeSceneId]
+          : undefined;
+      const isReadOnlyVerb =
+        /\b(read|peruse|decipher|translate|scan)\b/i.test(text) &&
+        !/\b(open|unseal|unlatch|pry|force|break|smash|close|shut)\b/i.test(text);
+
+      if (ranked.length >= 2 && ranked[0]!.score === ranked[1]!.score) {
+        proposedCommandType = 'table.sync';
+        deferDirectorNarrate = false;
+        summary = `Do you want to examine the ${ranked[0]!.baseLabel.toLowerCase()} or the ${ranked[1]!.baseLabel.toLowerCase()}?`;
         sceneLoopResolved = true;
+      } else if (ranked[0] !== undefined) {
+        const matched = ranked[0].objectId;
+        const feature = active?.features.find((entry) => entry.objectId === matched);
+        const cleanLabel = feature ? stripFeatureStateSuffix(feature.label) : ranked[0].baseLabel;
+        const nextState =
+          feature !== undefined
+            ? nextObjectState(feature, isReadOnlyVerb && feature.state === 'closed' ? `open ${rawText}` : rawText)
+            : null;
+
+        if (feature !== undefined && isReadOnlyVerb && feature.state !== 'closed') {
+          // Reading an already-open or stateless prop routes to in-character Director narration.
+          proposedCommandType = 'table.sync';
+          objectId = matched;
+          deferDirectorNarrate = true;
+          summary = authority.summary;
+          sceneLoopResolved = true;
+        } else if (feature !== undefined && nextState !== null && nextState === feature.state) {
+          // Already in target state (e.g. "open the <item>" when it is already open).
+          proposedCommandType = 'table.sync';
+          objectId = matched;
+          deferDirectorNarrate = true;
+          summary = `The ${cleanLabel.toLowerCase()} is already ${feature.state}. Confirm to examine its contents closely.`;
+          sceneLoopResolved = true;
+        } else if (feature !== undefined && nextState !== null) {
+          proposedCommandType = 'table.interact_object';
+          objectId = matched;
+          const actionVerb =
+            nextState === 'open'
+              ? 'open'
+              : nextState === 'closed'
+                ? 'close'
+                : 'interact with';
+          summary = `Ready to ${actionVerb} the ${cleanLabel}. Confirm to update its state on the table.`;
+          sceneLoopResolved = true;
+        } else if (!isReadOnlyVerb) {
+          proposedCommandType = 'table.interact_object';
+          objectId = matched;
+          summary = `Ready to interact with the ${cleanLabel}. Confirm to update its state on the table.`;
+          sceneLoopResolved = true;
+        }
       }
     } catch {
       sceneLoopResolved = false;
     }
   } else if (
+    !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
+      text,
+    ) &&
     !declarationIsDoorOpenOrPassage(rawText) &&
     !declarationNegatesDoorOpen(rawText) &&
     !mentionsDoorIntent(text) &&

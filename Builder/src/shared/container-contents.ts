@@ -140,3 +140,181 @@ export function labelLooksPortableSceneProp(label: string): boolean {
   }
   return PORTABLE_CONTAINER_LABEL.test(label) || PORTABLE_SCENE_PROP_LABEL.test(label);
 }
+
+/**
+ * Provides concise mechanical/functional summaries for non-weapon, non-armor
+ * adventuring gear, consumables, tools, light sources, and recovered loot items.
+ */
+export function describeEquipmentItemMechanics(itemName: string): {
+  readonly itemKind: 'gear';
+  readonly statsSummary: string;
+} {
+  const lower = itemName.trim().toLowerCase();
+
+  if (/\b(?:healing\s+draught|potion\s+of\s+healing|healing\s+potion|healing\s+elixir|restorative\s+draught)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Consumable · Bonus Action or Action: Restores 2d4 + 2 Hit Points when consumed',
+    };
+  }
+  if (/\b(?:greater\s+healing|potion\s+of\s+greater\s+healing)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Consumable · Bonus Action or Action: Restores 4d4 + 4 Hit Points when consumed',
+    };
+  }
+  if (/\b(?:antitoxin|antidote)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Consumable · Bonus Action: Grants Advantage on saving throws against Poison for 1 hour',
+    };
+  }
+  if (/\b(?:potion|draught|elixir|philter|tonic|vial)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Consumable · Alchemical preparation; inspect label or drink as an Action/Bonus Action',
+    };
+  }
+  if (/\b(?:bullseye\s+lantern)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Light source · Casts bright light in a 60-ft cone and dim light for an additional 60 ft',
+    };
+  }
+  if (/\b(?:lantern|lamp)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Light source · Casts bright light in a 30-ft radius and dim light for an additional 30 ft',
+    };
+  }
+  if (/\b(?:torch)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Light source · Casts bright light in a 20-ft radius and dim light for 20 ft (1 hour; 1 Fire damage on hit)',
+    };
+  }
+  if (/\b(?:candle)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Light source · Casts bright light in a 5-ft radius and dim light for an additional 5 ft (1 hour)',
+    };
+  }
+  if (/\b(?:thieves['’]?\s+tools|lockpick)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Tools · Utilize Action (DC 15 Dexterity check) to pick a lock or disarm a trap',
+    };
+  }
+  if (/\b(?:healer['’]?\s+kit|bandages)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Kit · Utilize Action: Stabilize a dying creature at 0 HP without a Medicine check (10 uses)',
+    };
+  }
+  if (/\b(?:crowbar)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Tool · Grants Advantage on Strength checks where the crowbar’s leverage can be applied',
+    };
+  }
+  if (/\b(?:rope)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Adventuring gear · 50 feet of sturdy cordage for climbing, binding, or rigging (DC 17 Athletics to burst)',
+    };
+  }
+  if (/\b(?:grappling\s+hook)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Adventuring gear · Utilize Action (DC 13 Acrobatics) to anchor a rope to a ledge or battlement',
+    };
+  }
+  if (/\b(?:rations)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Consumable · 1 day of preserved trail food required to avoid malnutrition during travel',
+    };
+  }
+  if (/\b(?:waterskin|canteen)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Adventuring gear · Holds 4 pints of water or liquid refreshment',
+    };
+  }
+  if (/\b(?:tinderbox)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Adventuring gear · Bonus Action to light a candle, torch, or lantern; 1 minute to light a campfire',
+    };
+  }
+  if (/\b(?:holy\s+symbol|amulet|reliquary|emblem)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Spellcasting focus · Channels divine magic and Channel Divinity when held or worn visibly',
+    };
+  }
+  if (/\b(?:arcane\s+focus|wand|staff|rod|orb|crystal)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Spellcasting focus · Channels arcane spellcasting without non-costly Material components',
+    };
+  }
+  if (/\b(?:druidic\s+focus|sprig\s+of\s+mistletoe|totem|wooden\s+staff|yew\s+wand)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Spellcasting focus · Channels primal Druid or Ranger spellcasting',
+    };
+  }
+  if (/\b(?:spellbook)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Arcane tome · Contains your recorded Wizard spells and rituals for preparation and study',
+    };
+  }
+  if (/\b(?:component\s+pouch)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Spellcasting gear · Holds all common Material components for spellcasting',
+    };
+  }
+  if (/\b(?:lute|flute|lyre|horn|drum|viol|bagpipes|dulcimer|shawm|pan\s+flute)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Musical instrument · Can be played for Performance checks or used as a Bardic Spellcasting Focus',
+    };
+  }
+  if (/\b(?:key)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Key · Unlocks its matching locked door, chest, or warded mechanism without a check',
+    };
+  }
+  if (/\b(?:scroll|tome|book|journal|letter|note|map|manifest|writ|contract|parchment|document|papers|cypher|cipher)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Document · Contains written records, clues, or inscriptions that can be read or studied',
+    };
+  }
+  if (/\b(?:pack|satchel|bag|pouch|backpack|chest|case|quiver)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Container · Stows and organizes carried adventuring supplies and recovered items',
+    };
+  }
+  if (/\b(?:relic|seal|signet|medallion|badge|token|ring|brooch|locket|pendant|crown|gem|coin|gold)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Valuable / Token · Significant item, insignia, or treasure carried in your inventory',
+    };
+  }
+  if (/\b(?:tools|supplies|kit|utensils|instruments)\b/.test(lower)) {
+    return {
+      itemKind: 'gear',
+      statsSummary: 'Tools · Specialized implements used for ability checks (add Proficiency Bonus if proficient)',
+    };
+  }
+  return {
+    itemKind: 'gear',
+    statsSummary: 'Adventuring gear · Utility item carried in your pack for exploration and field use',
+  };
+}

@@ -1788,15 +1788,13 @@ export function nextObjectState(
     return 'taken';
   }
   if (feature.objectKind === 'cover' || feature.objectKind === 'container') {
-    if (/\b(break|smash|kick|shatter|destroy)\b/.test(text)) return 'broken';
-    if (/\b(open|unlock|loot|search)\b/.test(text) && feature.objectKind === 'container') {
-      return feature.state === 'closed' || feature.state === 'unlocked' || feature.state === 'locked'
-        ? 'open'
-        : feature.state === 'open'
-          ? 'closed'
-          : 'open';
+    if (/\b(break|smash|kick|shatter|destroy|pry|force)\b/.test(text)) {
+      return feature.objectKind === 'container' ? 'open' : 'broken';
     }
-    if (/\b(close|shut)\b/.test(text) && feature.objectKind === 'container') return 'closed';
+    if (/\b(open|unseal|unlatch|unlock|loot|search)\b/.test(text) && feature.objectKind === 'container') {
+      return 'open';
+    }
+    if (/\b(close|shut|seal)\b/.test(text) && feature.objectKind === 'container') return 'closed';
     if (/\b(move|clear|shift|push)\b/.test(text)) return 'broken';
     // Cover: never treat bare "open" as smash/break.
     if (feature.objectKind === 'cover' && /\bopen\b/.test(text)) {
@@ -1809,9 +1807,12 @@ export function nextObjectState(
     return feature.state === 'active' ? 'disarmed' : 'active';
   }
   if (feature.objectKind === 'prop') {
-    if (/\b(break|smash|cut|sever|collapse)\b/.test(text)) return 'broken';
-    if (/\b(open)\b/.test(text)) return 'open';
-    if (/\b(close|shut)\b/.test(text)) return 'closed';
+    if (/\b(break|smash|cut|sever|collapse|shatter)\b/.test(text)) return 'broken';
+    if (/\b(open|unseal|unlatch|pry|force|unlock)\b/.test(text)) return 'open';
+    if (/\b(close|shut|seal)\b/.test(text)) return 'closed';
+    if (/\b(pull|flip|toggle|turn|rotate|twist|press|activate)\b/.test(text)) {
+      return feature.state === 'open' || feature.state === 'active' ? 'closed' : 'open';
+    }
     if (feature.state === 'closed') return 'open';
     if (feature.state === 'open') return 'closed';
     if (feature.state === 'intact') return 'broken';

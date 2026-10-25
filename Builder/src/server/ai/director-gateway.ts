@@ -135,8 +135,18 @@ function exitRouteLabel(label: string): string {
   return shortFeatureLabel(trimmed);
 }
 
+export interface SceneSurveyOptions {
+  readonly playerText?: string;
+  readonly recentChronicleSummaries?: readonly string[];
+  readonly campaignPremise?: string | null;
+  readonly carriedEquipment?: readonly { readonly name: string; readonly statsSummary?: string }[];
+}
+
 /** Player-facing fiction from the validated map — never invents unseen locations. */
-export function buildSceneSurveyNarration(map: MapBundleProjection): string {
+export function buildSceneSurveyNarration(
+  map: MapBundleProjection,
+  options?: SceneSurveyOptions,
+): string {
   const title = map.title.trim() || 'this chamber';
   const banner = map.sceneBanner
     .trim()
@@ -197,6 +207,113 @@ export function buildSceneSurveyNarration(map: MapBundleProjection): string {
       : `Nearby you notice ${propFeatures
           .map((feature) => naturalFeaturePhrase(feature.label))
           .join('; ')}.`;
+
+  const playerText = (options?.playerText ?? '').trim();
+  const lowerAsk = playerText.toLowerCase();
+  const isBroadSurvey =
+    playerText.length === 0 ||
+    /\b(?:look\s+around|peer\s+around|survey|what\s+do\s+i\s+see|surroundings|the\s+room|the\s+chamber|this\s+room)\b/i.test(
+      lowerAsk,
+    );
+
+  if (!isBroadSurvey) {
+    // 1. Check if the player is inspecting or reading a carried inventory item.
+    const carried = options?.carriedEquipment ?? [];
+    const matchedEquip = carried.find((item) => {
+      const cleanName = item.name.toLowerCase().trim();
+      if (cleanName.length >= 3 && lowerAsk.includes(cleanName)) return true;
+      const tokens = cleanName.split(/[^a-z0-9']+/).filter((w) => w.length >= 4);
+      const headNoun = tokens[tokens.length - 1];
+      return headNoun !== undefined && new RegExp(`\\b${headNoun}s?\\b`, 'i').test(lowerAsk);
+    });
+    const matchesSceneFeatureHeadNoun = propFeatures.some((feature) => {
+      const cleanFeature = shortFeatureLabel(feature.label)
+        .replace(/\s*\([^)]+\)\s*$/, '')
+        .toLowerCase()
+        .trim();
+      const tokens = cleanFeature.split(/[^a-z0-9']+/).filter((w) => w.length >= 3);
+      const head = tokens[tokens.length - 1];
+      return head !== undefined && new RegExp(`\\b${head}s?\\b`, 'i').test(lowerAsk);
+    });
+    if (matchedEquip !== undefined && !matchesSceneFeatureHeadNoun) {
+      const effectClause = matchedEquip.statsSummary
+        ? ` Its practical function is unmistakable (${matchedEquip.statsSummary}).`
+        : '';
+      return `You examine the ${matchedEquip.name.toLowerCase()} from your pack in the light of ${title}.${effectClause} ${doorLine}`
+        .replace(/\.\.+/g, '.')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    // 2. Check if the player is inspecting a specific visible scene feature (e.g., reading an open prop).
+    const matchedSceneFeature = propFeatures.find((feature) => {
+      const cleanFeature = shortFeatureLabel(feature.label)
+        .replace(/\s*\([^)]+\)\s*$/, '')
+        .toLowerCase()
+        .trim();
+      const tokens = cleanFeature.split(/[^a-z0-9']+/).filter((w) => w.length >= 3);
+      const head = tokens[tokens.length - 1];
+      return head !== undefined && new RegExp(`\\b${head}s?\\b`, 'i').test(lowerAsk);
+    });
+
+    // 3. Check if the player is examining a clue or detail established in recent Chronicle dialogue or Campaign Premise.
+    const askNouns = lowerAsk
+      .replace(
+        /\b(?:i|my|character|the|a|an|at|on|in|to|toward|towards|near|by|around|from|with|for|of|and|carefully|closely|quietly|inspect|examine|check|look|study|read|peruse|decipher|scan|trace|search|peer|listen)\b/g,
+        ' ',
+      )
+      .split(/[^a-z0-9']+/)
+      .filter((w) => w.length >= 4);
+
+    const corpusLines = [
+      ...(options?.recentChronicleSummaries ?? []),
+      ...(options?.campaignPremise ? [options.campaignPremise] : []),
+      ...(banner.length > 0 ? [banner] : []),
+    ];
+    const matchedClueLine =
+      askNouns.length > 0
+        ? corpusLines
+            .slice()
+            .reverse()
+            .find((line) => {
+              const lowerLine = line.toLowerCase();
+              if (lowerLine === lowerAsk) return false;
+              return askNouns.some((noun) => lowerLine.includes(noun));
+            })
+        : undefined;
+
+    if (matchedSceneFeature !== undefined) {
+      const cleanName = shortFeatureLabel(matchedSceneFeature.label)
+        .replace(/\s*\([^)]+\)\s*$/, '')
+        .trim();
+      const contentsNote =
+        Array.isArray(matchedSceneFeature.contents) && matchedSceneFeature.contents.length > 0
+          ? ` Inside you make out ${matchedSceneFeature.contents.join(', ')}.`
+          : matchedClueLine
+            ? ` Its details align with what is known here: ${matchedClueLine}`
+            : ` Its markings and wear point toward the active leads in ${title}.`;
+      return `You focus closely on the ${cleanName.toLowerCase()} in ${title}.${contentsNote} ${doorLine}`
+        .replace(/\.\.+/g, '.')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    if (matchedClueLine !== undefined) {
+      const targetSubject = askNouns.slice(0, 3).join(' ');
+      return `Inspecting the ${targetSubject} closely in ${title}, you confirm the signs established here: ${matchedClueLine} ${doorLine}`
+        .replace(/\.\.+/g, '.')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    // 4. Grounded improvisation for plausible room scenery or low-impact in-world action.
+    const subjectPhrase = askNouns.length > 0 ? `the ${askNouns.slice(0, 3).join(' ')}` : `your surroundings`;
+    return `In ${title}, you attend to ${subjectPhrase} carefully. While it yields no hidden lock or separate compartment of its own, its weathered state fits the chamber's atmosphere. ${doorLine} ${featureLine}`
+      .replace(/\.\.+/g, '.')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   const lead = banner.length > 0 ? banner.replace(/\.\s*$/, '') : `You take in ${title}`;
   return `${lead}. ${doorLine} ${featureLine}`.replace(/\.\.+/g, '.').replace(/\s{2,}/g, ' ').trim();
 }
@@ -430,7 +547,11 @@ async function resolveDirectorNarrateOutput(options: {
   if (
     inspectHint === 'scene_perception' ||
     inspectHint === 'sensory_sequence' ||
-    inspectHint === 'unlocked door'
+    inspectHint === 'unlocked door' ||
+    inspectHint === 'read_text' ||
+    (!isDialogue &&
+      inspectHint === null &&
+      options.authority.disposition === 'director_narrate_only')
   ) {
     if (map !== null) {
       try {
@@ -455,18 +576,46 @@ async function resolveDirectorNarrateOutput(options: {
       } catch {
         // Scene chronicle is best-effort; narration still returns.
       }
-      const deterministic = buildSceneSurveyNarration(map);
-      // Prefer live Director prose grounded in the visible-state pack; never invent unseen places.
+      const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+      let contextPack: Awaited<ReturnType<typeof assembleDirectorVisibleContext>> | null = null;
+      let carriedEquipment: readonly { readonly name: string; readonly statsSummary?: string }[] = [];
       try {
-        const director = await loadDirectorConfig(options.firestore, options.campaignId);
-        const context = await assembleDirectorVisibleContext({
+        contextPack = await assembleDirectorVisibleContext({
           firestore: options.firestore,
           campaignId: options.campaignId,
           accountId: options.accountId,
         });
-        const playerAsk = (options.playerText ?? options.structured.rawText ?? '').trim();
+      } catch {
+        contextPack = null;
+      }
+      try {
+        const rules = await fetchRulesState({
+          firestore: options.firestore,
+          accountId: options.accountId,
+          campaignId: options.campaignId,
+        });
+        carriedEquipment = rules.progression?.sheet.equipment ?? [];
+      } catch {
+        carriedEquipment = [];
+      }
+      const deterministic = buildSceneSurveyNarration(map, {
+        playerText: playerAsk,
+        recentChronicleSummaries: contextPack?.recentChronicleSummaries ?? [],
+        campaignPremise: contextPack?.campaignPremise ?? null,
+        carriedEquipment,
+      });
+      // Prefer live Director prose grounded in the visible-state pack; never invent unseen places.
+      try {
+        const director = await loadDirectorConfig(options.firestore, options.campaignId);
+        const context =
+          contextPack ??
+          (await assembleDirectorVisibleContext({
+            firestore: options.firestore,
+            campaignId: options.campaignId,
+            accountId: options.accountId,
+          }));
         const liveBody = await tryLiveProse(options, {
-          systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is surveying what they can perceive right now. Answer in 2–4 vivid sentences using ONLY the Visible state pack and the deterministic survey seed. Name doors, props, and atmosphere already established. Do not invent rooms, NPCs, loot, traps, or routes that are not listed. Do not ask what they are trying to do. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
+          systemInstruction: `${directorVoiceBlock(director.identity, director.personality)} ${DIRECTOR_SAFETY_RULES} The player is examining a detail, reading an item, or taking an in-world action right now. Answer in 2–4 vivid sentences using the Visible state pack, Campaign Premise, Recent Chronicle clues, and the deterministic survey seed. Affirm and coherently describe any clues, markings, trails, or details established in the Campaign Premise or Recent Chronicle dialogue, or any carried equipment item in their pack. If the player examines plausible room scenery/furnishings visible in the chamber's atmosphere, describe it naturally and tie your observation back to the room's active leads and visible routes — never flatly deny visible scenery with "There is no <object> laid out before you". Do not invent unlisted mechanical locks, keys, rooms, NPCs, or lootable item grants. Do not ask what they are trying to do or lecture on command syntax. Do not propose a Confirmable command. Never cite internal grid coordinates.`,
           userPrompt: `${context.text}\n\nDeterministic survey seed (must stay consistent):\n${deterministic}\n\nPlayer declaration:\n${playerAsk || 'I look around.'}`,
         });
         if (liveBody !== null && liveBody.trim().length > 0) {
@@ -1294,6 +1443,30 @@ export async function interpretNaturalLanguageIntent(options: {
         if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
         if (applied.destinationHint) destinationHint = applied.destinationHint;
         if (applied.skillCheckIntent !== undefined) skillCheckIntent = applied.skillCheckIntent;
+        if (applied.deferDirectorNarrate) {
+          const structured = parsePlayerDeclaration(rawText, {
+            knownNpcs,
+            presentNpcs: presentNpcRecords,
+          });
+          const authority = resolveIntentAuthority(structured);
+          summary = scrubPlayerFacingIntentCopy(
+            await resolveDirectorNarrateOutput({
+              firestore: options.firestore,
+              campaignId: options.campaignId,
+              accountId: options.accountId,
+              authority,
+              structured,
+              playerText: rawText,
+              ...(options.environmentClass !== undefined
+                ? { environmentClass: options.environmentClass }
+                : {}),
+              ...(options.firebaseProjectId !== undefined
+                ? { firebaseProjectId: options.firebaseProjectId }
+                : {}),
+              ...(options.llm !== undefined ? { llm: options.llm } : {}),
+            }),
+          );
+        }
         aiDispatched = true;
       }
     }
@@ -1534,10 +1707,38 @@ export async function answerDirectorAddress(options: {
       authority.proposedCommandType !== null &&
       authority.proposedCommandType !== 'table.sync'
     ) {
+      let boundFields: Partial<NonNullable<DirectorAddressResponse['actionDraftSuggestion']>> = {};
+      try {
+        const resolved = await resolveDeterministicIntentFallback({
+          firestore: options.firestore,
+          campaignId: options.campaignId,
+          accountId: options.accountId,
+          rawText: text,
+          encounter: null,
+          seatedSheet: null,
+          rulesProgressionClassLabel: null,
+          knownNpcs: [],
+        });
+        boundFields = {
+          ...(resolved.path !== undefined ? { path: resolved.path } : {}),
+          ...(resolved.edgeId !== undefined ? { edgeId: resolved.edgeId } : {}),
+          ...(resolved.objectId !== undefined ? { objectId: resolved.objectId } : {}),
+          ...(resolved.destinationHint !== undefined
+            ? { destinationHint: resolved.destinationHint }
+            : {}),
+          ...(resolved.returnToPrevious === true ? { returnToPrevious: true } : {}),
+          ...(resolved.skillCheckIntent !== undefined
+            ? { skillCheckIntent: resolved.skillCheckIntent }
+            : {}),
+        };
+      } catch {
+        boundFields = {};
+      }
       actionDraftSuggestion = {
         draftId: randomUUID(),
         summary: authority.summary,
         proposedCommandType: authority.proposedCommandType,
+        ...boundFields,
       };
     }
   }

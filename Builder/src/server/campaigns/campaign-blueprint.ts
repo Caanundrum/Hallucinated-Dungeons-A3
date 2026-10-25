@@ -20,6 +20,7 @@ import type {
   CampaignTone,
 } from '../../shared/campaign-contract.js';
 import { CAMPAIGN_TONE_LABELS, isCampaignTone } from '../../shared/campaign-contract.js';
+import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
 import { XP_THRESHOLDS } from '../rules/engine/xp-progression.js';
 
 export type PremiseLocationKind =
@@ -127,6 +128,13 @@ export function detectQuestHook(
   if (/\b(murder|assassin|poison)\b/.test(text)) {
     return 'a violent death that cannot stay quiet';
   }
+  const investigateMatch =
+    /\b(?:investigate|uncover|discover|solve|stop|prevent|find\s+out|learn|trace)\s+((?:why|how|what|who|where|the\s+[a-z][a-z'’-]+)\s+[^.!?;,\n]{6,80})/i.exec(
+      premise,
+    );
+  if (investigateMatch?.[1]) {
+    return investigateMatch[1].trim().replace(/\s+/g, ' ');
+  }
   return null;
 }
 
@@ -152,6 +160,8 @@ const PLACE_NOUNS = new Set([
   'theatre', 'vault', 'estate', 'farm', 'lodge', 'port', 'shrine', 'garrison', 'barracks',
   'asylum', 'observatory', 'foundry', 'passage', 'passageway', 'sanctum', 'chamber', 'alcove',
   'corridor', 'hallway', 'reach', 'threshold', 'antechamber', 'loft', 'cellar', 'gallery', 'dais',
+  'spire', 'sanctuary', 'archive', 'archives', 'bastion', 'outpost', 'laboratory', 'monastery',
+  'ruins', 'ruin', 'dungeons', 'dungeon', 'quarry', 'beacon', 'lighthouse', 'chasm', 'grotto',
 ]);
 
 export const ARCHITECTURAL_ROOM_NOUNS = new Set([
@@ -176,7 +186,9 @@ const NPC_TITLES = new Set([
   'rogue', 'guard', 'guardsman', 'hunter', 'herbalist', 'alchemist', 'scholar', 'apprentice',
   'artisan', 'baker', 'butcher', 'brewer', 'fisherman', 'farmer', 'weaver', 'miner', 'clerk',
   'messenger', 'guide', 'detective', 'investigator', 'informant', 'witness', 'contact', 'agent',
-  'envoy', 'patron',
+  'envoy', 'patron', 'archivist', 'keeper', 'chronicler', 'astronomer', 'astrologer', 'steward',
+  'castellan', 'watchman', 'sentinel', 'sage', 'curate', 'preceptor', 'caretaker', 'overseer',
+  'bailiff', 'reeve', 'guildmaster', 'quartermaster',
 ]);
 
 const PLACE_PREPOSITIONS = new Set([
@@ -342,8 +354,9 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     }
   }
 
-  // Also extract names explicitly noted as waiting or present
-  const waitingNamePattern = /\b([A-Z][A-Za-z'’-]+)\s+(?:is\s+waiting|waits|greets|meets)\b/g;
+  // Also extract names explicitly noted as waiting, present, or commissioning/asking the party
+  const waitingNamePattern =
+    /\b([A-Z][A-Za-z'’-]{2,})\s+(?:is\s+waiting|waits|greets|meets|asks|hires|warns|summons|implores|begs|tells|urges|sends|commissioned|employs|awaits)\b/g;
   for (const match of premise.matchAll(waitingNamePattern)) {
     const candidateName = match[1]!;
     if (
@@ -387,8 +400,14 @@ function extractModifierPhrases(
   return found;
 }
 
-export function extractPremiseEntities(premise: string): PremiseEntities {
-  const { npcs, places } = extractProperNames(premise);
+export function extractPremiseEntities(
+  premise: string,
+  options?: { readonly excludeCharacterNames?: readonly string[] },
+): PremiseEntities {
+  const { npcs: rawNpcs, places } = extractProperNames(premise);
+  const npcs = rawNpcs.filter(
+    (name) => !matchesExcludedCharacterName(name, options?.excludeCharacterNames),
+  );
   const exits = extractModifierPhrases(premise, EXIT_NOUNS, true);
   const exitsLower = exits.map((e) => e.toLowerCase());
 
@@ -405,7 +424,7 @@ export function extractPremiseEntities(premise: string): PremiseEntities {
     }
 
     const settlementPattern =
-      /\b([A-Z][A-Za-z'’-]+)\s+(?:village|town|city|settlement|mill|sawmill|inn|tavern|keep|crypt)\b/g;
+      /\b([A-Z][A-Za-z'’-]+)\s+(?:village|town|city|settlement|mill|sawmill|inn|tavern|keep|crypt|tower|spire|archive|sanctuary|bastion|outpost)\b/g;
     for (const match of premise.matchAll(settlementPattern)) {
       const candidate = match[1]!;
       const lower = candidate.toLowerCase();
@@ -417,6 +436,22 @@ export function extractPremiseEntities(premise: string): PremiseEntities {
       ) {
         pushUnique(places, candidate);
       }
+    }
+  }
+
+  // Also extract prepositional setting phrases ("at the <adj> <place>", "in the <place>") when no proper place matched yet
+  const prepPlacePattern =
+    /\b(?:at|in|inside|into|within|beneath|beyond|near|around)\s+the\s+((?:[a-z][a-z'’-]+\s+){0,2}[a-z][a-z'’-]+)\b/gi;
+  for (const match of premise.matchAll(prepPlacePattern)) {
+    const phrase = match[1]!.trim();
+    const words = phrase.toLowerCase().split(/\s+/);
+    const last = words[words.length - 1] ?? '';
+    if (
+      PLACE_NOUNS.has(last) &&
+      !ARCHITECTURAL_ROOM_NOUNS.has(last) &&
+      !exitsLower.some((exit) => exit.includes(phrase.toLowerCase()))
+    ) {
+      pushUnique(places, capitalizeLabel(phrase));
     }
   }
 
@@ -563,6 +598,7 @@ export interface BuildCampaignBlueprintOptions {
   readonly startLevel?: number;
   readonly targetEndLevel?: number;
   readonly campaignTone?: CampaignTone;
+  readonly excludeCharacterNames?: readonly string[];
 }
 
 function pickSrdMonsterForLevel(level: number): {
@@ -588,7 +624,7 @@ const EVOCATIVE_FALLBACK_NPCS = [
   'Elora the Herbalist',
   'Duran the Smith',
   'Maeve the Tracker',
-  'Kaelen the Informant',
+  'Soren the Informant',
   'Old Greta',
 ];
 
@@ -686,7 +722,7 @@ function buildMilestoneGraph(options: {
     );
     const fallbackPlaceBase =
       options.campaignName.trim().length > 0 &&
-      !/^untitled\s+campaign$/i.test(options.campaignName.trim())
+      !/^(?:campaign|untitled\s+campaign)$/i.test(options.campaignName.trim())
         ? options.campaignName.trim()
         : capitalizeLabel(options.setting.replace(/^(?:a|an)\s+/i, 'The '));
     const placeName = sanitizeWotcProductIdentity(
@@ -1062,8 +1098,13 @@ export function buildCampaignBlueprint(
       ? premiseOrOptions.campaignTone
       : 'heroic_fantasy';
 
+  const excludeCharacterNames =
+    typeof premiseOrOptions !== 'string' ? premiseOrOptions.excludeCharacterNames : undefined;
   const premise = sanitizeWotcProductIdentity(rawSummary);
-  const entities = extractPremiseEntities(premise);
+  const entities = extractPremiseEntities(
+    premise,
+    excludeCharacterNames !== undefined ? { excludeCharacterNames } : undefined,
+  );
   const location = detectPremiseLocation(premise);
   const questHook = detectQuestHook(premise, entities.props);
   const hints = actTemplateHints(location.locationKind);
@@ -1071,16 +1112,16 @@ export function buildCampaignBlueprint(
   const { presentNpcs, missingNpcs, antagonistNpcs } = classifyNpcRoles(entities.npcs, premise);
   const antagonist = antagonistNpcs[0] ?? null;
   const npc = presentNpcs[0] ?? null;
-  const place = entities.places[0] ?? null;
+  const cleanTitle =
+    campaignName.trim().length > 0 && !/^(?:campaign|untitled\s+campaign)$/i.test(campaignName.trim())
+      ? sanitizeWotcProductIdentity(campaignName.trim())
+      : null;
+  const place = entities.places[0] ?? cleanTitle ?? null;
   const exit = entities.exits[0] ?? null;
   const firstProp = entities.props[0] ?? null;
   const secondProp = entities.props[1] ?? null;
   const setting = place ?? location.locationPhrase ?? 'the frontier';
   const exitPhrase = exit !== null ? `the ${exit}` : 'the outer threshold';
-  const cleanTitle =
-    campaignName.trim().length > 0 && !/^(?:campaign|untitled\s+campaign)$/i.test(campaignName.trim())
-      ? sanitizeWotcProductIdentity(campaignName.trim())
-      : null;
   const hook =
     questHook ??
     (antagonist !== null
@@ -1091,7 +1132,7 @@ export function buildCampaignBlueprint(
           : `the mystery of the ${firstProp}`
         : cleanTitle !== null
           ? `the crisis behind ${cleanTitle}`
-          : `the looming shadow over ${setting}`);
+          : `the gathering crisis`);
 
   const FALLBACK_OPENING_TEMPLATES = [
     'starter_stone_chamber',
@@ -1202,7 +1243,9 @@ export function buildCampaignBlueprint(
     targetEndLevel,
     campaignTone,
     centralTension: sanitizeWotcProductIdentity(
-      `Resolve ${hook} across ${setting} (${CAMPAIGN_TONE_LABELS[campaignTone]}).`,
+      hook.toLowerCase().includes(setting.toLowerCase())
+        ? `Resolve ${hook} (${CAMPAIGN_TONE_LABELS[campaignTone]}).`
+        : `Resolve ${hook} across ${setting} (${CAMPAIGN_TONE_LABELS[campaignTone]}).`,
     ),
     milestones,
     namedNpcs: entities.npcs.map(sanitizeWotcProductIdentity),
@@ -1285,9 +1328,14 @@ export async function draftCampaignBlueprintWithAi(
       typeof parsed.centralTension === 'string' && parsed.centralTension.trim().length > 0
         ? sanitizeWotcProductIdentity(parsed.centralTension.trim())
         : base.centralTension;
-    const openingContactNpc =
+    const rawOpeningContactNpc =
       typeof parsed.openingContactNpc === 'string' && parsed.openingContactNpc.trim().length > 0
         ? sanitizeWotcProductIdentity(parsed.openingContactNpc.trim())
+        : null;
+    const openingContactNpc =
+      rawOpeningContactNpc !== null &&
+      !matchesExcludedCharacterName(rawOpeningContactNpc, options.excludeCharacterNames)
+        ? rawOpeningContactNpc
         : null;
     const titles = Array.isArray(parsed.milestoneTitles) ? parsed.milestoneTitles : [];
     const objectives = Array.isArray(parsed.climaxObjectives) ? parsed.climaxObjectives : [];

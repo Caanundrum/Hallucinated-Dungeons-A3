@@ -729,13 +729,47 @@ a.account-chip-label:focus-visible {
   min-height: 0;
 }
 
-.table-comms-rail .dock-viewport,
+.table-comms-rail .dock-viewport {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .table-comms-rail .dock-pane {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+[data-testid='director-address-pane'] .director-address-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+[data-testid='director-address-pane'] ol.record-list.dm-thread-list,
+[data-testid='director-address-pane'] .dm-thread-list,
+[data-testid='director-address-pane'] [data-testid='ask-dm-thread'] {
+  max-height: none !important;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  flex: 0 0 auto;
+}
+
+[data-testid='director-address-pane'] [data-testid='director-address-input'] {
+  max-height: none !important;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  resize: none;
+  flex: 0 0 auto;
 }
 
 .table-comms-rail .dock-composer {
@@ -865,10 +899,15 @@ a.account-chip-label:focus-visible {
   border-color: var(--moonlit-blue);
 }
 
-.info-rail-viewport,
-.table-comms-rail .dock-viewport {
+.info-rail-viewport {
   overflow-x: hidden;
   overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.table-comms-rail .dock-viewport {
+  overflow: hidden;
   min-height: 0;
   flex: 1;
 }
