@@ -154,7 +154,8 @@ function isRoutineExplorationDraft(
     type !== 'table.move' &&
     type !== 'table.open_door' &&
     type !== 'table.close_door' &&
-    type !== 'table.interact_object'
+    type !== 'table.interact_object' &&
+    type !== 'table.take_scene_prop'
   ) {
     return false;
   }
@@ -2678,19 +2679,17 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       return;
     }
     const roll = 1 + Math.floor(Math.random() * sides);
-    let label = `Rolled d${sides} → ${roll}.`;
+    let label = `Practice roll (does not affect pending checks): Rolled d${sides} → ${roll}.`;
     if (sides === 20 && roll === 20) {
-      label = `Natural 20 on d20!`;
+      label = `Practice roll (does not affect pending checks): Natural 20 on d20!`;
       triggerDiceDrama('crit');
     } else if (sides === 20 && roll === 1) {
-      label = `Natural 1 on d20.`;
+      label = `Practice roll (does not affect pending checks): Natural 1 on d20.`;
       triggerDiceDrama('fumble');
     }
     diceTrayRolling = false;
     diceTrayFaceValue = roll;
     diceTrayResult = label;
-    appendDmThread('system', 'Table', label, 'mechanics');
-    patchDmPlayThread();
     shell.announce(label);
     render();
   }
@@ -2799,7 +2798,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     _declaration: string,
   ): string | null {
     if (interpreted.proposedCommandType === 'table.move') {
-      return 'Movement is controlled by moving your token directly on the battle map rather than by words. Click a square on the map to move your token first, then declare what you do!';
+      return 'Movement within a room is controlled by clicking a square on the battle map rather than by words (declare travel or use an exit to change scenes). Click a square on the map to move your token first, then declare what you do!';
     }
     if (mapBundle === null || ownSeatId === null) {
       return null;
@@ -3815,10 +3814,40 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (options.draft.proposedCommandType !== 'table.travel_scene') {
       return false;
     }
-    const destinationTitle =
+    const rawDest =
       options.draft.destinationHint?.trim() ||
-      options.draft.summary.replace(/^Ready to\s+/i, '').trim() ||
+      options.draft.summary
+        .replace(/^Ready to\s+(?:return\s+to\s+|travel\s+to\s+|follow\s+)?/i, '')
+        .replace(/\.\s*Confirm.*$/i, '')
+        .trim() ||
       'the next scene';
+    const cleanedDest = rawDest
+      .replace(/^I\s+(?:[a-z]+\s+)*?(?:back\s+to|into|toward|towards|to)\s+/i, '')
+      .replace(/[.!?]+$/, '')
+      .trim();
+    const destinationTitle = cleanedDest.length > 0 ? cleanedDest : 'the next scene';
+    const connectedCount = Math.max(
+      presence?.onlineAccountIds.length ?? 0,
+      mapBundle?.tokens.filter((token) => token.seatId !== null).length ?? 0,
+    );
+    if (connectedCount <= 1) {
+      sceneTitleCard = {
+        title: destinationTitle,
+        until: Date.now() + 800,
+      };
+      const chrome = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+      if (chrome !== null) {
+        syncMapStageOverlays(chrome);
+      }
+      window.setTimeout(() => {
+        sceneTitleCard = null;
+        const host = container.querySelector<HTMLElement>('[data-testid="table-map-chrome"]');
+        if (host !== null) {
+          syncMapStageOverlays(host);
+        }
+      }, 850);
+      return false;
+    }
     const readyName =
       mapBundle?.tokens.find((token) => token.seatId === ownSeatId)?.label ?? 'Your character';
     clearPartyTravelTimer();

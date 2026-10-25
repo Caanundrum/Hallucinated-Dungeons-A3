@@ -1153,7 +1153,9 @@ export function parsePlayerDeclaration(
   if (
     actionSequence.length === 0 &&
     takeVerb &&
-    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|item|object)\b/i.test(trimmed)
+    /\b(?:satchel|pack|bag|crate|chest|box|barrel|urn|pouch|letter|key|cypher|cipher|bell|lantern|lamp|ledger|scroll|note|journal|book|tome|map|seal|amulet|ring|coin|gem|relic|vial|potion|dagger|blade|rope|compass|medallion|badge|token|item|object|clue)\b/i.test(
+      trimmed,
+    )
   ) {
     const containerNoun =
       /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch)\b/i.test(trimmed);

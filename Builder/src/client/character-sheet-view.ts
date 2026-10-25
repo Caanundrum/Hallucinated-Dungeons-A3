@@ -197,8 +197,15 @@ export function renderCharacterSheet(
       ? '<p class="empty-state">No weapon attacks from your starting equipment.</p>'
       : `<ul class="record-list" data-testid="attack-list">
           ${sheet.attacks
-            .map(
-              (attack) => `
+            .map((attack) => {
+              const abilityMod =
+                attack.attackBonus.components.find((c) => c.ruleId.startsWith('ability.'))
+                  ?.amount ?? 0;
+              const damageDisplay =
+                /^\d+d\d+$/.test(attack.damage) && abilityMod !== 0
+                  ? `${attack.damage}${abilityMod > 0 ? `+${abilityMod}` : abilityMod}`
+                  : attack.damage;
+              return `
             <li>
               <span class="record-note">${escapeHtml(attack.name)}</span>
               <span class="record-meta">
@@ -209,11 +216,11 @@ export function renderCharacterSheet(
                     ${breakdownList(attack.attackBonus)}
                   </span>
                 </span>
-                · ${escapeHtml(attack.damage)} ${escapeHtml(attack.damageType)}
+                · ${escapeHtml(damageDisplay)} ${escapeHtml(attack.damageType)}
                 ${attack.properties.length > 0 ? `· ${escapeHtml(attack.properties.join(', '))}` : ''}
               </span>
-            </li>`,
-            )
+            </li>`;
+            })
             .join('')}
         </ul>`;
 
@@ -354,7 +361,7 @@ export function renderCharacterSheet(
                 (feature) => `
               <li data-testid="feature-${escapeHtml(feature.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">
                 <span class="record-note">${escapeHtml(feature.name)}</span>
-                <span class="record-meta">${escapeHtml(feature.source)} — ${escapeHtml(feature.summary)}</span>
+                <span class="record-meta">${escapeHtml(feature.source.includes('.') ? humanRuleLabel(feature.source) : feature.source)} — ${escapeHtml(feature.summary)}</span>
               </li>`,
               )
               .join('')}

@@ -479,8 +479,9 @@ function backgroundEquipment(
   items: readonly { readonly name: string; readonly quantity: number }[],
   gold: number,
 ): readonly EquipmentOption[] {
+  const formattedLabel = /\bGP\b/i.test(kitLabel) ? kitLabel : `${kitLabel}, ${gold} GP`;
   return [
-    { id: kitId, label: kitLabel, items, gold, armorIds: [], weaponIds: [] },
+    { id: kitId, label: formattedLabel, items, gold, armorIds: [], weaponIds: [] },
     { id: `${kitId}-gold`, label: '50 GP', items: [], gold: 50, armorIds: [], weaponIds: [] },
   ];
 }

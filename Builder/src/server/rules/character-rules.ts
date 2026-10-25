@@ -1381,11 +1381,12 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
   const equipment = rawEquipment.map((entry) => {
     const lower = entry.name.trim().toLowerCase();
     const matchedArmor =
+      ARMOR.find((armor) => armor.label.toLowerCase() === lower) ??
       ARMOR.find(
         (armor) =>
-          armor.label.toLowerCase() === lower ||
-          (armor.category !== 'shield' && lower.includes(armor.label.toLowerCase())),
-      ) ?? null;
+          armor.category !== 'shield' && lower.includes(armor.label.toLowerCase()),
+      ) ??
+      null;
     const matchedWeapon =
       WEAPONS.find((weapon) => weapon.label.toLowerCase() === lower) ?? null;
 

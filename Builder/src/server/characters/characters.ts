@@ -727,6 +727,16 @@ export async function readVault(options: {
     try {
       const stored = doc.data() as StoredDraft;
       const choices = normalizeChoices(stored.choices);
+      const isUntouchedBlank =
+        choices.classId === null &&
+        choices.backgroundId === null &&
+        choices.speciesId === null &&
+        Object.keys(choices.baseAbilityScores).length === 0 &&
+        choices.identity.name.trim().length === 0 &&
+        choices.identity.concept.trim().length === 0;
+      if (isUntouchedBlank) {
+        return [];
+      }
       const problems = validateChoices(choices);
       const labels = describeChoices(choices);
       return [

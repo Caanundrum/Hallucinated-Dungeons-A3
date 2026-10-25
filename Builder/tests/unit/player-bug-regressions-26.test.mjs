@@ -247,3 +247,34 @@ test('F26-04: Campaign blueprint room 2 exit direction aligns east to return to 
   assert.ok(backExit);
   assert.equal(backExit.direction, 'east');
 });
+
+test('FRESH-09: Inspecting eastern passage for clues left by the courier targets eastern passage, never courier', () => {
+  const sheet = kaelenSheet();
+  const text = 'I inspect the eastern passage for hidden exits and clues left by the courier.';
+  const draftSummary = buildSkillCheckDraftSummary(sheet, text);
+  assert.match(draftSummary, /Ready to inspect the eastern passage/i);
+  assert.doesNotMatch(draftSummary, /inspect the courier/i);
+});
+
+test('FRESH-05 & FRESH-11: Saltmark Tavern premise extracts Marta Vane, both props without contested prefix, and indoor templates', () => {
+  const premise =
+    'In the fog-shrouded harbor town of Saltmere, a missing courier was last seen entering the Saltmark Tavern carrying a brass cypher and an iron key. The party meets informant Marta Vane inside the tavern to trace the vanished courier into the flooded under-wharf vaults.';
+  const bp = buildCampaignBlueprint({
+    summary: premise,
+    name: 'Shadows of Saltmere',
+    startLevel: 1,
+    targetEndLevel: 3,
+    campaignTone: 'mystery_intrigue',
+  });
+  assert.ok(bp.namedProps.some((p) => /brass cypher/i.test(p)));
+  assert.ok(bp.namedProps.some((p) => /iron key/i.test(p)));
+  for (const act of bp.acts) {
+    assert.doesNotMatch(act.title, /Levels 3–3/i);
+    assert.doesNotMatch(act.currentActGoal, /contested iron key/i);
+  }
+  const m1 = bp.milestones?.[0];
+  assert.ok(m1);
+  assert.equal(m1.rooms[0]?.npcs[0]?.name, 'Marta Vane');
+  assert.equal(m1.rooms[0]?.templateId, 'interior_inn_common');
+  assert.equal(m1.rooms[1]?.templateId, 'interior_stone_crypt');
+});

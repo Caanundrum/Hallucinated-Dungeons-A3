@@ -531,9 +531,19 @@ export async function resolveDeterministicIntentFallback(
   ) {
     proposedCommandType = 'table.travel_scene';
     returnToPrevious = true;
-    destinationHint = 'return to the earlier scene';
-    summary =
-      'Ready to return to the earlier scene. Confirm to restore it with prior consequences.';
+    destinationHint = 'the earlier scene';
+    try {
+      const { loadMapRuntime } = await import('../table/map-runtime.js');
+      const { resolveTravelDestinationTitle } = await import('../table/scene-commands.js');
+      const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, true);
+      if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
+        destinationHint = resolvedTitle.trim();
+      }
+    } catch {
+      // Keep default destinationHint
+    }
+    summary = `Ready to return to ${destinationHint}. Confirm to restore it with prior consequences.`;
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
@@ -545,9 +555,19 @@ export async function resolveDeterministicIntentFallback(
       ))
   ) {
     proposedCommandType = 'table.travel_scene';
-    destinationHint = rawText.slice(0, 200);
-    summary =
-      'Ready to leave for another scene. Confirm so the Game Director establishes the next place.';
+    destinationHint = 'the next area';
+    try {
+      const { loadMapRuntime } = await import('../table/map-runtime.js');
+      const { resolveTravelDestinationTitle } = await import('../table/scene-commands.js');
+      const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false);
+      if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
+        destinationHint = resolvedTitle.trim();
+      }
+    } catch {
+      // Keep default destinationHint
+    }
+    summary = `Ready to travel to ${destinationHint}. Confirm so the Game Director establishes the next place.`;
     sceneLoopResolved = true;
   } else if (
     // Door open/passage belongs to door authority — never steal into prop interact
@@ -569,6 +589,41 @@ export async function resolveDeterministicIntentFallback(
         objectId = matched;
         summary =
           'Ready to change that object on the scene. Confirm to update its state on the table.';
+        sceneLoopResolved = true;
+      }
+    } catch {
+      sceneLoopResolved = false;
+    }
+  } else if (
+    !declarationIsDoorOpenOrPassage(rawText) &&
+    !declarationNegatesDoorOpen(rawText) &&
+    !mentionsDoorIntent(text) &&
+    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text) &&
+    !authority.actionSequence.some(
+      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_from_container',
+    )
+  ) {
+    try {
+      const { loadMapRuntime } = await import('../table/map-runtime.js');
+      const { matchTakeContainerByDeclaration } = await import('../table/scene-commands.js');
+      const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const matched = matchTakeContainerByDeclaration(runtime, rawText);
+      if (matched !== null) {
+        const active =
+          runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+            ? runtime.sceneInstances?.[runtime.activeSceneId]
+            : undefined;
+        const feature = active?.features.find((entry) => entry.objectId === matched);
+        const label =
+          feature?.label
+            .replace(/\s*[—(].*$/, '')
+            .replace(/^contested\s+/i, '')
+            .trim() ||
+          containerLabelHintFromText(rawText) ||
+          'that item';
+        proposedCommandType = 'table.take_scene_prop';
+        objectId = matched;
+        summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
         sceneLoopResolved = true;
       }
     } catch {
@@ -602,7 +657,9 @@ export async function resolveDeterministicIntentFallback(
         : authority.clarificationPrompt ?? authority.summary;
     } else if (
       authority.actionSequence.some(
-        (step) => step.kind === 'inspect' && step.outcomeHint === 'take_container',
+        (step) =>
+          step.kind === 'inspect' &&
+          (step.outcomeHint === 'take_container' || step.outcomeHint === 'take_item'),
       )
     ) {
       try {
@@ -617,9 +674,12 @@ export async function resolveDeterministicIntentFallback(
               : undefined;
           const feature = active?.features.find((entry) => entry.objectId === matched);
           const label =
-            feature?.label.replace(/\s*[—(].*$/, '').trim() ||
+            feature?.label
+              .replace(/\s*[—(].*$/, '')
+              .replace(/^contested\s+/i, '')
+              .trim() ||
             containerLabelHintFromText(rawText) ||
-            'that container';
+            'that item';
           proposedCommandType = 'table.take_scene_prop';
           objectId = matched;
           summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
@@ -637,9 +697,7 @@ export async function resolveDeterministicIntentFallback(
       authority.actionSequence.some(
         (step) =>
           step.kind === 'inspect' &&
-          (step.outcomeHint === 'take_from_container' ||
-            step.outcomeHint === 'take_item' ||
-            step.outcomeHint === 'contents_query'),
+          (step.outcomeHint === 'take_from_container' || step.outcomeHint === 'contents_query'),
       ) ||
       (/\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text) &&
         containerLabelHintFromText(text) !== null)

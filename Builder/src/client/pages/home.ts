@@ -354,7 +354,7 @@ export function mountHomePage(host: PageHost): void {
                     <span class="tour-pillar-icon">🛡️</span>
                     <div>
                       <span class="tour-pillar-step">01</span>
-                      <h3 class="tour-pillar-title">Forge or Import Your Hero</h3>
+                      <h3 class="tour-pillar-title">Forge Your Hero</h3>
                     </div>
                   </div>
                   <p class="tour-pillar-desc">

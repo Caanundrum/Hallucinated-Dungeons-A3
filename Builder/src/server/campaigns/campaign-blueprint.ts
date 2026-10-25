@@ -45,13 +45,28 @@ export interface PremiseEntities {
 
 export function detectPremiseLocation(premise: string): PremiseLocation {
   const text = premise.toLowerCase();
-  if (/\b(canal|dock|docks|pier|harbor|harbour|ferry|waterfront|wharf|quay)\b/.test(text)) {
+  const innMatch = /\b(inn|tavern|pub|alehouse)\b/.exec(text);
+  const waterfrontMatch = /\b(canal|dock|docks|pier|harbor|harbour|ferry|waterfront|wharf|quay)\b/.exec(
+    text,
+  );
+  const hasExplicitInnScene =
+    /\b[A-Z][A-Za-z'’-]+\s+(?:Inn|Tavern|Pub|Alehouse)\b/.test(premise) ||
+    /\b(?:inside|entering|at|in)\s+the\s+(?:[a-z'’-]+\s+)?(?:inn|tavern|pub|alehouse)\b/i.test(
+      premise,
+    );
+  if (hasExplicitInnScene || (innMatch !== null && waterfrontMatch === null)) {
+    return {
+      locationKind: 'inn',
+      locationPhrase: waterfrontMatch !== null ? 'a harbor tavern' : 'a roadside inn',
+    };
+  }
+  if (waterfrontMatch !== null) {
     return {
       locationKind: 'canal_waterfront',
       locationPhrase: /\bcanal\b/.test(text) ? 'a canal-town waterfront' : 'a dockside waterfront',
     };
   }
-  if (/\b(inn|tavern|pub|alehouse)\b/.test(text)) {
+  if (innMatch !== null) {
     return { locationKind: 'inn', locationPhrase: 'a roadside inn' };
   }
   if (/\b(crypt|tomb|catacomb|grave)\b/.test(text)) {
@@ -75,13 +90,30 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   return { locationKind: null, locationPhrase: null };
 }
 
-export function detectQuestHook(premise: string, prop?: string | null): string | null {
+export function detectQuestHook(
+  premise: string,
+  propOrProps?: string | readonly string[] | null,
+): string | null {
   const text = premise.toLowerCase();
+  const props =
+    typeof propOrProps === 'string'
+      ? [propOrProps.trim()].filter(Boolean)
+      : Array.isArray(propOrProps)
+        ? propOrProps.map((p) => p.trim()).filter(Boolean)
+        : [];
+  const propPhrase =
+    props.length >= 2
+      ? `${props[0]} and ${props[1]}`
+      : props.length === 1
+        ? props[0]!
+        : null;
   if (
-    /\b(courier|package|missive|parcel|delivery|missing\s+(?:packet|letter|courier))\b/.test(text)
+    /\b(courier|package|missive|parcel|delivery|informant|cypher|cipher|missing\s+(?:packet|letter|courier))\b/.test(
+      text,
+    )
   ) {
-    if (typeof prop === 'string' && prop.trim().length > 0) {
-      return `a missing courier and the ${prop.trim()} they carried`;
+    if (propPhrase !== null) {
+      return `a missing courier and the ${propPhrase} they carried`;
     }
     return 'a missing courier and the package they carried';
   }
@@ -139,7 +171,8 @@ const NPC_TITLES = new Set([
   'smith', 'innkeeper', 'tavernkeeper', 'barkeep', 'bartender', 'merchant', 'trader', 'scout',
   'rogue', 'guard', 'guardsman', 'hunter', 'herbalist', 'alchemist', 'scholar', 'apprentice',
   'artisan', 'baker', 'butcher', 'brewer', 'fisherman', 'farmer', 'weaver', 'miner', 'clerk',
-  'messenger', 'guide', 'detective', 'investigator',
+  'messenger', 'guide', 'detective', 'investigator', 'informant', 'witness', 'contact', 'agent',
+  'envoy', 'patron',
 ]);
 
 const PLACE_PREPOSITIONS = new Set([
@@ -174,7 +207,8 @@ const PROP_NOUNS = new Set([
   'bag', 'shield', 'staff', 'wand', 'orb', 'gem', 'jewel', 'mask', 'cloak', 'journal', 'diary',
   'note', 'package', 'parcel', 'sigil', 'banner', 'relic', 'vial', 'bottle', 'flask', 'hourglass',
   'compass', 'skull', 'urn', 'coffin', 'sarcophagus', 'tapestry', 'painting', 'portrait', 'clock',
-  'lock', 'chain', 'hammer', 'anvil', 'cauldron', 'pendant', 'brooch', 'medallion',
+  'lock', 'chain', 'hammer', 'anvil', 'cauldron', 'pendant', 'brooch', 'medallion', 'cypher',
+  'cipher', 'clue', 'evidence', 'token', 'badge', 'codex', 'manifest', 'writ',
 ]);
 
 const EXIT_NOUNS = new Set([
@@ -187,6 +221,7 @@ const LIGHT_SOURCE_NOUNS = new Set(['lantern', 'lamp', 'torch', 'candle', 'candl
 const PAST_PARTICIPLE_EXCLUDES = new Set([
   'hundred', 'indeed', 'instead', 'hundreds', 'needed', 'wanted', 'called', 'named', 'asked',
   'hired', 'worried', 'carried', 'arrived', 'expected', 'expecting', 'trusted', 'waited',
+  'contested',
 ]);
 
 function isModifier(word: string, allowExitQualifiers: boolean): boolean {
@@ -412,7 +447,7 @@ function actTemplateHints(kind: PremiseLocationKind | null): {
     case 'canal_waterfront':
       return { opening: 'interior_canal_warehouse', investigation: 'landmark_foggy_docks' };
     case 'inn':
-      return { opening: 'interior_inn_common', investigation: 'exterior_village_street' };
+      return { opening: 'interior_inn_common', investigation: 'interior_stone_crypt' };
     case 'crypt':
       return { opening: 'interior_stone_crypt', investigation: null };
     case 'workshop':
@@ -478,10 +513,19 @@ export function classifyNpcRoles(
 
   for (const name of npcs) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const isMissing =
-      new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:vanished|missing|lost|kidnapped|captive|hostage)\\b`, 'i').test(premise) ||
-      new RegExp(`\\b(?:vanished|missing|lost|kidnapped|captive|hostage|rescue|save)\\b[^.!?,;\\n]*\\b${escaped}\\b`, 'i').test(premise) ||
-      new RegExp(`\\b(?:find|rescue|save)\\s+(?:missing\\s+)?(?:courier\\s+|the\\s+)?${escaped}\\s+alive\\b`, 'i').test(premise);
+    const isDirectlyMissing =
+      new RegExp(
+        `\\b${escaped}\\b\\s+(?:has\\s+|had\\s+|was\\s+|is\\s+)?(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared)\\b`,
+        'i',
+      ).test(premise) ||
+      new RegExp(
+        `\\b(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared)\\s+(?:[a-z-]+\\s+){0,2}${escaped}\\b`,
+        'i',
+      ).test(premise) ||
+      new RegExp(
+        `\\b(?:find|rescue|save)\\s+(?:missing\\s+)?(?:courier\\s+|the\\s+)?${escaped}(?:\\s+alive)?\\b`,
+        'i',
+      ).test(premise);
 
     const isPresent =
       new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:waiting|entrance|greets?|meets?|here)\\b`, 'i').test(premise) ||
@@ -492,7 +536,7 @@ export function classifyNpcRoles(
         name,
       );
 
-    if (isMissing) {
+    if (isDirectlyMissing) {
       missing.push(name);
     } else if (isPresent && !isBossArchetype) {
       present.push(name);
@@ -876,6 +920,43 @@ function buildMilestoneGraph(options: {
   return milestones;
 }
 
+function formatLevelSpan(from: number, to: number): string {
+  return to > from ? `Levels ${from}–${to}` : `Level ${to}`;
+}
+
+function computeActLevelRanges(
+  startLevel: number,
+  targetEndLevel: number,
+): { readonly r1: string; readonly r2: string; readonly r3: string } {
+  const span = Math.max(1, targetEndLevel - startLevel);
+  if (span === 1) {
+    return {
+      r1: `Level ${startLevel}`,
+      r2: `Levels ${startLevel}–${targetEndLevel}`,
+      r3: `Level ${targetEndLevel}`,
+    };
+  }
+  if (span === 2) {
+    return {
+      r1: `Level ${startLevel}`,
+      r2: `Level ${startLevel + 1}`,
+      r3: `Level ${targetEndLevel}`,
+    };
+  }
+  const a1End = Math.min(targetEndLevel, startLevel + Math.floor(span / 3));
+  const a2Start = Math.min(targetEndLevel, a1End + 1);
+  const a2End = Math.min(
+    targetEndLevel,
+    Math.max(a2Start, startLevel + Math.floor((span * 2) / 3)),
+  );
+  const a3Start = Math.min(targetEndLevel, a2End + 1);
+  return {
+    r1: formatLevelSpan(startLevel, a1End),
+    r2: formatLevelSpan(a2Start, a2End),
+    r3: formatLevelSpan(a3Start, targetEndLevel),
+  };
+}
+
 export function buildCampaignBlueprint(
   premiseOrOptions: string | BuildCampaignBlueprintOptions,
   maybeName?: string,
@@ -905,7 +986,7 @@ export function buildCampaignBlueprint(
   const premise = sanitizeWotcProductIdentity(rawSummary);
   const entities = extractPremiseEntities(premise);
   const location = detectPremiseLocation(premise);
-  const questHook = detectQuestHook(premise, entities.props[0]);
+  const questHook = detectQuestHook(premise, entities.props);
   const hints = actTemplateHints(location.locationKind);
 
   const { presentNpcs, missingNpcs, antagonistNpcs } = classifyNpcRoles(entities.npcs, premise);
@@ -926,7 +1007,9 @@ export function buildCampaignBlueprint(
     (antagonist !== null
       ? `the rising dominion of ${antagonist}`
       : firstProp !== null
-        ? `the contested ${firstProp}`
+        ? secondProp !== null
+          ? `the mystery of the ${firstProp} and ${secondProp}`
+          : `the mystery of the ${firstProp}`
         : cleanTitle !== null
           ? `the crisis behind ${cleanTitle}`
           : `the looming shadow over ${setting}`);
@@ -955,19 +1038,10 @@ export function buildCampaignBlueprint(
       : 'interior_stone_crypt');
 
   const levelSpan = Math.max(1, targetEndLevel - startLevel);
-  const act1End = Math.min(targetEndLevel, startLevel + Math.max(1, Math.floor(levelSpan / 3)));
-  const act2End = Math.min(
+  const { r1: act1Range, r2: act2Range, r3: act3Range } = computeActLevelRanges(
+    startLevel,
     targetEndLevel,
-    Math.max(act1End, startLevel + Math.max(1, Math.floor((levelSpan * 2) / 3))),
   );
-  const act1Range =
-    act1End > startLevel ? `Levels ${startLevel}–${act1End}` : `Level ${startLevel}`;
-  const act2Range =
-    act2End > act1End ? `Levels ${act1End + 1}–${act2End}` : `Level ${act2End}`;
-  const act3Range =
-    targetEndLevel > act2End
-      ? `Levels ${act2End + 1}–${targetEndLevel}`
-      : `Level ${targetEndLevel}`;
 
   const scaleTwistClause =
     levelSpan >= 10
@@ -1145,21 +1219,28 @@ export async function draftCampaignBlueprintWithAi(
     const milestones = (base.milestones ?? []).map((m, idx) => {
       const updatedRooms =
         idx === 0 && openingContactNpc !== null
-          ? m.rooms.map((r, rIdx) =>
-              rIdx === 0 && r.npcs.length > 0
-                ? {
-                    ...r,
-                    npcs: r.npcs.map((npc, nIdx) =>
-                      nIdx === 0
-                        ? {
-                            ...npc,
-                            name: openingContactNpc,
-                          }
-                        : npc,
-                    ),
-                  }
-                : r,
-            )
+          ? m.rooms.map((r, rIdx) => {
+              if (rIdx !== 0 || r.npcs.length === 0) {
+                return r;
+              }
+              const oldNpcName = r.npcs[0]?.name;
+              const updatedSummary =
+                oldNpcName && oldNpcName !== openingContactNpc
+                  ? r.summary.replace(oldNpcName, openingContactNpc)
+                  : r.summary;
+              return {
+                ...r,
+                summary: updatedSummary,
+                npcs: r.npcs.map((npc, nIdx) =>
+                  nIdx === 0
+                    ? {
+                        ...npc,
+                        name: openingContactNpc,
+                      }
+                    : npc,
+                ),
+              };
+            })
           : m.rooms;
       return {
         ...m,
@@ -1205,19 +1286,16 @@ export async function draftCampaignBlueprintOptionsWithAi(
     (antagonist !== null
       ? `the rising dominion of ${antagonist}`
       : primary.namedProps[0] !== undefined
-        ? `the contested ${primary.namedProps[0]}`
+        ? primary.namedProps[1] !== undefined
+          ? `the mystery of the ${primary.namedProps[0]} and ${primary.namedProps[1]}`
+          : `the mystery of the ${primary.namedProps[0]}`
         : `the crisis unfolding in ${primary.namedPlaces[0] ?? options.name ?? 'the realm'}`);
   const basePlace = primary.namedPlaces[0] ?? options.name ?? 'the frontier';
   const baseNpc = roles.presentNpcs[0] ?? 'Warden Elira';
   const toneLabel = CAMPAIGN_TONE_LABELS[primary.campaignTone ?? 'heroic_fantasy'];
   const startLvl = primary.startLevel ?? 1;
   const endLvl = primary.targetEndLevel ?? 3;
-  const span = Math.max(1, endLvl - startLvl);
-  const a1End = Math.min(endLvl, startLvl + Math.max(1, Math.floor(span / 3)));
-  const a2End = Math.min(endLvl, Math.max(a1End, startLvl + Math.max(1, Math.floor((span * 2) / 3))));
-  const r1 = a1End > startLvl ? `Levels ${startLvl}–${a1End}` : `Level ${startLvl}`;
-  const r2 = a2End > a1End ? `Levels ${a1End + 1}–${a2End}` : `Level ${a2End}`;
-  const r3 = endLvl > a2End ? `Levels ${a2End + 1}–${endLvl}` : `Level ${endLvl}`;
+  const { r1, r2, r3 } = computeActLevelRanges(startLvl, endLvl);
 
   const variant2: CampaignBlueprint = {
     ...primary,

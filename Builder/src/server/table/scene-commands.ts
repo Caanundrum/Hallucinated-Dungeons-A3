@@ -27,7 +27,11 @@ import {
   type ComposedScene,
   type SceneComposeKind,
 } from './scene-composition.js';
-import { labelLooksPortableContainer } from '../../shared/container-contents.js';
+import {
+  HEAVY_FIXTURE_LABEL,
+  labelLooksPortableContainer,
+  labelLooksPortableSceneProp,
+} from '../../shared/container-contents.js';
 import {
   applyComposedSceneToRuntime,
   removeSceneObject,
@@ -122,10 +126,22 @@ export function buildStoredSceneFromRoomBlueprint(
         (room.npcs.length > 0 ||
           (feature.objectKind !== 'npc' && feature.referenceKind !== 'npc')),
     )
-    .map((feature) => ({
-      ...feature,
-      label: featureLabelWithState(feature),
-    }));
+    .map((feature) => {
+      if (
+        room.npcs.length > 0 &&
+        (feature.objectKind === 'npc' || feature.referenceKind === 'npc')
+      ) {
+        const state = feature.state?.trim() || 'present';
+        return {
+          ...feature,
+          label: `${room.npcs[0]!.name} — ${state}`,
+        };
+      }
+      return {
+        ...feature,
+        label: featureLabelWithState(feature),
+      };
+    });
   if (
     room.npcs.length > 0 &&
     !baseFeatures.some((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
@@ -515,6 +531,29 @@ function resolveGraphTargetExit(
   return graphExits[0]?.targetSceneId ?? null;
 }
 
+export function resolveTravelDestinationTitle(
+  runtime: StoredMapRuntime,
+  destinationHint: string,
+  returnToPrevious = false,
+): string | null {
+  const active = activeSceneInstance(runtime);
+  if (active === null) {
+    return null;
+  }
+  const graphTargetId = resolveGraphTargetExit(active, destinationHint, returnToPrevious);
+  if (graphTargetId !== null && runtime.sceneInstances?.[graphTargetId] !== undefined) {
+    return runtime.sceneInstances[graphTargetId]!.title;
+  }
+  if (returnToPrevious) {
+    const stack = runtime.sceneStack ?? [];
+    const lastId = stack[stack.length - 1];
+    if (lastId !== undefined && runtime.sceneInstances?.[lastId] !== undefined) {
+      return runtime.sceneInstances[lastId]!.title;
+    }
+  }
+  return null;
+}
+
 export function travelSceneRuntime(options: {
   readonly runtime: StoredMapRuntime;
   readonly campaignId: string;
@@ -719,10 +758,16 @@ export function travelSceneRuntime(options: {
 }
 
 export function isPortableSceneContainer(feature: StoredSceneFeature): boolean {
-  return feature.objectKind === 'container' && labelLooksPortableContainer(feature.label);
+  if (feature.objectKind === 'container') {
+    return labelLooksPortableContainer(feature.label);
+  }
+  if (feature.objectKind === 'prop') {
+    return !HEAVY_FIXTURE_LABEL.test(feature.label);
+  }
+  return false;
 }
 
-/** Match a portable container prop for inventory take (courier satchel, pack, bag, pouch). */
+/** Match a portable container or quest prop for inventory take (courier satchel, pack, bag, pouch, key, cypher, bell, etc.). */
 export function matchTakeContainerByDeclaration(
   runtime: StoredMapRuntime,
   declaration: string,
@@ -740,18 +785,29 @@ export function matchTakeContainerByDeclaration(
     .map((feature) => {
       const label = feature.label.toLowerCase();
       let score = 0;
-      if (
-        label
-          .split(/\s+/)
-          .some((word) => word.length > 2 && declarationMentionsLabelWord(declaration, word))
-      ) {
-        score += 3;
-      }
+      const matchedWords = label
+        .replace(/[^a-z0-9\s'-]/g, ' ')
+        .split(/\s+/)
+        .filter(
+          (word) =>
+            word.length > 2 &&
+            !/^(?:the|and|for|with|open|closed|intact|lit|unlit|present|active|contested)$/i.test(
+              word,
+            ) &&
+            declarationMentionsLabelWord(declaration, word),
+        );
+      score += matchedWords.length * 3;
       if (/\b(?:courier\s+satchel|satchel)\b/.test(text) && /\bsatchel\b/.test(label)) {
         score += 4;
       }
       if (/\b(?:pack|bag|pouch)\b/.test(text) && /\b(?:pack|bag|pouch)\b/.test(label)) {
         score += 3;
+      }
+      if (/\bkey\b/.test(text) && /\bkey\b/.test(label)) {
+        score += 4;
+      }
+      if (/\b(?:cypher|cipher)\b/.test(text) && /\b(?:cypher|cipher)\b/.test(label)) {
+        score += 4;
       }
       return { objectId: feature.objectId, score };
     })
@@ -760,10 +816,11 @@ export function matchTakeContainerByDeclaration(
   if (scored[0] !== undefined) {
     return scored[0].objectId;
   }
-  // Single portable container + take language, but not when naming furniture crates/chests.
+  // Single portable container/prop + take language, but not when naming furniture crates/chests.
   const namesFurnitureContainer =
-    /\b(?:crate|crates|chest|box|barrel|urn|freight)\b/i.test(declaration) &&
-    !labelLooksPortableContainer(declaration);
+    HEAVY_FIXTURE_LABEL.test(declaration) &&
+    !labelLooksPortableContainer(declaration) &&
+    !labelLooksPortableSceneProp(declaration);
   if (
     portable.length === 1 &&
     !namesFurnitureContainer &&
@@ -802,7 +859,13 @@ export function takeScenePropRuntime(options: {
   if (runtime === null) {
     throw new Error('OBJECT_NOT_FOUND');
   }
-  const baseLabel = feature.label.replace(/\s*[—(].*$/, '').trim() || feature.label.trim();
+  const rawBase =
+    feature.label
+      .replace(/\s*[—(].*$/, '')
+      .replace(/^contested\s+/i, '')
+      .trim() || feature.label.trim();
+  const baseLabel =
+    rawBase.length > 0 ? rawBase.charAt(0).toUpperCase() + rawBase.slice(1) : rawBase;
   return {
     runtime,
     chronicle: `${baseLabel} is stowed in inventory and leaves the scene.`,

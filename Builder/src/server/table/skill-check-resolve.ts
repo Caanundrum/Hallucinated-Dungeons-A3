@@ -42,8 +42,8 @@ function skillBonus(sheet: DerivedCharacterSheet, skillId: string): {
 
 function hasThievesTools(sheet: DerivedCharacterSheet): boolean {
   const haystack = [
-    ...sheet.equipment.map((item) => item.name),
-    ...sheet.proficiencies.map((entry) => entry.label),
+    ...(sheet.equipment ?? []).map((item) => item.name),
+    ...(sheet.proficiencies ?? []).map((entry) => entry.label),
   ]
     .join(' ')
     .toLowerCase();
@@ -106,14 +106,18 @@ export function buildSkillCheckDraftSummary(
       return facing !== undefined ? `wooden doorway ${facing}` : 'wooden doorway';
     }
     const sanitized = text.replace(/[.,;!?]+$/, '');
-    const hideBehind = sanitized.match(
-      /\b(?:behind|near|under|by|in|past|around)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:and|to|while|for|without)\b|[.,;!?]|$)/i,
-    );
-    if (hideBehind !== null && hideBehind[1]?.trim()) {
-      const candidate = hideBehind[1].trim();
-      if (/^shadows$/i.test(candidate)) { return 'the shadows'; }
-      if (!/^(?:me|myself|it|them|here)$/i.test(candidate)) {
-        return candidate;
+    if (wantsStealth) {
+      const hideBehind = sanitized.match(
+        /\b(?:behind|near|under|by|in|past|around)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:and|to|while|for|without)\b|[.,;!?]|$)/i,
+      );
+      if (hideBehind !== null && hideBehind[1]?.trim()) {
+        const candidate = hideBehind[1].trim();
+        if (/^shadows$/i.test(candidate)) {
+          return 'the shadows';
+        }
+        if (!/^(?:me|myself|it|them|here)$/i.test(candidate)) {
+          return candidate;
+        }
       }
     }
     const approachTarget = sanitized.match(
@@ -126,11 +130,30 @@ export function buildSkillCheckDraftSummary(
       }
     }
     const actionTarget = sanitized.match(
-      /\b(?:investigat(?:e|es|ing)?|search(?:es|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)?)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:for|using|with|to|and)\b|[.,;!?]|$)/i,
+      /\b(?:investigat(?:e|es|ing)?|search(?:es|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)?|check(?:s|ing)?(?:\s+beneath|\s+under)?)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:for|using|with|to|and|without)\b|[.,;!?]|$)/i,
     );
     if (actionTarget !== null && actionTarget[1]?.trim()) {
       const candidate = actionTarget[1].trim();
-      if (!/^(?:area|room|chamber|here|surroundings)$/i.test(candidate)) {
+      if (
+        !/^(?:area|room|chamber|here|surroundings)$/i.test(candidate) &&
+        !/^(?:its|their|his|her|it|them)\b/i.test(candidate)
+      ) {
+        return candidate;
+      }
+    }
+    const strippedPassiveAgent = sanitized.replace(
+      /\b(?:left|made|dropped|hidden|written|sent|carried)\s+by\s+(?:the\s+)?[a-zA-Z0-9_\s'-]+$/i,
+      '',
+    );
+    const hideBehind = strippedPassiveAgent.match(
+      /\b(?:behind|near|under|by|in|past|around)\s+(?:the\s+)?([a-zA-Z0-9_\s'-]+?)(?:\s+(?:and|to|while|for|without)\b|[.,;!?]|$)/i,
+    );
+    if (hideBehind !== null && hideBehind[1]?.trim()) {
+      const candidate = hideBehind[1].trim();
+      if (/^shadows$/i.test(candidate)) {
+        return 'the shadows';
+      }
+      if (!/^(?:me|myself|it|them|here)$/i.test(candidate)) {
         return candidate;
       }
     }

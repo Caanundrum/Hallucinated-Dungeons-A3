@@ -20,6 +20,11 @@ import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
 } from '../../shared/play-authority-contract.js';
+import {
+  HEAVY_FIXTURE_LABEL,
+  labelLooksPortableContainer,
+  labelLooksPortableSceneProp,
+} from '../../shared/container-contents.js';
 
 export type DispatchActionType =
   | 'skill_check'
@@ -28,7 +33,8 @@ export type DispatchActionType =
   | 'travel_scene'
   | 'dialogue'
   | 'narrate_only'
-  | 'combat_action';
+  | 'combat_action'
+  | 'take_prop';
 
 export interface DirectorDispatchOutput {
   readonly actionType: DispatchActionType;
@@ -58,6 +64,9 @@ export interface DirectorDispatchOutput {
     readonly targetLabel?: string | undefined;
     readonly isThreatOnly?: boolean | undefined;
   } | undefined;
+  readonly takeProp?: {
+    readonly propLabel: string;
+  } | undefined;
 }
 
 export const DM_DISPATCHER_SYSTEM_INSTRUCTION = `You are the Game Director (Dungeon Master) in an official tabletop D&D 5e / SRD 5.2.1 roleplaying campaign.
@@ -73,22 +82,26 @@ Core D&D 5e Adjudication Rules:
    - The DM calls for an ability check only when an action has uncertainty and a meaningful consequence of failure.
    - Routine, safe actions (walking across an empty room, leaning on a counter, asking a friendly question, listening in a quiet room) do NOT require checks (use "move_feature", "dialogue", or "narrate_only").
    - Sneaking, slipping, or hiding past watchful NPCs or guards requires an active Dexterity (Stealth) check (default DC 12).
-   - Thoroughly searching furniture, compartments, or floorboards for hidden items or clues requires an Intelligence (Investigation) check (default DC 13).
+   - Thoroughly searching furniture, passages, compartments, or floorboards for hidden items or clues requires an Intelligence (Investigation) check (default DC 13).
+   - For Investigation or Search checks, skillCheck.targetNoun MUST be the physical location, passage, doorway, or object being searched (e.g. "eastern passage", "ironbound chest", "service counter"), NEVER an absent person mentioned in phrases like "clues left by the courier".
    - Picking locks or disarming traps requires a Dexterity (Thieves' Tools) check.
-4. Scene Travel & Return:
+4. Taking / Picking Up Visible Portable Props:
+   - When a player declares taking, picking up, grabbing, pocketing, or stowing a visible portable item or container on the map (such as an iron key, bloodstained cypher, courier satchel, lantern, bell, scroll, or ledger), choose "take_prop" and set takeProp.propLabel to the item's label.
+   - Never choose "take_prop" for heavy room furniture (tables, counters, crates, chests, barrels).
+5. Scene Travel & Return:
    - Declarations like "I return up the cellar stairs to Drowned Crow Tavern", "I head back through the passage", or "I retreat to the previous room" trigger scene travel (use "travel_scene" with returnToPrevious: true).
-5. Initiating Combat vs. Threatening Tone:
+6. Initiating Combat vs. Threatening Tone:
    - Determine the course of action from the full meaning of what the player describes rather than matching isolated words.
    - Carefully distinguish a threatening, aggressive, or intimidating tone in dialogue/posturing (e.g. warning an NPC, glaring, resting a hand on a hilt, making a verbal threat, demanding answers) from actually initiating combat. A threatening tone is NEVER combat — route it to "dialogue" or a Charisma (Intimidation) "skill_check" (or set combatAction.isThreatOnly = true).
    - Only choose "combat_action" (with combatAction.isThreatOnly = false) when the player is genuinely initiating physical or magical combat against a target. Any combat initiation will require explicit player confirmation before combat begins.
-6. Spatial & Environmental Common Sense:
+7. Spatial & Environmental Common Sense:
    - Always check the current scene environment, the player's current token coordinates, and the distance in feet to every door, prop, and NPC.
    - If the scene is an outdoor/exterior wilderness or trail with no doors ("Known Doors / Exits: none"), never adjudicate a door action or a trap check on a door.
    - Close physical interactions (checking a door for traps, picking a lock, searching a chest or counter) require the player token to be adjacent (within 5 ft) of the target.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "actionType": "skill_check" | "move_feature" | "door_action" | "travel_scene" | "dialogue" | "narrate_only" | "combat_action",
+  "actionType": "skill_check" | "move_feature" | "door_action" | "travel_scene" | "dialogue" | "narrate_only" | "combat_action" | "take_prop",
   "reasoning": string,
   "skillCheck": {
     "skill": string,
@@ -114,6 +127,9 @@ Respond ONLY with a valid JSON object matching this schema:
   "combatAction": {
     "targetLabel": string,
     "isThreatOnly": boolean
+  },
+  "takeProp": {
+    "propLabel": string
   }
 }`;
 
@@ -254,6 +270,7 @@ export interface AppliedDispatchResult {
   readonly returnToPrevious?: boolean | undefined;
   readonly destinationHint?: string | undefined;
   readonly edgeId?: string | undefined;
+  readonly objectId?: string | undefined;
 }
 
 export function applyDirectorDispatchToMap(options: {
@@ -454,6 +471,42 @@ export function applyDirectorDispatchToMap(options: {
       proposedCommandType: 'encounter.begin',
       summary: `This action will start combat${target.length > 0 ? ` against ${target}` : ''}. Confirm that you want to initiate combat, or cancel if you did not mean to start a fight.`,
     };
+  }
+
+  // 7. Take Portable Scene Prop / Container
+  if (dispatch.actionType === 'take_prop' && dispatch.takeProp) {
+    const requested = dispatch.takeProp.propLabel.toLowerCase().trim();
+    const portableFeatures = map.notableFeatures.filter(
+      (f) =>
+        f.objectKind !== 'npc' &&
+        f.objectKind !== 'exit' &&
+        (labelLooksPortableContainer(f.label) ||
+          ((f.objectKind === 'prop' || labelLooksPortableSceneProp(f.label)) &&
+            !HEAVY_FIXTURE_LABEL.test(f.label))),
+    );
+    const matched =
+      portableFeatures.find((f) => {
+        const fl = f.label.toLowerCase();
+        return (
+          fl.includes(requested) ||
+          requested.includes(fl) ||
+          requested
+            .split(/\s+/)
+            .some((w) => w.length > 2 && !/^(?:the|and|contested)$/i.test(w) && fl.includes(w))
+        );
+      }) ?? (portableFeatures.length === 1 ? portableFeatures[0] : undefined);
+    if (matched) {
+      const cleanLabel =
+        matched.label
+          .replace(/\s*[—(].*$/, '')
+          .replace(/^contested\s+/i, '')
+          .trim() || matched.label.trim();
+      return {
+        proposedCommandType: 'table.take_scene_prop',
+        objectId: matched.objectId,
+        summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
+      };
+    }
   }
 
   return null;

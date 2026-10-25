@@ -120,6 +120,21 @@ export function containerLabelHintFromText(text: string): string | null {
 export const PORTABLE_CONTAINER_LABEL =
   /\b(?:courier\s+satchel|satchel|pack|bag|pouch)\b/i;
 
+/** Heavy room furniture/fixtures that cannot be pocketed into inventory. */
+export const HEAVY_FIXTURE_LABEL =
+  /\b(?:crate|crates|chest|box|barrel|urn|freight|table|bench|workbench|counter|bar|hearth|pillar|statue|altar|brazier|cart|rack|bed|bunk|shelf|shelves|throne|anvil|forge|cauldron|well|fountain|sarcophagus|pedestal|column|tree|boulder|stump|log|wagon|carriage|door|doorway|gate|stairs|stairway|ladder|window|wall|floor|ceiling)\b/i;
+
+/** Portable items and quest props that a character can pick up and stow in inventory. */
+export const PORTABLE_SCENE_PROP_LABEL =
+  /\b(?:courier\s+satchel|satchel|pack|bag|pouch|key|cypher|cipher|bell|lantern|lamp|ledger|scroll|letter|note|journal|book|tome|map|seal|amulet|ring|coin|gem|relic|vial|potion|dagger|blade|sword|shield|bow|staff|wand|rod|orb|rope|compass|medallion|badge|token|torch|lockpick|tool|horn|flute|lute|chalice|goblet|crown|brooch|locket|pendant|stone|crystal|shard|bone|skull|idol|figurine|parchment|document|papers|manifest|writ|contract|cloak|boots|gloves|helm|hat|mask)\b/i;
+
 export function labelLooksPortableContainer(label: string): boolean {
   return PORTABLE_CONTAINER_LABEL.test(label);
+}
+
+export function labelLooksPortableSceneProp(label: string): boolean {
+  if (HEAVY_FIXTURE_LABEL.test(label) && !PORTABLE_CONTAINER_LABEL.test(label)) {
+    return false;
+  }
+  return PORTABLE_CONTAINER_LABEL.test(label) || PORTABLE_SCENE_PROP_LABEL.test(label);
 }

@@ -8020,4 +8020,37 @@ body.chaos-boot-active {
   margin: var(--space-1) 0;
 }
 
+/* FRESH-08: Expand .table-turn-banner when door selection detail or pending move controls are active */
+.table-dashboard .table-turn-banner:has([data-testid='door-selection-detail']),
+.table-dashboard .table-turn-banner:has([data-testid='pending-move-actions']),
+.table-action-bar-dm > .table-turn-banner:has([data-testid='door-selection-detail']),
+.table-action-bar-dm > .table-turn-banner:has([data-testid='pending-move-actions']) {
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* FRESH-04: Vault next-step action button layout and destructive danger button hierarchy */
+.next-step-action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 0.25rem;
+}
+
+button.danger,
+.button.danger {
+  background: color-mix(in srgb, var(--danger-crimson, #b83b3b) 18%, var(--panel-surface, #161822));
+  border-color: color-mix(in srgb, var(--danger-crimson, #b83b3b) 65%, var(--panel-border, #2a2e3d));
+  color: #f4b8b8;
+}
+
+button.danger:hover:not(:disabled),
+.button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-crimson, #b83b3b) 32%, var(--panel-surface, #161822));
+  border-color: var(--danger-crimson, #d64545);
+  color: #ffffff;
+}
+
+
 

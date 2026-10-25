@@ -1,11 +1,23 @@
-import type { MapBundleProjection } from '../../shared/map-contract.js';
-import { areAdjacent } from '../../shared/movement-contract.js';
+import {
+  edgeId,
+  type MapBundleProjection,
+  type MapEdgeRecord,
+  type MapSquareCoordinate,
+} from '../../shared/map-contract.js';
 
 function cellKey(column: number, row: number): string {
   return `${column},${row}`;
 }
 
 function isWalkableCell(map: MapBundleProjection, column: number, row: number): boolean {
+  if (
+    column < 0 ||
+    row < 0 ||
+    column >= map.coordinateSpace.columns ||
+    row >= map.coordinateSpace.rows
+  ) {
+    return false;
+  }
   const cell = map.cells.find((entry) => entry.column === column && entry.row === row);
   if (cell === undefined) {
     return false;
@@ -31,9 +43,118 @@ function isOccupiedByOther(
   return false;
 }
 
+function indexEdges(edges: readonly MapEdgeRecord[]): Map<string, MapEdgeRecord> {
+  const indexed = new Map<string, MapEdgeRecord>();
+  for (const edge of edges) {
+    indexed.set(edge.edgeId, edge);
+    if (edge.orientation === 'north' && edge.row > 0) {
+      const canonicalId = edgeId(edge.column, edge.row - 1, 'south');
+      if (!indexed.has(canonicalId)) {
+        indexed.set(canonicalId, edge);
+      }
+    } else if (edge.orientation === 'west' && edge.column > 0) {
+      const canonicalId = edgeId(edge.column - 1, edge.row, 'east');
+      if (!indexed.has(canonicalId)) {
+        indexed.set(canonicalId, edge);
+      }
+    }
+  }
+  return indexed;
+}
+
+function edgeBlocksMovement(edge: MapEdgeRecord | undefined): boolean {
+  if (edge === undefined) {
+    return false;
+  }
+  if (edge.kind === 'wall') {
+    return true;
+  }
+  if (edge.kind === 'door') {
+    return edge.doorState !== 'open';
+  }
+  return false;
+}
+
+function crossedEdgeId(from: MapSquareCoordinate, to: MapSquareCoordinate): string | null {
+  const dc = to.column - from.column;
+  const dr = to.row - from.row;
+  if (dc === 1 && dr === 0) {
+    return edgeId(from.column, from.row, 'east');
+  }
+  if (dc === -1 && dr === 0) {
+    return edgeId(to.column, to.row, 'east');
+  }
+  if (dr === 1 && dc === 0) {
+    return edgeId(from.column, from.row, 'south');
+  }
+  if (dr === -1 && dc === 0) {
+    return edgeId(to.column, to.row, 'south');
+  }
+  return null;
+}
+
+function canStepBetween(
+  map: MapBundleProjection,
+  edges: ReadonlyMap<string, MapEdgeRecord>,
+  from: MapSquareCoordinate,
+  to: MapSquareCoordinate,
+  actorSeatId: string,
+): boolean {
+  if (!isWalkableCell(map, to.column, to.row)) {
+    return false;
+  }
+  if (isOccupiedByOther(map, to.column, to.row, actorSeatId)) {
+    return false;
+  }
+  const dc = to.column - from.column;
+  const dr = to.row - from.row;
+  if (Math.abs(dc) === 1 && Math.abs(dr) === 1) {
+    const orthA = { column: to.column, row: from.row };
+    const orthB = { column: from.column, row: to.row };
+    if (
+      !isWalkableCell(map, orthA.column, orthA.row) ||
+      !isWalkableCell(map, orthB.column, orthB.row)
+    ) {
+      return false;
+    }
+    const edgeA = crossedEdgeId(from, orthA);
+    const edgeB = crossedEdgeId(from, orthB);
+    const edgeA2 = crossedEdgeId(orthA, to);
+    const edgeB2 = crossedEdgeId(orthB, to);
+    if (
+      edgeBlocksMovement(edgeA ? edges.get(edgeA) : undefined) ||
+      edgeBlocksMovement(edgeB ? edges.get(edgeB) : undefined) ||
+      edgeBlocksMovement(edgeA2 ? edges.get(edgeA2) : undefined) ||
+      edgeBlocksMovement(edgeB2 ? edges.get(edgeB2) : undefined)
+    ) {
+      return false;
+    }
+    return true;
+  }
+  const edge = crossedEdgeId(from, to);
+  if (edge !== null && edgeBlocksMovement(edges.get(edge))) {
+    return false;
+  }
+  return true;
+}
+
+const STEP_DELTAS: readonly (readonly [number, number])[] = [
+  // Orthogonal steps first so paths naturally route cleanly through open doorways
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  // Diagonal steps second
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
+
 /**
- * Heuristic walk path for click-to-move. The server path validator remains
- * authoritative; this only proposes a candidate path for preview/commit.
+ * Heuristic walk path for click-to-move. Respects walls, closed doors, and
+ * strict diagonal corner-cutting so paths through open doorways never trip
+ * DIAGONAL_CORNER_BLOCKED on the server path validator.
  */
 export function findWalkPathToTarget(options: {
   readonly map: MapBundleProjection;
@@ -46,13 +167,7 @@ export function findWalkPathToTarget(options: {
   if (start.column === target.column && start.row === target.row) {
     return [];
   }
-  if (
-    areAdjacent(start, target) &&
-    isWalkableCell(map, target.column, target.row) &&
-    !isOccupiedByOther(map, target.column, target.row, actorSeatId)
-  ) {
-    return [target];
-  }
+  const edges = indexEdges(map.edges);
 
   const queue: {
     column: number;
@@ -67,39 +182,31 @@ export function findWalkPathToTarget(options: {
       continue;
     }
 
-    for (let dc = -1; dc <= 1; dc += 1) {
-      for (let dr = -1; dr <= 1; dr += 1) {
-        if (dc === 0 && dr === 0) {
-          continue;
-        }
-        const column = current.column + dc;
-        const row = current.row + dr;
-        const key = cellKey(column, row);
-        if (visited.has(key)) {
-          continue;
-        }
-        if (
-          column < 0 ||
-          row < 0 ||
-          column >= map.coordinateSpace.columns ||
-          row >= map.coordinateSpace.rows
-        ) {
-          continue;
-        }
-        if (!isWalkableCell(map, column, row)) {
-          continue;
-        }
-        if (isOccupiedByOther(map, column, row, actorSeatId)) {
-          continue;
-        }
-
-        const path = [...current.path, { column, row }];
-        if (column === target.column && row === target.row) {
-          return path;
-        }
-        visited.add(key);
-        queue.push({ column, row, path });
+    for (const [dc, dr] of STEP_DELTAS) {
+      const column = current.column + dc;
+      const row = current.row + dr;
+      const key = cellKey(column, row);
+      if (visited.has(key)) {
+        continue;
       }
+      if (
+        !canStepBetween(
+          map,
+          edges,
+          { column: current.column, row: current.row },
+          { column, row },
+          actorSeatId,
+        )
+      ) {
+        continue;
+      }
+
+      const path = [...current.path, { column, row }];
+      if (column === target.column && row === target.row) {
+        return path;
+      }
+      visited.add(key);
+      queue.push({ column, row, path });
     }
   }
 

@@ -466,14 +466,22 @@ export function mountCharacterCreatePage(host: PageHost): void {
     return hasName && !nonIdentityUnresolved;
   }
 
-  function stepIsComplete(step: WizardStep): boolean {
-    return effectiveUnresolved().every((item) => item.step !== step);
+  function blockersForStep(step: WizardStep): readonly string[] {
+    const hasBg = displayChoices().backgroundId !== null;
+    return effectiveUnresolved()
+      .filter(
+        (item) =>
+          item.step === step ||
+          (step === 'background' &&
+            hasBg &&
+            (item.code === 'CLASS_SKILL_COUNT' ||
+              item.code === 'CLASS_SKILL_BACKGROUND_OVERLAP')),
+      )
+      .map((item) => item.message);
   }
 
-  function blockersForStep(step: WizardStep): readonly string[] {
-    return effectiveUnresolved()
-      .filter((item) => item.step === step)
-      .map((item) => item.message);
+  function stepIsComplete(step: WizardStep): boolean {
+    return blockersForStep(step).length === 0;
   }
 
   function stepTrain(): string {

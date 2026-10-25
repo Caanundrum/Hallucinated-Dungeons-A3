@@ -340,10 +340,14 @@ function answerContentsQueryNarration(
     !wantsTakeContainer &&
     (options.forceTakeFrom === true ||
       (/\b(?:take|grab|pocket|stow)\b/i.test(playerText) && /\bfrom\b/i.test(playerText)));
-  // Unauthored contents — honest limitation rather than invented loot.
+  // Open empty containers report in-world empty rather than fourth-wall authoring jargon.
   const answered = answerContainerContentsQuery({
     containerLabel: label,
-    view: { contents: null, discovery: open ? 'visible' : 'hidden', open },
+    view: {
+      contents: open && !wantsTakeContainer ? [] : null,
+      discovery: open ? 'visible' : 'hidden',
+      open,
+    },
     wantsTake: wantsTakeFrom,
     wantsTakeContainer,
   });
@@ -460,6 +464,14 @@ async function resolveDirectorNarrateOutput(options: {
     inspectHint === 'take_from_container'
   ) {
     const playerAsk = options.playerText ?? options.structured.rawText;
+    if (inspectHint === 'take_item' && containerLabelHintFromText(playerAsk) === null) {
+      const visibleProps =
+        map?.notableFeatures
+          .filter((f) => f.objectKind !== 'npc' && f.objectKind !== 'exit')
+          .map((f) => shortFeatureLabel(f.label)) ?? [];
+      const list = visibleProps.length > 0 ? visibleProps.join(', ') : 'nothing loose to pocket';
+      return `You look around ${map?.title ?? 'the area'} for what you can carry, spotting ${list}. Move beside a portable item on the map and declare taking it to stow it in your gear.`;
+    }
     return answerContentsQueryNarration(map, playerAsk, {
       wantsTakeContainer: inspectHint === 'take_container',
       forceTakeFrom: inspectHint === 'take_from_container',
@@ -1255,6 +1267,7 @@ export async function interpretNaturalLanguageIntent(options: {
         summary = applied.summary;
         if (applied.path) path = applied.path;
         if (applied.edgeId) edgeId = applied.edgeId;
+        if (applied.objectId) objectId = applied.objectId;
         if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
         if (applied.destinationHint) destinationHint = applied.destinationHint;
         aiDispatched = true;

@@ -144,3 +144,29 @@ test('removeSceneObject is a no-op when id is missing', () => {
   ]);
   assert.equal(removeSceneObject({ runtime, objectId: 'missing' }), null);
 });
+
+test('FRESH-07: matchTakeContainerByDeclaration and takeScenePropRuntime support portable scene props like Iron key', () => {
+  const runtime = runtimeWithFeatures([
+    {
+      objectId: 'obj:key',
+      column: 5,
+      row: 3,
+      label: 'Contested iron key — intact',
+      referenceKind: 'prop',
+      objectKind: 'prop',
+      state: 'intact',
+      interactable: true,
+    },
+  ]);
+  assert.equal(
+    matchTakeContainerByDeclaration(runtime, 'I take the iron key.'),
+    'obj:key',
+  );
+  assert.equal(
+    matchTakeContainerByDeclaration(runtime, 'I pick up the contested iron key.'),
+    'obj:key',
+  );
+  const taken = takeScenePropRuntime({ runtime, objectId: 'obj:key' });
+  assert.equal(taken.equipmentName, 'Iron key');
+  assert.equal(taken.runtime.sceneInstances['scene-1'].features.length, 0);
+});

@@ -275,11 +275,24 @@ export function recomputeSheetForLevel(
             (label) => feature.name === label || feature.name.startsWith(`${label} `),
           ),
       ),
-      ...derived.classFeatures.map((label) => ({
-        name: label,
-        source: `class.${classId}`,
-        summary: `Granted at character level ${level}.`,
-      })),
+      ...derived.classFeatures
+        .filter((label) => !(label === 'Level 1 class features' && baseSheet.features.length > 0))
+        .map((label) => {
+          const existing = baseSheet.features.find(
+            (feature) => feature.name === label || feature.name.startsWith(`${label} `),
+          );
+          const classLabel =
+            findClass(classId)?.label ?? classId.charAt(0).toUpperCase() + classId.slice(1);
+          return {
+            name: existing !== undefined ? existing.name : label,
+            source:
+              existing !== undefined && !existing.source.startsWith('class.')
+                ? existing.source
+                : classLabel,
+            summary:
+              existing !== undefined ? existing.summary : `Granted at character level ${level}.`,
+          };
+        }),
     ],
     savingThrows: Object.fromEntries(
       Object.entries(baseSheet.savingThrows).map(([ability, value]) => [
