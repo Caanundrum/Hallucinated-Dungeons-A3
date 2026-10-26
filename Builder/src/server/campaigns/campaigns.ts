@@ -58,6 +58,7 @@ import {
   buildMapRuntimeFromBlueprint,
   buildStoredSceneFromRoomBlueprint,
 } from '../table/scene-commands.js';
+import { extractSceneCardinalExits } from '../table/scene-exit-projection.js';
 import { mergeExplored, upsertTokenPosition, type StoredMapRuntime } from '../table/map-runtime.js';
 import {
   CharacterNotFoundError,
@@ -800,6 +801,7 @@ export async function createCampaign(options: {
                 ? { layoutArchetype: preComposed.layoutArchetype }
                 : {}),
               wallSummary,
+              cardinalExits: extractSceneCardinalExits(preComposed),
             },
           });
           const updatedNpcs = await Promise.all(

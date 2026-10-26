@@ -23,6 +23,7 @@ import {
   STANDARD_ARRAY,
   WIZARD_STEPS,
   abilityModifier,
+  formatArmorClassFormula,
   pointBuyCost,
   type Ability,
   type CharacterChoices,
@@ -1059,6 +1060,11 @@ function deriveArmorClass(
   });
   const wearingArmor = bodyArmor.length > 0;
 
+  const withFormula = (ac: DerivedValue): DerivedValue => ({
+    ...ac,
+    formulaSummary: formatArmorClassFormula(ac),
+  });
+
   if (classRecord.unarmoredDefenseAbility !== null && bodyArmor.length === 0) {
     // The Monk's Unarmored Defense also requires no Shield; the Barbarian's
     // permits one.
@@ -1076,8 +1082,27 @@ function deriveArmorClass(
       if (shield) {
         components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
       }
-      return value(components);
+      return withFormula(value(components));
     }
+  }
+
+  // Draconic Sorcery (Draconic Resilience): 10 + DEX + CHA while unarmored.
+  const isDraconicSorcerer =
+    classRecord.id === 'sorcerer' &&
+    (choices.subclassId === 'draconic' ||
+      choices.subclassId === 'draconic-sorcery' ||
+      selectedClassChoiceIds(choices, 'sorcerous-origin').includes('draconic') ||
+      selectedClassChoiceIds(choices, 'subclass').includes('draconic'));
+  if (!wearingArmor && isDraconicSorcerer) {
+    const components = [
+      { label: 'Draconic Resilience base', amount: 10, ruleId: 'class.sorcerer.draconic-resilience' },
+      { label: ABILITY_LABELS.dexterity, amount: modifiers.dexterity, ruleId: 'ability.dexterity' },
+      { label: ABILITY_LABELS.charisma, amount: modifiers.charisma, ruleId: 'ability.charisma' },
+    ];
+    if (shield) {
+      components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
+    }
+    return withFormula(value(components));
   }
 
   // Armor of Shadows (Warlock): Mage Armor while not wearing armor.
@@ -1092,7 +1117,7 @@ function deriveArmorClass(
     if (shield) {
       components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
     }
-    return value(components);
+    return withFormula(value(components));
   }
 
   const best = bodyArmor.sort((a, b) => b.baseArmorClass - a.baseArmorClass)[0];
@@ -1104,7 +1129,7 @@ function deriveArmorClass(
     if (shield) {
       components.push({ label: 'Shield', amount: 2, ruleId: 'armor.shield' });
     }
-    return value(components);
+    return withFormula(value(components));
   }
 
   const dexterityApplied =
@@ -1123,7 +1148,7 @@ function deriveArmorClass(
       ruleId: `class.${classRecord.id}.fighting-style.defense`,
     });
   }
-  return value(components);
+  return withFormula(value(components));
 }
 
 function deriveAttacks(

@@ -64,11 +64,14 @@ import {
   actorHoldsMatchingKey,
   beginAdventureRuntime,
   interactObjectRuntime,
+  isPortableSceneContainer,
   loadCampaignPremise,
+  lootContainerRuntime,
   takeScenePropRuntime,
   transferNpcItemRuntime,
   travelSceneRuntime,
 } from './scene-commands.js';
+import { extractSceneCardinalExits } from './scene-exit-projection.js';
 import { featureLabelWithState } from './scene-composition.js';
 import { updateSceneObjectState } from './scene-runtime.js';
 import { activeSceneInstance } from './map-runtime.js';
@@ -924,72 +927,141 @@ export async function acceptTableCommand(options: {
   if (commandType === 'table.take_scene_prop') {
     const targetObjectId =
       typeof objectId === 'string' && objectId.length > 0 ? objectId : null;
-    if (targetObjectId === null) {
-      throw new TableCommandError(
-        ERROR_CODES.BAD_REQUEST,
-        'Name the portable container you want to take from this scene.',
-      );
-    }
-    try {
-      const active = activeSceneInstance(mapContext.runtime);
-      const priorFeature = active?.features.find((entry) => entry.objectId === targetObjectId);
-      const priorState = priorFeature?.state ?? 'present';
-      const result = takeScenePropRuntime({
-        runtime: mapContext.runtime,
-        objectId: targetObjectId,
-      });
-      nextSceneRuntime = result.runtime;
-      sceneChronicleBody = result.chronicle;
-      eventType = 'table.scene_prop_taken';
-      objectMutation = {
-        objectId: result.objectId,
-        baseLabel: result.label,
-        priorState,
-        nextState: 'inventory',
-      };
-      takenEquipmentName = result.equipmentName;
-      const source = await loadCharacterRulesSource(firestore, seat.characterId);
-      const progressionSnap = await firestore
-        .collection(COLLECTIONS.characterProgressions)
-        .doc(seat.characterId)
-        .get();
-      const priorProgression = progressionSnap.exists
-        ? (progressionSnap.data() as StoredProgression)
-        : initialStoredProgression(source);
-      const baseSheet = baseSheetFor(source);
-      const equipmentOverrides = appendEquipmentOverride({
-        baseEquipment: baseSheet.equipment,
-        ...(priorProgression.equipmentOverrides !== undefined
-          ? { equipmentOverrides: priorProgression.equipmentOverrides }
-          : {}),
-        itemName: result.equipmentName,
-      });
-      nextProgression = {
-        ...priorProgression,
-        equipmentOverrides,
-        updatedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      const code = error instanceof Error ? error.message : '';
-      if (code === 'NO_ACTIVE_SCENE') {
+    const active = activeSceneInstance(mapContext.runtime);
+    const priorFeature =
+      targetObjectId !== null
+        ? active?.features.find((entry) => entry.objectId === targetObjectId)
+        : undefined;
+    const shouldLootContainerContents =
+      (priorFeature !== undefined &&
+        priorFeature.objectKind === 'container' &&
+        !isPortableSceneContainer(priorFeature)) ||
+      (typeof itemId === 'string' && itemId.length > 0) ||
+      (targetObjectId === null &&
+        (active?.features ?? []).some(
+          (f) =>
+            f.objectKind === 'container' &&
+            f.lockState !== 'locked' &&
+            Array.isArray(f.contents) &&
+            f.contents.length > 0,
+        ));
+
+    if (shouldLootContainerContents) {
+      try {
+        const looted = lootContainerRuntime({
+          runtime: mapContext.runtime,
+          ...(targetObjectId !== null ? { objectId: targetObjectId } : {}),
+          ...(typeof itemId === 'string' && itemId.length > 0 ? { itemHint: itemId } : {}),
+          ...(trimmedDeclaration !== undefined ? { declaration: trimmedDeclaration } : {}),
+        });
+        nextSceneRuntime = looted.runtime;
+        sceneChronicleBody = looted.chronicle;
+        eventType = 'table.scene_prop_taken';
+        objectMutation = {
+          objectId: looted.objectId,
+          baseLabel: looted.containerLabel,
+          priorState: priorFeature?.state ?? 'open',
+          nextState: 'open',
+        };
+        takenEquipmentName = looted.lootedItems.join(', ');
+        const actorInventory = await loadActorInventoryState();
+        if (actorInventory !== null && looted.lootedItems.length > 0) {
+          let overrides = actorInventory.priorProgression.equipmentOverrides;
+          for (const itemName of looted.lootedItems) {
+            overrides = appendEquipmentOverride({
+              baseEquipment: actorInventory.baseSheet.equipment,
+              ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+              itemName,
+            });
+          }
+          nextProgression = {
+            ...actorInventory.priorProgression,
+            ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      } catch (error) {
+        const code = error instanceof Error ? error.message : '';
+        if (code === 'NO_ACTIVE_SCENE') {
+          throw new TableCommandError(
+            ERROR_CODES.BAD_REQUEST,
+            'Begin the adventure before taking items from containers.',
+          );
+        }
+        if (code === 'NO_LOOTABLE_CONTAINER') {
+          throw new TableCommandError(
+            ERROR_CODES.BAD_REQUEST,
+            'There are no open or unlocked containers with items to take right now.',
+          );
+        }
+        throw error;
+      }
+    } else {
+      if (targetObjectId === null) {
         throw new TableCommandError(
           ERROR_CODES.BAD_REQUEST,
-          'Begin the adventure before taking scene props.',
+          'Name the portable container you want to take from this scene.',
         );
       }
-      if (code === 'OBJECT_NOT_FOUND') {
-        throw new TableCommandError(
-          ERROR_CODES.BAD_REQUEST,
-          'That prop is not on this scene.',
-        );
+      try {
+        const priorState = priorFeature?.state ?? 'present';
+        const result = takeScenePropRuntime({
+          runtime: mapContext.runtime,
+          objectId: targetObjectId,
+        });
+        nextSceneRuntime = result.runtime;
+        sceneChronicleBody = result.chronicle;
+        eventType = 'table.scene_prop_taken';
+        objectMutation = {
+          objectId: result.objectId,
+          baseLabel: result.label,
+          priorState,
+          nextState: 'inventory',
+        };
+        takenEquipmentName = result.equipmentName;
+        const source = await loadCharacterRulesSource(firestore, seat.characterId);
+        const progressionSnap = await firestore
+          .collection(COLLECTIONS.characterProgressions)
+          .doc(seat.characterId)
+          .get();
+        const priorProgression = progressionSnap.exists
+          ? (progressionSnap.data() as StoredProgression)
+          : initialStoredProgression(source);
+        const baseSheet = baseSheetFor(source);
+        const equipmentOverrides = appendEquipmentOverride({
+          baseEquipment: baseSheet.equipment,
+          ...(priorProgression.equipmentOverrides !== undefined
+            ? { equipmentOverrides: priorProgression.equipmentOverrides }
+            : {}),
+          itemName: result.equipmentName,
+        });
+        nextProgression = {
+          ...priorProgression,
+          equipmentOverrides,
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        const code = error instanceof Error ? error.message : '';
+        if (code === 'NO_ACTIVE_SCENE') {
+          throw new TableCommandError(
+            ERROR_CODES.BAD_REQUEST,
+            'Begin the adventure before taking scene props.',
+          );
+        }
+        if (code === 'OBJECT_NOT_FOUND') {
+          throw new TableCommandError(
+            ERROR_CODES.BAD_REQUEST,
+            'That prop is not on this scene.',
+          );
+        }
+        if (code === 'OBJECT_NOT_PORTABLE') {
+          throw new TableCommandError(
+            ERROR_CODES.BAD_REQUEST,
+            'That prop cannot be stowed — only portable containers like a satchel, pack, bag, or pouch.',
+          );
+        }
+        throw error;
       }
-      if (code === 'OBJECT_NOT_PORTABLE') {
-        throw new TableCommandError(
-          ERROR_CODES.BAD_REQUEST,
-          'That prop cannot be stowed — only portable containers like a satchel, pack, bag, or pouch.',
-        );
-      }
-      throw error;
     }
   }
 
@@ -1062,6 +1134,7 @@ export async function acceptTableCommand(options: {
                   ? { layoutArchetype: arrivedScene.layoutArchetype }
                   : {}),
                 wallSummary,
+                cardinalExits: extractSceneCardinalExits(arrivedScene),
               },
             });
             nextSceneRuntime = {
@@ -1135,6 +1208,18 @@ export async function acceptTableCommand(options: {
         throw new TableCommandError(
           ERROR_CODES.BAD_REQUEST,
           'There is no earlier scene to return to yet.',
+        );
+      }
+      if (code === 'EXIT_LOCKED_BY_MECHANISM') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'The passage is sealed by a heavy mechanism; look for a wall lever or switch to unseal it.',
+        );
+      }
+      if (code === 'EXIT_LOCKED') {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'That passage is locked; unlock or unseal it before traveling through.',
         );
       }
       throw error;
@@ -1235,6 +1320,24 @@ export async function acceptTableCommand(options: {
       );
     }
     if (edge.doorState === 'locked') {
+      const activeScene = activeSceneInstance(mapContext.runtime);
+      const lockedByLever =
+        edge.keyItemId === 'Wall Lever Mechanism' ||
+        /\b(?:lever|mechanism)\b/i.test(edge.keyItemId ?? '') ||
+        (activeScene?.features ?? []).some(
+          (f) =>
+            f.objectKind === 'lever' &&
+            f.targetEdgeOrObjectId === edge.edgeId &&
+            f.state !== 'pulled' &&
+            f.state !== 'active' &&
+            f.state !== 'open',
+        );
+      if (lockedByLever) {
+        throw new TableCommandError(
+          ERROR_CODES.BAD_REQUEST,
+          'The doorway is sealed by a heavy mechanism; look for a wall lever or switch to unseal it.',
+        );
+      }
       const actorInventory = await loadActorInventoryState();
       const matchedKey = actorHoldsMatchingKey(
         actorInventory?.equipmentNames,
@@ -1412,7 +1515,7 @@ export async function acceptTableCommand(options: {
               (f) => f.objectKind === 'container' && (f.lockState === 'locked' || f.state === 'locked'),
             );
           if (targetFeature !== undefined) {
-            const looted = [...(targetFeature.contents ?? [])];
+            const revealed = [...(targetFeature.contents ?? [])];
             const nextLabel = featureLabelWithState({
               ...targetFeature,
               state: 'open',
@@ -1424,30 +1527,19 @@ export async function acceptTableCommand(options: {
               nextState: 'open',
               labelWithState: nextLabel,
               lockState: 'unlocked',
-              contents: [],
+              contents: revealed,
             });
             if (updatedRuntime !== null) {
               nextSceneRuntime = updatedRuntime;
             }
-            if (looted.length > 0 && actorInventory !== null) {
-              let overrides = actorInventory.priorProgression.equipmentOverrides;
-              for (const itemName of looted) {
-                overrides = appendEquipmentOverride({
-                  baseEquipment: actorInventory.baseSheet.equipment,
-                  ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
-                  itemName,
-                });
-              }
-              nextProgression = {
-                ...actorInventory.priorProgression,
-                ...(overrides !== undefined ? { equipmentOverrides: overrides } : {}),
-                updatedAt: new Date().toISOString(),
-              };
-              skillResolution = {
-                ...skillResolution,
-                summary: `${skillResolution.summary} Looted into inventory: ${looted.join(', ')}.`,
-              };
-            }
+            const contentsNote =
+              revealed.length > 0
+                ? ` Inside you see: ${revealed.join(', ')}.`
+                : ' It is empty.';
+            skillResolution = {
+              ...skillResolution,
+              summary: `${skillResolution.summary}${contentsNote}`,
+            };
           }
         } else if (
           activeScene !== null &&

@@ -557,7 +557,7 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head\s+(?:out|outside|onward|for|to|down|up|toward|towards|into)|go\s+(?:outside|outdoors|onward|through|to|toward|towards|down|up|into)|step\s+(?:out|outside)|climb|descend|ascend|walk\s+down|take\s+the\s+(?:stairs|trail|path|road)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:trail|tracks|path|marks?|lead|footprints?|way|corridor|passage|tunnel|hall|stairs?)|proceed\s+(?:to|toward|towards|into)|continue\s+(?:to|toward|towards|into|onward)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
+    (/\b(leave|travel|head\s+(?:out|outside|onward|for|to|down|up|toward|towards|into)|go\s+(?:outside|outdoors|onward|through|to|toward|towards|down|up|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:down|up|along)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|down|up)|continue\s+(?:to|toward|towards|into|onward|down|up|along)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
       text,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
@@ -571,10 +571,25 @@ export async function resolveDeterministicIntentFallback(
     );
     let summaryDestination =
       towardMatch?.[1]?.trim() ? `the ${towardMatch[1].trim()}` : 'the next area';
+    let exitLockedMessage: string | null = null;
     try {
-      const { loadMapRuntime } = await import('../table/map-runtime.js');
-      const { resolveTravelDestinationTitle } = await import('../table/scene-commands.js');
+      const { activeSceneInstance, loadMapRuntime } = await import('../table/map-runtime.js');
+      const {
+        checkExitLockedForTravel,
+        resolveTravelDestinationTitle,
+      } = await import('../table/scene-commands.js');
       const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const active = activeSceneInstance(runtime);
+      if (active !== null) {
+        const lockCheck = checkExitLockedForTravel(active, rawText, false);
+        if (lockCheck.locked) {
+          exitLockedMessage = lockCheck.byLever
+            ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+              } to unseal it.`
+            : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+        }
+      }
       const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false);
       if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
         destinationHint = resolvedTitle.trim();
@@ -583,7 +598,13 @@ export async function resolveDeterministicIntentFallback(
     } catch {
       // Keep default destinationHint
     }
-    summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
+    if (exitLockedMessage !== null) {
+      proposedCommandType = 'table.sync';
+      deferDirectorNarrate = false;
+      summary = exitLockedMessage;
+    } else {
+      summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
+    }
     sceneLoopResolved = true;
   } else if (
     !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
@@ -670,64 +691,107 @@ export async function resolveDeterministicIntentFallback(
     !declarationIsDoorOpenOrPassage(rawText) &&
     !declarationNegatesDoorOpen(rawText) &&
     !mentionsDoorIntent(text) &&
-    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text) &&
-    !authority.actionSequence.some(
-      (step) => step.kind === 'inspect' && step.outcomeHint === 'take_from_container',
-    )
+    /\b(?:take|grab|pocket|stow|carry|lift|loot|pick(?:ing|ed)?\s+up)\b/i.test(text)
   ) {
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
-      const { matchTakeContainerByDeclaration } = await import('../table/scene-commands.js');
+      const {
+        matchTakeContainerByDeclaration,
+        scoreFeatureLabelMatch,
+        stripFeatureStateSuffix,
+      } = await import('../table/scene-commands.js');
       const runtime = await loadMapRuntime(options.firestore, options.campaignId);
-      const matched = matchTakeContainerByDeclaration(runtime, rawText);
-      if (matched !== null) {
-        const active =
-          runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
-            ? runtime.sceneInstances?.[runtime.activeSceneId]
-            : undefined;
-        const feature = active?.features.find((entry) => entry.objectId === matched);
-        const label =
-          feature?.label
-            .replace(/\s*[—(].*$/, '')
-            .replace(/^contested\s+/i, '')
-            .trim() ||
-          containerLabelHintFromText(rawText) ||
-          'that item';
+      const active =
+        runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
+          ? runtime.sceneInstances?.[runtime.activeSceneId]
+          : undefined;
+      // 1. Check if the player is taking an item from inside an unlocked/open container or looting a container.
+      const unlockedContainersWithContents = (active?.features ?? []).filter(
+        (f) =>
+          f.objectKind === 'container' &&
+          f.lockState !== 'locked' &&
+          f.state !== 'locked' &&
+          Array.isArray(f.contents) &&
+          f.contents.length > 0,
+      );
+      const isLootAllVerb =
+        /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?contents)\b/i.test(
+          rawText,
+        );
+      const containerByContentItem = unlockedContainersWithContents.find((f) =>
+        (f.contents ?? []).some((item: string) =>
+          item
+            .toLowerCase()
+            .split(/\s+/)
+            .some((w: string) => w.length >= 3 && text.includes(w)),
+        ),
+      );
+      const containerByLabelForLoot = isLootAllVerb
+        ? (unlockedContainersWithContents.find(
+            (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
+          ) ??
+          unlockedContainersWithContents.find((f) => f.state === 'open') ??
+          unlockedContainersWithContents[0])
+        : undefined;
+      const targetLootContainer = containerByContentItem ?? containerByLabelForLoot;
+      if (targetLootContainer !== undefined && targetLootContainer.contents !== undefined) {
+        const matchedItem = isLootAllVerb
+          ? targetLootContainer.contents.join(', ')
+          : (targetLootContainer.contents.find((item: string) =>
+              item
+                .toLowerCase()
+                .split(/\s+/)
+                .some((w: string) => w.length >= 3 && text.includes(w)),
+            ) ?? targetLootContainer.contents[0]!);
+        const containerBaseLabel = stripFeatureStateSuffix(targetLootContainer.label);
         proposedCommandType = 'table.take_scene_prop';
-        objectId = matched;
-        summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
+        objectId = targetLootContainer.objectId;
+        itemId = isLootAllVerb ? 'all' : matchedItem;
+        summary = `Ready to take ${matchedItem} from the ${containerBaseLabel}. Confirm to stow it in your inventory.`;
         sceneLoopResolved = true;
       } else {
-        const active =
-          runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
-            ? runtime.sceneInstances?.[runtime.activeSceneId]
-            : undefined;
-        const npcWithHeld = active?.features.find(
-          (f) =>
-            (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
-            Array.isArray(f.heldItems) &&
-            f.heldItems.length > 0 &&
-            f.heldItems.some((item: string) =>
-              item
-                .toLowerCase()
-                .split(/\s+/)
-                .some((w: string) => w.length > 2 && text.includes(w)),
-            ),
-        );
-        if (npcWithHeld !== undefined && npcWithHeld.heldItems !== undefined) {
-          const matchedItem =
-            npcWithHeld.heldItems.find((item: string) =>
-              item
-                .toLowerCase()
-                .split(/\s+/)
-                .some((w: string) => w.length > 2 && text.includes(w)),
-            ) ?? npcWithHeld.heldItems[0]!;
-          const npcName = npcWithHeld.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
-          proposedCommandType = 'table.transfer_npc_item';
-          objectId = npcWithHeld.objectId;
-          itemId = matchedItem;
-          summary = `Ready to receive ${matchedItem} from ${npcName}. Confirm to stow it in your inventory.`;
+        const matched = matchTakeContainerByDeclaration(runtime, rawText);
+        if (matched !== null) {
+          const feature = active?.features.find((entry) => entry.objectId === matched);
+          const label =
+            feature?.label
+              .replace(/\s*[—(].*$/, '')
+              .replace(/^contested\s+/i, '')
+              .trim() ||
+            containerLabelHintFromText(rawText) ||
+            'that item';
+          proposedCommandType = 'table.take_scene_prop';
+          objectId = matched;
+          summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
           sceneLoopResolved = true;
+        } else {
+          const npcWithHeld = active?.features.find(
+            (f) =>
+              (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+              Array.isArray(f.heldItems) &&
+              f.heldItems.length > 0 &&
+              f.heldItems.some((item: string) =>
+                item
+                  .toLowerCase()
+                  .split(/\s+/)
+                  .some((w: string) => w.length > 2 && text.includes(w)),
+              ),
+          );
+          if (npcWithHeld !== undefined && npcWithHeld.heldItems !== undefined) {
+            const matchedItem =
+              npcWithHeld.heldItems.find((item: string) =>
+                item
+                  .toLowerCase()
+                  .split(/\s+/)
+                  .some((w: string) => w.length > 2 && text.includes(w)),
+              ) ?? npcWithHeld.heldItems[0]!;
+            const npcName = npcWithHeld.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+            proposedCommandType = 'table.transfer_npc_item';
+            objectId = npcWithHeld.objectId;
+            itemId = matchedItem;
+            summary = `Ready to receive ${matchedItem} from ${npcName}. Confirm to stow it in your inventory.`;
+            sceneLoopResolved = true;
+          }
         }
       }
     } catch {

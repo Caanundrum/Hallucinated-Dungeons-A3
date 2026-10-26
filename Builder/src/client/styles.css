@@ -2572,6 +2572,12 @@ a.button[aria-disabled="true"] {
   gap: var(--space-3);
 }
 
+p.message.notice {
+  display: block;
+  width: 100%;
+  line-height: 1.55;
+}
+
 .record-list {
   list-style: none;
   margin: 0;
@@ -8115,6 +8121,160 @@ button.danger:hover:not(:disabled),
   border-color: var(--danger-crimson, #d64545);
   color: #ffffff;
 }
+
+/* Packet 1: Inline AC Formula Breakdown & Portrait Lightbox Modal */
+.stat-formula-inline {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.portrait-option-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-surface) 92%, #000 8%);
+}
+
+.portrait-option-card.selected,
+.portrait-option-card.is-selected {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold-primary) 40%, transparent);
+}
+
+.portrait-thumbnail-preview-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: zoom-in;
+  color: var(--text-primary);
+}
+
+.portrait-zoom-badge {
+  font-size: 0.72rem;
+  color: var(--text-gold, #e5c158);
+  text-decoration: underline;
+}
+
+.portrait-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(6, 8, 14, 0.86);
+  backdrop-filter: blur(6px);
+}
+
+.portrait-lightbox-card {
+  max-width: 28rem;
+  width: 100%;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.portrait-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.portrait-lightbox-stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.portrait-lightbox-image {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-control);
+  border: 2px solid var(--gold-primary);
+}
+
+.portrait-lightbox-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Packet 2: Campaign Draft Actions Stack & Readable Forging Ticker */
+.campaign-draft-actions-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.campaign-draft-helper {
+  width: 100%;
+  max-width: 100%;
+  line-height: 1.55;
+  margin: 0.35rem 0;
+}
+
+.world-forge-stage-text {
+  transition: opacity 280ms ease-in-out;
+  opacity: 1;
+  line-height: 1.5;
+}
+
+.world-forge-stage-text.is-transitioning {
+  opacity: 0.35;
+}
+
+/* Packet 3: Active DM Persona Thinking Indicator */
+.dm-thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  margin: 0.35rem 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 50%, var(--panel-border));
+  background: color-mix(in srgb, var(--gold-primary) 12%, var(--panel-surface));
+  color: var(--text-gold, #e5c158);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dm-thinking-dots {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--gold-primary, #e5c158);
+  animation: dmThinkingPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes dmThinkingPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 
 
 

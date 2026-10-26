@@ -14,6 +14,7 @@
 import {
   ABILITIES,
   ABILITY_LABELS,
+  formatArmorClassFormula,
   formatModifier,
   type DerivedCharacterSheet,
   type DerivedValue,
@@ -94,6 +95,10 @@ function explained(
   testId: string,
   format: (value: number) => string = (value) => String(value),
 ): string {
+  const isArmorClass = testId === 'sheet-armor-class' || testId === 'preview-armor-class';
+  const formulaMarkup = isArmorClass
+    ? `<span class="stat-formula-inline record-meta" data-testid="${testId === 'sheet-armor-class' ? 'ac-formula-breakdown' : 'preview-ac-formula-breakdown'}">${escapeHtml(formatArmorClassFormula(derived))}</span>`
+    : '';
   return `
     <div class="stat">
       <span class="stat-label">${escapeHtml(label)}</span>
@@ -102,9 +107,11 @@ function explained(
         ${escapeHtml(format(derived.value))}
         <span class="stat-tooltip" role="tooltip" id="${escapeHtml(testId)}-how">
           <span class="stat-tooltip-title">How we got this</span>
+          ${isArmorClass ? `<p class="record-meta">${escapeHtml(formatArmorClassFormula(derived))}</p>` : ''}
           ${breakdownList(derived)}
         </span>
       </span>
+      ${formulaMarkup}
     </div>`;
 }
 

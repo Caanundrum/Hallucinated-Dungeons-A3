@@ -50,6 +50,9 @@ import { isHostedPlayerSurface } from '../player-surface.js';
 import { navigate } from '../router.js';
 import type { PageHost } from './home.js';
 
+/** Readable rotation cadence (4.8s per message) for the Campaign World Forge ticker. */
+export const FORGE_THEATER_ROTATION_MS = 4800;
+
 const STOP_PROPER_WORDS = new Set([
   'The',
   'A',
@@ -193,7 +196,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
   function renderSkeletonPreview(): string {
     if (draftedBlueprint === null) {
       return `
-        <p class="message notice" data-testid="campaign-outline-required-notice" style="margin-top:0.75rem;">
+        <p class="message notice campaign-draft-helper" data-testid="campaign-outline-required-notice">
           Drafting and approving a <strong>Rough Campaign Outline</strong> is required before creating the campaign. Click <strong>Draft Rough Campaign Outline</strong> above to generate 3 options and pick 1.
         </p>`;
     }
@@ -277,7 +280,7 @@ export function mountCampaignCreatePage(host: PageHost): void {
                    <span class="world-forge-spinner" aria-hidden="true">✦</span>
                    <strong>Forging Your Campaign World…</strong>
                  </div>
-                 <p class="world-forge-stage-text">${escapeHtml(forgingStatus)}</p>
+                 <p class="world-forge-stage-text" data-testid="forge-theater-message">${escapeHtml(forgingStatus)}</p>
                  <div class="world-forge-progress-bar" aria-hidden="true"><div class="world-forge-progress-fill"></div></div>
                </div>`
             : ''
@@ -438,9 +441,13 @@ export function mountCampaignCreatePage(host: PageHost): void {
         forgingStatus = FORGE_THEATER_MESSAGES[forgeStageIdx]!;
         const stageEl = container.querySelector<HTMLElement>('.world-forge-stage-text');
         if (stageEl !== null) {
+          stageEl.classList.add('is-transitioning');
           stageEl.textContent = forgingStatus;
+          requestAnimationFrame(() => {
+            stageEl.classList.remove('is-transitioning');
+          });
         }
-      }, 1600);
+      }, FORGE_THEATER_ROTATION_MS);
     }
     render();
     try {
@@ -669,31 +676,33 @@ export function mountCampaignCreatePage(host: PageHost): void {
 
         <section class="panel" aria-labelledby="world-forge-heading">
           <h2 id="world-forge-heading">5. Rough Campaign Outline &amp; World Forge (Required)</h2>
-          <p class="record-meta" style="margin:0.35rem 0 0.85rem 0; line-height:1.5;">
+          <p class="record-meta campaign-draft-helper">
             Generate 3 Rough Campaign Outlines from your premise, pick the one you like best, and approve it before creating the campaign. Battle maps, NPCs, and reusable monster tokens are forged upon creation.
           </p>
-          <div class="actions" style="margin-bottom:0.5rem;">
-            <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
-              ${draftingSkeleton || busy || (outlineDraftsUsed >= 1 && !outlinesStale) ? 'disabled' : ''}>
-              ${
-                draftingSkeleton
-                  ? 'Drafting 3 Rough Campaign Outlines…'
-                  : outlinesStale
-                    ? 'Regenerate Rough Campaign Outlines (Premise Updated)'
-                    : outlineDraftsUsed >= 1
-                      ? '3 Rough Campaign Outlines Generated (Pick 1 Below)'
-                      : 'Draft Rough Campaign Outline (Generates 3 Choices)'
-              }
-            </button>
+          <div class="campaign-draft-actions-stack" data-testid="campaign-draft-actions-stack">
+            <div class="actions">
+              <button type="button" class="secondary" data-testid="draft-campaign-skeleton"
+                ${draftingSkeleton || busy || (outlineDraftsUsed >= 1 && !outlinesStale) ? 'disabled' : ''}>
+                ${
+                  draftingSkeleton
+                    ? 'Drafting 3 Rough Campaign Outlines…'
+                    : outlinesStale
+                      ? 'Regenerate Rough Campaign Outlines (Premise Updated)'
+                      : outlineDraftsUsed >= 1
+                        ? '3 Rough Campaign Outlines Generated (Pick 1 Below)'
+                        : 'Draft Rough Campaign Outline (Generates 3 Choices)'
+                }
+              </button>
+            </div>
+            ${
+              outlinesStale
+                ? `<p class="message notice campaign-draft-helper" data-testid="outlines-stale-notice">
+                     Your premise or title changed since these outlines were drafted. Click <strong>Regenerate Rough Campaign Outlines</strong> above to refresh them.
+                   </p>`
+                : ''
+            }
+            ${renderSkeletonPreview()}
           </div>
-          ${
-            outlinesStale
-              ? `<p class="message notice" data-testid="outlines-stale-notice" style="margin-bottom:0.5rem;">
-                   Your premise or title changed since these outlines were drafted. Click <strong>Regenerate Rough Campaign Outlines</strong> above to refresh them.
-                 </p>`
-              : ''
-          }
-          ${renderSkeletonPreview()}
         </section>
 
         <div class="actions">

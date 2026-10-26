@@ -280,6 +280,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let cuePlanInFlight = false;
   let presentationAudioContext: AudioContext | null = null;
   let busy = false;
+  let dmThinkingCount = 0;
   /** Map-stage NPC roleplay spotlight (portrait + latest spoken line). */
   let roleplaySpotlight: {
     readonly npcName: string;
@@ -988,6 +989,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     pin();
   }
 
+  function dmThinkingIndicatorHtml(): string {
+    if (!busy && dmThinkingCount <= 0) {
+      return '';
+    }
+    return `<div class="dm-thinking-indicator" data-testid="dm-thinking-indicator" role="status" aria-live="polite"><span class="dm-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>${escapeHtml(directorIdentityLabel)} is thinking…</span></div>`;
+  }
+
   function patchDmPlayThread(): void {
     const host = container.querySelector('[data-testid="dm-play-thread"]');
     if (host === null) {
@@ -1000,6 +1008,24 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       list.outerHTML = rendered;
     } else if (empty !== null) {
       empty.outerHTML = rendered;
+    }
+    const existingThinking = host.querySelector('[data-testid="dm-thinking-indicator"]');
+    const thinkingHtml = dmThinkingIndicatorHtml();
+    if (existingThinking !== null) {
+      if (thinkingHtml.length > 0) {
+        existingThinking.outerHTML = thinkingHtml;
+      } else {
+        existingThinking.remove();
+      }
+    } else if (thinkingHtml.length > 0) {
+      const targetAfter =
+        host.querySelector('[data-testid="dm-play-thread-list"]') ??
+        host.querySelector('[data-testid="dm-play-thread-list-empty"]');
+      if (targetAfter !== null) {
+        targetAfter.insertAdjacentHTML('afterend', thinkingHtml);
+      } else {
+        host.insertAdjacentHTML('beforeend', thinkingHtml);
+      }
     }
     bindDmPlayThreadScroll();
     bindActionDockScrollLock();
@@ -1017,6 +1043,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   ): Promise<void> {
     if (candidate === null || mechanicsSummary.trim().length === 0) {
       return;
+    }
+    dmThinkingCount += 1;
+    if (isPageMountCurrent(container, mountToken)) {
+      patchDmPlayThread();
     }
     try {
       const narration = await requestDirectorNarration({
@@ -1085,9 +1115,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       }
     } catch {
       appendDmThread('system', 'Table', mechanicsSummary, 'mechanics');
-    }
-    if (isPageMountCurrent(container, mountToken)) {
-      patchDmPlayThread();
+    } finally {
+      dmThinkingCount = Math.max(0, dmThinkingCount - 1);
+      if (isPageMountCurrent(container, mountToken)) {
+        patchDmPlayThread();
+      }
     }
   }
 
@@ -2842,7 +2874,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           Math.abs(anchor.column - matchedFeature.column),
           Math.abs(anchor.row - matchedFeature.row),
         );
-        if (dist > 1) {
+        if (!explorationMode() && dist > 1) {
           return `You are not next to ${matchedFeature.label} yet (${dist * 5} ft away). Move your token adjacent to it on the battle map first, then inspect or search it.`;
         }
       }
@@ -2865,7 +2897,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           Math.abs(anchor.column - targetFeature.column),
           Math.abs(anchor.row - targetFeature.row),
         );
-        if (dist > 1) {
+        if (!explorationMode() && dist > 1) {
           return `You are not next to ${targetFeature.label} yet (${dist * 5} ft away). Move your token adjacent to it on the battle map first, then declare your action.`;
         }
       }
@@ -3060,28 +3092,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       encounter !== null &&
       encounter.status !== 'ended' &&
       !trainingToolsVisible();
-    const doorSelectionDetail = (() => {
-      const edge =
-        selectedEdgeId === null || mapBundle === null
-          ? undefined
-          : mapBundle.edges.find((entry) => entry.edgeId === selectedEdgeId);
-      if (edge === undefined || edge.kind !== 'door') {
-        return '';
-      }
-      return `<p class="message notice" data-testid="door-selection-detail">${escapeHtml(
-        doorDetailCopy(edge, mapBundle?.title ?? ''),
-      )}</p>`;
-    })();
     const initiativeHtml = initiativeStrip();
     const bannerExtras = [
       sessionIsSuspended()
         ? `<p class="message notice" data-testid="table-suspended-notice">This session is suspended. Resume it on the campaign page to continue play.</p>`
         : '',
       initiativeHtml,
-      movePreviewNote === null
-        ? ''
-        : `<p class="table-move-status" data-testid="move-target-meta">${escapeHtml(movePreviewNote)}</p>`,
-      doorSelectionDetail,
       pendingMoveConfirm
         ? `<div class="table-player-actions" data-testid="pending-move-actions">
              <button type="button" class="table-primary-action" data-testid="confirm-pending-move"
@@ -3143,6 +3159,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             Declarations, rulings, mechanics, and narration share one timeline. Free exploration resolves immediately; skill checks, attacks, and scene transitions present drafts for confirmation before committing.
           </p>
           ${renderThreadMessages(dmThread, { listTestId: 'dm-play-thread-list' })}
+          ${dmThinkingIndicatorHtml()}
           ${
             intentDraft === null
               ? ''

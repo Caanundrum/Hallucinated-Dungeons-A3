@@ -119,8 +119,8 @@ describe('Batch 3 Director scene abstraction', () => {
       tower.edges.filter((e) => e.kind === 'door').length >= 1,
       'watchtower must expose door/exit edges on the tactical map',
     );
-    const dist = Math.abs(towerExits[0].column - tower.spawn.column) + Math.abs(towerExits[0].row - tower.spawn.row);
-    assert.ok(dist <= 4, 'exit markers must stay inside spawn vision');
+    const onPerimeter = towerExits.every((f) => f.column === 0 || f.column === tower.columns - 1 || f.row === 0 || f.row === tower.rows - 1);
+    assert.ok(onPerimeter, 'exit markers must be placed on the outer map perimeter');
   });
 
   it('projects contract exits for every scene kind', () => {

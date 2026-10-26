@@ -45,6 +45,7 @@ import {
   type StoredSceneInstance,
   type StoredTokenPosition,
 } from './map-runtime.js';
+import { attachExitsToStoredScene } from './scene-exit-projection.js';
 
 export function buildStoredSceneFromRoomBlueprint(
   room: CampaignRoomBlueprint,
@@ -66,9 +67,12 @@ export function buildStoredSceneFromRoomBlueprint(
       : room.templateId === 'starter_trail_crossroads' || room.templateId.startsWith('exterior_')
         ? 'exterior'
         : 'interior';
-  const composePremise = isPassageRoom
-    ? 'crypt catacomb subterranean stone passage'
-    : room.summary;
+  const composePremise =
+    room.summary.trim().length > 0
+      ? room.summary
+      : isPassageRoom && kind === 'interior'
+        ? 'crypt catacomb subterranean stone passage'
+        : room.title;
   const composed = composeDirectorScene({
     kind,
     sceneId: room.sceneId,
@@ -96,7 +100,16 @@ export function buildStoredSceneFromRoomBlueprint(
     column: composed.spawn.column,
     row: composed.spawn.row,
   }));
-  const exits =
+  const exits: Array<{
+    exitId: string;
+    label: string;
+    destinationHint: string;
+    targetSceneId?: string;
+    lockState?: 'unlocked' | 'locked';
+    keyItemId?: string | null;
+    lockpickDC?: number | null;
+    breakDC?: number | null;
+  }> =
     room.exits.length > 0
       ? room.exits.map((exit, idx) => ({
           exitId: `${room.sceneId}-exit-${idx + 1}`,
@@ -108,7 +121,7 @@ export function buildStoredSceneFromRoomBlueprint(
           ...(exit.lockpickDC !== undefined ? { lockpickDC: exit.lockpickDC } : {}),
           ...(exit.breakDC !== undefined ? { breakDC: exit.breakDC } : {}),
         }))
-      : composed.exits;
+      : composed.exits.map((exit) => ({ ...exit }));
   const hasExplicitDoorExit = exits.some((exit) =>
     /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
   );
@@ -141,7 +154,9 @@ export function buildStoredSceneFromRoomBlueprint(
       const keyItemId = firstBlueprintExit?.keyItemId ?? 'Brass Key';
       const lockpickDC = firstBlueprintExit?.lockpickDC ?? 13;
       const breakDC = firstBlueprintExit?.breakDC ?? 15;
-      requiredKeys.add(keyItemId);
+      if (!/\b(?:lever|mechanism|switch)\b/i.test(keyItemId)) {
+        requiredKeys.add(keyItemId);
+      }
       return {
         ...edge,
         doorState: 'locked' as const,
@@ -161,6 +176,17 @@ export function buildStoredSceneFromRoomBlueprint(
     if (edge.kind === 'door') {
       roomDoorStates[edge.edgeId] = edge.doorState ?? 'closed';
     }
+  }
+  if (
+    roomEdges.some((edge) => edge.kind === 'door') &&
+    exits[0] !== undefined &&
+    exits[0].lockState === 'locked' &&
+    !/\b(?:lever|mechanism|switch)\b/i.test(exits[0].keyItemId ?? '')
+  ) {
+    exits[0] = {
+      ...exits[0],
+      lockState: 'unlocked',
+    };
   }
 
   const baseFeatures: StoredSceneFeature[] = composed.features
@@ -258,7 +284,7 @@ export function buildStoredSceneFromRoomBlueprint(
     }
     const isLocked = prop.lockState === 'locked';
     const keyItemId = isLocked ? (prop.keyItemId ?? 'Brass Key') : (prop.keyItemId ?? null);
-    if (isLocked && keyItemId) {
+    if (isLocked && keyItemId && !/\b(?:lever|mechanism|switch)\b/i.test(keyItemId)) {
       requiredKeys.add(keyItemId);
     }
     const state =
@@ -282,14 +308,46 @@ export function buildStoredSceneFromRoomBlueprint(
           : prop.objectKind === 'hazard' || prop.objectKind === 'trap'
             ? 'hazard'
             : 'prop';
-    const col = Math.max(
-      1,
-      Math.min(composed.columns - 2, composed.spawn.column + 1 + (index % 2)),
-    );
-    const row = Math.max(
-      1,
-      Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? -1 : 1)),
-    );
+    const isLever = prop.objectKind === 'lever';
+    const doorOrWallEdge =
+      roomEdges.find((e) => e.kind === 'door') ?? roomEdges.find((e) => e.kind === 'wall');
+    const col = isLever
+      ? doorOrWallEdge !== undefined
+        ? Math.max(1, Math.min(composed.columns - 2, doorOrWallEdge.column))
+        : Math.max(2, Math.min(composed.columns - 2, composed.spawn.column + 2 + index))
+      : Math.max(
+          1,
+          Math.min(composed.columns - 2, composed.spawn.column + 1 + (index % 2)),
+        );
+    const row = isLever
+      ? doorOrWallEdge !== undefined
+        ? Math.max(
+            1,
+            Math.min(composed.rows - 2, doorOrWallEdge.row <= 1 ? 2 : doorOrWallEdge.row - 1),
+          )
+        : 1
+      : Math.max(
+          1,
+          Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? -1 : 1)),
+        );
+    const defaultLeverTarget = isLever
+      ? (exits.find((e, idx) => idx > 0 && !e.exitId.endsWith('-back') && !/\b(?:back|return)\b/i.test(e.label))
+          ?.exitId ??
+        exits[0]?.exitId ??
+        roomEdges.find((e) => e.kind === 'door')?.edgeId)
+      : undefined;
+    const resolvedTargetId = prop.targetEdgeOrObjectId ?? defaultLeverTarget;
+    if (isLever && resolvedTargetId !== undefined) {
+      const targetExitIdx = exits.findIndex((e) => e.exitId === resolvedTargetId);
+      if (targetExitIdx >= 0) {
+        const targetExit = exits[targetExitIdx]!;
+        exits[targetExitIdx] = {
+          ...targetExit,
+          lockState: 'locked',
+          keyItemId: targetExit.keyItemId ?? 'Wall Lever Mechanism',
+        };
+      }
+    }
     const feature: StoredSceneFeature = {
       objectId: prop.propId ?? `${room.sceneId}:prop-${index + 1}`,
       column: col,
@@ -318,8 +376,8 @@ export function buildStoredSceneFromRoomBlueprint(
         : prop.objectKind === 'container'
           ? { contents: ['Silver Signet Ring', 'Healing Draught'] }
           : {}),
-      ...(prop.targetEdgeOrObjectId !== undefined
-        ? { targetEdgeOrObjectId: prop.targetEdgeOrObjectId }
+      ...(resolvedTargetId !== undefined
+        ? { targetEdgeOrObjectId: resolvedTargetId }
         : {}),
     };
     baseFeatures.push(feature);
@@ -434,7 +492,7 @@ export function buildStoredSceneFromRoomBlueprint(
     }
   }
 
-  return {
+  return attachExitsToStoredScene({
     sceneId: room.sceneId,
     templateId: room.templateId,
     title: room.title,
@@ -470,7 +528,7 @@ export function buildStoredSceneFromRoomBlueprint(
     isMilestoneClimax: room.isMilestoneClimax,
     milestoneIndex: room.milestoneIndex,
     visited: options?.visited === true,
-  };
+  });
 }
 
 export function buildMapRuntimeFromBlueprint(options: {
@@ -719,8 +777,21 @@ export function interactObjectRuntime(options: {
     throw new Error('OBJECT_NOT_INTERACTABLE');
   }
   const priorState = feature.state;
-  const next = nextObjectState(feature, options.declaration);
-  if (next === null || next === feature.state) {
+  const isExplicitLootCommand =
+    /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?contents)\b/i.test(
+      options.declaration,
+    );
+  const isInspectContainerCommand =
+    feature.objectKind === 'container' &&
+    /\b(?:inspect|examine|search|check|peek|look\s+in(?:side)?)\b/i.test(options.declaration);
+  let next = nextObjectState(feature, options.declaration);
+  if (
+    feature.objectKind === 'container' &&
+    feature.state === 'open' &&
+    (isExplicitLootCommand || isInspectContainerCommand)
+  ) {
+    next = 'open';
+  } else if (next === null || next === feature.state) {
     throw new Error('OBJECT_STATE_UNCHANGED');
   }
   const isLocked = feature.lockState === 'locked' || feature.state === 'locked';
@@ -732,13 +803,17 @@ export function interactObjectRuntime(options: {
     }
     unlockedWithKey = matchingKey;
   }
+  // Two-step container looting (Packet 3 / Guardrail 2):
+  // Step 1 ("open / unlock / inspect / search <container>") transitions the container to 'open'
+  // and reveals its contents in the Chronicle without auto-transferring them to inventory.
+  // Explicit "loot / take all" transfers the contents immediately.
   const lootedItems =
-    feature.objectKind === 'container' && next === 'open'
+    feature.objectKind === 'container' && next === 'open' && isExplicitLootCommand
       ? [...(feature.contents ?? [])]
       : [];
   const nextLockState =
     isLocked && (next === 'open' || next === 'broken') ? ('unlocked' as const) : feature.lockState;
-  const baseLabel = feature.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+  const baseLabel = stripFeatureStateSuffix(feature.label);
   const labeled = featureLabelWithState({
     ...feature,
     state: next,
@@ -750,57 +825,127 @@ export function interactObjectRuntime(options: {
     nextState: next,
     labelWithState: labeled,
     ...(nextLockState !== undefined ? { lockState: nextLockState } : {}),
-    ...(feature.objectKind === 'container' && next === 'open' ? { contents: [] } : {}),
+    ...(feature.objectKind === 'container' && next === 'open'
+      ? {
+          contents: isExplicitLootCommand ? [] : [...(feature.contents ?? [])],
+        }
+      : {}),
   });
   if (runtime === null) {
     throw new Error('NO_ACTIVE_SCENE');
   }
-  // If a lever/switch with targetEdgeOrObjectId is pulled, unlock/open its target edge or container.
+  // If a lever/switch with targetEdgeOrObjectId is pulled, unlock/open its target edge, exit, or container.
+  let leverUnlockedClause = '';
   if (
     feature.objectKind === 'lever' &&
-    (next === 'pulled' || next === 'active' || next === 'open') &&
-    typeof feature.targetEdgeOrObjectId === 'string' &&
-    feature.targetEdgeOrObjectId.length > 0
+    (next === 'pulled' || next === 'active' || next === 'open')
   ) {
-    const targetId = feature.targetEdgeOrObjectId;
+    const targetId = feature.targetEdgeOrObjectId ?? '';
     const updatedActive = activeSceneInstance(runtime);
     if (updatedActive !== null) {
-      const targetEdge = updatedActive.edges.find((edge) => edge.edgeId === targetId);
-      if (targetEdge !== undefined) {
-        const nextDoors = {
-          ...runtime.doorStates,
-          [targetId]: 'open' as const,
+      const nextDoors = { ...runtime.doorStates };
+      const instanceDoors = { ...updatedActive.doorStates };
+      let unlockedAnyMechanism = false;
+
+      const updatedEdges = updatedActive.edges.map((edge) => {
+        if (
+          edge.kind === 'door' &&
+          (edge.edgeId === targetId ||
+            edge.keyItemId === 'Wall Lever Mechanism' ||
+            /\b(?:lever|mechanism)\b/i.test(edge.keyItemId ?? ''))
+        ) {
+          nextDoors[edge.edgeId] = 'open';
+          instanceDoors[edge.edgeId] = 'open';
+          unlockedAnyMechanism = true;
+          return {
+            ...edge,
+            doorState: 'open' as const,
+          };
+        }
+        return edge;
+      });
+
+      const updatedExits = updatedActive.exits.map((exit) => {
+        if (
+          exit.exitId === targetId ||
+          exit.keyItemId === 'Wall Lever Mechanism' ||
+          /\b(?:lever|mechanism)\b/i.test(exit.keyItemId ?? '')
+        ) {
+          unlockedAnyMechanism = true;
+          return {
+            ...exit,
+            lockState: 'unlocked' as const,
+          };
+        }
+        return exit;
+      });
+
+      const updatedFeatures = updatedActive.features.map((f) => {
+        const matchesLeverTarget =
+          f.objectId === targetId ||
+          (f.objectKind === 'exit' &&
+            (f.keyItemId === 'Wall Lever Mechanism' ||
+              /\b(?:lever|mechanism)\b/i.test(f.keyItemId ?? '') ||
+              updatedExits.some((e) => e.exitId === f.objectId && e.lockState === 'unlocked')));
+        if (!matchesLeverTarget) {
+          return f;
+        }
+        unlockedAnyMechanism = true;
+        if (f.objectKind === 'exit') {
+          const cleanExitBase = f.label
+            .replace(/\s*—\s*(?:open|closed|locked|unlocked).*$/i, '')
+            .replace(/\s*\([^)]+\)\s*$/, '')
+            .trim();
+          // Also open any door edge on the same square as this exit.
+          for (const edge of updatedEdges) {
+            if (
+              edge.kind === 'door' &&
+              Math.abs(edge.column - f.column) <= 1 &&
+              Math.abs(edge.row - f.row) <= 1
+            ) {
+              nextDoors[edge.edgeId] = 'open';
+              instanceDoors[edge.edgeId] = 'open';
+            }
+          }
+          return {
+            ...f,
+            state: 'open' as const,
+            lockState: 'unlocked' as const,
+            label: `${cleanExitBase} — open`,
+          };
+        }
+        const unlockedState = f.objectKind === 'container' ? ('closed' as const) : ('unlocked' as const);
+        return {
+          ...f,
+          state: unlockedState,
+          lockState: 'unlocked' as const,
+          label: featureLabelWithState({
+            ...f,
+            state: unlockedState,
+            lockState: 'unlocked',
+          }),
+        };
+      });
+
+      if (unlockedAnyMechanism) {
+        leverUnlockedClause =
+          ' Counterweights grind inside the wall and unseal the locked passage!';
+        const updatedInstance: StoredSceneInstance = {
+          ...updatedActive,
+          edges: updatedEdges,
+          exits: updatedExits,
+          features: updatedFeatures,
+          doorStates: instanceDoors,
         };
         runtime = {
           ...runtime,
           doorStates: nextDoors,
+          runtimeEdges: updatedEdges,
           sceneInstances: {
             ...runtime.sceneInstances,
-            [updatedActive.sceneId]: {
-              ...updatedActive,
-              doorStates: { ...updatedActive.doorStates, [targetId]: 'open' },
-            },
+            [updatedActive.sceneId]: updatedInstance,
           },
         };
-      } else {
-        const targetObj = updatedActive.features.find((f) => f.objectId === targetId);
-        if (targetObj !== undefined) {
-          const unlockedLabel = featureLabelWithState({
-            ...targetObj,
-            state: 'unlocked',
-            lockState: 'unlocked',
-          });
-          const afterTarget = updateSceneObjectState({
-            runtime,
-            objectId: targetId,
-            nextState: 'unlocked',
-            labelWithState: unlockedLabel,
-            lockState: 'unlocked',
-          });
-          if (afterTarget !== null) {
-            runtime = afterTarget;
-          }
-        }
       }
     }
   }
@@ -811,11 +956,17 @@ export function interactObjectRuntime(options: {
     objectState: next,
   });
   const keyClause = unlockedWithKey ? ` Unlocked using ${unlockedWithKey}.` : '';
+  const revealedContentsClause =
+    feature.objectKind === 'container' && next === 'open' && !isExplicitLootCommand
+      ? feature.contents && feature.contents.length > 0
+        ? ` Inside you see: ${feature.contents.join(', ')}.`
+        : ' It is empty.'
+      : '';
   const lootClause =
     lootedItems.length > 0 ? ` Looted into inventory: ${lootedItems.join(', ')}.` : '';
   return {
     runtime,
-    chronicle: `${baseBeat}${keyClause}${lootClause}`,
+    chronicle: `${baseBeat}${keyClause}${leverUnlockedClause}${revealedContentsClause}${lootClause}`,
     label: labeled,
     priorState,
     nextState: next,
@@ -823,6 +974,93 @@ export function interactObjectRuntime(options: {
     baseLabel,
     lootedItems,
     ...(unlockedWithKey !== undefined ? { unlockedWithKey } : {}),
+  };
+}
+
+export function lootContainerRuntime(options: {
+  readonly runtime: StoredMapRuntime;
+  readonly objectId?: string;
+  readonly itemHint?: string;
+  readonly declaration?: string;
+}): {
+  readonly runtime: StoredMapRuntime;
+  readonly lootedItems: readonly string[];
+  readonly containerLabel: string;
+  readonly objectId: string;
+  readonly chronicle: string;
+} {
+  const active = activeSceneInstance(options.runtime);
+  if (active === null) {
+    throw new Error('NO_ACTIVE_SCENE');
+  }
+  const unlockedContainersWithContents = active.features.filter(
+    (f) =>
+      f.objectKind === 'container' &&
+      f.lockState !== 'locked' &&
+      f.state !== 'locked' &&
+      Array.isArray(f.contents) &&
+      f.contents.length > 0,
+  );
+  if (unlockedContainersWithContents.length === 0) {
+    throw new Error('NO_LOOTABLE_CONTAINER');
+  }
+  const searchPhrase = `${options.itemHint ?? ''} ${options.declaration ?? ''}`.trim().toLowerCase();
+  const isTakeAllOrLoot =
+    /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|contents|everything)\b/i.test(
+      searchPhrase,
+    );
+
+  const itemMatchesSearch = (item: string): boolean => {
+    if (searchPhrase.length === 0) return false;
+    const itemLower = item.trim().toLowerCase();
+    if (searchPhrase.includes(itemLower)) return true;
+    const itemTokens = itemLower
+      .split(/\W+/)
+      .filter((t) => t.length >= 3 && !COMMON_MODIFIER_ADJECTIVES.has(t));
+    return itemTokens.some((tok) => declarationMentionsLabelWord(searchPhrase, tok));
+  };
+
+  const targetContainer =
+    (options.objectId !== undefined
+      ? unlockedContainersWithContents.find((f) => f.objectId === options.objectId)
+      : undefined) ??
+    unlockedContainersWithContents.find((f) => (f.contents ?? []).some(itemMatchesSearch)) ??
+    unlockedContainersWithContents.find(
+      (f) => scoreFeatureLabelMatch(searchPhrase, f.label).score > 0,
+    ) ??
+    unlockedContainersWithContents.find((f) => f.state === 'open') ??
+    unlockedContainersWithContents[0]!;
+
+  const currentContents = [...(targetContainer.contents ?? [])];
+  const matchedSpecificItems = isTakeAllOrLoot
+    ? []
+    : currentContents.filter(itemMatchesSearch);
+  const lootedItems =
+    matchedSpecificItems.length > 0 ? matchedSpecificItems : currentContents;
+  const remainingContents = currentContents.filter((item) => !lootedItems.includes(item));
+  const baseLabel = stripFeatureStateSuffix(targetContainer.label);
+  const nextLabel = featureLabelWithState({
+    ...targetContainer,
+    state: 'open',
+    lockState: 'unlocked',
+  });
+  const updated = updateSceneObjectState({
+    runtime: options.runtime,
+    objectId: targetContainer.objectId,
+    nextState: 'open',
+    labelWithState: nextLabel,
+    lockState: 'unlocked',
+    contents: remainingContents,
+  });
+  if (updated === null) {
+    throw new Error('NO_ACTIVE_SCENE');
+  }
+  return {
+    runtime: updated,
+    lootedItems,
+    containerLabel: baseLabel,
+    objectId: targetContainer.objectId,
+    chronicle: `Took ${lootedItems.join(', ')} from ${baseLabel}.`,
   };
 }
 
@@ -1021,6 +1259,80 @@ export function resolveTravelDestinationTitle(
   return null;
 }
 
+export function checkExitLockedForTravel(
+  active: StoredSceneInstance,
+  destinationHint: string,
+  returnToPrevious = false,
+): {
+  readonly locked: boolean;
+  readonly byLever: boolean;
+  readonly exitLabel: string;
+  readonly leverLabel: string | null;
+} {
+  if (returnToPrevious || /\breturn|go back|head back|retreat\b/i.test(destinationHint)) {
+    return { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+  }
+  const forwardExits = active.exits.filter(
+    (exit) =>
+      !exit.exitId.endsWith('-back') &&
+      !/\b(?:return|back\s+to|way\s+back)\b/i.test(exit.label),
+  );
+  const candidates = forwardExits.length > 0 ? forwardExits : active.exits;
+  const matched = matchPresentedExit(candidates, destinationHint);
+  const lower = destinationHint.toLowerCase();
+  const targetExit =
+    (matched !== null
+      ? candidates.find(
+          (e) => e.label === matched.label && e.destinationHint === matched.destinationHint,
+        )
+      : undefined) ??
+    candidates.find(
+      (e) =>
+        lower.includes(e.label.toLowerCase()) ||
+        lower.includes(e.destinationHint.toLowerCase()),
+    ) ??
+    candidates[0];
+
+  if (targetExit === undefined) {
+    return { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+  }
+
+  const exitFeature = active.features.find(
+    (f) => f.objectId === targetExit.exitId && f.objectKind === 'exit',
+  );
+  const linkedLever = active.features.find(
+    (f) =>
+      f.objectKind === 'lever' &&
+      (f.targetEdgeOrObjectId === targetExit.exitId ||
+        targetExit.keyItemId === 'Wall Lever Mechanism' ||
+        /\b(?:lever|mechanism)\b/i.test(targetExit.keyItemId ?? '')),
+  );
+  const leverUnpulled =
+    linkedLever !== undefined &&
+    linkedLever.state !== 'pulled' &&
+    linkedLever.state !== 'active' &&
+    linkedLever.state !== 'open';
+  const isExitLocked =
+    targetExit.lockState === 'locked' ||
+    exitFeature?.lockState === 'locked' ||
+    exitFeature?.state === 'locked' ||
+    leverUnpulled;
+
+  if (!isExitLocked) {
+    return { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+  }
+  const byLever =
+    linkedLever !== undefined ||
+    targetExit.keyItemId === 'Wall Lever Mechanism' ||
+    /\b(?:lever|mechanism)\b/i.test(targetExit.keyItemId ?? '');
+  return {
+    locked: true,
+    byLever,
+    exitLabel: stripFeatureStateSuffix(targetExit.label),
+    leverLabel: linkedLever ? stripFeatureStateSuffix(linkedLever.label) : null,
+  };
+}
+
 export function travelSceneRuntime(options: {
   readonly runtime: StoredMapRuntime;
   readonly campaignId: string;
@@ -1043,6 +1355,10 @@ export function travelSceneRuntime(options: {
     throw new Error('NO_ACTIVE_SCENE');
   }
   const returnToPrevious = options.returnToPrevious === true;
+  const lockCheck = checkExitLockedForTravel(active, options.destinationHint, returnToPrevious);
+  if (lockCheck.locked) {
+    throw new Error(lockCheck.byLever ? 'EXIT_LOCKED_BY_MECHANISM' : 'EXIT_LOCKED');
+  }
   const seatTokens = options.seatTokens ?? active.tokenPositions;
 
   // Check if the current scene has a multi-map graph exit target (pre-forged or JIT from blueprint).
@@ -1270,6 +1586,25 @@ export function travelSceneRuntime(options: {
 }
 
 export function isPortableSceneContainer(feature: StoredSceneFeature): boolean {
+  if (
+    feature.objectKind === 'exit' ||
+    feature.referenceKind === 'exit' ||
+    feature.objectKind === 'lever' ||
+    feature.objectKind === 'trap' ||
+    feature.objectKind === 'hazard' ||
+    feature.objectKind === 'cover' ||
+    feature.objectKind === 'npc' ||
+    feature.objectKind === 'creature'
+  ) {
+    return false;
+  }
+  if (
+    /\b(?:trail|path|road|passage|passageway|corridor|stairs?|staircase|steps|doorway|archway|bridge|crossing|ford|tunnel|exit|way|route|gate|gateway)\b/i.test(
+      feature.label,
+    )
+  ) {
+    return false;
+  }
   if (feature.objectKind === 'item') {
     return true;
   }
@@ -1584,7 +1919,8 @@ export function matchTakeContainerByDeclaration(
   if (filtered[0] !== undefined) {
     return filtered[0].objectId;
   }
-  // Single portable container/prop + take language, but not when naming furniture crates/chests.
+  // Single portable container/prop + pronoun take language ("take it", "pick it up"),
+  // never when the player names a different noun (such as a trail, NPC item, or chest item).
   const namesFurnitureContainer =
     HEAVY_FIXTURE_LABEL.test(declaration) &&
     !labelLooksPortableContainer(declaration) &&
@@ -1592,7 +1928,9 @@ export function matchTakeContainerByDeclaration(
   if (
     portable.length === 1 &&
     !namesFurnitureContainer &&
-    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(declaration)
+    /\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\s+(?:it|that|this)\b/i.test(
+      declaration,
+    )
   ) {
     return portable[0]!.objectId;
   }

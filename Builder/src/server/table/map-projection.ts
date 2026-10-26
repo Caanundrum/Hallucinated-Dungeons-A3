@@ -217,7 +217,7 @@ function buildTokens(
   });
 }
 
-function applyViewerFog(
+export function applyViewerFog(
   full: MapBundleProjection,
   options: {
     readonly accountId: string;
@@ -241,8 +241,45 @@ function applyViewerFog(
   for (const id of visibleIds) {
     exploredIds.add(id);
   }
-  // Do NOT pre-reveal exits (or any east-chamber squares) behind closed doors.
-  // Exits become known only when vision/exploration actually reaches their square.
+  // Reveal perimeter exits in the viewer's current open room/clearing while keeping
+  // east-chamber exits hidden behind closed/locked interior dividing walls.
+  if (ownToken !== null) {
+    const anchor = ownToken.footprint.anchor;
+    const interiorWalls = full.edges.filter((e) => e.kind === 'wall');
+    const hasClosedDividingDoor = full.edges.some(
+      (e) => e.kind === 'door' && e.doorState !== 'open' && interiorWalls.length > 0,
+    );
+    for (const feature of full.notableFeatures) {
+      if (feature.objectKind !== 'exit' && feature.referenceKind !== 'exit') {
+        continue;
+      }
+      let blockedByClosedDividingWall = false;
+      if (hasClosedDividingDoor) {
+        for (const wall of interiorWalls) {
+          if (wall.orientation === 'east') {
+            const viewerWest = anchor.column <= wall.column;
+            const exitWest = feature.column <= wall.column;
+            if (viewerWest !== exitWest) {
+              blockedByClosedDividingWall = true;
+              break;
+            }
+          } else if (wall.orientation === 'north') {
+            const viewerSouth = anchor.row >= wall.row;
+            const exitSouth = feature.row >= wall.row;
+            if (viewerSouth !== exitSouth) {
+              blockedByClosedDividingWall = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!blockedByClosedDividingWall) {
+        const exitSqId = squareId(feature.column, feature.row);
+        exploredIds.add(exitSqId);
+        visibleIds.add(exitSqId);
+      }
+    }
+  }
 
   const cells = full.cells.map((cell) => {
     const id = squareId(cell.column, cell.row);

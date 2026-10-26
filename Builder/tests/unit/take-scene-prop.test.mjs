@@ -7,6 +7,7 @@ import {
 import {
   interactObjectRuntime,
   isPortableSceneContainer,
+  lootContainerRuntime,
   matchTakeContainerByDeclaration,
   takeScenePropRuntime,
   transferNpcItemRuntime,
@@ -202,7 +203,7 @@ test('Packet 3: interactObjectRuntime enforces lockState, unlocks with matching 
     /OBJECT_LOCKED/,
   );
 
-  // With matching key in inventory, chest unlocks, opens, and returns lootedItems while clearing contents
+  // Step 1: With matching key in inventory, chest unlocks, opens, and lists contents in chronicle while preserving contents
   const unlocked = interactObjectRuntime({
     runtime,
     objectId: 'obj:chest',
@@ -211,9 +212,20 @@ test('Packet 3: interactObjectRuntime enforces lockState, unlocks with matching 
   });
   assert.equal(unlocked.nextState, 'open');
   assert.equal(unlocked.unlockedWithKey, 'Brass Key');
-  assert.deepEqual(unlocked.lootedItems, ['Silver Signet Ring', 'Healing Draught']);
-  const updatedFeature = unlocked.runtime.sceneInstances['scene-1'].features[0];
-  assert.equal(updatedFeature.lockState, 'unlocked');
+  assert.deepEqual(unlocked.lootedItems, []);
+  assert.match(unlocked.chronicle, /Inside you see: Silver Signet Ring, Healing Draught/i);
+  const openedFeature = unlocked.runtime.sceneInstances['scene-1'].features[0];
+  assert.equal(openedFeature.lockState, 'unlocked');
+  assert.deepEqual(openedFeature.contents, ['Silver Signet Ring', 'Healing Draught']);
+
+  // Step 2: Explicitly looting/taking from the open chest transfers contents and clears them
+  const looted = lootContainerRuntime({
+    runtime: unlocked.runtime,
+    objectId: 'obj:chest',
+    declaration: 'I loot the ironbound chest.',
+  });
+  assert.deepEqual(looted.lootedItems, ['Silver Signet Ring', 'Healing Draught']);
+  const updatedFeature = looted.runtime.sceneInstances['scene-1'].features[0];
   assert.deepEqual(updatedFeature.contents, []);
 });
 

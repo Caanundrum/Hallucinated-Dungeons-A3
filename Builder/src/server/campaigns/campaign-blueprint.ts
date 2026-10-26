@@ -22,6 +22,10 @@ import type {
 import { CAMPAIGN_TONE_LABELS, isCampaignTone } from '../../shared/campaign-contract.js';
 import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
 import { XP_THRESHOLDS } from '../rules/engine/xp-progression.js';
+import {
+  contextualContainerLabelForTemplate,
+  contextualPropLabelForTemplate,
+} from '../table/scene-composition.js';
 
 export type PremiseLocationKind =
   | 'canal_waterfront'
@@ -637,7 +641,7 @@ function buildRoomBattlemapPrompt(
   const tone = toneLabel.toLowerCase();
   if (templateId.startsWith('exterior_forest')) {
     return sanitizeWotcProductIdentity(
-      `Top-down overhead fantasy battlemap of ${placeName}, outdoor forest crossroads clearing with winding dirt trail, ancient mossy trees, fallen logs, and dappled woodland light in a ${tone} setting, outdoor wilderness, no roof, no indoor walls`,
+      `Top-down overhead fantasy battlemap of ${placeName}, outdoor forest clearing with winding dirt trail, ancient mossy trees, fallen logs, and dappled woodland light in a ${tone} setting, outdoor wilderness, no roof, no indoor walls`,
     );
   }
   if (templateId.startsWith('exterior_marsh')) {
@@ -647,7 +651,7 @@ function buildRoomBattlemapPrompt(
   }
   if (templateId.startsWith('exterior_')) {
     return sanitizeWotcProductIdentity(
-      `Top-down overhead fantasy battlemap of ${placeName}, open cobblestone road and rustic frontier crossroads, timber market stalls, roadside lanterns, and open pathways in a ${tone} setting, outdoor street, no roof`,
+      `Top-down overhead fantasy battlemap of ${placeName}, open cobblestone frontier approach, timber market stalls, roadside lanterns, and open pathway in a ${tone} setting, outdoor street, no roof`,
     );
   }
   if (templateId.startsWith('landmark_foggy_docks')) {
@@ -729,17 +733,18 @@ function buildMilestoneGraph(options: {
       options.entities.places[(m - 1) % Math.max(1, options.entities.places.length)] ??
         (m === 1 ? fallbackPlaceBase : `${fallbackPlaceBase} — Lower Reach ${m}`),
     );
+    const room1Template = m === 1 ? options.openingTemplate : options.investigationTemplate;
+    const isRoom1Outdoor =
+      room1Template.startsWith('exterior_') || room1Template.startsWith('landmark_');
     const propLabel = sanitizeWotcProductIdentity(
       options.entities.props[(m - 1) % Math.max(1, options.entities.props.length)] ??
-        'iron lantern',
+        contextualPropLabelForTemplate(room1Template, m),
     );
     const secondPropLabel = sanitizeWotcProductIdentity(
       options.entities.props[m % Math.max(1, options.entities.props.length)] ??
         'sealed ledger',
     );
-    const room1Template = m === 1 ? options.openingTemplate : options.investigationTemplate;
-    const isRoom1Outdoor =
-      room1Template.startsWith('exterior_') || room1Template.startsWith('landmark_');
+    const room1ContainerLabel = contextualContainerLabelForTemplate(room1Template, m);
     const exitLabel = sanitizeWotcProductIdentity(
       options.entities.exits[(m - 1) % Math.max(1, options.entities.exits.length)] ??
         (isRoom1Outdoor ? 'winding trail ahead' : 'wooden door'),
@@ -751,14 +756,20 @@ function buildMilestoneGraph(options: {
     const room2Id = `scene-m${m}-r2`;
     const room3Id = `scene-m${m}-r3`;
 
-    const room2Title =
-      m === 1
+    const room2Title = isRoom1Outdoor
+      ? m === 1
+        ? `${capitalizeLabel(placeName)} — Overgrown Ruin Approach`
+        : `${capitalizeLabel(placeName)} — Sunken Causeway ${m}`
+      : m === 1
         ? `${capitalizeLabel(placeName)} — Side Passage`
         : m === 2
           ? `${capitalizeLabel(placeName)} — Subterranean Reach`
           : `${capitalizeLabel(placeName)} — Deep Warrens ${m}`;
-    const room2Summary =
-      m === 1
+    const room2Summary = isRoom1Outdoor
+      ? sanitizeWotcProductIdentity(
+          `Beyond the ${exitLabel.toLowerCase()}, weathered stone ruins and moss-choked masonry mark the outer approach into ${placeName}, where hidden clues and mechanical wards guard the threshold ahead.`,
+        )
+      : m === 1
         ? sanitizeWotcProductIdentity(
             `A shadowed passage beyond the cellar stairs and connecting doorway, where hidden clues and lurking hazards guard the way deeper into ${placeName}.`,
           )
@@ -820,16 +831,19 @@ function buildMilestoneGraph(options: {
 
     const room2Exits: CampaignRoomBlueprint['exits'][number][] = [
       {
-        edgeLabel: `Passage back to ${placeName}`,
+        edgeLabel: isRoom1Outdoor
+          ? `Trail back to ${placeName}`
+          : `Passage back to ${placeName}`,
         targetSceneId: room1Id,
-        direction: 'east',
+        direction: isRoom1Outdoor ? 'west' : 'east',
         lockState: 'unlocked',
       },
       {
         edgeLabel: 'Sanctum archway',
         targetSceneId: room3Id,
         direction: 'north',
-        lockState: 'unlocked',
+        lockState: 'locked',
+        keyItemId: 'Wall Lever Mechanism',
       },
     ];
 
@@ -914,7 +928,7 @@ function buildMilestoneGraph(options: {
         structuredProps: [
           {
             propId: `${room1Id}:east-chest`,
-            label: 'Sturdy oak chest',
+            label: room1ContainerLabel,
             objectKind: 'container',
             objectState: 'closed',
             lockState: 'unlocked',
@@ -965,6 +979,7 @@ function buildMilestoneGraph(options: {
             label: 'Rusted wall lever',
             objectKind: 'lever',
             objectState: 'closed',
+            targetEdgeOrObjectId: `${room2Id}-exit-2`,
           },
         ],
         xpAwardOnDiscovery: r2Xp,

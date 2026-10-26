@@ -41,11 +41,17 @@ export interface StoredCampaignAsset {
 
 export type BattlemapAspectRatio = '1:1' | '4:3' | '16:9' | '3:4' | '9:16';
 
+export interface BattlemapCardinalExit {
+  readonly cardinal: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
+  readonly label: string;
+}
+
 export interface BattlemapGridLayout {
   readonly columns: number;
   readonly rows: number;
   readonly layoutArchetype?: string;
   readonly wallSummary?: string;
+  readonly cardinalExits?: readonly BattlemapCardinalExit[];
 }
 
 export function resolveBattlemapAspectRatio(
@@ -104,6 +110,24 @@ export function formatBattlemapWallSummary(options: {
   return 'Open continuous floor with no interior dividing wall. Do NOT render any freestanding doors, door panels, trapdoors, hatches, or U-shaped arches on the floor.';
 }
 
+export function formatBattlemapCardinalExits(
+  cardinalExits?: readonly BattlemapCardinalExit[],
+): string {
+  const exits =
+    cardinalExits && cardinalExits.length > 0
+      ? cardinalExits
+      : ([{ cardinal: 'EAST', label: 'Primary forward exit' }] as const);
+  const activeCardinals = new Set(exits.map((e) => e.cardinal));
+  const allCardinals = ['NORTH', 'SOUTH', 'EAST', 'WEST'] as const;
+  const closedCardinals = allCardinals.filter((c) => !activeCardinals.has(c));
+  const openList = exits.map((e) => `${e.cardinal} edge (${e.label})`).join(', ');
+  const closedClause =
+    closedCardinals.length > 0
+      ? ` Render closed, impassable boundaries (dense treeline, solid rockface, or unbroken perimeter walls) along the ${closedCardinals.join(', ')} edge(s) — do NOT paint a 4-way crossroads or extra unmapped trails on closed edges.`
+      : '';
+  return `PERIMETER EXIT TOPOLOGY: Render visible exit pathways or threshold openings ONLY on the ${openList}.${closedClause}`;
+}
+
 export function buildCampaignAssetPrompt(options: {
   readonly kind: CampaignAssetKind;
   readonly rawPrompt: string;
@@ -112,14 +136,15 @@ export function buildCampaignAssetPrompt(options: {
   const clean = options.rawPrompt.trim();
   if (options.kind === 'battlemap') {
     const sanitized = sanitizeBattlemapPromptForTopDown(clean);
+    const exitTopology = formatBattlemapCardinalExits(options.gridLayout?.cardinalExits);
     const layoutNote =
       options.gridLayout !== undefined
         ? ` Grid layout: ${options.gridLayout.columns}x${options.gridLayout.rows} tactical squares${
             options.gridLayout.layoutArchetype
               ? ` (${options.gridLayout.layoutArchetype.replace(/_/g, ' ')})`
               : ''
-          }.${options.gridLayout.wallSummary ? ` ${options.gridLayout.wallSummary}` : ''}`
-        : '';
+          }.${options.gridLayout.wallSummary ? ` ${options.gridLayout.wallSummary}` : ''} ${exitTopology}`
+        : ` ${exitTopology}`;
     return `Top-down 2D tactical tabletop RPG battlemap, strict 90-degree orthographic overhead architectural floorplan view, rich atmospheric lighting, clear walkable floor space, AAA fantasy CRPG environment art, walls rendered strictly as top-down cross-section edges, never draw front-elevation doors or U-shaped arches lying flat on the floor, no trapdoors, no grid lines, no text, no watermarks, no UI: ${sanitized}${layoutNote}`;
   }
   if (options.kind === 'npc_portrait') {

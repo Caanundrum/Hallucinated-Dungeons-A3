@@ -149,6 +149,8 @@ export interface CharacterChoices {
   readonly weaponMasteryWeaponNames: readonly string[];
   /** Item names explicitly unequipped by the player during review/play. */
   readonly unequippedItemNames?: readonly string[];
+  /** Optional subclass or bloodline identifier (e.g. 'draconic' for Draconic Sorcery). */
+  readonly subclassId?: string | null;
   readonly identity: CharacterIdentity;
 }
 
@@ -176,6 +178,7 @@ export interface DerivationComponent {
 export interface DerivedValue {
   readonly value: number;
   readonly components: readonly DerivationComponent[];
+  readonly formulaSummary?: string;
 }
 
 export interface DerivedAttack {
@@ -579,3 +582,58 @@ export function availableScoresFromPool(
   }
   return remaining;
 }
+
+/**
+ * Formats an explicit SRD 5.2.1 Armor Class formula breakdown string
+ * (e.g., "10 base + 3 DEX + 2 WIS (Unarmored Defense)").
+ */
+export function formatArmorClassFormula(ac: DerivedValue): string {
+  if (typeof ac.formulaSummary === 'string' && ac.formulaSummary.trim().length > 0) {
+    return ac.formulaSummary;
+  }
+  const components = ac.components;
+  if (components.length === 0) {
+    return `${ac.value} base`;
+  }
+  const baseComp = components[0]!;
+  const fmtTerm = (amount: number, abbr: string): string =>
+    amount >= 0 ? `+ ${amount} ${abbr}` : `- ${Math.abs(amount)} ${abbr}`;
+
+  const dexComp = components.find((c) => c.ruleId === 'ability.dexterity');
+  const wisComp = components.find((c) => c.ruleId === 'ability.wisdom');
+  const conComp = components.find((c) => c.ruleId === 'ability.constitution');
+  const chaComp = components.find((c) => c.ruleId === 'ability.charisma');
+  const shieldComp = components.find((c) => c.ruleId === 'armor.shield');
+  const defenseComp = components.find((c) => c.ruleId.endsWith('.fighting-style.defense'));
+
+  const shieldPart = shieldComp ? ` + ${shieldComp.amount} Shield` : '';
+  const defensePart = defenseComp ? ` + ${defenseComp.amount} Defense` : '';
+
+  if (baseComp.ruleId === 'class.monk.unarmored-defense') {
+    const dex = dexComp?.amount ?? 0;
+    const wis = wisComp?.amount ?? 0;
+    return `${baseComp.amount} base ${fmtTerm(dex, 'DEX')} ${fmtTerm(wis, 'WIS')} (Unarmored Defense)`;
+  }
+  if (baseComp.ruleId === 'class.barbarian.unarmored-defense') {
+    const dex = dexComp?.amount ?? 0;
+    const con = conComp?.amount ?? 0;
+    return `${baseComp.amount} base ${fmtTerm(dex, 'DEX')} ${fmtTerm(con, 'CON')} (Unarmored Defense)${shieldPart}`;
+  }
+  if (baseComp.ruleId === 'class.sorcerer.draconic-resilience') {
+    const dex = dexComp?.amount ?? 0;
+    const cha = chaComp?.amount ?? 0;
+    return `${baseComp.amount} base ${fmtTerm(dex, 'DEX')} ${fmtTerm(cha, 'CHA')} (Draconic Resilience)${shieldPart}`;
+  }
+  if (baseComp.ruleId === 'class.warlock.eldritch-invocation.armor-of-shadows') {
+    const dex = dexComp?.amount ?? 0;
+    return `${baseComp.amount} base ${fmtTerm(dex, 'DEX')} (Armor of Shadows)${shieldPart}`;
+  }
+  if (baseComp.ruleId === 'armor.unarmored') {
+    const dex = dexComp?.amount ?? 0;
+    return `${baseComp.amount} base ${fmtTerm(dex, 'DEX')} (Unarmored)${shieldPart}`;
+  }
+
+  const dexPart = dexComp !== undefined ? ` ${fmtTerm(dexComp.amount, 'DEX')}` : '';
+  return `${baseComp.amount} base (${baseComp.label})${dexPart}${shieldPart}${defensePart}`;
+}
+

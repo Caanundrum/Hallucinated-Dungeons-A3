@@ -643,27 +643,64 @@ export function applyDirectorDispatchToMap(options: {
     };
   }
 
-  // 7. Take Portable Scene Prop / Container
+  // 7. Take Portable Scene Prop / Container (or route travel if the target is an exit/trail)
   if (dispatch.actionType === 'take_prop' && dispatch.takeProp) {
     const requested = dispatch.takeProp.propLabel.toLowerCase().trim();
+    const matchedExit = findBestFeatureByHeadNoun(
+      map.notableFeatures.filter((f) => f.objectKind === 'exit' || f.referenceKind === 'exit'),
+      requested,
+    );
+    if (
+      matchedExit !== undefined ||
+      /\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|bridge|crossing|ford|tunnel|exit|way|route|causeway)\b/i.test(
+        requested,
+      )
+    ) {
+      const hint = matchedExit ? stripFeatureStateSuffix(matchedExit.label) : requested;
+      return {
+        proposedCommandType: 'table.travel_scene',
+        returnToPrevious: /\b(?:return|back)\b/i.test(hint),
+        destinationHint: hint,
+        summary: `Ready to travel to ${hint}. Confirm to advance the party into the next area.`,
+      };
+    }
     const portableFeatures = map.notableFeatures.filter(
       (f) =>
         f.objectKind !== 'npc' &&
         f.objectKind !== 'exit' &&
+        f.objectKind !== 'lever' &&
         (f.objectKind === 'item' ||
           labelLooksPortableContainer(f.label) ||
           ((f.objectKind === 'prop' || labelLooksPortableSceneProp(f.label)) &&
             !HEAVY_FIXTURE_LABEL.test(f.label))),
     );
-    const matched =
-      findBestFeatureByHeadNoun(portableFeatures, requested) ??
-      (portableFeatures.length === 1 ? portableFeatures[0] : undefined);
+    const matched = findBestFeatureByHeadNoun(portableFeatures, requested);
     if (matched) {
       const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
       return {
         proposedCommandType: 'table.take_scene_prop',
         objectId: matched.objectId,
         summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
+      };
+    }
+    const containerWithContents = map.notableFeatures.find(
+      (f) =>
+        f.objectKind === 'container' &&
+        f.lockState !== 'locked' &&
+        Array.isArray(f.contents) &&
+        f.contents.length > 0 &&
+        (f.contents.some(
+          (item) =>
+            item.toLowerCase().includes(requested) || requested.includes(item.toLowerCase()),
+        ) ||
+          scoreFeatureLabelMatch(requested, f.label).score > 0),
+    );
+    if (containerWithContents) {
+      const cleanContainer = stripFeatureStateSuffix(containerWithContents.label);
+      return {
+        proposedCommandType: 'table.take_scene_prop',
+        objectId: containerWithContents.objectId,
+        summary: `Ready to take ${dispatch.takeProp.propLabel} from the ${cleanContainer}. Confirm to stow it in your inventory.`,
       };
     }
   }

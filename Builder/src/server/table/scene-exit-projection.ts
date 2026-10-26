@@ -12,6 +12,15 @@ import type { StoredSceneExit, StoredSceneFeature, StoredSceneInstance } from '.
 
 export type ExitOrientation = 'north' | 'south' | 'east' | 'west';
 
+export function isPerimeterCoordinate(
+  column: number,
+  row: number,
+  columns: number,
+  rows: number,
+): boolean {
+  return column === 0 || column === columns - 1 || row === 0 || row === rows - 1;
+}
+
 export function inferExitPlacement(
   exit: { readonly label: string },
   spawn: MapSquareCoordinate,
@@ -20,35 +29,53 @@ export function inferExitPlacement(
   index: number,
 ): { readonly column: number; readonly row: number; readonly orientation: ExitOrientation } {
   const label = exit.label.toLowerCase();
-  const clamp = (column: number, row: number) => ({
-    column: Math.max(1, Math.min(columns - 2, column)),
-    row: Math.max(1, Math.min(rows - 2, row)),
-  });
-  if (/\b(north|parapet|ladder|stair)\b/.test(label) && !/\bsouth\b/.test(label)) {
-    const pos = clamp(spawn.column, spawn.row - 2);
-    return { ...pos, orientation: 'north' };
+  const midCol = Math.max(1, Math.min(columns - 2, spawn.column || Math.floor(columns / 2)));
+  const midRow = Math.max(1, Math.min(rows - 2, spawn.row || Math.floor(rows / 2)));
+
+  if (/\b(north|parapet|ladder|stair)\b/.test(label) && !/\b(south|back\s+down|back\s+to)\b/.test(label)) {
+    return { column: midCol, row: 0, orientation: 'north' };
   }
-  if (/\bsouth\b/.test(label)) {
-    const pos = clamp(spawn.column, spawn.row + 2);
-    return { ...pos, orientation: 'south' };
+  if (/\b(south|back\s+down)\b/.test(label)) {
+    return { column: midCol, row: rows - 1, orientation: 'south' };
   }
-  if (/\b(west|river|near bank|inland|behind|daylight|retreat|way back|return)\b/.test(label)) {
-    const pos = clamp(spawn.column - 1, spawn.row + (index % 2));
-    return { ...pos, orientation: 'west' };
+  if (/\b(west|river|near bank|inland|behind|daylight|retreat|way back|return|back to)\b/.test(label)) {
+    const row = Math.max(1, Math.min(rows - 2, midRow + (index % 2)));
+    return { column: 0, row, orientation: 'west' };
   }
-  if (/\b(east|onward|forward|shore|deeper|far bank|doorway east|path onward)\b/.test(label)) {
-    const pos = clamp(spawn.column + 2, spawn.row);
-    return { ...pos, orientation: 'east' };
+  if (/\b(east|onward|forward|shore|deeper|far bank|doorway east|path onward|trail|passage|archway)\b/.test(label)) {
+    return { column: columns - 1, row: midRow, orientation: 'east' };
   }
-  // Stagger unmarked exits around spawn so multiple routes stay distinct.
-  const offsets: Array<{ column: number; row: number; orientation: ExitOrientation }> = [
-    { column: spawn.column + 2, row: spawn.row, orientation: 'east' },
-    { column: spawn.column, row: spawn.row - 2, orientation: 'north' },
-    { column: spawn.column - 1, row: spawn.row, orientation: 'west' },
-    { column: spawn.column, row: spawn.row + 2, orientation: 'south' },
+  // Stagger unmarked exits along the 4 perimeter edges so all exits stay perimeter-locked.
+  const perimeterBearings: Array<{ column: number; row: number; orientation: ExitOrientation }> = [
+    { column: columns - 1, row: midRow, orientation: 'east' },
+    { column: midCol, row: 0, orientation: 'north' },
+    { column: 0, row: midRow, orientation: 'west' },
+    { column: midCol, row: rows - 1, orientation: 'south' },
   ];
-  const pick = offsets[index % offsets.length]!;
-  return { ...clamp(pick.column, pick.row), orientation: pick.orientation };
+  return perimeterBearings[index % perimeterBearings.length]!;
+}
+
+export function extractSceneCardinalExits(options: {
+  readonly exits: readonly { readonly label: string }[];
+  readonly spawn: MapSquareCoordinate;
+  readonly columns: number;
+  readonly rows: number;
+}): { readonly cardinal: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST'; readonly label: string }[] {
+  return options.exits.map((exit, index) => {
+    const place = inferExitPlacement(exit, options.spawn, options.columns, options.rows, index);
+    const cardinal =
+      place.orientation === 'north'
+        ? 'NORTH'
+        : place.orientation === 'south'
+          ? 'SOUTH'
+          : place.orientation === 'west'
+            ? 'WEST'
+            : 'EAST';
+    return {
+      cardinal,
+      label: exit.label.replace(/\s*—\s*(?:open|closed|locked|unlocked).*$/i, '').trim(),
+    };
+  });
 }
 
 function isExitFeature(feature: { readonly objectId: string; readonly objectKind?: string; readonly referenceKind?: string }): boolean {
@@ -73,8 +100,8 @@ function nearbyDoor(
 }
 
 /**
- * Materialize every contract exit onto features + door edges inside spawn vision.
- * Idempotent: existing exit features / nearby doors are preserved.
+ * Materialize every contract exit onto perimeter features + door edges.
+ * Idempotent: existing exit features are normalized to the perimeter boundary.
  */
 export function materializeContractExits<
   TFeature extends {
@@ -86,12 +113,20 @@ export function materializeContractExits<
     readonly objectKind: string;
     readonly state: string;
     readonly interactable: boolean;
+    readonly lockState?: 'unlocked' | 'locked';
+    readonly keyItemId?: string | null;
+    readonly lockpickDC?: number | null;
+    readonly breakDC?: number | null;
   },
   TExit extends {
     readonly exitId: string;
     readonly label: string;
     readonly destinationHint: string;
     readonly returnToSceneId?: string | null;
+    readonly lockState?: 'unlocked' | 'locked';
+    readonly keyItemId?: string | null;
+    readonly lockpickDC?: number | null;
+    readonly breakDC?: number | null;
   },
 >(options: {
   readonly spawn: MapSquareCoordinate;
@@ -108,7 +143,27 @@ export function materializeContractExits<
   readonly edges: MapEdgeRecord[];
   readonly doorStates: Record<string, DoorState>;
 } {
-  const features = [...options.features] as TFeature[];
+  // Normalize any existing exit features so they are strictly on the outer perimeter.
+  const features = options.features.map((feature, idx) => {
+    if (!isExitFeature(feature)) {
+      return feature;
+    }
+    if (isPerimeterCoordinate(feature.column, feature.row, options.columns, options.rows)) {
+      return feature;
+    }
+    const snapped = inferExitPlacement(
+      { label: feature.label },
+      options.spawn,
+      options.columns,
+      options.rows,
+      idx,
+    );
+    return {
+      ...feature,
+      column: snapped.column,
+      row: snapped.row,
+    };
+  }) as TFeature[];
   const edges = [...options.edges];
   const doorStates = { ...options.doorStates };
   const knownExitIds = new Set(
@@ -117,7 +172,7 @@ export function materializeContractExits<
 
   options.exits.forEach((exit, index) => {
     let place = inferExitPlacement(exit, options.spawn, options.columns, options.rows, index);
-    // Keep multiple exits on distinct squares inside spawn vision.
+    // Keep multiple exits on distinct perimeter squares.
     let guard = 0;
     while (
       guard < 8 &&
@@ -128,34 +183,47 @@ export function materializeContractExits<
           feature.row === place.row,
       )
     ) {
-      place = {
-        column: Math.max(1, Math.min(options.columns - 2, place.column + ((guard % 2) * 2 - 1))),
-        row: Math.max(1, Math.min(options.rows - 2, place.row + (guard % 3) - 1)),
-        orientation: place.orientation,
-      };
+      const delta = guard % 2 === 0 ? Math.ceil((guard + 1) / 2) : -Math.ceil((guard + 1) / 2);
+      if (place.orientation === 'east' || place.orientation === 'west') {
+        place = {
+          column: place.orientation === 'east' ? options.columns - 1 : 0,
+          row: Math.max(1, Math.min(options.rows - 2, place.row + delta)),
+          orientation: place.orientation,
+        };
+      } else {
+        place = {
+          column: Math.max(1, Math.min(options.columns - 2, place.column + delta)),
+          row: place.orientation === 'south' ? options.rows - 1 : 0,
+          orientation: place.orientation,
+        };
+      }
       guard += 1;
     }
-    // Prefer an existing door on this bearing so we do not invent a second unnamed opening.
     const existingOriented =
       edges.find((edge) => edge.kind === 'door' && edge.orientation === place.orientation) ??
       (options.snapToAnyExistingDoor && index === 0
         ? edges.find((edge) => edge.kind === 'door')
         : undefined);
-    if (
-      existingOriented !== undefined &&
-      (options.snapToAnyExistingDoor === true ||
-        Math.abs(existingOriented.column - options.spawn.column) +
-          Math.abs(existingOriented.row - options.spawn.row) <=
-          4)
-    ) {
-      place = {
-        column: existingOriented.column,
-        row: existingOriented.row,
-        orientation: existingOriented.orientation,
-      };
+    // Only snap row/column alignment to an existing door if we still keep the exit feature on the perimeter.
+    if (existingOriented !== undefined) {
+      if (place.orientation === 'east' || place.orientation === 'west') {
+        place = {
+          column: place.orientation === 'east' ? options.columns - 1 : 0,
+          row: Math.max(1, Math.min(options.rows - 2, existingOriented.row)),
+          orientation: place.orientation,
+        };
+      } else {
+        place = {
+          column: Math.max(1, Math.min(options.columns - 2, existingOriented.column)),
+          row: place.orientation === 'south' ? options.rows - 1 : 0,
+          orientation: place.orientation,
+        };
+      }
     }
-    const doorState =
-      options.suppressSyntheticDoors && existingOriented === undefined
+    const explicitExitLocked = exit.lockState === 'locked';
+    const doorState: DoorState = explicitExitLocked
+      ? 'locked'
+      : options.suppressSyntheticDoors && existingOriented === undefined
         ? 'open'
         : existingOriented !== undefined
           ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')
@@ -177,8 +245,12 @@ export function materializeContractExits<
           label: labeledExit,
           referenceKind: 'exit',
           objectKind: 'exit',
-          state: 'present',
+          state: explicitExitLocked ? 'locked' : 'present',
           interactable: false,
+          ...(exit.lockState !== undefined ? { lockState: exit.lockState } : {}),
+          ...(exit.keyItemId !== undefined ? { keyItemId: exit.keyItemId } : {}),
+          ...(exit.lockpickDC !== undefined ? { lockpickDC: exit.lockpickDC } : {}),
+          ...(exit.breakDC !== undefined ? { breakDC: exit.breakDC } : {}),
         } as TFeature);
         knownExitIds.add(exit.exitId);
       }
@@ -192,7 +264,7 @@ export function materializeContractExits<
       !options.suppressSyntheticDoors &&
       existingOriented === undefined &&
       !nearbyDoor(edges, place.column, place.row) &&
-      (!alreadyHasAnyDoor || exitLooksLikeDoor)
+      (!alreadyHasAnyDoor || exitLooksLikeDoor || explicitExitLocked)
     ) {
       const id = edgeId(place.column, place.row, place.orientation);
       if (!edges.some((edge) => edge.edgeId === id)) {
@@ -202,14 +274,43 @@ export function materializeContractExits<
           row: place.row,
           orientation: place.orientation,
           kind: 'door',
-          doorState: 'closed',
+          doorState: explicitExitLocked ? 'locked' : 'closed',
+          ...(exit.keyItemId !== undefined && exit.keyItemId !== null ? { keyItemId: exit.keyItemId } : {}),
+          ...(exit.lockpickDC !== undefined && exit.lockpickDC !== null ? { lockpickDC: exit.lockpickDC } : {}),
+          ...(exit.breakDC !== undefined && exit.breakDC !== null ? { breakDC: exit.breakDC } : {}),
         });
       }
-      doorStates[id] = doorStates[id] ?? 'closed';
+      doorStates[id] = doorStates[id] ?? (explicitExitLocked ? 'locked' : 'closed');
     }
   });
 
   return { features, edges, doorStates };
+}
+
+function carveExitPerimeterCells<TCell extends { readonly column: number; readonly row: number; readonly terrain: string }>(
+  cells: readonly TCell[],
+  features: readonly { readonly column: number; readonly row: number; readonly objectId: string; readonly objectKind?: string; readonly referenceKind?: string }[],
+  columns: number,
+  rows: number,
+): TCell[] {
+  const exitCoords = new Set<string>();
+  for (const feature of features) {
+    if (!isExitFeature(feature)) continue;
+    exitCoords.add(`${feature.column},${feature.row}`);
+    // Also ensure the inward orthogonal neighbor is walkable floor.
+    if (feature.column === 0) exitCoords.add(`1,${feature.row}`);
+    if (feature.column === columns - 1) exitCoords.add(`${columns - 2},${feature.row}`);
+    if (feature.row === 0) exitCoords.add(`${feature.column},1`);
+    if (feature.row === rows - 1) exitCoords.add(`${feature.column},${rows - 2}`);
+  }
+  if (exitCoords.size === 0) {
+    return [...cells];
+  }
+  return cells.map((cell) =>
+    exitCoords.has(`${cell.column},${cell.row}`) && cell.terrain === 'blocked'
+      ? ({ ...cell, terrain: 'floor' } as TCell)
+      : cell,
+  );
 }
 
 /** Apply exit materialization to a composed scene before runtime storage. */
@@ -225,6 +326,7 @@ export function attachExitsToComposedScene(scene: ComposedScene): ComposedScene 
   });
   return {
     ...scene,
+    cells: carveExitPerimeterCells(scene.cells, materialized.features, scene.columns, scene.rows),
     features: materialized.features as ComposedSceneFeature[],
     edges: materialized.edges,
     doorStates: materialized.doorStates,
@@ -263,6 +365,7 @@ export function attachExitsToStoredScene(scene: StoredSceneInstance): StoredScen
   });
   return {
     ...scene,
+    cells: carveExitPerimeterCells(scene.cells, materialized.features, scene.columns, scene.rows),
     features: materialized.features as StoredSceneFeature[],
     edges: materialized.edges,
     doorStates: materialized.doorStates,

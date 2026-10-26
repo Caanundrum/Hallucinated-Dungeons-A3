@@ -591,6 +591,19 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     };
   }
 
+  // 6.5. Route / Exit Travel Intent (checked BEFORE physical manipulation so "take the trail" / "use the stairs" is travel, not take_item)
+  const isRouteOrExitTravel =
+    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:down|up|along|through|onward|forward)|walk(?:s|ing)?\s+(?:down|up|along|through)|head(?:s|ing)?\s+(?:down|up|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
+      trimmed,
+    );
+  if (isRouteOrExitTravel && !constraints.forbidMove) {
+    return {
+      kind: 'travel',
+      category: 'directional_pursuit',
+      outcomeHint: 'pursue_route',
+    };
+  }
+
   // 7. Directional / Pursuit / Transition Intent ("follow the trail toward...", "head to...", "climb up to...")
   const hasPursuitOrTransitionVerb =
     /\b(?:follow(?:s|ing)?|trac(?:e|es|ing)|head(?:s|ing)?\s+(?:to|toward|into|through|back|up|down)|proceed(?:s|ing)?\s+(?:to|toward|into|through)|continu(?:e|es|ing)\s+(?:to|toward|into|through)|enter(?:s|ing)?|leav(?:e|es|ing)\s+(?:toward|for|through|into)|climb(?:s|ing)?\s+(?:up|down|to|into)|descend(?:s|ing)?|ascend(?:s|ing)?|cross(?:es|ing)?\s+(?:into|through|over)|ventur(?:e|es|ing)\s+(?:into|toward)|make(?:s|ing)?\s+(?:my|our|their|his|her)\s+way\s+(?:to|toward|into)|return(?:s|ing)?\s+(?:to|up|down|through)|retreat(?:s|ing)?\s+(?:to|into|through))\b/i.test(

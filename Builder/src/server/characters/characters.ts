@@ -1052,16 +1052,17 @@ export async function generateCharacterPortrait(options: {
       if (allowed.length > 0 && !allowed.includes(selectedAvatarUrl)) {
         throw new PortraitRequestError('Choose one of your forged portrait options.');
       }
+      const preservedOptions = allowed.length > 0 ? allowed : [selectedAvatarUrl];
       const updatedDraft: StoredDraft = {
         ...draft,
         avatarUrl: selectedAvatarUrl,
-        avatarOptions: [selectedAvatarUrl],
+        avatarOptions: preservedOptions,
         updatedAt: new Date(),
       };
       await firestore.collection(COLLECTIONS.characterDrafts).doc(draftId).set(updatedDraft);
       return {
         avatarUrl: selectedAvatarUrl,
-        avatarOptions: [selectedAvatarUrl],
+        avatarOptions: preservedOptions,
         portraitForged: true,
         appearancePrompt: draft.appearancePrompt ?? appearancePrompt,
         source: 'generated',

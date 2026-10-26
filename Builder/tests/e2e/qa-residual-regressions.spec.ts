@@ -262,7 +262,10 @@ test.describe('PQA residual regressions', () => {
     const doorHit = page.getByTestId('map-poi-door-1-hit');
     if (await doorHit.isVisible().catch(() => false)) {
       await doorHit.click();
-      await expect(page.getByTestId('door-selection-detail')).toContainText(/closed/i);
+      await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
+      await expect(
+        page.locator('.map-edge-hit-target[aria-label*="Wooden door"]').first(),
+      ).toHaveAttribute('aria-label', /closed/i);
     }
 
     // R26-03: Move beside the closed doorway without opening or crossing

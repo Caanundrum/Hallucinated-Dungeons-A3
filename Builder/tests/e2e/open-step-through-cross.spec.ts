@@ -99,7 +99,8 @@ test.describe('Open + step-through doorway cross', () => {
     const doorHit = page.locator('.map-edge-hit-target[aria-label*="Wooden door"]').first();
     await expect(doorHit).toBeVisible();
     await doorHit.click();
-    await expect(page.getByTestId('door-selection-detail')).toContainText(/closed/i);
+    await expect(doorHit).toHaveAttribute('aria-label', /closed/i);
+    await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
     await page.screenshot({ path: 'test-results/door-closed-before.png' }).catch(() => {});
 
     const token = page.locator('[data-token][data-anchor-column][data-anchor-row]').first();
@@ -141,7 +142,8 @@ test.describe('Open + step-through doorway cross', () => {
     await expect(dmCrossing).toHaveCount(1);
 
     await doorHit.click();
-    await expect(page.getByTestId('door-selection-detail')).toContainText(/open/i);
+    await expect(doorHit).toHaveAttribute('aria-label', /open/i);
+    await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
   });
 
   test('far-side reverse through is a confirmable cross back', async ({ page }) => {

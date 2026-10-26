@@ -1068,6 +1068,8 @@ function composeInterior(options: {
     row: spawn.row,
   };
   const farColumn = Math.min(columns - 2, wallColumn + 3);
+  const passageExitRow = Math.min(rows - 2, Math.max(1, 4 + ((seed >>> 9) % 2)));
+  setTerrain(cells, columns - 1, passageExitRow, 'floor');
   const features: ComposedSceneFeature[] = [
     {
       objectId: lightId,
@@ -1104,7 +1106,7 @@ function composeInterior(options: {
       objectId: chestId,
       column: farColumn,
       row: Math.min(rows - 2, 2 + ((seed >>> 8) % 2)),
-      label: 'Sturdy oak chest',
+      label: contextualContainerLabelForTemplate(family.templateId, seed),
       referenceKind: 'prop',
       objectKind: 'container',
       state: 'closed',
@@ -1112,8 +1114,8 @@ function composeInterior(options: {
     },
     {
       objectId: passageExitId,
-      column: farColumn,
-      row: Math.min(rows - 2, 4 + ((seed >>> 9) % 2)),
+      column: columns - 1,
+      row: passageExitRow,
       label: family.exitLabel?.includes('Cellar') || /cellar|stairs|passage/i.test(family.exitLabel ?? '')
         ? (family.exitLabel ?? 'Cellar stairs')
         : 'Cellar stairs',
@@ -1753,6 +1755,71 @@ export function featureLabelWithState(feature: ComposedSceneFeature): string {
   return base;
 }
 
+export function contextualContainerLabelForTemplate(templateId: string, seed = 0): string {
+  const lower = templateId.toLowerCase();
+  if (lower.includes('crypt') || lower.includes('tomb') || lower.includes('sanctum')) {
+    return seed % 2 === 0 ? 'Carved ossuary coffer' : 'Weathered stone reliquary';
+  }
+  if (lower.includes('workshop') || lower.includes('mill') || lower.includes('forge')) {
+    return seed % 2 === 0 ? 'Reinforced tool locker' : 'Iron-hasped supply crate';
+  }
+  if (lower.includes('warehouse') || lower.includes('dock') || lower.includes('waterfront')) {
+    return seed % 2 === 0 ? 'Tarred smuggling crate' : 'Banded freight trunk';
+  }
+  if (lower.includes('inn') || lower.includes('tavern') || lower.includes('cottage')) {
+    return seed % 2 === 0 ? 'Iron-hasped travel trunk' : 'Brass-bound strongbox';
+  }
+  if (
+    lower.includes('forest') ||
+    lower.includes('trail') ||
+    lower.includes('marsh') ||
+    lower.startsWith('exterior_')
+  ) {
+    return seed % 2 === 0 ? 'Weatherproof ranger pack' : 'Moss-covered supply cache';
+  }
+  if (lower.startsWith('landmark_')) {
+    return seed % 2 === 0 ? 'Weathered stone reliquary' : 'Iron-bound expedition chest';
+  }
+  const pool = [
+    'Brass-bound strongbox',
+    'Iron-hasped travel trunk',
+    'Carved reliquary coffer',
+    'Banded supply chest',
+  ] as const;
+  return pool[Math.abs(seed) % pool.length]!;
+}
+
+export function contextualPropLabelForTemplate(templateId: string, seed = 0): string {
+  const lower = templateId.toLowerCase();
+  if (
+    lower.includes('forest') ||
+    lower.includes('trail') ||
+    lower.includes('marsh') ||
+    lower.startsWith('exterior_')
+  ) {
+    return seed % 2 === 0 ? 'weathered wayfinder compass' : 'wax-sealed scout dispatch';
+  }
+  if (lower.includes('dock') || lower.includes('warehouse') || lower.includes('waterfront')) {
+    return seed % 2 === 0 ? 'harbor manifest ledger' : 'tarred brass spyglass';
+  }
+  if (lower.includes('crypt') || lower.includes('tomb') || lower.includes('sanctum')) {
+    return seed % 2 === 0 ? 'inscribed funerary tablet' : 'tarnished ritual censer';
+  }
+  if (lower.includes('workshop') || lower.includes('mill') || lower.includes('forge')) {
+    return seed % 2 === 0 ? 'calibrated brass caliper' : 'scorched artificer journal';
+  }
+  if (lower.includes('inn') || lower.includes('tavern')) {
+    return seed % 2 === 0 ? 'wax-sealed courier satchel' : 'embossed guest register';
+  }
+  const pool = [
+    'brass signet cylinder',
+    'wax-sealed ledger',
+    'etched wardstone',
+    'tarnished wayfinder compass',
+  ] as const;
+  return pool[Math.abs(seed) % pool.length]!;
+}
+
 export function nextObjectState(
   feature: ComposedSceneFeature,
   declaration: string,
@@ -1791,7 +1858,12 @@ export function nextObjectState(
     if (/\b(break|smash|kick|shatter|destroy|pry|force)\b/.test(text)) {
       return feature.objectKind === 'container' ? 'open' : 'broken';
     }
-    if (/\b(open|unseal|unlatch|unlock|loot|search)\b/.test(text) && feature.objectKind === 'container') {
+    if (
+      /\b(open|unseal|unlatch|unlock|loot|search|inspect|examine|check|peek|look\s+in(?:side)?)\b/.test(
+        text,
+      ) &&
+      feature.objectKind === 'container'
+    ) {
       return 'open';
     }
     if (/\b(close|shut|seal)\b/.test(text) && feature.objectKind === 'container') return 'closed';

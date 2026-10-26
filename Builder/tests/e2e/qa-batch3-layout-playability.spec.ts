@@ -93,12 +93,12 @@ test.describe('PQA layout and playability batch 3', () => {
     await expect(doorHit.first()).toBeVisible({ timeout: 30_000 });
     await doorHit.first().click();
     const detail = page.getByTestId('door-selection-detail');
-    await expect(detail).toBeVisible();
-    await expect(detail).toContainText(/Selected Wooden doorway/i);
-    await expect(detail).not.toContainText(/Open adjacent door/i);
+    await expect(detail).toHaveCount(0);
+    await expect(doorHit.first()).toHaveAttribute('aria-label', /Wooden door|doorway/i);
+    await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
     await expect(page.getByTestId('move-target-meta')).toHaveCount(0);
     const bannerText = await page.getByTestId('table-turn-banner').innerText();
-    expect((bannerText.match(/Selected Wooden doorway/g) ?? []).length).toBe(1);
+    expect((bannerText.match(/Selected Wooden doorway/g) ?? []).length).toBe(0);
   });
 
   test('PQA-187/141: blank-table door declaration uses Quiet chamber doorway', async ({

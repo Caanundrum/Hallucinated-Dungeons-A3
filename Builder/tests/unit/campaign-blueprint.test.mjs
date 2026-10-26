@@ -10,6 +10,7 @@ import {
 } from '../../dist/server/campaigns/campaign-blueprint.js';
 import {
   buildMapRuntimeFromBlueprint,
+  interactObjectRuntime,
   travelSceneRuntime,
 } from '../../dist/server/table/scene-commands.js';
 import { isTrustedAvatarUrl } from '../../dist/shared/portrait-contract.js';
@@ -407,9 +408,29 @@ test('Packet 3 & Packet 5: Three-Way Lock Rule and Rolling Headlights Just-In-Ti
   });
   assert.equal(step1.runtime.activeSceneId, 'scene-m1-r2');
 
+  // Before pulling the wall lever, traveling through the sealed sanctum archway is blocked by the mechanism.
+  assert.throws(
+    () =>
+      travelSceneRuntime({
+        runtime: step1.runtime,
+        campaignId: 'camp-headlights',
+        accountId: 'acc-1',
+        destinationHint: 'scene-m1-r3',
+        blueprint: bp,
+      }),
+    /EXIT_LOCKED_BY_MECHANISM/,
+  );
+
+  // Pull the wall lever in scene-m1-r2 to unseal the sanctum archway.
+  const pulled = interactObjectRuntime({
+    runtime: step1.runtime,
+    objectId: 'scene-m1-r2:lever-1',
+    declaration: 'I pull the rusted wall lever.',
+  });
+
   // Travel from scene-m1-r2 -> scene-m1-r3: JIT compiles scene-m1-r3 AND its forward headlight scene-m2-r1!
   const step2 = travelSceneRuntime({
-    runtime: step1.runtime,
+    runtime: pulled.runtime,
     campaignId: 'camp-headlights',
     accountId: 'acc-1',
     destinationHint: 'scene-m1-r3',

@@ -26,6 +26,7 @@ import {
   WIZARD_STEP_LABELS,
   abilityModifier,
   availableScoresFromPool,
+  formatArmorClassFormula,
   formatModifier,
   pointBuyCost,
   pointBuyScoresForAbility,
@@ -205,6 +206,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
   let portraitPromptText: string | null = null;
   let portraitBusy = false;
   let portraitError: string | null = null;
+  let lightboxPortraitIndex: number | null = null;
   let openGeneration = 0;
   let legalAcceptance: LegalAcceptanceProjection | null = null;
   let legalGateBusy = false;
@@ -1014,6 +1016,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
 
   function renderMagicInitiateSection(options: {
     readonly title: string;
+    readonly sourceContext: string;
     readonly testIdPrefix: string;
     readonly detail: NonNullable<DraftResponse['options']['backgroundFeatDetail']>;
     readonly cantripIds: readonly string[];
@@ -1022,26 +1025,28 @@ export function mountCharacterCreatePage(host: PageHost): void {
     readonly spellName: string;
   }): string {
     return `
-      <h3>${escapeHtml(options.title)}</h3>
-      <p>Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list. Hover over any spell to read its stats and description.</p>
-      <h4>Cantrips</h4>
-      ${checkboxList({
-        name: options.cantripName,
-        testId: `${options.testIdPrefix}-cantrip-options`,
-        entries: options.detail.cantripOptions,
-        selected: options.cantripIds,
-        maxChoose: options.detail.cantripsKnown,
-        tooltipSummaries: true,
-      })}
-      <h4>Level 1 spell</h4>
-      ${checkboxList({
-        name: options.spellName,
-        testId: `${options.testIdPrefix}-spell-options`,
-        entries: options.detail.spellOptions,
-        selected: options.spellIds,
-        maxChoose: options.detail.spellsKnown,
-        tooltipSummaries: true,
-      })}`;
+      <section class="panel origin-feat-spell-panel" data-testid="${escapeHtml(options.testIdPrefix)}-spell-panel">
+        <h3 data-testid="${escapeHtml(options.testIdPrefix)}-spell-heading">${escapeHtml(options.title)}</h3>
+        <p class="step-helper" data-testid="origin-feat-spell-source"><b>${escapeHtml(options.title)}</b> (${escapeHtml(options.sourceContext)}). Choose ${options.detail.cantripsKnown} cantrips and ${options.detail.spellsKnown} level 1 spell from the ${escapeHtml(options.detail.label)} list. Hover over any spell to read its stats and description.</p>
+        <h4>Cantrips</h4>
+        ${checkboxList({
+          name: options.cantripName,
+          testId: `${options.testIdPrefix}-cantrip-options`,
+          entries: options.detail.cantripOptions,
+          selected: options.cantripIds,
+          maxChoose: options.detail.cantripsKnown,
+          tooltipSummaries: true,
+        })}
+        <h4>Level 1 spell</h4>
+        ${checkboxList({
+          name: options.spellName,
+          testId: `${options.testIdPrefix}-spell-options`,
+          entries: options.detail.spellOptions,
+          selected: options.spellIds,
+          maxChoose: options.detail.spellsKnown,
+          tooltipSummaries: true,
+        })}
+      </section>`;
   }
 
   function renderAbilitiesStep(): string {
@@ -1275,8 +1280,18 @@ export function mountCharacterCreatePage(host: PageHost): void {
              </ul>
            </div>`;
 
+    const derivedAc = state.draft.sheet?.armorClass ?? null;
+    const acFormula = derivedAc !== null ? formatArmorClassFormula(derivedAc) : '';
+
     return `
       <p class="step-helper">${escapeHtml(STEP_HELPERS.equipment)}</p>
+      ${
+        derivedAc === null
+          ? ''
+          : `<div class="wizard-coach" data-testid="equipment-ac-derivation">
+               <p><b>Armor Class:</b> <b>${derivedAc.value}</b> — <span data-testid="equipment-ac-formula">${escapeHtml(acFormula)}</span></p>
+             </div>`
+      }
       <h3>${escapeHtml(classDetail.label)} starting equipment</h3>
       ${optionList({
         name: 'class-equipment',
@@ -1427,6 +1442,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
       </section>`
       }`;
 
+    const backgroundLabel = state.options.backgroundDetail?.label ?? 'Background';
+
     return `
       <h3>${escapeHtml(detail.label)} level 1 features</h3>
       <p class="step-helper">${escapeHtml(STEP_HELPERS.features)}</p>
@@ -1444,11 +1461,13 @@ export function mountCharacterCreatePage(host: PageHost): void {
           .join('')}
       </ul>
       ${classChoices}
+      ${spells}
       ${
         state.options.backgroundFeatDetail === null
           ? ''
           : renderMagicInitiateSection({
-              title: `${state.options.backgroundFeatDetail.label} (Background)`,
+              title: `Granted by Origin Feat: ${state.options.backgroundFeatDetail.label}`,
+              sourceContext: `${backgroundLabel} Background — not a ${detail.label} class spellcasting feature`,
               testIdPrefix: 'background-feat',
               detail: state.options.backgroundFeatDetail,
               cantripIds: state.draft.choices.backgroundFeatCantripIds,
@@ -1461,7 +1480,8 @@ export function mountCharacterCreatePage(host: PageHost): void {
         state.options.originFeatDetail === null
           ? ''
           : renderMagicInitiateSection({
-              title: `${state.options.originFeatDetail.label} (Versatile)`,
+              title: `Granted by Origin Feat: ${state.options.originFeatDetail.label}`,
+              sourceContext: `Human Versatile Trait — not a ${detail.label} class spellcasting feature`,
               testIdPrefix: 'origin-feat',
               detail: state.options.originFeatDetail,
               cantripIds: state.draft.choices.originFeatCantripIds,
@@ -1469,8 +1489,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
               cantripName: 'origin-feat-cantrip',
               spellName: 'origin-feat-spell',
             })
-      }
-      ${spells}`;
+      }`;
   }
 
   function portraitPromptValue(): string {
@@ -1490,8 +1509,12 @@ export function mountCharacterCreatePage(host: PageHost): void {
     const forged = state.draft.avatarUrl ?? null;
     const avatarOptions = state.draft.avatarOptions ?? (forged !== null ? [forged] : []);
     const portraitForged = state.draft.portraitForged === true || avatarOptions.length > 0;
-    const portraitConfirmed = portraitForged && avatarOptions.length <= 1 && forged !== null;
+    const portraitConfirmed = portraitForged && forged !== null;
     const promptValue = portraitPromptValue();
+    const activeLightboxUrl =
+      lightboxPortraitIndex !== null && avatarOptions[lightboxPortraitIndex] !== undefined
+        ? avatarOptions[lightboxPortraitIndex]!
+        : null;
     return `
       <section class="panel portrait-section" data-testid="portrait-section" aria-labelledby="portrait-heading">
         <h3 id="portrait-heading">Portrait &amp; Physical Appearance</h3>
@@ -1514,38 +1537,70 @@ export function mountCharacterCreatePage(host: PageHost): void {
               ${
                 portraitBusy
                   ? 'Forging 3 Portraits…'
-                  : portraitConfirmed
-                    ? 'Portrait Confirmed (Final)'
-                    : portraitForged
-                      ? '3 Portraits Forged — Pick & Confirm 1 Below'
-                      : 'Forge Portrait (Generates 3 Choices)'
+                  : portraitForged
+                    ? '3 Portraits Forged — Preview & Choose Below'
+                    : 'Forge Portrait (Generates 3 Choices)'
               }
             </button>
             ${
               avatarOptions.length > 1
                 ? `<div class="portrait-options-picker" data-testid="portrait-options-picker">
-                    <p class="record-meta"><b>Choose &amp; confirm 1 of your 3 forged portraits:</b> Once you confirm your choice, the other two portraits are discarded and your selection is final.</p>
+                    <p class="record-meta"><b>Preview &amp; choose 1 of your 3 forged portraits:</b> Click any portrait image to inspect it larger in the lightbox before choosing.</p>
                     <div class="portrait-options-grid">
                       ${avatarOptions
                         .map(
                           (optionUrl, index) => `
-                        <button type="button" class="portrait-option-card${forged === optionUrl ? ' selected' : ''}"
-                          data-portrait-option="${escapeHtml(optionUrl)}"
-                          data-testid="portrait-option-${index}"
-                          aria-pressed="${forged === optionUrl ? 'true' : 'false'}">
-                          <img src="${escapeHtml(optionUrl)}" alt="Portrait option ${index + 1}" width="88" height="88" />
-                          <span>Confirm Option ${index + 1}</span>
-                        </button>`,
+                        <div class="portrait-option-card${forged === optionUrl ? ' selected is-selected' : ''}"
+                          data-testid="portrait-option-${index}">
+                          <button type="button" class="portrait-thumbnail-preview-btn"
+                            data-portrait-preview-index="${index}"
+                            data-testid="portrait-preview-option-${index}"
+                            aria-label="Preview Portrait Option ${index + 1} at full size">
+                            <img src="${escapeHtml(optionUrl)}" alt="Portrait option ${index + 1}" width="88" height="88" />
+                            <span class="portrait-zoom-badge">Inspect Full Size</span>
+                          </button>
+                          <button type="button" class="button secondary compact portrait-choose-btn"
+                            data-portrait-option="${escapeHtml(optionUrl)}"
+                            data-testid="choose-portrait-option-${index}"
+                            aria-pressed="${forged === optionUrl ? 'true' : 'false'}">
+                            ${forged === optionUrl ? 'Selected Portrait' : 'Choose This Portrait'}
+                          </button>
+                        </div>`,
                         )
                         .join('')}
                     </div>
                   </div>`
-                : portraitConfirmed
-                  ? `<p class="record-meta" data-testid="portrait-confirmed-notice">Portrait confirmed and locked (unused options discarded). You can evolve your core portrait when you level up.</p>`
-                  : ''
+                : ''
+            }
+            ${
+              portraitConfirmed
+                ? `<p class="record-meta" data-testid="portrait-confirmed-notice">Portrait saved with this draft. You can evolve your core portrait when you level up.</p>`
+                : ''
             }
           </div>
         </div>
+        ${
+          activeLightboxUrl !== null && lightboxPortraitIndex !== null
+            ? `<div class="portrait-lightbox-backdrop" data-testid="portrait-lightbox-modal" role="dialog" aria-modal="true" aria-label="Portrait Preview">
+                <div class="portrait-lightbox-card panel">
+                  <div class="portrait-lightbox-header">
+                    <h4>Portrait Option ${lightboxPortraitIndex + 1} of ${avatarOptions.length}</h4>
+                    <button type="button" class="secondary compact" data-testid="close-portrait-lightbox" aria-label="Close preview">Close</button>
+                  </div>
+                  <div class="portrait-lightbox-stage">
+                    <img class="portrait-lightbox-image" data-testid="lightbox-portrait-image" src="${escapeHtml(activeLightboxUrl)}" alt="Full size portrait option ${lightboxPortraitIndex + 1}" width="360" height="360" />
+                  </div>
+                  <div class="portrait-lightbox-actions">
+                    <button type="button" class="secondary compact" data-testid="lightbox-prev-portrait">Previous</button>
+                    <button type="button" class="button" data-portrait-option="${escapeHtml(activeLightboxUrl)}" data-testid="confirm-lightbox-portrait">
+                      ${forged === activeLightboxUrl ? 'Selected Portrait' : 'Choose This Portrait'}
+                    </button>
+                    <button type="button" class="secondary compact" data-testid="lightbox-next-portrait">Next</button>
+                  </div>
+                </div>
+              </div>`
+            : ''
+        }
       </section>`;
   }
 
@@ -1591,6 +1646,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
           appearancePrompt: result.appearancePrompt,
         },
       };
+      lightboxPortraitIndex = null;
       shell.announce('Portrait choice updated.');
     } catch (failure) {
       portraitError =
@@ -2681,56 +2737,7 @@ export function mountCharacterCreatePage(host: PageHost): void {
       input.addEventListener('change', persistIdentity);
     });
 
-    const physicalAppearance = container.querySelector<HTMLTextAreaElement>(
-      '[data-testid="identity-physical-appearance"]',
-    );
-    physicalAppearance?.addEventListener('input', () => {
-      portraitPromptText = physicalAppearance.value;
-      const validation = validateAppearancePrompt(physicalAppearance.value);
-      const errorNode = container.querySelector<HTMLElement>('[data-testid="portrait-error"]');
-      const countNode = container.querySelector<HTMLElement>('[data-testid="portrait-char-count"]');
-      if (countNode !== null) {
-        countNode.textContent = `${physicalAppearance.value.length}/${APPEARANCE_PROMPT_MAX_LENGTH}`;
-      }
-      portraitError = validation.ok ? null : validation.message;
-      if (errorNode !== null) {
-        errorNode.textContent = portraitError ?? '';
-        errorNode.hidden = portraitError === null;
-      }
-      if (identityDebounceTimer !== null) {
-        window.clearTimeout(identityDebounceTimer);
-      }
-      identityDebounceTimer = window.setTimeout(() => {
-        if (current === null || !isPageMountCurrent(container, mountToken)) {
-          return;
-        }
-        const foundation = latestChoices();
-        const trimmedAppearance = physicalAppearance.value.slice(0, CHARACTER_TEXT_MAX_LENGTH);
-        if (foundation.identity.appearance === trimmedAppearance) {
-          return;
-        }
-        void commitChoices(
-          {
-            ...foundation,
-            identity: { ...foundation.identity, appearance: trimmedAppearance },
-          },
-          { silentDom: true },
-        );
-      }, 400);
-    });
-    container
-      .querySelector<HTMLButtonElement>('[data-testid="forge-portrait"]')
-      ?.addEventListener('click', () => {
-        void forgePortrait();
-      });
-    container.querySelectorAll<HTMLButtonElement>('[data-portrait-option]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const optionUrl = btn.dataset.portraitOption ?? '';
-        if (optionUrl.length > 0) {
-          void selectPortraitOption(optionUrl);
-        }
-      });
-    });
+    bindPortraitSectionEvents();
 
     container.querySelectorAll<HTMLButtonElement>('[data-point-buy-ability]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -2835,6 +2842,39 @@ export function mountCharacterCreatePage(host: PageHost): void {
       .querySelector<HTMLButtonElement>('[data-testid="forge-portrait"]')
       ?.addEventListener('click', () => {
         void forgePortrait();
+      });
+    container.querySelectorAll<HTMLButtonElement>('[data-portrait-preview-index]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.portraitPreviewIndex ?? '-1');
+        if (Number.isInteger(idx) && idx >= 0) {
+          lightboxPortraitIndex = idx;
+          syncPortraitSectionInPlace();
+        }
+      });
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="close-portrait-lightbox"]')
+      ?.addEventListener('click', () => {
+        lightboxPortraitIndex = null;
+        syncPortraitSectionInPlace();
+      });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="lightbox-prev-portrait"]')
+      ?.addEventListener('click', () => {
+        const options = current?.draft.avatarOptions ?? [];
+        if (options.length > 0 && lightboxPortraitIndex !== null) {
+          lightboxPortraitIndex = (lightboxPortraitIndex - 1 + options.length) % options.length;
+          syncPortraitSectionInPlace();
+        }
+      });
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="lightbox-next-portrait"]')
+      ?.addEventListener('click', () => {
+        const options = current?.draft.avatarOptions ?? [];
+        if (options.length > 0 && lightboxPortraitIndex !== null) {
+          lightboxPortraitIndex = (lightboxPortraitIndex + 1) % options.length;
+          syncPortraitSectionInPlace();
+        }
       });
     container.querySelectorAll<HTMLButtonElement>('[data-portrait-option]').forEach((btn) => {
       btn.addEventListener('click', () => {
