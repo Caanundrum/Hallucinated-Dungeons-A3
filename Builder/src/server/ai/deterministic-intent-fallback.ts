@@ -26,11 +26,13 @@ import {
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
+  isDialogueDeclaration,
   isDocumentOpenOrReadDeclaration,
   isPassageOrTravelThroughDoorway,
   isWholeContainerLootDeclaration,
   resolveConditionalDoorIntent,
   splitPrimaryTargetFromLocative,
+  stripQuotedSpeech,
   understandUtterance,
 } from '../../shared/utterance-understanding.js';
 import {
@@ -498,24 +500,38 @@ export async function resolveDeterministicIntentFallback(
       ? absentRoomNpcs.find((npc) => npcNamesMatch(npc.label, structured.addressee!)) ?? null
       : null;
   const utterance = understandUtterance(rawText);
+  const unquotedRawText = stripQuotedSpeech(rawText);
+  const actionText = (unquotedRawText.length > 0 ? unquotedRawText : rawText).toLowerCase();
+  const isDialogueOrQuestionBypass =
+    isDialogueDeclaration(
+      rawText,
+      knownNpcs.map((n) => n.label),
+    ) ||
+    structured.addressee !== null ||
+    authority.actionSequence.some((step) => step.kind === 'dialogue') ||
+    utterance.speechAct === 'question' ||
+    utterance.speechAct === 'rules_query' ||
+    utterance.wantsKnowledgeRecap ||
+    authority.disposition === 'reject_world_authorship';
   const hasDedicatedGatewayBranch =
+    !isDialogueOrQuestionBypass &&
     !utterance.constraints.prepareWithoutAttack &&
     !utterance.constraints.forbidCombat &&
     (/(end (the )?(encounter|fight|combat)|stop (the )?fight|withdraw from (combat|the fight))/i.test(
-      text,
+      actionText,
     ) ||
-      /arcane recovery/i.test(text) ||
+      /arcane recovery/i.test(actionText) ||
       /(short\s*rest|take a short rest|rest briefly|catch my breath|recover.*(second wind|action surge|short.?rest))/i.test(
-        text,
+        actionText,
       ) ||
-      /(long\s*rest|take a long rest|camp for the night|sleep until morning)/i.test(text) ||
+      /(long\s*rest|take a long rest|camp for the night|sleep until morning)/i.test(actionText) ||
       /(begin (the )?encounter|start (the )?(encounter|combat|fight)|roll initiative|initiative)/i.test(
-        text,
+        actionText,
       ) ||
-      (/hostile|guardian|foe|enemy/.test(text) && /initiative|encounter|combat/.test(text)) ||
-      /(potion|drink.*heal|use.*heal|healing potion)/.test(text) ||
+      (/hostile|guardian|foe|enemy/.test(actionText) && /initiative|encounter|combat/.test(actionText)) ||
+      /(potion|drink.*heal|use.*heal|healing potion)/.test(actionText) ||
       /\b(attack|strike|hit|slash|smash|stab|swing|warhammer|longsword|club|hammer)\b/.test(
-        text,
+        actionText,
       ));
   const emptyClarifyYieldsToGateway =
     (authority.disposition === 'clarify' || authority.disposition === 'director_narrate_only') &&
@@ -524,12 +540,9 @@ export async function resolveDeterministicIntentFallback(
     hasDedicatedGatewayBranch;
   // Clarify / narrate-only must never fall into the keyword combat/travel cascade.
   const authorityShortCircuit =
+    isDialogueOrQuestionBypass ||
     (authority.disposition === 'director_narrate_only' && !emptyClarifyYieldsToGateway) ||
-    authority.disposition === 'reject_world_authorship' ||
     (authority.disposition === 'clarify' && !emptyClarifyYieldsToGateway) ||
-    utterance.speechAct === 'question' ||
-    utterance.speechAct === 'rules_query' ||
-    utterance.wantsKnowledgeRecap ||
     utterance.constraints.prepareWithoutAttack ||
     utterance.constraints.forbidCombat ||
     (authority.disposition === 'propose_command' &&
@@ -545,14 +558,16 @@ export async function resolveDeterministicIntentFallback(
       authority.actionSequence[0]?.outcomeHint === 'take_container') ||
     (authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'move' &&
-      !mentionsDoorIntent(text) &&
+      !mentionsDoorIntent(actionText) &&
       authority.actionSequence[0]?.outcomeHint !== 'beside_door');
 
   // Batch 2/3 — reusable Director scene loop (begin / object / travel / landmark / return).
+  // Never enter the physical/travel scene loop when the utterance is interpersonal dialogue or a question (`CV-01`).
   let sceneLoopResolved = false;
   if (
+    !isDialogueOrQuestionBypass &&
     /\b(begin (the )?adventure|start (the )?adventure|establish (the )?(first |opening )?scene)\b/i.test(
-      text,
+      actionText,
     )
   ) {
     proposedCommandType = 'table.begin_adventure';
@@ -560,10 +575,11 @@ export async function resolveDeterministicIntentFallback(
       'Ready to begin the adventure. Confirm so the Game Director establishes the opening scene from your premise.';
     sceneLoopResolved = true;
   } else if (
-    (/\b(return|go back|head back|retreat|back to|passage back)\b/i.test(text) &&
-      /\b(scene|chamber|room|inn|tavern|cellar|stairs|upstairs|path|way|earlier|previous)\b/i.test(text)) ||
-    /\b(?:return|head\s+back|go\s+back)\s+(?:up|down|to|through)\b/i.test(text) ||
-    /\bpassage\s+back\b/i.test(text)
+    !isDialogueOrQuestionBypass &&
+    ((/\b(return|go back|head back|retreat|back to|passage back)\b/i.test(actionText) &&
+      /\b(scene|chamber|room|inn|tavern|cellar|stairs|upstairs|path|way|earlier|previous)\b/i.test(actionText)) ||
+      /\b(?:return|head\s+back|go\s+back)\s+(?:up|down|to|through)\b/i.test(actionText) ||
+      /\bpassage\s+back\b/i.test(actionText))
   ) {
     proposedCommandType = 'table.travel_scene';
     returnToPrevious = true;
@@ -582,12 +598,13 @@ export async function resolveDeterministicIntentFallback(
     summary = `Ready to return to ${destinationHint}. Confirm to restore it with prior consequences.`;
     sceneLoopResolved = true;
   } else if (
-    !mentionsDoorIntent(text) &&
+    !isDialogueOrQuestionBypass &&
+    !mentionsDoorIntent(actionText) &&
     (/\b(leave|travel|head\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:out|outside|onward|for|to|(?:down|up)(?!\s+to\b)|toward|towards|into|through)|go\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:outside|outdoors|onward|through|to|toward|towards|(?:down|up)(?!\s+to\b)|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:(?:down|up)(?!\s+to\b)|along|through)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|doorway|gate|gateway|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|(?:down|up)(?!\s+to\b)|through)|continue\s+(?:to|toward|towards|into|onward|(?:down|up)(?!\s+to\b)|along|through)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
-      text,
+      actionText,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort|sanctum\s+gate|sanctum\s+archway)\b/i.test(
-        text,
+        actionText,
       ))
   ) {
     // Packet 3 (`RV-03`): Before proposing scene-level travel, check if the player is approaching
@@ -676,18 +693,19 @@ export async function resolveDeterministicIntentFallback(
       sceneLoopResolved = true;
     }
   } else if (
+    !isDialogueOrQuestionBypass &&
     !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
-      text,
+      actionText,
     ) &&
-    !declarationIsDoorOpenOrPassage(rawText) &&
-    !declarationNegatesDoorOpen(rawText) &&
-    !mentionsDoorIntent(text) &&
+    !declarationIsDoorOpenOrPassage(unquotedRawText || rawText) &&
+    !declarationNegatesDoorOpen(unquotedRawText || rawText) &&
+    !mentionsDoorIntent(actionText) &&
     /\b(extinguish|douse|snuff|relight|ignite|kindle|light\s+the|break|smash|kick|shatter|move\s+the|clear\s+the|open|unseal|unlatch|unlock|pry|force|wedge|close|shut|disarm|pull|push|flip|toggle|turn|rotate|twist|press|activate|read|peruse|unfold|unroll|leaf\s+through)\b/i.test(
-      text,
+      actionText,
     ) &&
     !isWholeContainerLootDeclaration(rawText) &&
     !/\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|collect|retrieve|pick(?:ing|ed)?\s+up)\b/i.test(
-      text,
+      actionText,
     )
   ) {
     try {
@@ -785,15 +803,16 @@ export async function resolveDeterministicIntentFallback(
       sceneLoopResolved = false;
     }
   } else if (
+    !isDialogueOrQuestionBypass &&
     !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
-      text,
+      actionText,
     ) &&
-    !declarationIsDoorOpenOrPassage(rawText) &&
-    !declarationNegatesDoorOpen(rawText) &&
-    !mentionsDoorIntent(text) &&
+    !declarationIsDoorOpenOrPassage(unquotedRawText || rawText) &&
+    !declarationNegatesDoorOpen(unquotedRawText || rawText) &&
+    !mentionsDoorIntent(actionText) &&
     (isWholeContainerLootDeclaration(rawText) ||
       /\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|collect|retrieve|pick(?:ing|ed)?\s+up)\b/i.test(
-        text,
+        actionText,
       ))
   ) {
     try {
@@ -1072,8 +1091,206 @@ export async function resolveDeterministicIntentFallback(
       authority.disposition === 'propose_command' &&
       authority.actionSequence[0]?.kind === 'move'
     ) {
-      // Invented scenery may have been ignored — keep the real move (TQA-004).
-      if (options.moveTarget) {
+      // Prefer explicit named feature/prop movement (e.g. lever, service counter, chest, NPC) or doorway geometry
+      // before falling back to a marked canvas square (`RV-03`).
+      let doorResolved = false;
+      try {
+        const map = await fetchCampaignMap({
+          firestore: options.firestore,
+          accountId: options.accountId,
+          campaignId: options.campaignId,
+        });
+        const ownToken =
+          map.viewerSeatId === null
+            ? map.tokens[0]
+            : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+        const maxMoveSteps = combatActive
+          ? Math.max(
+              1,
+              Math.floor(
+                (seatedSheet?.speed.value ?? 30) / (map.coordinateSpace.feetPerSquare || 5),
+              ),
+            )
+          : Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows);
+
+        if (ownToken !== undefined && !mentionsDoorIntent(actionText)) {
+          const { matchInRoomApproachTarget, stripFeatureStateSuffix } = await import(
+            '../table/scene-commands.js'
+          );
+          let targetFeature =
+            matchInRoomApproachTarget(map.notableFeatures, rawText) ??
+            map.notableFeatures.find((f) => {
+              if (f.objectKind === 'exit' || f.referenceKind === 'exit') return false;
+              const label = stripFeatureStateSuffix(f.label).toLowerCase();
+              if (label.length >= 3 && actionText.includes(label)) return true;
+              const parts = label.split(/\s+/).filter((p) => p.length >= 4);
+              return parts.some((p) => actionText.includes(p));
+            }) ??
+            null;
+          let featureDisplayLabel = targetFeature
+            ? stripFeatureStateSuffix(targetFeature.label).replace(/\s+[—–-]\s+.*$/u, '').trim()
+            : null;
+          if (
+            targetFeature === null &&
+            /\b(?:service\s+counter|counter|bar)\b/i.test(actionText)
+          ) {
+            const fallbackCounter = map.notableFeatures.find(
+              (f) =>
+                f.column === 4 &&
+                (f.row === 2 || f.row === 4) &&
+                f.objectKind !== 'npc' &&
+                f.objectKind !== 'exit',
+            );
+            if (fallbackCounter !== undefined) {
+              targetFeature = fallbackCounter;
+              featureDisplayLabel = 'Service counter';
+            }
+          }
+          if (targetFeature !== null && featureDisplayLabel !== null) {
+            const featureSquare = { column: targetFeature.column, row: targetFeature.row };
+            const featurePath = pathBesideFeature(
+              ownToken.footprint.anchor,
+              featureSquare,
+              map,
+              maxMoveSteps,
+            );
+            if (featurePath !== null && featurePath.length > 0) {
+              proposedCommandType = 'table.move';
+              path = featurePath;
+              const steps = featurePath.length;
+              const feet = steps * map.coordinateSpace.feetPerSquare;
+              summary = `Walk beside the ${featureDisplayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
+              doorResolved = true;
+            }
+          }
+        }
+        const primaryMoveText = actionText
+          .replace(
+            /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
+            '',
+          )
+          .trim();
+        if (
+          !doorResolved &&
+          ownToken !== undefined &&
+          (map.edges.length > 0 || isPassageOrTravelThroughDoorway(primaryMoveText)) &&
+          /\b(?:door|doorway|gate|entry(?:way)?|threshold|through|beyond|west|east|north|south)\b/i.test(
+            primaryMoveText,
+          )
+        ) {
+          const gated = await gateDoorDeclarationAgainstLiveTruth({
+            firestore: options.firestore,
+            campaignId: options.campaignId,
+            accountId: options.accountId,
+            text: primaryMoveText,
+            seatedSheet,
+            map,
+          });
+          if (gated !== null) {
+            proposedCommandType = gated.proposedCommandType;
+            summary = gated.summary;
+            if (gated.edgeId !== undefined) {
+              edgeId = gated.edgeId;
+            }
+            doorResolved = true;
+          } else {
+            const persisted = resolveDoorIntentForMap(
+              map,
+              ownToken.footprint.anchor,
+              primaryMoveText,
+            );
+            const hasSceneExit = map.notableFeatures.some(
+              (f) => f.referenceKind === 'exit' || f.objectKind === 'exit',
+            );
+            const isForwardExitThroughDoorway =
+              hasSceneExit &&
+              isPassageOrTravelThroughDoorway(rawText) &&
+              (persisted === null ||
+                (persisted.proposedCommandType === 'table.move' &&
+                  /step back through/i.test(persisted.summary) &&
+                  /\b(?:east|eastern|north|northern|south|southern|onward|forward|ahead)\b/i.test(
+                    primaryMoveText,
+                  )));
+            if (isForwardExitThroughDoorway) {
+              const { activeSceneInstance, loadMapRuntime } = await import(
+                '../table/map-runtime.js'
+              );
+              const {
+                checkExitLockedForTravel,
+                resolveTravelDestinationTitle,
+              } = await import('../table/scene-commands.js');
+              const { loadCampaignBlueprint } = await import(
+                '../campaigns/campaign-blueprint.js'
+              );
+              const [runtime, blueprint] = await Promise.all([
+                loadMapRuntime(options.firestore, options.campaignId),
+                loadCampaignBlueprint(options.firestore, options.campaignId),
+              ]);
+              const active = activeSceneInstance(runtime);
+              const lockCheck =
+                active !== null
+                  ? checkExitLockedForTravel(active, rawText, false)
+                  : { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+              if (lockCheck.locked) {
+                proposedCommandType = 'table.sync';
+                deferDirectorNarrate = false;
+                summary = lockCheck.byLever
+                  ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                      lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+                    } to unseal it.`
+                  : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+              } else {
+                const resolvedTitle = resolveTravelDestinationTitle(
+                  runtime,
+                  rawText,
+                  false,
+                  blueprint,
+                );
+                const targetTitle =
+                  resolvedTitle !== null && resolvedTitle.trim().length > 0
+                    ? resolvedTitle.trim()
+                    : 'the next area';
+                proposedCommandType = 'table.travel_scene';
+                destinationHint = targetTitle;
+                summary = `Ready to travel to ${targetTitle}. Confirm so the Game Director establishes the next place.`;
+              }
+              doorResolved = true;
+            } else if (persisted !== null) {
+              const hasReturnExit = map.notableFeatures.some(
+                (f) =>
+                  (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
+                  /\b(?:passage\s+back|return\s+to|back\s+to)\b/i.test(f.label),
+              );
+              const isCrossingStep =
+                persisted.proposedCommandType === 'table.move' &&
+                /\b(?:step(?:s|ping)?\s+(?:back\s+)?through|walk(?:s|ing)?\s+through|go(?:es|ing)?\s+through|through\s+the\s+open|enter(?:s|ing)?)\b/i.test(
+                  primaryMoveText,
+                );
+              if (hasReturnExit && isCrossingStep) {
+                proposedCommandType = 'table.travel_scene';
+                returnToPrevious = true;
+                destinationHint = 'return to the earlier scene';
+                summary =
+                  'Ready to return through the open doorway to the earlier scene. Confirm to restore it with prior consequences.';
+                doorResolved = true;
+              } else {
+                proposedCommandType = persisted.proposedCommandType;
+                summary = persisted.summary;
+                if (persisted.path !== undefined) {
+                  path = [...persisted.path];
+                }
+                if (persisted.edgeId !== undefined) {
+                  edgeId = persisted.edgeId;
+                }
+                doorResolved = true;
+              }
+            }
+          }
+        }
+      } catch {
+        doorResolved = false;
+      }
+      if (!doorResolved && options.moveTarget) {
         proposedCommandType = 'table.move';
         path = [options.moveTarget];
         summary =
@@ -1083,197 +1300,12 @@ export async function resolveDeterministicIntentFallback(
         if (authority.ignoredWorldFacts.length > 0 && !/ignored|Game Director/i.test(summary)) {
           summary = `${summary} Player-authored places were ignored — only the Game Director establishes those.`;
         }
-      } else {
-        // Prefer feature/prop movement (e.g. service counter, hearth) or doorway geometry over mark-square.
-        let doorResolved = false;
-        try {
-          const map = await fetchCampaignMap({
-            firestore: options.firestore,
-            accountId: options.accountId,
-            campaignId: options.campaignId,
-          });
-          const ownToken =
-            map.viewerSeatId === null
-              ? map.tokens[0]
-              : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
-
-          if (ownToken !== undefined && !mentionsDoorIntent(text)) {
-            const { matchInRoomApproachTarget, stripFeatureStateSuffix } = await import(
-              '../table/scene-commands.js'
-            );
-            let targetFeature =
-              matchInRoomApproachTarget(map.notableFeatures, rawText) ??
-              map.notableFeatures.find((f) => {
-                if (f.objectKind === 'exit' || f.referenceKind === 'exit') return false;
-                const label = f.label.toLowerCase();
-                if (text.toLowerCase().includes(label)) return true;
-                const parts = label.split(/\s+/).filter((p) => p.length >= 4);
-                return parts.some((p) => text.toLowerCase().includes(p));
-              });
-            let featureDisplayLabel = targetFeature
-              ? stripFeatureStateSuffix(targetFeature.label).replace(/\s+[—–-]\s+.*$/u, '').trim()
-              : null;
-            if (
-              targetFeature === undefined &&
-              /\b(?:service\s+counter|counter|bar)\b/i.test(text)
-            ) {
-              targetFeature = map.notableFeatures.find(
-                (f) =>
-                  f.column === 4 &&
-                  (f.row === 2 || f.row === 4) &&
-                  f.objectKind !== 'npc' &&
-                  f.objectKind !== 'exit',
-              );
-              if (targetFeature !== undefined) {
-                featureDisplayLabel = 'Service counter';
-              }
-            }
-            if (targetFeature !== undefined && featureDisplayLabel !== null) {
-              const featureSquare = { column: targetFeature.column, row: targetFeature.row };
-              const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
-              if (featurePath !== null && featurePath.length > 0) {
-                proposedCommandType = 'table.move';
-                path = featurePath;
-                const steps = featurePath.length;
-                const feet = steps * map.coordinateSpace.feetPerSquare;
-                summary = `Walk beside the ${featureDisplayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
-                doorResolved = true;
-              }
-            }
-          }
-          const primaryMoveText = text
-            .replace(
-              /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
-              '',
-            )
-            .trim();
-          if (
-            !doorResolved &&
-            ownToken !== undefined &&
-            (map.edges.length > 0 || isPassageOrTravelThroughDoorway(primaryMoveText)) &&
-            /\b(?:door|doorway|gate|entry(?:way)?|threshold|through|beyond|west|east|north|south)\b/i.test(
-              primaryMoveText,
-            )
-          ) {
-            const gated = await gateDoorDeclarationAgainstLiveTruth({
-              firestore: options.firestore,
-              campaignId: options.campaignId,
-              accountId: options.accountId,
-              text: primaryMoveText,
-              seatedSheet,
-              map,
-            });
-            if (gated !== null) {
-              proposedCommandType = gated.proposedCommandType;
-              summary = gated.summary;
-              if (gated.edgeId !== undefined) {
-                edgeId = gated.edgeId;
-              }
-              doorResolved = true;
-            } else {
-              const persisted = resolveDoorIntentForMap(
-                map,
-                ownToken.footprint.anchor,
-                primaryMoveText,
-              );
-              const hasSceneExit = map.notableFeatures.some(
-                (f) => f.referenceKind === 'exit' || f.objectKind === 'exit',
-              );
-              const isForwardExitThroughDoorway =
-                hasSceneExit &&
-                isPassageOrTravelThroughDoorway(rawText) &&
-                (persisted === null ||
-                  (persisted.proposedCommandType === 'table.move' &&
-                    /step back through/i.test(persisted.summary) &&
-                    /\b(?:east|eastern|north|northern|south|southern|onward|forward|ahead)\b/i.test(
-                      primaryMoveText,
-                    )));
-              if (isForwardExitThroughDoorway) {
-                const { activeSceneInstance, loadMapRuntime } = await import(
-                  '../table/map-runtime.js'
-                );
-                const {
-                  checkExitLockedForTravel,
-                  resolveTravelDestinationTitle,
-                } = await import('../table/scene-commands.js');
-                const { loadCampaignBlueprint } = await import(
-                  '../campaigns/campaign-blueprint.js'
-                );
-                const [runtime, blueprint] = await Promise.all([
-                  loadMapRuntime(options.firestore, options.campaignId),
-                  loadCampaignBlueprint(options.firestore, options.campaignId),
-                ]);
-                const active = activeSceneInstance(runtime);
-                const lockCheck =
-                  active !== null
-                    ? checkExitLockedForTravel(active, rawText, false)
-                    : { locked: false, byLever: false, exitLabel: '', leverLabel: null };
-                if (lockCheck.locked) {
-                  proposedCommandType = 'table.sync';
-                  deferDirectorNarrate = false;
-                  summary = lockCheck.byLever
-                    ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
-                        lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
-                      } to unseal it.`
-                    : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
-                } else {
-                  const resolvedTitle = resolveTravelDestinationTitle(
-                    runtime,
-                    rawText,
-                    false,
-                    blueprint,
-                  );
-                  const targetTitle =
-                    resolvedTitle !== null && resolvedTitle.trim().length > 0
-                      ? resolvedTitle.trim()
-                      : 'the next area';
-                  proposedCommandType = 'table.travel_scene';
-                  destinationHint = targetTitle;
-                  summary = `Ready to travel to ${targetTitle}. Confirm so the Game Director establishes the next place.`;
-                }
-                doorResolved = true;
-              } else if (persisted !== null) {
-                const hasReturnExit = map.notableFeatures.some(
-                  (f) =>
-                    (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
-                    /\b(?:passage\s+back|return\s+to|back\s+to)\b/i.test(f.label),
-                );
-                const isCrossingStep =
-                  persisted.proposedCommandType === 'table.move' &&
-                  /\b(?:step(?:s|ping)?\s+(?:back\s+)?through|walk(?:s|ing)?\s+through|go(?:es|ing)?\s+through|through\s+the\s+open|enter(?:s|ing)?)\b/i.test(
-                    primaryMoveText,
-                  );
-                if (hasReturnExit && isCrossingStep) {
-                  proposedCommandType = 'table.travel_scene';
-                  returnToPrevious = true;
-                  destinationHint = 'return to the earlier scene';
-                  summary =
-                    'Ready to return through the open doorway to the earlier scene. Confirm to restore it with prior consequences.';
-                  doorResolved = true;
-                } else {
-                  proposedCommandType = persisted.proposedCommandType;
-                  summary = persisted.summary;
-                  if (persisted.path !== undefined) {
-                    path = [...persisted.path];
-                  }
-                  if (persisted.edgeId !== undefined) {
-                    edgeId = persisted.edgeId;
-                  }
-                  doorResolved = true;
-                }
-              }
-            }
-          }
-        } catch {
-          doorResolved = false;
-        }
-        if (!doorResolved) {
-          proposedCommandType = 'table.sync';
-          summary =
-            authority.ignoredWorldFacts.length > 0
-              ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
-              : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
-        }
+      } else if (!doorResolved) {
+        proposedCommandType = 'table.sync';
+        summary =
+          authority.ignoredWorldFacts.length > 0
+            ? 'Your movement stands — mark an adjacent square on the map to commit it. Player-authored places were ignored; only the Game Director establishes those.'
+            : 'Mark an adjacent square on the map, then declare your move again to commit the step.';
       }
     } else if (authority.disposition === 'director_narrate_only') {
       proposedCommandType = authority.proposedCommandType ?? 'table.sync';

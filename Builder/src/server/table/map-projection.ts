@@ -21,7 +21,6 @@ import {
   type MapTokenProjection,
 } from '../../shared/map-contract.js';
 import { archetypePortraitUrl, isTrustedAvatarUrl } from '../../shared/portrait-contract.js';
-import { DEFAULT_VISION_RADIUS_SQUARES } from '../../shared/movement-contract.js';
 import { ERROR_CODES } from '../../shared/contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import { loadAdventureMapPresentation } from '../campaigns/campaign-memory.js';
@@ -227,11 +226,13 @@ export function applyViewerFog(
 ): MapBundleProjection {
   const { accountId, viewerSeatId, runtime } = options;
   const ownToken = full.tokens.find((token) => token.seatId === viewerSeatId) ?? null;
-  // Pass edges so vision cannot X-ray walls or closed/locked doors.
+  // Flood-fill visibility across all contiguous walkable floor cells in the viewer's current
+  // room/corridor up to closed walls and closed/locked doors (Universal Rule 1 — zero fog islands).
+  const roomVisionBound = Math.max(full.coordinateSpace.columns, full.coordinateSpace.rows);
   const visible = ownToken
     ? visibleSquaresFrom(
         ownToken.footprint.anchor,
-        DEFAULT_VISION_RADIUS_SQUARES,
+        roomVisionBound,
         { ...full.coordinateSpace, cells: full.cells },
         full.edges,
       )
@@ -241,8 +242,8 @@ export function applyViewerFog(
   for (const id of visibleIds) {
     exploredIds.add(id);
   }
-  // Reveal perimeter exits in the viewer's current open room/clearing while keeping
-  // east-chamber exits hidden behind closed/locked interior dividing walls.
+  // Reveal perimeter exits and wall-mounted features that border the viewer's current flood-filled
+  // room while keeping features behind closed/locked interior dividing walls hidden.
   if (ownToken !== null) {
     const anchor = ownToken.footprint.anchor;
     const interiorWalls = full.edges.filter((e) => e.kind === 'wall');
@@ -250,13 +251,6 @@ export function applyViewerFog(
       (e) => e.kind === 'door' && e.doorState !== 'open' && interiorWalls.length > 0,
     );
     for (const feature of full.notableFeatures) {
-      if (
-        feature.objectKind !== 'exit' &&
-        feature.referenceKind !== 'exit' &&
-        feature.objectKind !== 'lever'
-      ) {
-        continue;
-      }
       let blockedByClosedDividingWall = false;
       if (hasClosedDividingDoor) {
         for (const wall of interiorWalls) {
@@ -277,10 +271,20 @@ export function applyViewerFog(
           }
         }
       }
-      if (!blockedByClosedDividingWall) {
-        const exitSqId = squareId(feature.column, feature.row);
-        exploredIds.add(exitSqId);
-        visibleIds.add(exitSqId);
+      if (blockedByClosedDividingWall) {
+        continue;
+      }
+      const featSqId = squareId(feature.column, feature.row);
+      const isExit = feature.objectKind === 'exit' || feature.referenceKind === 'exit';
+      const touchesVisibleFloor =
+        visibleIds.has(featSqId) ||
+        visibleIds.has(squareId(feature.column - 1, feature.row)) ||
+        visibleIds.has(squareId(feature.column + 1, feature.row)) ||
+        visibleIds.has(squareId(feature.column, feature.row - 1)) ||
+        visibleIds.has(squareId(feature.column, feature.row + 1));
+      if (isExit || touchesVisibleFloor) {
+        exploredIds.add(featSqId);
+        visibleIds.add(featSqId);
       }
     }
   }

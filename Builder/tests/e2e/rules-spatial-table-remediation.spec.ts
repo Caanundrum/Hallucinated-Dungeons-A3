@@ -263,7 +263,11 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
         mapBundleId: string;
         title: string;
         coordinateSpace: { columns: number; rows: number };
-        cells: readonly { column: number; row: number; terrain: string }[];
+        cells: readonly { column: number; row: number; terrain: string; known?: boolean }[];
+        tokens: readonly {
+          seatId: string | null;
+          footprint: { anchor: { column: number; row: number } };
+        }[];
         notableFeatures: readonly {
           column: number;
           row: number;
@@ -317,7 +321,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('move-target-meta')).toHaveCount(0);
     await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
 
-    // 3. RS-07: Ask DM Pane Layout & Non-Destructive Info Toggle
+    // 3. RS-07, CV-02, & Universal Rules 4 & 6: Ask DM Pane Non-Overlapping Flex Layout, Multi-Viewport Bounding Boxes, & Canonical Units
     const expandCommsBtn = page.getByTestId('expand-comms-rail');
     if (await expandCommsBtn.isVisible().catch(() => false)) {
       await expandCommsBtn.click();
@@ -327,12 +331,98 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await askTab.click();
     await expect(page.getByTestId('director-address-pane')).toBeVisible();
     await expect(page.getByTestId('director-address-notice')).toBeVisible();
-    await page.getByTestId('collapse-director-address').click();
+    await page.getByTestId('collapse-director-address').click({ force: false });
     // Clicking the info toggle hides the notice without closing the Ask DM pane!
     await expect(page.getByTestId('director-address-pane')).toBeVisible();
     await expect(page.getByTestId('director-address-notice')).toBeHidden();
-    await page.getByTestId('collapse-director-address').click();
+    await page.getByTestId('collapse-director-address').click({ force: false });
     await expect(page.getByTestId('director-address-notice')).toBeVisible();
+
+    // Universal Rule 4: Ask the Director cites canonical SRD units at Level 1 ("30 feet", "10 HP", "120 feet", "14 GP")
+    const askInput = page.getByTestId('director-address-input');
+    await askInput.click({ force: false });
+    await askInput.fill('What is my current walking speed and unarmed strike attack bonus and damage?');
+    await askInput.dispatchEvent('input');
+    await page.getByTestId('director-address-send').click({ force: false });
+    await expect(page.getByTestId('ask-dm-thread')).toContainText(/30\s+feet/i, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('ask-dm-thread')).toContainText(/10\s+HP/i);
+    await expect(page.getByTestId('ask-dm-thread')).toContainText(/120\s+feet/i);
+    await expect(page.getByTestId('ask-dm-thread')).toContainText(/14\s+GP/i);
+
+    // CV-02 & Universal Rule 6: Verify zero vertical boundingBox() overlap and unobstructed pointer clicks across viewports
+    for (const vp of [
+      { width: 1280, height: 800 },
+      { width: 1072, height: 900 },
+      { width: 902, height: 871 },
+      { width: 768, height: 1024 },
+    ]) {
+      await page.setViewportSize(vp);
+      if (vp.width <= 900) {
+        const mobileChatBtn = page.locator('[data-testid="mobile-task-chat"]:visible').first();
+        if (await mobileChatBtn.isVisible().catch(() => false)) {
+          await mobileChatBtn.click();
+        }
+      } else {
+        const expandRail = page.getByTestId('expand-comms-rail');
+        if (await expandRail.isVisible().catch(() => false)) {
+          await expandRail.click();
+        }
+      }
+      const askTabVp = page.getByTestId('dock-tab-director_address');
+      if (await askTabVp.isVisible().catch(() => false)) {
+        await askTabVp.click();
+      }
+      const toggleBtn = page.getByTestId('collapse-director-address');
+      const noticeEl = page.getByTestId('director-address-notice');
+      const threadEl = page.getByTestId('ask-dm-thread');
+      const composerEl = page.getByTestId('director-address-composer');
+      await expect(toggleBtn).toBeVisible();
+      if (await noticeEl.isHidden()) {
+        await toggleBtn.click({ force: false });
+      }
+      await expect(noticeEl).toBeVisible();
+
+      const headerBox = await page.locator('.director-address-header').boundingBox();
+      const noticeBox = await noticeEl.boundingBox();
+      const threadBox = await threadEl.boundingBox();
+      const composerBox = await composerEl.boundingBox();
+      expect(headerBox).not.toBeNull();
+      expect(noticeBox).not.toBeNull();
+      expect(threadBox).not.toBeNull();
+      expect(composerBox).not.toBeNull();
+      expect(headerBox!.y + headerBox!.height).toBeLessThanOrEqual(noticeBox!.y + 1.5);
+      expect(noticeBox!.y + noticeBox!.height).toBeLessThanOrEqual(threadBox!.y + 1.5);
+      expect(threadBox!.y + threadBox!.height).toBeLessThanOrEqual(composerBox!.y + 1.5);
+
+      // Real mouse pointer click hides notice again cleanly
+      await toggleBtn.click({ force: false });
+      await expect(noticeEl).toBeHidden();
+    }
+    const mobilePlayBtn = page.locator('[data-testid="mobile-task-play"]:visible').first();
+    if (await mobilePlayBtn.isVisible().catch(() => false)) {
+      await mobilePlayBtn.click();
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // CV-01 & Universal Rule 5: Single-quoted dialogue question containing "leave" routes to NPC dialogue, NEVER table.travel_scene
+    await page
+      .getByTestId('player-action-input')
+      .fill(
+        "I ask Warden Corin Vale, 'Did Apprentice Talia leave any warning before the dawn inspection?'",
+      );
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await confirmDraftIfVisible(page);
+    const afterNpcQuestionMap = await fetchMapBundle();
+    expect(afterNpcQuestionMap.title).toBe('Clockhouse');
+    await expect(page.getByTestId('dm-play-thread')).toContainText(/Corin Vale/i, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(
+      /Ready to travel to|Moved to Side Passage/i,
+    );
 
     // 4. Packet 3, RS-02, RS-03, & Guardrail 2: Two-Step Container Looting & Locative Prepositional Stripping
     const containerFeature = features.find((f) => f.objectKind === 'container');
@@ -463,11 +553,31 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       .replace(/\s*\((?:open|closed|locked|unlocked|intact|broken|lit|unlit)\).*$/i, '')
       .trim();
 
-    // RV-03: Approaching an in-room feature ("I walk up to the <lever>") routes to intra-scene table.move, NEVER table.travel_scene
+    // RV-03 & Universal Rules 1, 2, 3: Approaching an in-room feature ("I walk up to the <lever>")
+    // resolves and commits the full walkable path to an adjacent square beside the lever, moving the token!
+    const beforeApproachToken = stillScene2.tokens[0]?.footprint.anchor;
+    expect(beforeApproachToken).toBeDefined();
     await page.getByTestId('player-action-input').fill(`I walk up to the ${leverLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await confirmDraftIfVisible(page);
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(
+      /Mark an adjacent square on the map|Movement within a room is controlled by clicking/i,
+    );
+    await expect
+      .poll(
+        async () => {
+          const proj = await fetchMapBundle();
+          const anchor = proj.tokens[0]?.footprint.anchor;
+          if (!anchor) return 999;
+          return (
+            Math.abs(anchor.column - leverFeature!.column) +
+            Math.abs(anchor.row - leverFeature!.row)
+          );
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(1);
     const afterApproachScene2 = await fetchMapBundle();
     expect(afterApproachScene2.mapBundleId).toContain('scene-m1-r2');
 
@@ -503,5 +613,21 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
         { timeout: 15_000 },
       )
       .toContain('scene-m1-r3');
+
+    // Upon reaching Scene 3, the Monk has earned 350 XP (>= 300 XP for Level 2) and Unarmored Movement raises speed to 40 feet.
+    // Verify Ask the Director cites "40 feet" at Level 2.
+    const expandCommsScene3 = page.getByTestId('expand-comms-rail');
+    if (await expandCommsScene3.isVisible().catch(() => false)) {
+      await expandCommsScene3.click();
+    }
+    await page.getByTestId('dock-tab-director_address').click();
+    await page
+      .getByTestId('director-address-input')
+      .fill('What is my current walking speed and unarmed strike attack bonus and damage at level 2?');
+    await page.getByTestId('director-address-input').dispatchEvent('input');
+    await page.getByTestId('director-address-send').click({ force: false });
+    await expect(page.getByTestId('ask-dm-thread')).toContainText(/40\s+feet/i, {
+      timeout: 15_000,
+    });
   });
 });

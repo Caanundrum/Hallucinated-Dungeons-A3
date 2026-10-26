@@ -883,6 +883,7 @@ const ARBITER_CONSTITUTION = [
   'You are the rules arbiter for this campaign, speaking as the selected DM.',
   'Players ask whether a plan is legal or feasible: skills, action economy (Action / Bonus Action / Reaction / movement), spell availability on the sheet, range, and whether the scene supports the attempt.',
   'Use ONLY the AUTHORITATIVE VISIBLE GAME STATE block. If the wall height, DC, or object is not in that block, say the scene has not established it and what the player could do to learn it.',
+  'Always cite dimensional and mechanical statistics with their canonical SRD units (for example "40 feet" for speed, range, reach, or senses; "HP" for Hit Points; "GP" for gold currency) rather than bare unitless numbers.',
   'Never invent DCs, roll dice, spend spell slots, move tokens, or declare success or failure.',
   'When a plan would require checks or multiple action economy spends, list them clearly.',
   'If the character lacks a spell, feature, or capacity, say so plainly.',
@@ -906,7 +907,7 @@ const NARRATOR_CONSTITUTION = [
 ].join(' ');
 
 function looksMechanical(text: string): boolean {
-  return /(can i|could i|would it|action economy|bonus action|reaction|spell slot|magic missile|climb|athletics|acrobatics|check|save|attack|cast|legal|rules|how many|do i have|proficiency|trap|disarm|lockpick|thieves)/i.test(
+  return /(can i|could i|would it|action economy|bonus action|reaction|spell slot|magic missile|climb|athletics|acrobatics|check|save|attack|cast|legal|rules|how many|do i have|proficiency|trap|disarm|lockpick|thieves|speed|walking\s+speed|movement|unarmed|damage|hit\s*points?|\bhp\b|armor\s*class|\bac\b|initiative|\blevel\b|\bstats?\b|sheet|modifier|bonus|martial\s+arts|ki\b|focus\b|currency|\bgp\b|range|reach|senses|darkvision)/i.test(
     text,
   );
 }
@@ -1458,6 +1459,7 @@ export async function interpretNaturalLanguageIntent(options: {
         seatedSheet,
         knownNpcs,
         absentRoomNpcs,
+        rawText,
       });
       if (applied !== null) {
         proposedCommandType = applied.proposedCommandType;
@@ -1706,10 +1708,19 @@ export async function answerDirectorAddress(options: {
   });
 
   const name = DIRECTOR_IDENTITY_LABELS[director.identity];
+  const sheetBlockMatch = /Active character[^\n]*\n([\s\S]*?)(?=\nCombat:|\nScene:|$)/.exec(
+    context.text,
+  );
+  const sheetDigest = sheetBlockMatch
+    ? sheetBlockMatch[0]
+        .split('\n')
+        .slice(0, 6)
+        .join(' · ')
+    : null;
   const simulatorBody = mechanical
     ? `${name} weighs the plan against your sheet and the visible scene. ${
-        context.text.includes('Active character')
-          ? 'If a spell, skill, or action spend is missing from your sheet or the scene has not established the target, say so before you declare the action.'
+        sheetDigest !== null
+          ? `${sheetDigest}. If a spell, skill, or action spend is missing from your sheet or the scene has not established the target, say so before you declare the action.`
           : 'Seat a character so the arbiter can read your sheet.'
       } Declare the action in the ${PLAY_CHANNEL_LABEL} when you are ready — this consult does not resolve it.`
     : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the Director. Use the ${PLAY_CHANNEL_LABEL} to declare what you do.`;
@@ -1737,6 +1748,15 @@ export async function answerDirectorAddress(options: {
   }
   const understanding = understandUtterance(text);
   let body = scrubEngineCoordinates(liveBody ?? simulatorBody);
+  const speedFromContext = /\bSpeed\s+(\d+)\s+feet\b/i.exec(context.text)?.[1] ?? null;
+  if (speedFromContext !== null && /\b(?:speed|movement|walk(?:ing)?)\b/i.test(text)) {
+    body = body
+      .replace(new RegExp(`\\b${speedFromContext}\\s*ft\\.?\\b`, 'gi'), `${speedFromContext} feet`)
+      .replace(
+        new RegExp(`\\b${speedFromContext}\\b(?!\\s*(?:feet|ft\\b|%|hp\\b|gp\\b|ac\\b|xp\\b))`, 'gi'),
+        `${speedFromContext} feet`,
+      );
+  }
   if (understanding.wantsKnowledgeRecap || (!mechanical && understanding.speechAct === 'rules_query')) {
     const extras = await loadScenePremiseExtras({
       firestore: options.firestore,

@@ -23,6 +23,7 @@ import {
 } from '../../dist/shared/campaign-facts.js';
 import {
   parsePlayerDeclaration,
+  resolveIntentAuthority,
 } from '../../dist/shared/play-authority-contract.js';
 import {
   buildCampaignAssetPrompt,
@@ -58,10 +59,12 @@ import {
 } from '../../dist/server/table/map-projection.js';
 import {
   classifyClause,
+  isDialogueDeclaration,
   isDocumentOpenOrReadDeclaration,
   isPassageOrTravelThroughDoorway,
   isWholeContainerLootDeclaration,
   splitPrimaryTargetFromLocative,
+  stripQuotedSpeech,
 } from '../../dist/shared/utterance-understanding.js';
 import {
   buildSceneSurveyNarration,
@@ -1051,6 +1054,75 @@ test('RV-01, RV-02, & RV-03: Whole-container loot routing on open containers, su
     matchInRoomApproachTarget(r2Bundle.notableFeatures, 'I follow the trail into the next area'),
     null,
   );
+
+  // 4. Universal Rule 1 & RV-03: applyViewerFog flood-fills all contiguous walkable floor cells in Scene 2
+  // so pathBesideFeature works on the fog-filtered viewer map bundle without any "fog island" gap
+  const r2Fogged = applyViewerFog(r2Bundle, {
+    accountId: 'acc-1',
+    viewerSeatId: 'seat-1',
+    runtime: r2Step.runtime,
+  });
+  const foggedLeverPath = pathBesideFeature(
+    r2Fogged.tokens[0].footprint.anchor,
+    { column: r2Lever.column, row: r2Lever.row },
+    r2Fogged,
+  );
+  assert.ok(
+    foggedLeverPath && foggedLeverPath.length > 0,
+    'pathBesideFeature succeeds on fog-projected viewer map across the entire undivided corridor',
+  );
+
+  // 5. CV-01 & Universal Rule 5: Dialogue & Quoted-Speech Immunity From Travel/Action Hijacking
+  const singleQuotedAsk =
+    "I ask Warden Halden, 'Did Clerk Orin leave any warning before the dawn inspection?'";
+  const doubleQuotedAsk =
+    'I ask Archivist Sera, "Where did the night courier go after opening the iron gate?"';
+  assert.equal(stripQuotedSpeech(singleQuotedAsk), 'I ask Warden Halden,');
+  assert.equal(stripQuotedSpeech(doubleQuotedAsk), 'I ask Archivist Sera,');
+  // Contractions and possessives are preserved by stripQuotedSpeech
+  assert.equal(
+    stripQuotedSpeech("I don't touch the warden's ledger"),
+    "I don't touch the warden's ledger",
+  );
+  assert.equal(isDialogueDeclaration(singleQuotedAsk, ['Warden Halden']), true);
+  assert.equal(isDialogueDeclaration(doubleQuotedAsk, ['Archivist Sera']), true);
+  assert.equal(classifyClause(singleQuotedAsk).kind, 'speak');
+  assert.equal(classifyClause(doubleQuotedAsk).kind, 'speak');
+
+  const parsedSingleAsk = parsePlayerDeclaration(singleQuotedAsk, {
+    knownNpcs: [{ id: 'npc-halden', label: 'Warden Halden' }],
+  });
+  assert.equal(parsedSingleAsk.addressee, 'Warden Halden');
+  assert.equal(
+    parsedSingleAsk.actionSequence.some((step) => step.kind === 'dialogue'),
+    true,
+  );
+  assert.equal(
+    parsedSingleAsk.actionSequence.some(
+      (step) => step.kind === 'move' || step.kind === 'open_door',
+    ),
+    false,
+  );
+  const authSingleAsk = resolveIntentAuthority(parsedSingleAsk);
+  assert.equal(authSingleAsk.disposition, 'director_narrate_only');
+  assert.equal(authSingleAsk.proposedCommandType, 'table.sync');
+
+  // Even if LLM dispatcher hallucinated travel_scene for an NPC question, applyDirectorDispatchToMap overrides to dialogue
+  const overriddenDispatch = applyDirectorDispatchToMap({
+    dispatch: {
+      actionType: 'travel_scene',
+      travelScene: { destinationHint: 'the next area', returnToPrevious: false },
+    },
+    map: mapBundle,
+    seatedSheet: null,
+    knownNpcs: [{ id: 'npc-corin', label: 'Warden Corin Vale' }],
+    rawText:
+      "I ask Warden Corin Vale, 'Did Apprentice Talia leave any warning before the dawn inspection?'",
+  });
+  assert.equal(overriddenDispatch?.proposedCommandType, 'table.sync');
+  assert.equal(overriddenDispatch?.deferDirectorNarrate, true);
+  assert.match(overriddenDispatch?.summary ?? '', /Speak with Warden Corin Vale/i);
 });
+
 
 

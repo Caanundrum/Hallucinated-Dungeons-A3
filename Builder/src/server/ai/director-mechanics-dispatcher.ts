@@ -22,6 +22,7 @@ import {
 } from '../table/scene-commands.js';
 import {
   NON_OPENABLE_SURFACE_HEAD_NOUN,
+  isDialogueDeclaration,
   isWholeContainerLootDeclaration,
 } from '../../shared/utterance-understanding.js';
 import type {
@@ -32,6 +33,7 @@ import { isAdjacentToDoorEdge } from '../../shared/map-presentation.js';
 import {
   doorAuthorityFromStored,
   formatDoorPlayerFacingLabel,
+  parsePlayerDeclaration,
 } from '../../shared/play-authority-contract.js';
 import {
   HEAVY_FIXTURE_LABEL,
@@ -332,8 +334,31 @@ export function applyDirectorDispatchToMap(options: {
     readonly label: string;
     readonly roomTitle: string;
   }[];
+  readonly rawText?: string;
 }): AppliedDispatchResult | null {
-  const { dispatch, map, seatedSheet, knownNpcs, absentRoomNpcs = [] } = options;
+  const { map, seatedSheet, knownNpcs, absentRoomNpcs = [], rawText } = options;
+  let dispatch = options.dispatch;
+
+  // Hard priority for conversational / dialogue framing (`CV-01`):
+  // Never allow words inside quoted speech ("Did <Person> leave any warning?") to hijack an NPC question into travel/movement/object actions.
+  if (
+    rawText !== undefined &&
+    dispatch.actionType !== 'dialogue' &&
+    isDialogueDeclaration(
+      rawText,
+      knownNpcs.map((n) => n.label),
+    )
+  ) {
+    const parsed = parsePlayerDeclaration(rawText, { knownNpcs });
+    dispatch = {
+      ...dispatch,
+      actionType: 'dialogue',
+      dialogue: {
+        addressee: parsed.addressee ?? dispatch.dialogue?.addressee ?? null,
+      },
+    };
+  }
+
   const ownToken =
     map.viewerSeatId === null
       ? map.tokens[0]

@@ -8275,13 +8275,25 @@ button.danger:hover:not(:disabled),
   }
 }
 
-/* Packet 5 (RS-07): Ask DM Pane Layout & Compact Info Toggle */
+/* Packet 5 (RS-07) & Packet 3 (CV-02): Ask DM Pane Non-Overlapping Flex Layout */
+.dock-viewport:has(> [data-testid='director-address-pane']) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
 [data-testid='director-address-pane'] {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  min-height: 360px;
+  flex: 1 1 0% !important;
+  gap: 0.25rem;
+  min-height: 0 !important;
   height: 100%;
+  max-height: 100%;
+  overflow: hidden !important;
+  position: relative;
 }
 
 [data-testid='director-address-pane'] .director-address-header {
@@ -8289,44 +8301,77 @@ button.danger:hover:not(:disabled),
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 0.15rem 0;
+  padding: 0.1rem 0;
   margin: 0;
   flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
 }
 
 [data-testid='director-address-pane'] .director-address-header [data-testid='collapse-director-address'] {
-  padding: 0.2rem 0.55rem;
-  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.76rem;
+  flex: 0 0 auto;
 }
 
 [data-testid='director-address-pane'] .director-address-notice {
   margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.35;
+  font-size: 0.75rem;
+  line-height: 1.25;
   color: var(--text-secondary);
   flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+[data-testid='director-address-pane'] .director-address-notice[hidden] {
+  display: none !important;
 }
 
 [data-testid='director-address-pane'] [data-testid='ask-dm-thread'] {
-  flex: 1 1 auto;
-  min-height: 240px;
-  max-height: none;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
   margin: 0;
+  padding-right: 0.2rem;
+  position: relative;
+  z-index: 1;
 }
 
-[data-testid='director-address-pane'] .director-address-composer-compact {
-  flex: 0 0 auto;
+[data-testid='director-address-pane'] [data-testid='director-address-composer'],
+.table-comms-rail [data-testid='director-address-pane'] .dock-composer,
+.table-dashboard[data-mobile-task='chat'] [data-testid='director-address-pane'] [data-testid='director-address-composer'] {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  bottom: auto !important;
+  top: auto !important;
+  z-index: 2;
   display: grid;
-  gap: 0.3rem;
-  margin-top: auto;
-  padding-top: 0.25rem;
+  gap: 0.2rem;
+  margin: 0 !important;
+  padding-top: 0.2rem;
+  background: var(--panel-surface);
+}
+
+[data-testid='director-address-pane'] [data-testid='director-address-composer'] .field > .record-meta {
+  font-size: 0.72rem;
+  line-height: 1.15;
 }
 
 [data-testid='director-address-pane'] [data-testid='director-address-input'] {
-  min-height: 38px;
-  max-height: 76px;
-  padding: 0.35rem 0.55rem;
-  resize: vertical;
+  height: 2.15rem;
+  min-height: 2.15rem !important;
+  max-height: 3rem !important;
+  padding: 0.25rem 0.45rem;
+  resize: none;
+}
+
+[data-testid='director-address-pane'] [data-testid='director-address-send'] {
+  min-height: 1.9rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
 }
 
 

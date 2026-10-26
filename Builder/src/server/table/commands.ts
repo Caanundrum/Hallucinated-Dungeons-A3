@@ -31,7 +31,6 @@ import {
 } from '../../shared/utterance-understanding.js';
 import {
   DEFAULT_MOVEMENT_BUDGET_FEET,
-  DEFAULT_VISION_RADIUS_SQUARES,
   type MovementPreviewProjection,
 } from '../../shared/movement-contract.js';
 import {
@@ -495,8 +494,27 @@ export async function previewTableMove(options: {
   }
   const encounter = await loadEncounter(firestore, campaignId);
   const inCombat = encounter !== null && encounter.status === 'active';
+  let combatSheetSpeedFeet: number = DEFAULT_MOVEMENT_BUDGET_FEET;
+  if (inCombat) {
+    try {
+      const source = await loadCharacterRulesSource(firestore, seat.characterId);
+      const progSnap = await firestore
+        .collection(COLLECTIONS.characterProgressions)
+        .doc(seat.characterId)
+        .get();
+      const priorProg = progSnap.exists
+        ? (progSnap.data() as StoredProgression)
+        : initialStoredProgression(source);
+      combatSheetSpeedFeet = projectProgression(source, priorProg).sheet.speed.value;
+    } catch {
+      combatSheetSpeedFeet = DEFAULT_MOVEMENT_BUDGET_FEET;
+    }
+  }
+  const freeRoamBudgetFeet =
+    Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows) *
+    (map.coordinateSpace.feetPerSquare || 5);
   const effectiveBudgetFeet =
-    options.movementBudgetFeet ?? (inCombat ? DEFAULT_MOVEMENT_BUDGET_FEET : 600);
+    options.movementBudgetFeet ?? (inCombat ? combatSheetSpeedFeet : freeRoamBudgetFeet);
   return validateWalkPath({
     map,
     start: token.footprint.anchor,
@@ -1252,6 +1270,23 @@ export async function acceptTableCommand(options: {
     }
     const encounter = await loadEncounter(firestore, campaignId);
     const inCombat = encounter !== null && encounter.status === 'active';
+    let combatSheetSpeedFeet: number = DEFAULT_MOVEMENT_BUDGET_FEET;
+    if (inCombat) {
+      try {
+        const actorInventory = await loadActorInventoryState();
+        if (actorInventory !== null) {
+          combatSheetSpeedFeet = projectProgression(
+            actorInventory.source,
+            actorInventory.priorProgression,
+          ).sheet.speed.value;
+        }
+      } catch {
+        combatSheetSpeedFeet = DEFAULT_MOVEMENT_BUDGET_FEET;
+      }
+    }
+    const freeRoamBudgetFeet =
+      Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows) *
+      (map.coordinateSpace.feetPerSquare || 5);
     const preview = validateWalkPath({
       map,
       start: token.footprint.anchor,
@@ -1263,7 +1298,7 @@ export async function acceptTableCommand(options: {
         tinySlot: token.footprint.tinySlot,
         elevationFeet: token.footprint.elevationFeet,
       },
-      movementBudgetFeet: inCombat ? DEFAULT_MOVEMENT_BUDGET_FEET : 600,
+      movementBudgetFeet: inCombat ? combatSheetSpeedFeet : freeRoamBudgetFeet,
       movementMode: 'walk',
       actorSeatId: seat.seatId,
     });
@@ -1462,7 +1497,7 @@ export async function acceptTableCommand(options: {
     if (token !== undefined) {
       syncVisionSquares = visibleSquaresFrom(
         token.footprint.anchor,
-        DEFAULT_VISION_RADIUS_SQUARES,
+        Math.max(map.coordinateSpace.columns, map.coordinateSpace.rows),
         { ...map.coordinateSpace, cells: map.cells },
         map.edges,
       );
@@ -1747,12 +1782,14 @@ export async function acceptTableCommand(options: {
         ...doorStates,
       });
       const fallbackCells = active?.cells ?? moveValidationMap?.cells;
+      const visionColumns = active?.columns ?? moveValidationMap?.coordinateSpace.columns ?? 12;
+      const visionRows = active?.rows ?? moveValidationMap?.coordinateSpace.rows ?? 8;
       const vision = visibleSquaresFrom(
         destination,
-        DEFAULT_VISION_RADIUS_SQUARES,
+        Math.max(visionColumns, visionRows),
         {
-          columns: active?.columns ?? moveValidationMap?.coordinateSpace.columns ?? 12,
-          rows: active?.rows ?? moveValidationMap?.coordinateSpace.rows ?? 8,
+          columns: visionColumns,
+          rows: visionRows,
           ...(fallbackCells !== undefined ? { cells: fallbackCells } : {}),
         },
         visionEdges,
@@ -1809,7 +1846,7 @@ export async function acceptTableCommand(options: {
         if (actorToken !== null) {
           const vision = visibleSquaresFrom(
             { column: actorToken.column, row: actorToken.row },
-            DEFAULT_VISION_RADIUS_SQUARES,
+            Math.max(activeScene.columns, activeScene.rows),
             {
               columns: activeScene.columns,
               rows: activeScene.rows,

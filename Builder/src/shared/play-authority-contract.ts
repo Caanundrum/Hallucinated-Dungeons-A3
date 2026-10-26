@@ -22,9 +22,11 @@ import {
   actionableDirectorFallback,
   classifyClause,
   filterActionsByConstraints,
+  isDialogueDeclaration,
   isDocumentOpenOrReadDeclaration,
   isWholeContainerLootDeclaration,
   splitPrimaryTargetFromLocative,
+  stripQuotedSpeech,
   understandUtterance,
   utteranceLooksLikeQuestion,
 } from './utterance-understanding.js';
@@ -757,12 +759,8 @@ export function parsePlayerDeclaration(
     label: npc.label,
   }));
 
-  // Strip quoted speech when looking for the addressee so mentions inside dialogue aren't mistaken for the speaker
-  const outsideQuotes = trimmed
-    .replace(/"[^"]*"/g, ' ')
-    .replace(/[“”][^“”]*[“”]/g, ' ')
-    .replace(/(?:^|[\s,;:()])'[^']*'(?=$|[\s.,!?;:)])/g, ' ')
-    .trim();
+  // Strip quoted speech when looking for the addressee and physical action verbs so mentions inside dialogue aren't mistaken for actions (`CV-01`).
+  const outsideQuotes = stripQuotedSpeech(trimmed);
   const searchScope = outsideQuotes.length > 0 ? outsideQuotes : trimmed;
 
   let addressee: string | null = null;
@@ -939,15 +937,15 @@ export function parsePlayerDeclaration(
 
   // Strip subordinate observation clauses mentioning a door/doorway ("keeping an eye on the closed east doorway",
   // "while watching the doorway") and secondary locative qualifiers ("near the eastern doorway") so primary
-  // movement/prop/clue intent is not hijacked by door state/approach (F26-01, RS-03).
-  const { primaryClause: withoutLocativeClause } = splitPrimaryTargetFromLocative(trimmed);
+  // movement/prop/clue intent is not hijacked by door state/approach (F26-01, RS-03, CV-01).
+  const { primaryClause: withoutLocativeClause } = splitPrimaryTargetFromLocative(searchScope);
   const primaryActionText = withoutLocativeClause
     .replace(
       /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
       '',
     )
     .trim();
-  const doorScopeText = (primaryActionText.length > 0 ? primaryActionText : trimmed).replace(
+  const doorScopeText = (primaryActionText.length > 0 ? primaryActionText : searchScope).replace(
     /\b(?:door|doorway|gate)\s+(?:lever|switch|mechanism|winch|crank|pulley|chain|valve|dial|key)s?\b/gi,
     'mechanism',
   );
@@ -1130,18 +1128,18 @@ export function parsePlayerDeclaration(
 
   const wantsInvestigation =
     /\b(?:investigat(?:e|es|ing)?|decipher(?:s|ing)?|translat(?:e|es|ing)|using\s+(?:my\s+)?investigation)\b/i.test(
-      trimmed,
+      searchScope,
     ) ||
     (/\b(?:inspect(?:s|ing)?|examin(?:e|es|ing)?|check(?:s|ing)?|feel(?:s|ing)?|probe|probing)\b/i.test(
-      trimmed,
+      searchScope,
     ) &&
       /\b(?:hidden|secret|false|concealed|latches?|compartments?|panels?|mechanisms?|hollow|seams?)\b/i.test(
-        trimmed,
+        searchScope,
       ));
-  const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed) && !observingScene;
+  const wantsSearch = /\bsearch(?:es|ing)?\b/i.test(searchScope) && !observingScene;
   const wantsRead =
     /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through)\b/i.test(
-      trimmed,
+      searchScope,
     ) || isDocumentOpenOrReadDeclaration(trimmed);
 
   // Targeted prop examine / read / listen — Director narrates or routes to object/skill check.
@@ -1149,16 +1147,16 @@ export function parsePlayerDeclaration(
     actionSequence.length === 0 &&
     (wantsRead ||
       /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+at|listen(?:s|ing)?|eavesdrop(?:s|ping)?|peer(?:s|ing)?|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|smell(?:s|ing)?|sniff(?:s|ing)?|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
-        trimmed,
+        searchScope,
       )) &&
-    !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(trimmed) &&
+    !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(searchScope) &&
     !wantsOpenDoor &&
     !wantsCloseDoor &&
     !wantsUnlock
   ) {
     const listenMentionsDoor =
-      /\blisten\b/i.test(trimmed) &&
-      /\b(?:door|doorway|gate|entry(?:way)?|threshold|passage)\b/i.test(trimmed);
+      /\blisten\b/i.test(searchScope) &&
+      /\b(?:door|doorway|gate|entry(?:way)?|threshold|passage)\b/i.test(searchScope);
     actionSequence.push({
       kind: 'inspect',
       targetRef: null,
@@ -1166,7 +1164,7 @@ export function parsePlayerDeclaration(
       // room listens stay scene perception so Director narrates the declared props.
       outcomeHint: listenMentionsDoor
         ? 'listen'
-        : /\b(?:listen|eavesdrop)\b/i.test(trimmed)
+        : /\b(?:listen|eavesdrop)\b/i.test(searchScope)
           ? 'sensory_sequence'
           : wantsInvestigation
             ? 'investigate_mark'
@@ -1180,38 +1178,38 @@ export function parsePlayerDeclaration(
 
   // Take / pick up / carry — container prop vs item from inside (VDM-005).
   const isRestOrIdiomTake =
-    /\b(?:short\s*rest|long\s*rest)\b/i.test(trimmed) ||
+    /\b(?:short\s*rest|long\s*rest)\b/i.test(searchScope) ||
     /\btake(?:s|ing)?\s+(?:a\s+)?(?:short\s+rest|long\s+rest|rest|cover|look|breath|step|moment|seat|turn|aim)\b/i.test(
-      trimmed,
+      searchScope,
     );
   const takeVerb =
     !isRestOrIdiomTake &&
     (isWholeContainerLootDeclaration(trimmed) ||
       /\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|retrieve|collect|pick(?:ing|ed)?\s+up)\b/i.test(
-        trimmed,
+        searchScope,
       ));
   const negatesTakeFrom =
     /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing))\b[\s\S]{0,40}\b(?:from|inside|contents?)\b/i.test(
-      trimmed,
+      searchScope,
     ) ||
-    /\bnot\s+taking\s+anything\s+from\b/i.test(trimmed);
+    /\bnot\s+taking\s+anything\s+from\b/i.test(searchScope);
   if (actionSequence.length === 0 && takeVerb && !wantsOpenDoor && !wantsCloseDoor && !wantsUnlock) {
     const containerNoun =
       /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|[a-z]*box|[a-z]*locker|barrel|urn|pouch|coffer|trunk|cabinet|reliquary|cache|hamper)\b/i.test(
-        trimmed,
+        searchScope,
       );
     const takeFromContainer =
       containerNoun &&
       !negatesTakeFrom &&
       (isWholeContainerLootDeclaration(trimmed) ||
         /\b(?:take|grab|pocket|stow|loot|empty|plunder|ransack|retrieve|collect)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|[a-z]*box|[a-z]*locker|barrel|urn|pouch|coffer|trunk|cabinet|reliquary|cache|hamper)\b/i.test(
-          trimmed,
+          searchScope,
         ));
     const takeContainer =
       containerNoun &&
       !takeFromContainer &&
       !/\b(?:letter|key|item|object|contents?)\b/i.test(
-        trimmed
+        searchScope
           .replace(/\bopen\b/i, '')
           .replace(/\bnot\s+taking\s+anything\s+from\b[\s\S]*/i, '')
           .replace(/\binside\s+it\b/gi, ''),
@@ -1230,9 +1228,9 @@ export function parsePlayerDeclaration(
   // Named spell cast — capability check owns refusal (not empty clarify).
   if (
     actionSequence.length === 0 &&
-    !/\b(?:arcane\s+recovery|short\s*rest|long\s*rest|spell\s+slots?)\b/i.test(trimmed) &&
+    !/\b(?:arcane\s+recovery|short\s*rest|long\s*rest|spell\s+slots?)\b/i.test(searchScope) &&
     /\b(?:cast|spell|fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds)\b/i.test(
-      trimmed,
+      searchScope,
     )
   ) {
     actionSequence.push({ kind: 'cast', targetRef: null, outcomeHint: null });
@@ -1241,20 +1239,26 @@ export function parsePlayerDeclaration(
   // "Map still says closed" / summary corrections — Director narrates live edge truth.
   if (
     actionSequence.length === 0 &&
-    ((/\b(summary|routes?|map)\b/i.test(trimmed) &&
-      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(trimmed)) ||
-      (/\b(door|doorway)\b/i.test(trimmed) &&
-        /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(trimmed)))
+    ((/\b(summary|routes?|map)\b/i.test(searchScope) &&
+      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(searchScope)) ||
+      (/\b(door|doorway)\b/i.test(searchScope) &&
+        /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(searchScope)))
   ) {
     actionSequence.push({ kind: 'inspect', targetRef: null, outcomeHint: 'map_state_correction' });
   }
 
-  const unquotedActionText = trimmed.replace(/"[^"]*"|[“”][^“”]*[“”]/g, ' ').trim();
+  const unquotedActionText = searchScope;
   const isQuotedSpeechOrAsk =
-    /"[^"]+"|[“”][^“”]+[“”]/u.test(trimmed) &&
-    /\b(?:ask(?:s|ing)?|say(?:s|ing)?|speak(?:s|ing)?|talk(?:s|ing)?|tell(?:s|ing)?|whisper(?:s|ing)?|inquir(?:e|es|ing)|call(?:s|ing)?)\b/i.test(
-      unquotedActionText,
-    );
+    isDialogueDeclaration(
+      trimmed,
+      knownNpcs.map((n) => n.label),
+    ) ||
+    (/"[^"]+"|[“”][^“”]+[“”]|(?:^|[\s,;:(\[])'[^']+'(?=$|[\s.,!?;:)\]])|(?:^|[\s,;:(\[])‘[^’]+’(?=$|[\s.,!?;:)\]])/u.test(
+      trimmed,
+    ) &&
+      /\b(?:ask(?:s|ing)?|say(?:s|ing)?|speak(?:s|ing)?|talk(?:s|ing)?|tell(?:s|ing)?|whisper(?:s|ing)?|inquir(?:e|es|ing)|call(?:s|ing)?|greet(?:s|ing)?|question(?:s|ing)?|address(?:es|ing)?)\b/i.test(
+        unquotedActionText,
+      ));
   if (isQuotedSpeechOrAsk && !actionSequence.some((step) => step.kind === 'dialogue')) {
     actionSequence.unshift({
       kind: 'dialogue',

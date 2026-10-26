@@ -178,7 +178,7 @@ export function validateWalkPath(options: {
   if (path.length === 0) {
     return reject('EMPTY_PATH', 'Choose at least one square to move into.');
   }
-  if (path.length > 64) {
+  if (path.length > Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows)) {
     return reject('PATH_TOO_LONG', 'That path is longer than this table accepts.');
   }
 
@@ -330,7 +330,7 @@ export function visibleSquaresFrom(
   },
   edges?: readonly MapEdgeRecord[],
 ): MapSquareCoordinate[] {
-  if (edges === undefined || edges.length === 0) {
+  if (space.cells === undefined && (edges === undefined || edges.length === 0)) {
     const squares: MapSquareCoordinate[] = [];
     for (let row = origin.row - radius; row <= origin.row + radius; row += 1) {
       for (let column = origin.column - radius; column <= origin.column + radius; column += 1) {
@@ -345,7 +345,7 @@ export function visibleSquaresFrom(
     return squares;
   }
 
-  const edgeIndex = indexEdges(edges);
+  const edgeIndex = indexEdges(edges ?? []);
   const cellIndex = space.cells !== undefined ? indexCells(space.cells) : null;
   const isOpaqueTerrain = (column: number, row: number): boolean => {
     if (cellIndex === null) {

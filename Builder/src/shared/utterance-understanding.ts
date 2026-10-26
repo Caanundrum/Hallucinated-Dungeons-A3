@@ -7,6 +7,94 @@
  */
 
 import type { DerivedCharacterSheet } from './character-contract.js';
+import { expandNpcNameVariants } from './campaign-facts.js';
+
+/**
+ * Strips all single- and double-quoted speech spans so words inside spoken questions
+ * or dialogue (e.g., `'Did they leave any warning?'`, `"Where did they go?"`) never
+ * trigger physical, travel, door, or object-manipulation matchers (`CV-01`).
+ * Preserves contractions (`don't`, `what's`) and possessives (`warden's`).
+ */
+export function stripQuotedSpeech(text: string): string {
+  return text
+    .replace(/"[^"]*"/g, ' ')
+    .replace(/[“”][^“”]*[“”]/g, ' ')
+    .replace(/(?:^|[\s,;:(\[])'[^']*'(?=$|[\s.,!?;:)\]])/g, ' ')
+    .replace(/(?:^|[\s,;:(\[])‘[^’]*’(?=$|[\s.,!?;:)\]])/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Returns true when an utterance is framed as interpersonal dialogue or a question
+ * directed at an NPC/person (`CV-01`), without an outer physical door/combat/item action.
+ */
+export function isDialogueDeclaration(
+  text: string,
+  knownNpcNames?: readonly string[],
+): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+  const unquoted = stripQuotedSpeech(trimmed);
+  const scope = unquoted.length > 0 ? unquoted : trimmed;
+
+  // Never treat OOC / Director consult framing as in-world NPC dialogue.
+  if (/\b(?:director|dm|game\s*master)\b/i.test(scope)) {
+    return false;
+  }
+
+  // If the unquoted framing explicitly declares a physical door, combat, spell, or item-taking action,
+  // do not mask that physical action as pure dialogue.
+  if (
+    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|close(?:s|ing)?|shut(?:s|ting)?|unlock(?:s|ing)?|pick(?:s|ing)?\s+(?:the\s+)?lock|attack(?:s|ing)?|strik(?:e|es|ing)|stab(?:s|bing)?|slash(?:es|ing)?|shoot(?:s|ing)?|cast(?:s|ing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|plunder(?:s|ing)?|ransack(?:s|ing)?|tak(?:e|es|ing)|grab(?:s|bing)?|pick(?:s|ing)?\s+up)\b/i.test(
+      scope,
+    )
+  ) {
+    return false;
+  }
+
+  const hasQuotedSpeech =
+    /"[^"]+"|[“”][^“”]+[“”]|(?:^|[\s,;:(\[])'[^']+'(?=$|[\s.,!?;:)\]])|(?:^|[\s,;:(\[])‘[^’]+’(?=$|[\s.,!?;:)\]])/u.test(
+      trimmed,
+    );
+  const hasSpeechVerb =
+    /\b(?:ask(?:s|ing)?|tell(?:s|ing)?|say(?:s|ing)?|speak(?:s|ing)?|talk(?:s|ing)?|greet(?:s|ing)?|question(?:s|ing)?|inquir(?:e|es|ing)|address(?:es|ing)?|whisper(?:s|ing)?|call(?:s|ing)?|reply|replies|replying|answer(?:s|ing)?)\b/i.test(
+      scope,
+    );
+
+  if (hasQuotedSpeech && (hasSpeechVerb || /^@?[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)?\s*[,:]/.test(scope))) {
+    return true;
+  }
+
+  if (
+    /^(?:i\s+)?(?:ask|tell|say\s+to|speak\s+(?:to|with)|talk\s+(?:to|with)|greet|question|inquire(?:\s+of)?|address|whisper\s+to)\b/i.test(
+      scope,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:ask(?:s|ing)?|tell(?:s|ing)?|speak(?:s|ing)?\s+(?:to|with)|talk(?:s|ing)?\s+(?:to|with)|greet(?:s|ing)?|question(?:s|ing)?|inquir(?:e|es|ing)(?:\s+of)?|address(?:es|ing)?|say(?:s|ing)?\s+to|whisper(?:s|ing)?\s+to)\s+(?:the\s+)?(?:[A-Z][a-zA-Z'-]+|warden|archivist|captain|keeper|innkeeper|tavernkeeper|barkeep|clerk|guard|watchman|merchant|steward|caretaker|sexton|acolyte|priest|mage|scholar|smith|blacksmith|ferryman|master|mistress|her|him|them)\b/i.test(
+      scope,
+    )
+  ) {
+    return true;
+  }
+
+  if (knownNpcNames !== undefined && knownNpcNames.length > 0 && hasSpeechVerb) {
+    for (const rawName of knownNpcNames) {
+      for (const variant of expandNpcNameVariants(rawName)) {
+        const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(`\\b${escaped}\\b`, 'i').test(scope)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
 
 /** High-level speech act — decided before action verbs are trusted. */
 export type UtteranceSpeechAct =
@@ -215,9 +303,12 @@ export function classifyUtteranceSpeechAct(text: string): UtteranceSpeechAct {
 
   const constraints = extractUtteranceConstraints(trimmed);
   const looksQuestion = utteranceLooksLikeQuestion(trimmed);
+  const unquotedActionScope = stripQuotedSpeech(trimmed);
+  const actionScope = unquotedActionScope.length > 0 ? unquotedActionScope : trimmed;
   const hasActionVerb =
+    !isDialogueDeclaration(trimmed) &&
     /\b(?:i\s+)?(?:open|close|move|walk|step|attack|cast|search|inspect|examine|take|hide|wait|listen|draw|unlock|pick|rest|strike|hit|sneak|sneaks|sneaking|slip|slips|slipping|return|returns|returning|retreat|retreats|read|reads|reading|peruse|peruses|perusing|decipher|deciphers|deciphering|translate|translates|translating|study|studies|studying|scan|scans|scanning|smell|smells|smelling|sniff|sniffs|sniffing|peer|peers|peering|check|checks|checking|feel|feels|feeling|touch|touches|touching|tap|taps|tapping|test|tests|testing|pry|pries|prying|force|forces|forcing|wedge|smash|smashes|break|breaks|pull|pulls|push|pushes|flip|flips|turn|turns|rotate|rotates|twist|twists|press|presses|light|lights|ignite|ignites|extinguish|extinguishes|douse|douses|grab|grabs|loot|loots|follow|follows|following|trace|traces|tracing|head|heads|heading|proceed|proceeds|proceeding|continue|continues|enter|enters|entering|leave|leaves|leaving|climb|climbs|climbing|cross|crosses|crossing|drink|drinks|drinking|quaff|quaffs|consume|consumes|use|uses|using|unseal|unseals|unlatch|unlatches)\b/i.test(
-      trimmed,
+      actionScope,
     );
 
   if (looksQuestion && !hasActionVerb) {
@@ -494,32 +585,37 @@ export function classifyClause(text: string): ClauseSemanticClassification {
       outcomeHint: 'roleplay_action',
     };
   }
-  const unquoted = trimmed.replace(/"[^"]*"|[“”][^“”]*[“”]/g, ' ').trim();
+  const unquoted = stripQuotedSpeech(trimmed);
   const clauseText = unquoted.length > 0 ? unquoted : trimmed;
 
+  // 0. Dialogue / speech framing has priority over any words inside quoted speech (`CV-01`).
+  if (isDialogueDeclaration(trimmed)) {
+    return { kind: 'speak', category: 'dialogue', outcomeHint: null };
+  }
+
   // 1. Rest intent
-  if (/\b(?:short\s*rest|long\s*rest|camp\s+for\s+the\s+night)\b/i.test(trimmed)) {
+  if (/\b(?:short\s*rest|long\s*rest|camp\s+for\s+the\s+night)\b/i.test(clauseText)) {
     return { kind: 'rest', category: 'roleplay_observation', outcomeHint: null };
   }
 
   // 2. Spellcasting intent
   if (
-    !/\b(?:arcane\s+recovery|spell\s+slots?)\b/i.test(trimmed) &&
+    !/\b(?:arcane\s+recovery|spell\s+slots?)\b/i.test(clauseText) &&
     /\b(?:cast(?:s|ing)?|fireball|fire\s*bolt|burning\s*hands|sacred\s*flame|guiding\s*bolt|cure\s*wounds|magic\s*missile|mage\s*hand|prestidigitation|detect\s*magic)\b/i.test(
-      trimmed,
+      clauseText,
     )
   ) {
     return { kind: 'cast', category: 'combat', outcomeHint: null };
   }
 
   // 3. Combat / attack intent (excluding negated combat)
-  const constraints = extractUtteranceConstraints(trimmed);
+  const constraints = extractUtteranceConstraints(clauseText);
   if (
     !constraints.forbidAttack &&
     !constraints.forbidCombat &&
     !constraints.prepareWithoutAttack &&
     /\b(?:attack(?:s|ing)?|strik(?:e|es|ing)|stab(?:s|bing)?|slash(?:es|ing)?|shoot(?:s|ing)?|cleav(?:e|es|ing)|lung(?:e|es|ing)\s+at)\b/i.test(
-      trimmed,
+      clauseText,
     )
   ) {
     return { kind: 'attack', category: 'combat', outcomeHint: null };
@@ -537,11 +633,11 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   // 5. Consumable / item usage intent (e.g. "Drink healing draught", "Use healer's kit")
   if (
     /\b(?:drink(?:s|ing)?|quaff(?:s|ing)?|sip(?:s|ping)?|swallow(?:s|ing)?|consum(?:e|es|ing)|apply|applying|bandag(?:e|es|ing))\b/i.test(
-      trimmed,
+      clauseText,
     ) ||
-    (/\buse(?:s|ing)?\b/i.test(trimmed) &&
+    (/\buse(?:s|ing)?\b/i.test(clauseText) &&
       /\b(?:draught|potion|elixir|vial|tonic|poultice|salve|kit|scroll|antitoxin|ration)\b/i.test(
-        trimmed,
+        clauseText,
       ))
   ) {
     return {
@@ -552,7 +648,7 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   }
 
   // 6. Sensory / Cognitive / Reading Intent (prioritized before physical manipulation when reading/examining/listening)
-  if (isDocumentOpenOrReadDeclaration(trimmed)) {
+  if (isDocumentOpenOrReadDeclaration(clauseText)) {
     return {
       kind: 'inspect',
       category: 'sensory_reading',
@@ -562,25 +658,25 @@ export function classifyClause(text: string): ClauseSemanticClassification {
 
   const hasSensoryOrReadingVerb =
     /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|study|studies|studying|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|listen(?:s|ing)?|eavesdrop(?:s|ping)?|smell(?:s|ing)?|sniff(?:s|ing)?|peer(?:s|ing)?|squint(?:s|ing)?|check(?:s|ing)?|examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+(?:at|into|over|around)|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|prob(?:e|es|ing)|survey(?:s|ing)?|observ(?:e|es|ing)|notic(?:e|es|ing)|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
-      trimmed,
+      clauseText,
     );
   const hasExplicitOpenOrManipulateVerb =
     /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|pull(?:s|ing)?|push(?:es|ing)?|flip(?:s|ping)?|turn(?:s|ing)?|rotat(?:e|es|ing)|twist(?:s|ing)?|light(?:s|ing)?|ignit(?:e|es|ing)|extinguish(?:es|ing)?|dous(?:e|es|ing)|tak(?:e|es|ing)|grab(?:s|bing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|plunder(?:s|ing)?|ransack(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
-      trimmed,
+      clauseText,
     );
 
   if (hasSensoryOrReadingVerb && !hasExplicitOpenOrManipulateVerb) {
-    const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?|threshold)\b/i.test(trimmed);
+    const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?|threshold)\b/i.test(clauseText);
     const isReading =
       /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|scan(?:s|ning)?)\b/i.test(
-        trimmed,
+        clauseText,
       );
-    const isListening = /\b(?:listen(?:s|ing)?|eavesdrop(?:s|ping)?)\b/i.test(trimmed);
+    const isListening = /\b(?:listen(?:s|ing)?|eavesdrop(?:s|ping)?)\b/i.test(clauseText);
     const isAnalytical =
       /\b(?:decipher(?:s|ing)?|translat(?:e|es|ing)|investigat(?:e|es|ing)?|traps?|hidden|secret|concealed|mechanism)\b/i.test(
-        trimmed,
+        clauseText,
       );
-    const isSearch = /\bsearch(?:es|ing)?\b/i.test(trimmed);
+    const isSearch = /\bsearch(?:es|ing)?\b/i.test(clauseText);
     return {
       kind: 'inspect',
       category: 'sensory_reading',
@@ -602,13 +698,13 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   // 6.5. Route / Exit Travel Intent (checked BEFORE physical manipulation so "take the trail" / "use the stairs" / "take the eastern doorway" is travel, not take_item)
   const hasExplicitDoorOpenCloseVerb =
     /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|close(?:s|d|ing)?|shut(?:s|ting)?|pick(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
-      trimmed,
+      clauseText,
     );
   const isRouteOrExitTravel =
     !hasExplicitDoorOpenCloseVerb &&
-    !/\b(?:lever|switch|winch|crank|pulley|valve|dial)\b/i.test(trimmed) &&
+    !/\b(?:lever|switch|winch|crank|pulley|valve|dial)\b/i.test(clauseText) &&
     /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|onward|forward)|walk(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through)|head(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
-      trimmed,
+      clauseText,
     );
   if (isRouteOrExitTravel && !constraints.forbidMove) {
     return {
@@ -621,15 +717,15 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   // 7. Directional / Pursuit / Transition Intent ("follow the trail toward...", "head to...", "climb up to...")
   const hasPursuitOrTransitionVerb =
     /\b(?:follow(?:s|ing)?|trac(?:e|es|ing)|head(?:s|ing)?\s+(?:to|toward|into|through|back|up|down)|proceed(?:s|ing)?\s+(?:to|toward|into|through)|continu(?:e|es|ing)\s+(?:to|toward|into|through)|enter(?:s|ing)?|leav(?:e|es|ing)\s+(?:toward|for|through|into)|climb(?:s|ing)?\s+(?:up|down|to|into)|descend(?:s|ing)?|ascend(?:s|ing)?|cross(?:es|ing)?\s+(?:into|through|over)|ventur(?:e|es|ing)\s+(?:into|toward)|make(?:s|ing)?\s+(?:my|our|their|his|her)\s+way\s+(?:to|toward|into)|return(?:s|ing)?\s+(?:to|up|down|through)|retreat(?:s|ing)?\s+(?:to|into|through))\b/i.test(
-      trimmed,
+      clauseText,
     );
   if (hasPursuitOrTransitionVerb) {
     const isTrailOrSceneLead =
       /\b(?:follow(?:s|ing)?|trac(?:e|es|ing))\b[\s\S]{0,48}\b(?:trail|tracks?|marks?|lead|path|footprints?|spoor|route|signs?|passage|corridor|stairs?|archway|chamber|room|hall|door(?:way)?|exit)\b/i.test(
-        trimmed,
+        clauseText,
       ) ||
       /\b(?:toward|into|to|through)\s+(?:the\s+)?[\w\s'-]{2,40}\b(?:chamber|room|hall|vault|sanctum|passage|corridor|stairs?|archway|tower|cellar|crypt|exit|wing|gallery|landing|bridge)\b/i.test(
-        trimmed,
+        clauseText,
       );
     return {
       kind: isTrailOrSceneLead ? 'travel' : 'move',
@@ -640,11 +736,11 @@ export function classifyClause(text: string): ClauseSemanticClassification {
 
   // 8. Physical Manipulation Intent
   if (hasExplicitOpenOrManipulateVerb) {
-    const withoutOpenAdjective = trimmed.replace(
+    const withoutOpenAdjective = clauseText.replace(
       /\b(?:open(?:ed)?|sealed|closed|locked|unlocked)\s+(?:[a-z-]+\s+){0,2}(?:door|doorway|gate|entry(?:way)?|[a-z]+)\b/gi,
       (match) => {
         // Keep the verb if the match is at the very start of an imperative ("Open the ...")
-        if (/^(?:open|unseal|unlock|close)\b/i.test(match) && trimmed.startsWith(match)) {
+        if (/^(?:open|unseal|unlock|close)\b/i.test(match) && clauseText.startsWith(match)) {
           return match;
         }
         return match.replace(/^(?:open(?:ed)?|sealed|closed|locked|unlocked)\s+/i, '');
@@ -652,9 +748,9 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     );
     const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenAdjective);
     if (
-      isWholeContainerLootDeclaration(trimmed) ||
+      isWholeContainerLootDeclaration(clauseText) ||
       /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|collect(?:s|ing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|plunder(?:s|ing)?|ransack(?:s|ing)?|retriev(?:e|es|ing)|stow(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
-        trimmed,
+        clauseText,
       )
     ) {
       return {
@@ -664,12 +760,12 @@ export function classifyClause(text: string): ClauseSemanticClassification {
       };
     }
     if (mentionsDoor) {
-      if (/\b(?:close(?:s|d|ing)?|shut(?:s|ting)?)\b/i.test(trimmed)) {
+      if (/\b(?:close(?:s|d|ing)?|shut(?:s|ting)?)\b/i.test(clauseText)) {
         return { kind: 'close_door', category: 'physical_manipulation', outcomeHint: null };
       }
       if (
         /\b(?:unlock(?:s|ing)?|pick(?:s|ing)?\s+(?:the\s+)?lock|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
-          trimmed,
+          clauseText,
         )
       ) {
         return { kind: 'unlock_door', category: 'physical_manipulation', outcomeHint: null };
@@ -678,7 +774,7 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     }
     const isForceful =
       /\b(?:pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|shatter(?:s|ing)?)\b/i.test(
-        trimmed,
+        clauseText,
       );
     return {
       kind: 'interact',
@@ -691,7 +787,7 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   if (
     !constraints.forbidMove &&
     /\b(?:move(?:s|ing)?|walk(?:s|ing)?|step(?:s|ping)?|go(?:es|ing)?|approach(?:es|ing)?)\b/i.test(
-      trimmed,
+      clauseText,
     )
   ) {
     return { kind: 'move', category: 'directional_pursuit', outcomeHint: null };
@@ -775,18 +871,20 @@ export const NON_OPENABLE_SURFACE_HEAD_NOUN =
  */
 export function isDocumentOpenOrReadDeclaration(declaration: string): boolean {
   const trimmed = declaration.trim();
-  if (trimmed.length === 0) return false;
+  if (trimmed.length === 0 || isDialogueDeclaration(trimmed)) return false;
+  const unquoted = stripQuotedSpeech(trimmed);
+  const scope = unquoted.length > 0 ? unquoted : trimmed;
   // Never treat map/door state corrections ("the map summary still says closed...") as reading an in-world document.
   if (
-    (/\b(summary|routes?|map)\b/i.test(trimmed) &&
-      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(trimmed)) ||
-    (/\b(door|doorway)\b/i.test(trimmed) &&
-      /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(trimmed))
+    (/\b(summary|routes?|map)\b/i.test(scope) &&
+      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(scope)) ||
+    (/\b(door|doorway)\b/i.test(scope) &&
+      /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(scope))
   ) {
     return false;
   }
-  const { primaryClause } = splitPrimaryTargetFromLocative(trimmed);
-  const targetClause = primaryClause.trim().length > 0 ? primaryClause : trimmed;
+  const { primaryClause } = splitPrimaryTargetFromLocative(scope);
+  const targetClause = primaryClause.trim().length > 0 ? primaryClause : scope;
   if (
     /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|stow(?:s|ing)?|loot(?:s|ing)?|collect(?:s|ing)?|claim(?:s|ing)?|retriev(?:e|es|ing)|pick(?:s|ing)?\s+up|steal(?:s|ing)?|burn(?:s|ing)?|destroy(?:s|ing)?|tear(?:s|ing)?|rip(?:s|ping)?)\b/i.test(
       targetClause,
@@ -805,23 +903,25 @@ export function isDocumentOpenOrReadDeclaration(declaration: string): boolean {
  */
 export function isWholeContainerLootDeclaration(declaration: string): boolean {
   const trimmed = declaration.trim();
-  if (trimmed.length === 0) return false;
+  if (trimmed.length === 0 || isDialogueDeclaration(trimmed)) return false;
+  const unquoted = stripQuotedSpeech(trimmed);
+  const scope = unquoted.length > 0 ? unquoted : trimmed;
   if (
     /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing)|not\s+taking\s+anything)\b/i.test(
-      trimmed,
+      scope,
     )
   ) {
     return false;
   }
   return (
     /\b(?:loot(?:s|ing)?|empt(?:y|ies|ying)|clear(?:s|ing)?(?:\s+out)?|plunder(?:s|ing)?|ransack(?:s|ing)?|strip(?:s|ping)?)\b/i.test(
-      trimmed,
+      scope,
     ) ||
     /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|collect(?:s|ing)?|claim(?:s|ing)?|pocket(?:s|ing)?|stow(?:s|ing)?|retriev(?:e|es|ing)|pull(?:s|ing)?\s+out)\s+(?:all|everything|(?:all\s+)?(?:of\s+)?(?:the\s+)?(?:items?|contents?|loot|supplies|gear|goods|things?))\b/i.test(
-      trimmed,
+      scope,
     ) ||
     /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|collect(?:s|ing)?|loot(?:s|ing)?|retriev(?:e|es|ing))\s+from\s+(?:the\s+|a\s+|an\s+|this\s+|that\s+)?(?:open(?:ed)?\s+|unlocked\s+)?[a-z0-9'’-]+\b/i.test(
-      trimmed,
+      scope,
     )
   );
 }
@@ -833,26 +933,28 @@ export function isWholeContainerLootDeclaration(declaration: string): boolean {
  */
 export function isPassageOrTravelThroughDoorway(declaration: string): boolean {
   const trimmed = declaration.trim();
-  if (trimmed.length === 0) {
+  if (trimmed.length === 0 || isDialogueDeclaration(trimmed)) {
     return false;
   }
+  const unquoted = stripQuotedSpeech(trimmed);
+  const scope = unquoted.length > 0 ? unquoted : trimmed;
   if (
     /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|close(?:s|d|ing)?|shut(?:s|ting)?|pick(?:s|ing)?\s+(?:the\s+)?lock|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
-      trimmed,
+      scope,
     )
   ) {
     return false;
   }
   const takesOrPassesDoorway =
     /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|(?:go(?:es|ing)?|pass(?:es|ing)?|step(?:s|ping)?|walk(?:s|ing)?|head(?:s|ing)?|mov(?:e|es|ing)|continu(?:e|es|ing)|proceed(?:s|ing)?|cross(?:es|ing)?|leav(?:e|es|ing)|exit(?:s|ing)?)(?:\s+(?:north|south|east|west|northern|southern|eastern|western|forward|ahead|onward|out))?\s+through)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,4}(?:doorway|door|gate|gateway|archway|threshold|exit|passage|way)\b/i.test(
-      trimmed,
+      scope,
     );
   const compoundDoorwayAndTravel =
     /\b(?:doorway|door|gate|gateway|archway|threshold|exit)\b[\s\S]{0,60}\b(?:and|then)\s+(?:i\s+)?(?:follow|trace|travel|head|continue|proceed|go|walk|march|press\s+on)\b/i.test(
-      trimmed,
+      scope,
     ) ||
     /\bfollow(?:s|ing)?\s+(?:the\s+)?[\w\s'-]{1,40}\b(?:toward|towards|into|to|onward|ahead|beyond)\b/i.test(
-      trimmed,
+      scope,
     );
   return takesOrPassesDoorway || compoundDoorwayAndTravel;
 }

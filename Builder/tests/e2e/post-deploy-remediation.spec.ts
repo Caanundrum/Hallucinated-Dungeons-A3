@@ -198,10 +198,11 @@ test.describe('Post-Deploy Systemic Remediation (Packets 1–5)', () => {
     await page.getByTestId('director-address-send').click();
     await expect(page.getByTestId('ask-dm-thread')).toBeVisible({ timeout: 15_000 });
 
-    // Assert zero descendant elements inside director-address-pane have overflow-y: auto or scroll
+    // Assert [data-testid="ask-dm-thread"] is the single scrollable region inside director-address-pane
     const nestedScrollableCount = await addressPane.evaluate((pane) => {
       const descendants = Array.from(pane.querySelectorAll<HTMLElement>('*'));
       return descendants.filter((el) => {
+        if (el.getAttribute('data-testid') === 'ask-dm-thread') return false;
         const style = window.getComputedStyle(el);
         return style.overflowY === 'auto' || style.overflowY === 'scroll';
       }).length;

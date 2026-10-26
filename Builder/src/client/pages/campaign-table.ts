@@ -2150,9 +2150,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         <div class="dock-pane director-address-single-scroll" data-testid="director-address-pane">
           <div class="director-address-header${askDmHeaderCollapsed ? ' is-compact' : ''}">
             <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
-            <button type="button" class="table-secondary-action" data-testid="collapse-director-address" aria-expanded="${!askDmHeaderCollapsed}">${askDmHeaderCollapsed ? 'Show info' : 'Hide info'}</button>
+            <button type="button" id="ask-dm-info-btn" class="table-secondary-action" data-testid="collapse-director-address" aria-controls="ask-dm-info-copy" aria-expanded="${!askDmHeaderCollapsed}"><span data-testid="ask-dm-info-btn">${askDmHeaderCollapsed ? 'Show info' : 'Hide info'}</span></button>
           </div>
-          <p class="director-address-notice" data-testid="director-address-notice"${askDmHeaderCollapsed ? ' hidden' : ''}>${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
+          <p id="ask-dm-info-copy" class="director-address-notice" data-testid="director-address-notice"${askDmHeaderCollapsed ? ' hidden' : ''}>${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
           ${
             askDmConsulting
               ? `<p class="ask-dm-shimmer" data-testid="ask-dm-consulting" aria-live="polite">Consulting ancient lore…</p>`
@@ -2806,6 +2806,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   function checkTokenActionRangeAndAdjacency(
     interpreted: {
       readonly proposedCommandType: string;
+      readonly path?: readonly unknown[] | undefined;
       readonly edgeId?: string | undefined;
       readonly objectId?: string | undefined;
       readonly summary: string;
@@ -2813,13 +2814,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     _declaration: string,
   ): string | null {
     if (interpreted.proposedCommandType === 'table.move') {
-      const isDoorMove =
-        interpreted.edgeId !== undefined ||
-        /\b(?:door|doorway|through)\b/i.test(interpreted.summary) ||
-        declarationIsDoorOpenOrPassage(_declaration);
-      if (!isDoorMove) {
+      const hasBoundPath = Array.isArray(interpreted.path) && interpreted.path.length > 0;
+      const hasBoundEdge = interpreted.edgeId !== undefined;
+      if (!hasBoundPath && !hasBoundEdge) {
         return 'Movement within a room is controlled by clicking a square on the battle map rather than by words (declare travel or use an exit to change scenes). Click a square on the map to move your token first, then declare what you do!';
       }
+      return null;
     }
     if (mapBundle === null || ownSeatId === null) {
       return null;
@@ -5128,9 +5128,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           askDmConsulting = false;
           render();
           requestAnimationFrame(() => {
-            const pane = container.querySelector<HTMLElement>('[data-testid="director-address-pane"]');
-            if (pane !== null) {
-              pane.scrollTop = pane.scrollHeight;
+            const thread = container.querySelector<HTMLElement>('[data-testid="ask-dm-thread"]');
+            if (thread !== null) {
+              thread.scrollTop = thread.scrollHeight;
             }
           });
         }

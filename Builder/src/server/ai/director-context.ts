@@ -54,15 +54,26 @@ function formatSheet(sheet: DerivedCharacterSheet, characterName?: string): stri
           ...sheet.spellcasting.spells.map((spell) => spell.name),
         ].join(', ') || 'None prepared/known';
   const attacks = sheet.attacks
-    .map(
-      (attack) =>
-        `${attack.name} (${attack.attackBonus.value >= 0 ? '+' : ''}${attack.attackBonus.value} to hit, ${attack.damage})`,
-    )
+    .map((attack) => {
+      const props = attack.properties
+        .map((prop) =>
+          prop
+            .replace(/\b(\d+\/\d+)\s*(?:ft\.?|feet)?\b/gi, '$1 feet')
+            .replace(/\b(\d+)\s*ft\.?\b/gi, '$1 feet'),
+        )
+        .join(', ');
+      return `${attack.name} (${attack.attackBonus.value >= 0 ? '+' : ''}${attack.attackBonus.value} to hit, ${attack.damage} ${attack.damageType}${props ? `, ${props}` : ''})`;
+    })
     .join('; ');
+  const senses =
+    sheet.senses
+      .map((sense) => sense.replace(/\b(\d+)\s*ft\.?\b/gi, '$1 feet'))
+      .join(', ') || 'Normal vision';
   return [
     `Active character${characterName ? ` (${characterName})` : ''}: level ${sheet.level}`,
-    `HP ${sheet.hitPoints.value}, AC ${sheet.armorClass.value}, Speed ${sheet.speed.value}, Initiative ${sheet.initiative.value >= 0 ? '+' : ''}${sheet.initiative.value}`,
+    `HP ${sheet.hitPoints.value} HP, AC ${sheet.armorClass.value}, Speed ${sheet.speed.value} feet, Initiative ${sheet.initiative.value >= 0 ? '+' : ''}${sheet.initiative.value}`,
     `Ability mods: STR ${sheet.abilityModifiers.strength}, DEX ${sheet.abilityModifiers.dexterity}, CON ${sheet.abilityModifiers.constitution}, INT ${sheet.abilityModifiers.intelligence}, WIS ${sheet.abilityModifiers.wisdom}, CHA ${sheet.abilityModifiers.charisma}`,
+    `Senses: ${senses}; Currency: ${sheet.currencyGold} GP`,
     `Proficient skills: ${proficientSkills || 'none'}`,
     `Attacks: ${attacks || 'none'}`,
     `Spellcasting: ${spells}`,
@@ -72,7 +83,11 @@ function formatSheet(sheet: DerivedCharacterSheet, characterName?: string): stri
     `Features: ${sheet.features.map((feature) => feature.name).join(', ') || 'none'}`,
     `Carried equipment: ${
       sheet.equipment
-        .map((item) => (item.statsSummary ? `${item.name} (${item.statsSummary})` : item.name))
+        .map((item) =>
+          item.statsSummary
+            ? `${item.name} (${item.statsSummary.replace(/\b(\d+)\s*ft\.?\b/gi, '$1 feet')})`
+            : item.name,
+        )
         .join(', ') || 'none'
     }`,
   ]

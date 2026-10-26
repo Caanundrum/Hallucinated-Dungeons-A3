@@ -196,9 +196,10 @@ function nextStepTowardClosedDoor(
 function pathBesideClosedDoor(
   anchor: MapSquareCoordinate,
   map: MapBundleProjection,
-  maxSteps = 6,
+  maxSteps?: number,
   preferred: DoorCompass | null = null,
 ): MapSquareCoordinate[] | null {
+  const stepLimit = maxSteps ?? Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows);
   const nearest = nearestClosedDoor(anchor, map, preferred);
   if (nearest === null || isAdjacentToDoor(anchor, nearest)) {
     return null;
@@ -216,7 +217,7 @@ function pathBesideClosedDoor(
   const destination = targets[0]!;
   const path: MapSquareCoordinate[] = [];
   let cursor = anchor;
-  for (let step = 0; step < maxSteps; step += 1) {
+  for (let step = 0; step < stepLimit; step += 1) {
     if (isAdjacentToDoor(cursor, nearest)) {
       break;
     }
@@ -719,8 +720,9 @@ export function pathBesideFeature(
   anchor: MapSquareCoordinate,
   featureCoord: MapSquareCoordinate,
   map: MapBundleProjection,
-  maxSteps = 24,
+  maxSteps?: number,
 ): MapSquareCoordinate[] | null {
+  const stepLimit = maxSteps ?? Math.max(1, map.coordinateSpace.columns * map.coordinateSpace.rows);
   const adjacent: MapSquareCoordinate[] = [
     { column: featureCoord.column - 1, row: featureCoord.row },
     { column: featureCoord.column + 1, row: featureCoord.row },
@@ -759,9 +761,9 @@ export function pathBesideFeature(
   while (queue.length > 0) {
     const current = queue.shift()!;
     if (current.path.length > 0 && targetKeys.has(`${current.square.column},${current.square.row}`)) {
-      return current.path.slice(0, maxSteps);
+      return current.path.slice(0, stepLimit);
     }
-    if (current.path.length >= maxSteps) {
+    if (current.path.length >= stepLimit) {
       continue;
     }
     const neighbors: MapSquareCoordinate[] = [
