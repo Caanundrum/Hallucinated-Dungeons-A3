@@ -61,6 +61,9 @@ export function declarationIsDoorOpenOrPassage(text: string): boolean {
   if (declarationNegatesDoorOpen(text)) {
     return false;
   }
+  if (/\b(?:lever|switch|mechanism|winch|crank|pulley|valve|dial)\b/i.test(text)) {
+    return false;
+  }
   const withoutOpenNoun = text.replace(
     /\bopen(?:ed)?\s+(?:wooden\s+)?(?:door|doorway|gate|entry(?:way)?)s?\b/gi,
     'doorway',
@@ -76,6 +79,9 @@ export function declarationIsDoorOpenOrPassage(text: string): boolean {
 
 /** Close / shut a doorway — door authority, never scene-prop interact. */
 export function declarationIsDoorClose(text: string): boolean {
+  if (/\b(?:lever|switch|mechanism|winch|crank|pulley|valve|dial)\b/i.test(text)) {
+    return false;
+  }
   return (
     /\b(?:closes?|closing|shut(?:s|ting)?)\b/i.test(text) &&
     /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(text)

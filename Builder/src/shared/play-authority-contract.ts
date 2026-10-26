@@ -16,11 +16,13 @@
 
 import type { DoorState } from './map-contract.js';
 import type { IntentDraftCommandType } from './intent-draft-contract.js';
+import { expandNpcNameVariants, npcNamesMatch } from './campaign-facts.js';
 import { declarationNegatesDoorOpen } from './resolved-action-receipt.js';
 import {
   actionableDirectorFallback,
   classifyClause,
   filterActionsByConstraints,
+  splitPrimaryTargetFromLocative,
   understandUtterance,
   utteranceLooksLikeQuestion,
 } from './utterance-understanding.js';
@@ -764,13 +766,7 @@ export function parsePlayerDeclaration(
   let addressee: string | null = null;
   // 1. Direct speech targeting on known NPCs: "ask Warden Elira", "speaking to Elira", "@Elira,"
   for (const npc of knownNpcs) {
-    const nameVariants = [npc.label];
-    const parts = npc.label.split(/\s+/).filter((p) => p.length >= 3);
-    for (const part of parts) {
-      if (!nameVariants.includes(part)) {
-        nameVariants.push(part);
-      }
-    }
+    const nameVariants = expandNpcNameVariants(npc.label);
     for (const variant of nameVariants) {
       const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (
@@ -794,11 +790,13 @@ export function parsePlayerDeclaration(
 
   // 2. Check leading addressee format: "Orin: ...", "@Orin, ..."
   if (addressee === null) {
-    const leading = /^@?([A-Z][a-zA-Z'-]{1,24})\s*[,:]/.exec(searchScope);
+    const leading = /^@?([A-Z][a-zA-Z'-]{1,24}(?:\s+[A-Z][a-zA-Z'-]{1,24})?)\s*[,:]/.exec(searchScope);
     if (leading !== null) {
       const candidate = leading[1]!;
       const matchKnown = knownNpcs.find(
-        (n) => n.label.toLowerCase() === candidate.toLowerCase(),
+        (n) =>
+          n.label.toLowerCase() === candidate.toLowerCase() ||
+          npcNamesMatch(n.label, candidate),
       );
       if (matchKnown !== undefined) {
         addressee = matchKnown.label;
@@ -827,7 +825,8 @@ export function parsePlayerDeclaration(
           (n) =>
             n.label.toLowerCase() === candidate.toLowerCase() ||
             n.label.toLowerCase().startsWith(candidate.toLowerCase() + ' ') ||
-            n.label.toLowerCase().endsWith(' ' + candidate.toLowerCase()),
+            n.label.toLowerCase().endsWith(' ' + candidate.toLowerCase()) ||
+            npcNamesMatch(n.label, candidate),
         );
         addressee = matchKnown ? matchKnown.label : candidate;
       }
@@ -837,9 +836,13 @@ export function parsePlayerDeclaration(
   // 4. Fallback: known NPC mentioned outside quotes alongside a speaking verb
   if (addressee === null) {
     for (const npc of knownNpcs) {
-      const escaped = npc.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const variants = expandNpcNameVariants(npc.label);
+      const matchedVariant = variants.some((variant) => {
+        const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${escaped}\\b`, 'i').test(searchScope);
+      });
       if (
-        new RegExp(`\\b${escaped}\\b`, 'i').test(searchScope) &&
+        matchedVariant &&
         /\b(?:speaks?|talking|talks?|greets?|questions?|inquires?|says?|approach(?:es|ing)?|address(?:es|ing)?)\b/i.test(
           searchScope,
         )
@@ -933,14 +936,19 @@ export function parsePlayerDeclaration(
       !/\b(?:unlock|attack|strike|cast|open|opens|opening)\b/i.test(trimmed));
 
   // Strip subordinate observation clauses mentioning a door/doorway ("keeping an eye on the closed east doorway",
-  // "while watching the doorway") so primary movement/prop intent is not hijacked by door state/approach (F26-01).
-  const primaryActionText = trimmed
+  // "while watching the doorway") and secondary locative qualifiers ("near the eastern doorway") so primary
+  // movement/prop/clue intent is not hijacked by door state/approach (F26-01, RS-03).
+  const { primaryClause: withoutLocativeClause } = splitPrimaryTargetFromLocative(trimmed);
+  const primaryActionText = withoutLocativeClause
     .replace(
       /(?:,\s*|\s+)(?:while\s+|whilst\s+|as\s+i\s+)?(?:keeping\s+(?:an\s+eye|watch|my\s+eyes?)\s+on|watching|eyeing|glancing\s+(?:at|toward)|looking\s+toward|staying\s+wary\s+of|mindful\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?|threshold|exit)\b[^.?!]*/gi,
       '',
     )
     .trim();
-  const doorScopeText = primaryActionText.length > 0 ? primaryActionText : trimmed;
+  const doorScopeText = (primaryActionText.length > 0 ? primaryActionText : trimmed).replace(
+    /\b(?:door|doorway|gate)\s+(?:lever|switch|mechanism|winch|crank|pulley|chain|valve|dial|key)s?\b/gi,
+    'mechanism',
+  );
 
   const wantsUnlock = textRequestsLockPicking(doorScopeText);
   const refsUnlocked = textReferencesUnlockedDoorState(doorScopeText);

@@ -54,7 +54,7 @@ import { CampaignNotFoundError } from './errors.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import { emptyMapRuntime } from '../table/map-runtime.js';
 import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
-import { classifyNpcRoles } from './campaign-blueprint.js';
+import { classifyNpcRoles, extractPremiseEntities } from './campaign-blueprint.js';
 
 export class CampaignMemoryError extends Error {
   readonly code: string;
@@ -401,10 +401,27 @@ function seedNpcsFromBlueprint(
   excludeCharacterNames: readonly string[] = [],
 ): CampaignNpcRecordProjection[] {
   const premiseText = [blueprint.premiseDigest, blueprint.questHook].filter(Boolean).join('\n\n');
-  const filteredNamedNpcs = (blueprint.namedNpcs ?? []).filter(
-    (name) => !matchesExcludedCharacterName(name, excludeCharacterNames),
+  const extractedPlaces = extractPremiseEntities(premiseText).places;
+  const placeSet = new Set(
+    [...(blueprint.namedPlaces ?? []), ...extractedPlaces].map((p) => p.toLowerCase()),
   );
-  const { missingNpcs, presentNpcs } = classifyNpcRoles(filteredNamedNpcs, premiseText);
+  const filteredNamedNpcs = (blueprint.namedNpcs ?? []).filter(
+    (name) =>
+      !matchesExcludedCharacterName(name, excludeCharacterNames) &&
+      !placeSet.has(name.toLowerCase()),
+  );
+  const { missingNpcs, presentNpcs, antagonistNpcs } = classifyNpcRoles(
+    filteredNamedNpcs,
+    premiseText,
+  );
+  const orderedNpcs = [
+    ...presentNpcs,
+    ...missingNpcs,
+    ...antagonistNpcs,
+    ...filteredNamedNpcs.filter(
+      (n) => !presentNpcs.includes(n) && !missingNpcs.includes(n) && !antagonistNpcs.includes(n),
+    ),
+  ];
 
   const roomNpcRoles = new Map<string, string>();
   for (const m of blueprint.milestones ?? []) {
@@ -412,6 +429,7 @@ function seedNpcsFromBlueprint(
       for (const n of r.npcs ?? []) {
         if (
           !matchesExcludedCharacterName(n.name, excludeCharacterNames) &&
+          !placeSet.has(n.name.toLowerCase()) &&
           !roomNpcRoles.has(n.name.toLowerCase())
         ) {
           roomNpcRoles.set(n.name.toLowerCase(), n.role);
@@ -420,7 +438,7 @@ function seedNpcsFromBlueprint(
     }
   }
 
-  return filteredNamedNpcs.map((name) => {
+  return orderedNpcs.map((name) => {
     const lower = name.toLowerCase();
     const isMissing =
       missingNpcs.some((m) => m.toLowerCase() === lower) ||
@@ -473,12 +491,24 @@ export async function ensureCampaignMemory(
       await memoryRef.set(updated, { merge: true });
       return updated;
     }
-    // Reconcile existing NPC roles if a missing person was mistakenly labeled as local contact / guide
+    // Reconcile existing NPC roles if a missing person was mistakenly labeled as local contact / guide,
+    // or if a named place leaked into existing.npcs.
     if (blueprint && Array.isArray(blueprint.namedNpcs) && blueprint.namedNpcs.length > 0) {
       const premiseText = [blueprint.premiseDigest, blueprint.questHook].filter(Boolean).join('\n\n');
+      const extractedPlaces = extractPremiseEntities(premiseText).places;
+      const placeSet = new Set(
+        [...(blueprint.namedPlaces ?? []), ...extractedPlaces].map((p) => p.toLowerCase()),
+      );
       const { missingNpcs } = classifyNpcRoles(blueprint.namedNpcs, premiseText);
       let needsUpdate = false;
-      const reconciled = existing.npcs.map((npc) => {
+      const filteredExisting = existing.npcs.filter((npc) => {
+        if (placeSet.has(npc.name.toLowerCase())) {
+          needsUpdate = true;
+          return false;
+        }
+        return true;
+      });
+      const reconciled = filteredExisting.map((npc) => {
         if (
           missingNpcs.some((m) => m.toLowerCase() === npc.name.toLowerCase()) &&
           /guide|contact/i.test(npc.role)

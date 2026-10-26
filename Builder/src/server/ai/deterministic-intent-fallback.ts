@@ -26,7 +26,9 @@ import {
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
+  isPassageOrTravelThroughDoorway,
   resolveConditionalDoorIntent,
+  splitPrimaryTargetFromLocative,
   understandUtterance,
 } from '../../shared/utterance-understanding.js';
 import {
@@ -34,7 +36,10 @@ import {
   declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
 import { isAdjacentToDoorEdge } from '../../shared/map-presentation.js';
-import { rejectUnsupportedPremiseClaim } from '../../shared/campaign-facts.js';
+import {
+  npcNamesMatch,
+  rejectUnsupportedPremiseClaim,
+} from '../../shared/campaign-facts.js';
 import { containerLabelHintFromText } from '../../shared/container-contents.js';
 import {
   pathBesideFeature,
@@ -260,30 +265,53 @@ function mentionsDoorIntent(text: string): boolean {
   if (declarationNegatesDoorOpen(text)) {
     return false;
   }
-  // Explicit scene-exit / travel declarations that mention passing a doorway on the way to an exterior destination
+  const { primaryClause } = splitPrimaryTargetFromLocative(text);
+  const effectiveText = primaryClause.trim().length > 0 ? primaryClause : text;
+  if (
+    /\b(?:lever|switch|mechanism|winch|crank|pulley|valve|dial)\b/i.test(effectiveText) &&
+    !/\b(?:and|then)\s+(?:open|go\s+through|step\s+through)\s+(?:the\s+)?(?:door|doorway|gate)\b/i.test(
+      effectiveText,
+    )
+  ) {
+    return false;
+  }
+  // Explicit scene-exit / travel declarations that mention passing a doorway on the way to an exterior or next-scene destination
   // should route to travel_scene rather than open_door.
   if (
-    /\b(?:leave|travel|head\s+out|step\s+out(?:side)?)\b/i.test(text) &&
-    /\b(?:toward|towards|into|to|for)\s+(?:the\s+)?(?:[a-z]+\s+)*(?:trail|marsh|boardwalk|woods|forest|outside|outdoors|ridge|watchtower|dock|harbor|courtyard|road|street)\b/i.test(
-      text,
-    )
+    /\b(?:leave|travel|head(?:\s+(?:out|north|south|east|west|northern|southern|eastern|western|onward|forward))?|go(?:\s+(?:out|north|south|east|west|northern|southern|eastern|western|onward|forward))?|step\s+out(?:side)?|take\s+the\s+(?:[a-z'-]+\s+){0,3}(?:doorway|exit|gate|archway))\b/i.test(
+      effectiveText,
+    ) &&
+    (/\b(?:toward|towards|into|to|for)\s+(?:the\s+)?(?:next\s+(?:area|scene|stage|chapter|reach)|side\s+passage|subterranean\s+reach|deep\s+warrens|inner\s+sanctum|deep\s+vault|(?:[a-z]+\s+)*(?:trail|marsh|boardwalk|woods|forest|outside|outdoors|ridge|watchtower|dock|harbor|courtyard|road|street|ruins?|causeway|approach))\b/i.test(
+      effectiveText,
+    ) ||
+      /\b(?:and|then)\s+(?:i\s+)?(?:follow|trace|travel|head|continue|proceed)\b/i.test(
+        effectiveText,
+      ))
+  ) {
+    return false;
+  }
+  if (
+    /\b(?:sanctum\s+(?:gate|archway)|(?:trail|passage|archway|stairway)\s+back)\b/i.test(
+      effectiveText,
+    ) &&
+    !/\b(?:open|unlock|close|shut|pick|pry|force)\b/i.test(effectiveText)
   ) {
     return false;
   }
   // Scene survey / look-around that only uses doorway as location is perception, not door work.
   if (
     /\b(?:look(?:s|ing)?\s+around|peer(?:s|ing)?\s+around|survey(?:s|ing)?|take(?:s|ing)?\s+(?:a\s+)?look\s+around|see(?:s|ing)?\s+around)\b/i.test(
-      text,
+      effectiveText,
     ) &&
     !/\b(?:opens?|opening|unlock|closes?|closing|shut|step(?:s|ping)?\s+through|through\s+(?:the\s+)?(?:door|doorway))\b/i.test(
-      text,
+      effectiveText,
     )
   ) {
     return false;
   }
   // Strip subordinate observation clauses ("keeping an eye on the closed east doorway", "while watching the door")
   // before testing whether the action itself targets a door.
-  const withoutSubordinateObservation = text.replace(
+  const withoutSubordinateObservation = effectiveText.replace(
     /,?\s*\b(?:keeping\s+an\s+eye\s+on|watching|glancing\s+(?:at|toward)|eyeing|mindful\s+of|staying\s+clear\s+of)\s+(?:the\s+)?(?:[a-z-]+\s+){0,4}(?:door|doorway|gate|entry(?:way)?)\b/gi,
     '',
   );
@@ -465,11 +493,7 @@ export async function resolveDeterministicIntentFallback(
   const absentRoomNpcs = options.absentRoomNpcs ?? [];
   const matchedAbsentNpc =
     structured.addressee !== null
-      ? absentRoomNpcs.find((npc) => {
-          const target = structured.addressee!.toLowerCase();
-          const label = npc.label.toLowerCase();
-          return label === target || label.includes(target) || target.includes(label);
-        }) ?? null
+      ? absentRoomNpcs.find((npc) => npcNamesMatch(npc.label, structured.addressee!)) ?? null
       : null;
   const utterance = understandUtterance(rawText);
   const hasDedicatedGatewayBranch =
@@ -557,10 +581,10 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head\s+(?:out|outside|onward|for|to|down|up|toward|towards|into)|go\s+(?:outside|outdoors|onward|through|to|toward|towards|down|up|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:down|up|along)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|down|up)|continue\s+(?:to|toward|towards|into|onward|down|up|along)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
+    (/\b(leave|travel|head\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:out|outside|onward|for|to|down|up|toward|towards|into|through)|go\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:outside|outdoors|onward|through|to|toward|towards|down|up|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:down|up|along|through)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|doorway|gate|gateway|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|down|up|through)|continue\s+(?:to|toward|towards|into|onward|down|up|along|through)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
       text,
     ) ||
-      /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort)\b/i.test(
+      /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort|sanctum\s+gate|sanctum\s+archway)\b/i.test(
         text,
       ))
   ) {
@@ -578,7 +602,11 @@ export async function resolveDeterministicIntentFallback(
         checkExitLockedForTravel,
         resolveTravelDestinationTitle,
       } = await import('../table/scene-commands.js');
-      const runtime = await loadMapRuntime(options.firestore, options.campaignId);
+      const { loadCampaignBlueprint } = await import('../campaigns/campaign-blueprint.js');
+      const [runtime, blueprint] = await Promise.all([
+        loadMapRuntime(options.firestore, options.campaignId),
+        loadCampaignBlueprint(options.firestore, options.campaignId),
+      ]);
       const active = activeSceneInstance(runtime);
       if (active !== null) {
         const lockCheck = checkExitLockedForTravel(active, rawText, false);
@@ -590,7 +618,7 @@ export async function resolveDeterministicIntentFallback(
             : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
         }
       }
-      const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false);
+      const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false, blueprint);
       if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
         destinationHint = resolvedTitle.trim();
         summaryDestination = resolvedTitle.trim();
@@ -636,9 +664,27 @@ export async function resolveDeterministicIntentFallback(
         !/\b(open|unseal|unlatch|pry|force|break|smash|close|shut)\b/i.test(text);
 
       if (ranked.length >= 2 && ranked[0]!.score === ranked[1]!.score) {
+        const verbMatch =
+          /\b(loot|open|unlock|unseal|close|shut|search|inspect|examine|check|break|smash|pull|push|take)\b/i.exec(
+            rawText,
+          );
+        const actionVerb = verbMatch ? verbMatch[1]!.toLowerCase() : 'examine';
+        const midCol = Math.floor((active?.columns ?? 12) / 2);
+        const describeCandidate = (item: (typeof ranked)[number]): string => {
+          const feat = active?.features.find((f) => f.objectId === item.objectId);
+          const stateStr =
+            feat?.lockState === 'locked' && feat.state !== 'open'
+              ? 'locked'
+              : (feat?.state ?? '');
+          const posStr = feat ? (feat.column < midCol ? 'west' : 'east') : '';
+          const qual = [stateStr, posStr].filter((s) => s.length > 0).join(', ');
+          return qual.length > 0
+            ? `${item.baseLabel.toLowerCase()} (${qual})`
+            : item.baseLabel.toLowerCase();
+        };
         proposedCommandType = 'table.sync';
         deferDirectorNarrate = false;
-        summary = `Do you want to examine the ${ranked[0]!.baseLabel.toLowerCase()} or the ${ranked[1]!.baseLabel.toLowerCase()}?`;
+        summary = `Do you want to ${actionVerb} the ${describeCandidate(ranked[0]!)} or the ${describeCandidate(ranked[1]!)}?`;
         sceneLoopResolved = true;
       } else if (ranked[0] !== undefined) {
         const matched = ranked[0].objectId;
@@ -714,23 +760,32 @@ export async function resolveDeterministicIntentFallback(
           Array.isArray(f.contents) &&
           f.contents.length > 0,
       );
+      const openContainersWithContents = unlockedContainersWithContents.filter(
+        (f) => f.state === 'open',
+      );
       const isLootAllVerb =
         /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?contents)\b/i.test(
           rawText,
         );
-      const containerByContentItem = unlockedContainersWithContents.find((f) =>
+      const matchesContainerContent = (f: (typeof unlockedContainersWithContents)[number]): boolean =>
         (f.contents ?? []).some((item: string) =>
           item
             .toLowerCase()
             .split(/\s+/)
             .some((w: string) => w.length >= 3 && text.includes(w)),
-        ),
-      );
+        );
+      // Strongly prefer ALREADY-OPEN containers when taking an item so open -> take never attributes to an unopened container.
+      const containerByContentItem =
+        openContainersWithContents.find(matchesContainerContent) ??
+        unlockedContainersWithContents.find(matchesContainerContent);
       const containerByLabelForLoot = isLootAllVerb
-        ? (unlockedContainersWithContents.find(
+        ? (openContainersWithContents.find(
             (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
           ) ??
-          unlockedContainersWithContents.find((f) => f.state === 'open') ??
+          unlockedContainersWithContents.find(
+            (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
+          ) ??
+          openContainersWithContents[0] ??
           unlockedContainersWithContents[0])
         : undefined;
       const targetLootContainer = containerByContentItem ?? containerByLabelForLoot;
@@ -765,27 +820,36 @@ export async function resolveDeterministicIntentFallback(
           summary = `Ready to take ${label} into your inventory. Confirm to stow it and remove it from the map.`;
           sceneLoopResolved = true;
         } else {
-          const npcWithHeld = active?.features.find(
-            (f) =>
-              (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
-              Array.isArray(f.heldItems) &&
-              f.heldItems.length > 0 &&
-              f.heldItems.some((item: string) =>
-                item
-                  .toLowerCase()
-                  .split(/\s+/)
-                  .some((w: string) => w.length > 2 && text.includes(w)),
-              ),
-          );
+          const mentionsContainerSource =
+            /\bfrom\s+(?:the\s+|a\s+|an\s+)?(?:open\s+|opened\s+|unlocked\s+|closed\s+)?(?:[a-z'-]+\s+){0,3}(?:chest|crate|box|barrel|satchel|pack|bag|coffer|urn|pouch|trunk|cabinet|casket|lockbox|reliquary)\b/i.test(
+              rawText,
+            );
+          const npcHeldItemMatches = (item: string): boolean => {
+            const words = item
+              .toLowerCase()
+              .split(/\s+/)
+              .filter(
+                (w) =>
+                  w.length > 2 &&
+                  !/^(?:brass|iron|silver|gold|wooden|stone|leather|ancient|weathered|tarnished|sealed)$/i.test(
+                    w,
+                  ),
+              );
+            return words.length > 0 && words.some((w) => text.includes(w));
+          };
+          const npcWithHeld = mentionsContainerSource
+            ? undefined
+            : active?.features.find(
+                (f) =>
+                  (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+                  Array.isArray(f.heldItems) &&
+                  f.heldItems.length > 0 &&
+                  f.heldItems.some(npcHeldItemMatches),
+              );
           if (npcWithHeld !== undefined && npcWithHeld.heldItems !== undefined) {
             const matchedItem =
-              npcWithHeld.heldItems.find((item: string) =>
-                item
-                  .toLowerCase()
-                  .split(/\s+/)
-                  .some((w: string) => w.length > 2 && text.includes(w)),
-              ) ?? npcWithHeld.heldItems[0]!;
-            const npcName = npcWithHeld.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+              npcWithHeld.heldItems.find(npcHeldItemMatches) ?? npcWithHeld.heldItems[0]!;
+            const npcName = stripFeatureStateSuffix(npcWithHeld.label);
             proposedCommandType = 'table.transfer_npc_item';
             objectId = npcWithHeld.objectId;
             itemId = matchedItem;
@@ -985,7 +1049,7 @@ export async function resolveDeterministicIntentFallback(
           if (
             !doorResolved &&
             ownToken !== undefined &&
-            map.edges.length > 0 &&
+            (map.edges.length > 0 || isPassageOrTravelThroughDoorway(primaryMoveText)) &&
             /\b(?:door|doorway|gate|entry(?:way)?|threshold|through|beyond|west|east|north|south)\b/i.test(
               primaryMoveText,
             )
@@ -1011,7 +1075,63 @@ export async function resolveDeterministicIntentFallback(
                 ownToken.footprint.anchor,
                 primaryMoveText,
               );
-              if (persisted !== null) {
+              const hasSceneExit = map.notableFeatures.some(
+                (f) => f.referenceKind === 'exit' || f.objectKind === 'exit',
+              );
+              const isForwardExitThroughDoorway =
+                hasSceneExit &&
+                isPassageOrTravelThroughDoorway(rawText) &&
+                (persisted === null ||
+                  (persisted.proposedCommandType === 'table.move' &&
+                    /step back through/i.test(persisted.summary) &&
+                    /\b(?:east|eastern|north|northern|south|southern|onward|forward|ahead)\b/i.test(
+                      primaryMoveText,
+                    )));
+              if (isForwardExitThroughDoorway) {
+                const { activeSceneInstance, loadMapRuntime } = await import(
+                  '../table/map-runtime.js'
+                );
+                const {
+                  checkExitLockedForTravel,
+                  resolveTravelDestinationTitle,
+                } = await import('../table/scene-commands.js');
+                const { loadCampaignBlueprint } = await import(
+                  '../campaigns/campaign-blueprint.js'
+                );
+                const [runtime, blueprint] = await Promise.all([
+                  loadMapRuntime(options.firestore, options.campaignId),
+                  loadCampaignBlueprint(options.firestore, options.campaignId),
+                ]);
+                const active = activeSceneInstance(runtime);
+                const lockCheck =
+                  active !== null
+                    ? checkExitLockedForTravel(active, rawText, false)
+                    : { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+                if (lockCheck.locked) {
+                  proposedCommandType = 'table.sync';
+                  deferDirectorNarrate = false;
+                  summary = lockCheck.byLever
+                    ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                        lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+                      } to unseal it.`
+                    : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+                } else {
+                  const resolvedTitle = resolveTravelDestinationTitle(
+                    runtime,
+                    rawText,
+                    false,
+                    blueprint,
+                  );
+                  const targetTitle =
+                    resolvedTitle !== null && resolvedTitle.trim().length > 0
+                      ? resolvedTitle.trim()
+                      : 'the next area';
+                  proposedCommandType = 'table.travel_scene';
+                  destinationHint = targetTitle;
+                  summary = `Ready to travel to ${targetTitle}. Confirm so the Game Director establishes the next place.`;
+                }
+                doorResolved = true;
+              } else if (persisted !== null) {
                 const hasReturnExit = map.notableFeatures.some(
                   (f) =>
                     (f.referenceKind === 'exit' || f.objectKind === 'exit') &&
@@ -1102,7 +1222,54 @@ export async function resolveDeterministicIntentFallback(
           }
         } else {
           const persisted = resolveDoorIntentForMap(map, ownToken.footprint.anchor, text);
-          if (persisted !== null) {
+          const hasSceneExit = map.notableFeatures.some(
+            (f) => f.referenceKind === 'exit' || f.objectKind === 'exit',
+          );
+          const isForwardExitThroughDoorway =
+            hasSceneExit &&
+            isPassageOrTravelThroughDoorway(rawText) &&
+            (persisted === null ||
+              (persisted.proposedCommandType === 'table.move' &&
+                /step back through/i.test(persisted.summary) &&
+                /\b(?:east|eastern|north|northern|south|southern|onward|forward|ahead)\b/i.test(
+                  text,
+                )));
+
+          if (isForwardExitThroughDoorway) {
+            const { activeSceneInstance, loadMapRuntime } = await import('../table/map-runtime.js');
+            const {
+              checkExitLockedForTravel,
+              resolveTravelDestinationTitle,
+            } = await import('../table/scene-commands.js');
+            const { loadCampaignBlueprint } = await import('../campaigns/campaign-blueprint.js');
+            const [runtime, blueprint] = await Promise.all([
+              loadMapRuntime(options.firestore, options.campaignId),
+              loadCampaignBlueprint(options.firestore, options.campaignId),
+            ]);
+            const active = activeSceneInstance(runtime);
+            const lockCheck =
+              active !== null
+                ? checkExitLockedForTravel(active, rawText, false)
+                : { locked: false, byLever: false, exitLabel: '', leverLabel: null };
+            if (lockCheck.locked) {
+              proposedCommandType = 'table.sync';
+              deferDirectorNarrate = false;
+              summary = lockCheck.byLever
+                ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                    lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+                  } to unseal it.`
+                : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+            } else {
+              const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false, blueprint);
+              const targetTitle =
+                resolvedTitle !== null && resolvedTitle.trim().length > 0
+                  ? resolvedTitle.trim()
+                  : 'the next area';
+              proposedCommandType = 'table.travel_scene';
+              destinationHint = targetTitle;
+              summary = `Ready to travel to ${targetTitle}. Confirm so the Game Director establishes the next place.`;
+            }
+          } else if (persisted !== null) {
             const hasReturnExit = map.notableFeatures.some(
               (f) =>
                 (f.referenceKind === 'exit' || f.objectKind === 'exit') &&

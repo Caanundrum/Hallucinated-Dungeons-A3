@@ -99,6 +99,11 @@ function explained(
   const formulaMarkup = isArmorClass
     ? `<span class="stat-formula-inline record-meta" data-testid="${testId === 'sheet-armor-class' ? 'ac-formula-breakdown' : 'preview-ac-formula-breakdown'}">${escapeHtml(formatArmorClassFormula(derived))}</span>`
     : '';
+  const tooltipFormula = isArmorClass
+    ? `<p class="record-meta">${escapeHtml(formatArmorClassFormula(derived))}</p>`
+    : derived.formulaSummary
+      ? `<p class="record-meta">${escapeHtml(derived.formulaSummary)}</p>`
+      : '';
   return `
     <div class="stat">
       <span class="stat-label">${escapeHtml(label)}</span>
@@ -107,7 +112,7 @@ function explained(
         ${escapeHtml(format(derived.value))}
         <span class="stat-tooltip" role="tooltip" id="${escapeHtml(testId)}-how">
           <span class="stat-tooltip-title">How we got this</span>
-          ${isArmorClass ? `<p class="record-meta">${escapeHtml(formatArmorClassFormula(derived))}</p>` : ''}
+          ${tooltipFormula}
           ${breakdownList(derived)}
         </span>
       </span>

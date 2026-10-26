@@ -8,15 +8,18 @@ import type {
   CampaignBlueprint,
   CampaignRoomBlueprint,
 } from '../../shared/campaign-contract.js';
+import { npcNamesMatch } from '../../shared/campaign-facts.js';
 import { resolveSceneArtUrl } from '../../shared/map-contract.js';
 import {
   declarationIsDoorOpenOrPassage,
   declarationMentionsLabelWord,
   declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
+import { splitPrimaryTargetFromLocative } from '../../shared/utterance-understanding.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import {
   composeDirectorScene,
+  deduplicateSceneFeatureLabels,
   directorNarrationBeat,
   directorOwnedCompositionHint,
   featureLabelWithState,
@@ -54,6 +57,7 @@ export function buildStoredSceneFromRoomBlueprint(
     readonly accountIds?: readonly string[];
     readonly seatTokens?: readonly StoredTokenPosition[];
     readonly visited?: boolean;
+    readonly blueprint?: CampaignBlueprint | null;
   },
 ): StoredSceneInstance {
   const isSanctumRoom =
@@ -111,16 +115,19 @@ export function buildStoredSceneFromRoomBlueprint(
     breakDC?: number | null;
   }> =
     room.exits.length > 0
-      ? room.exits.map((exit, idx) => ({
-          exitId: `${room.sceneId}-exit-${idx + 1}`,
-          label: exit.edgeLabel,
-          destinationHint: exit.edgeLabel,
-          targetSceneId: exit.targetSceneId,
-          ...(exit.lockState !== undefined ? { lockState: exit.lockState } : {}),
-          ...(exit.keyItemId !== undefined ? { keyItemId: exit.keyItemId } : {}),
-          ...(exit.lockpickDC !== undefined ? { lockpickDC: exit.lockpickDC } : {}),
-          ...(exit.breakDC !== undefined ? { breakDC: exit.breakDC } : {}),
-        }))
+      ? room.exits.map((exit, idx) => {
+          const targetRoom = findRoomInBlueprint(options?.blueprint, exit.targetSceneId);
+          return {
+            exitId: `${room.sceneId}-exit-${idx + 1}`,
+            label: exit.edgeLabel,
+            destinationHint: targetRoom !== null ? targetRoom.title : exit.edgeLabel,
+            targetSceneId: exit.targetSceneId,
+            ...(exit.lockState !== undefined ? { lockState: exit.lockState } : {}),
+            ...(exit.keyItemId !== undefined ? { keyItemId: exit.keyItemId } : {}),
+            ...(exit.lockpickDC !== undefined ? { lockpickDC: exit.lockpickDC } : {}),
+            ...(exit.breakDC !== undefined ? { breakDC: exit.breakDC } : {}),
+          };
+        })
       : composed.exits.map((exit) => ({ ...exit }));
   const hasExplicitDoorExit = exits.some((exit) =>
     /\b(?:door|doorway|gate|gateway|hatch|trapdoor|portcullis)\b/i.test(exit.label),
@@ -189,6 +196,20 @@ export function buildStoredSceneFromRoomBlueprint(
     };
   }
 
+  const composedContainers = composed.features.filter((f) => f.objectKind === 'container');
+  const structuredProps = room.structuredProps ?? [];
+  const primaryStructuredContainer = structuredProps.find(
+    (p) => p.objectKind === 'container' && Array.isArray(p.contents) && p.contents.length > 0,
+  );
+  let containerDefaultIndex = 0;
+  const fallbackContainerPools: ReadonlyArray<readonly string[]> = [
+    primaryStructuredContainer?.contents
+      ? [...primaryStructuredContainer.contents]
+      : ['Silver Signet Ring', 'Healing Draught'],
+    ['Weathered Map Fragment', 'Healing Draught'],
+    ['Tarnished Compass', 'Healing Draught'],
+  ];
+
   const baseFeatures: StoredSceneFeature[] = composed.features
     .filter(
       (feature) =>
@@ -210,11 +231,30 @@ export function buildStoredSceneFromRoomBlueprint(
           ...(primaryNpc.heldItems !== undefined ? { heldItems: [...primaryNpc.heldItems] } : {}),
         };
       }
+      if (
+        feature.objectId.endsWith(':poi') &&
+        feature.objectKind === 'container' &&
+        primaryStructuredContainer !== undefined &&
+        !/\b(?:satchel|pack|bag|pouch|chest|crate|box|barrel|coffer|trunk|urn|casket|lockbox|reliquary)\b/i.test(
+          feature.label,
+        )
+      ) {
+        return {
+          ...feature,
+          objectKind: 'prop',
+          label: featureLabelWithState({ ...feature, objectKind: 'prop' }),
+        };
+      }
       if (feature.objectKind === 'container') {
+        const isPrimaryChest =
+          composedContainers.length === 1 || feature.objectId.endsWith(':east-chest');
+        const poolIndex = isPrimaryChest
+          ? 0
+          : Math.min(fallbackContainerPools.length - 1, ++containerDefaultIndex);
         const defaultContents =
           feature.contents && feature.contents.length > 0
             ? [...feature.contents]
-            : ['Silver Signet Ring', 'Healing Draught'];
+            : [...fallbackContainerPools[poolIndex]!];
         return {
           ...feature,
           label: featureLabelWithState(feature),
@@ -251,23 +291,60 @@ export function buildStoredSceneFromRoomBlueprint(
   }
 
   // Materialize structuredProps and string props from the room blueprint onto the grid.
-  const structuredProps = room.structuredProps ?? [];
   structuredProps.forEach((prop, index) => {
     const cleanLabel = prop.label.trim();
     if (cleanLabel.length === 0) return;
     const alreadyExists = baseFeatures.some(
-      (f) => f.label.toLowerCase().includes(cleanLabel.toLowerCase()),
+      (f) =>
+        (prop.propId !== undefined && f.objectId === prop.propId) ||
+        f.label.toLowerCase().includes(cleanLabel.toLowerCase()),
     );
     if (alreadyExists) {
       for (let i = 0; i < baseFeatures.length; i += 1) {
         const f = baseFeatures[i]!;
-        if (f.label.toLowerCase().includes(cleanLabel.toLowerCase())) {
+        if (
+          (prop.propId !== undefined && f.objectId === prop.propId) ||
+          f.label.toLowerCase().includes(cleanLabel.toLowerCase())
+        ) {
           if (prop.lockState === 'locked' && prop.keyItemId) {
             requiredKeys.add(prop.keyItemId);
           }
+          const isLocked = prop.lockState === 'locked';
+          const nextState =
+            (prop.objectState as StoredSceneFeature['state'] | undefined) ??
+            (prop.objectKind === 'container'
+              ? isLocked
+                ? 'locked'
+                : 'closed'
+              : f.state);
+          const relocateToSpawnSide =
+            room.roomIndex === 1 &&
+            prop.objectKind === 'container' &&
+            f.column > Math.floor(composed.columns / 2);
+          const nextCol = relocateToSpawnSide
+            ? Math.max(1, Math.min(composed.columns - 2, composed.spawn.column + 1 + (index % 2)))
+            : f.column;
+          const nextRow = relocateToSpawnSide
+            ? Math.max(
+                1,
+                Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? -1 : 1)),
+              )
+            : f.row;
           baseFeatures[i] = {
             ...f,
+            column: nextCol,
+            row: nextRow,
             objectKind: prop.objectKind,
+            state: nextState,
+            label: featureLabelWithState({
+              ...f,
+              column: nextCol,
+              row: nextRow,
+              label: cleanLabel,
+              objectKind: prop.objectKind,
+              state: nextState,
+              ...(prop.lockState !== undefined ? { lockState: prop.lockState } : {}),
+            }),
             ...(prop.lockState !== undefined ? { lockState: prop.lockState } : {}),
             ...(prop.keyItemId !== undefined ? { keyItemId: prop.keyItemId } : {}),
             ...(prop.lockpickDC !== undefined ? { lockpickDC: prop.lockpickDC } : {}),
@@ -387,8 +464,10 @@ export function buildStoredSceneFromRoomBlueprint(
   room.props.forEach((rawProp, index) => {
     const clean = rawProp.trim();
     if (clean.length === 0) return;
-    const alreadyExists = baseFeatures.some((f) =>
-      f.label.toLowerCase().includes(clean.toLowerCase()),
+    const alreadyExists = baseFeatures.some(
+      (f) =>
+        f.label.toLowerCase().includes(clean.toLowerCase()) ||
+        (f.contents ?? []).some((c) => c.toLowerCase().includes(clean.toLowerCase())),
     );
     if (alreadyExists) return;
     const lower = clean.toLowerCase();
@@ -492,7 +571,7 @@ export function buildStoredSceneFromRoomBlueprint(
     }
   }
 
-  return attachExitsToStoredScene({
+  const attached = attachExitsToStoredScene({
     sceneId: room.sceneId,
     templateId: room.templateId,
     title: room.title,
@@ -509,7 +588,7 @@ export function buildStoredSceneFromRoomBlueprint(
       : {}),
     cells: composed.cells,
     edges: roomEdges,
-    features: baseFeatures,
+    features: deduplicateSceneFeatureLabels(baseFeatures, composed.columns),
     doorStates: roomDoorStates,
     spawn: composed.spawn,
     exits,
@@ -529,6 +608,75 @@ export function buildStoredSceneFromRoomBlueprint(
     milestoneIndex: room.milestoneIndex,
     visited: options?.visited === true,
   });
+
+  // Ensure every lever/mechanism feature sits on a walkable ('floor') cell within 1-2 squares of its target locked exit or door.
+  const updatedCells = [...attached.cells];
+  const updatedFeatures = attached.features.map((feat) => {
+    if (feat.objectKind !== 'lever') {
+      return feat;
+    }
+    const targetExitFeature =
+      attached.features.find(
+        (f) => f.objectKind === 'exit' && f.objectId === feat.targetEdgeOrObjectId,
+      ) ??
+      attached.features.find((f) => f.objectKind === 'exit' && f.lockState === 'locked');
+    const targetDoorEdge =
+      attached.edges.find(
+        (e) => e.kind === 'door' && e.edgeId === feat.targetEdgeOrObjectId,
+      ) ?? attached.edges.find((e) => e.kind === 'door');
+    const anchor = targetExitFeature
+      ? { column: targetExitFeature.column, row: targetExitFeature.row }
+      : targetDoorEdge
+        ? { column: targetDoorEdge.column, row: targetDoorEdge.row }
+        : null;
+    if (anchor === null) {
+      return feat;
+    }
+    const candidates: Array<{ column: number; row: number; dist: number }> = [];
+    for (let r = 1; r <= attached.rows - 2; r += 1) {
+      for (let c = 1; c <= attached.columns - 2; c += 1) {
+        const dist = Math.abs(c - anchor.column) + Math.abs(r - anchor.row);
+        if (dist >= 1 && dist <= 2) {
+          if (c === attached.spawn.column && r === attached.spawn.row) continue;
+          const occupied = attached.features.some(
+            (other) =>
+              other.objectId !== feat.objectId &&
+              other.column === c &&
+              other.row === r,
+          );
+          if (!occupied) {
+            candidates.push({ column: c, row: r, dist });
+          }
+        }
+      }
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+    const chosen = candidates[0] ?? {
+      column: Math.max(1, Math.min(attached.columns - 2, anchor.column)),
+      row: Math.max(1, Math.min(attached.rows - 2, anchor.row)),
+      dist: 1,
+    };
+    const cellIdx = updatedCells.findIndex(
+      (cell) => cell.column === chosen.column && cell.row === chosen.row,
+    );
+    if (cellIdx >= 0 && updatedCells[cellIdx]!.terrain === 'blocked') {
+      updatedCells[cellIdx] = {
+        ...updatedCells[cellIdx]!,
+        terrain: 'floor',
+      };
+    }
+    return {
+      ...feat,
+      column: chosen.column,
+      row: chosen.row,
+    };
+  });
+
+  return {
+    ...attached,
+    cells: updatedCells,
+    features: updatedFeatures,
+  };
 }
 
 export function buildMapRuntimeFromBlueprint(options: {
@@ -555,6 +703,7 @@ export function buildMapRuntimeFromBlueprint(options: {
         ...(options.accountIds !== undefined ? { accountIds: options.accountIds } : {}),
         ...(options.seatTokens !== undefined ? { seatTokens: options.seatTokens } : {}),
         visited: isFirst && options.activateFirstScene === true,
+        blueprint: options.blueprint,
       });
     }
   }
@@ -606,19 +755,28 @@ export async function loadCampaignPremise(
   return summary.length > 0 ? summary : 'an unfolding adventure';
 }
 
-export function sanitizePlayerFacingSceneText(text: string): string {
-  return text
-    .replace(/^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i, '')
-    .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the cellar stairs and connecting doorway')
-    .replace(/beyond the wooden door\b/i, 'beyond the cellar stairs and connecting doorway')
+export function sanitizePlayerFacingSceneText(text: string, isOutdoor = false): string {
+  const base = text.replace(/^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i, '');
+  const withThreshold = isOutdoor
+    ? base
+        .replace(/Investigation and side-trek hall beyond the/i, 'Along the weathered trail beyond the')
+        .replace(/beyond the wooden door\b/i, 'beyond the outer threshold')
+    : base
+        .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the cellar stairs and connecting doorway')
+        .replace(/beyond the wooden door\b/i, 'beyond the cellar stairs and connecting doorway');
+  return withThreshold
     .replace(/\s*Clues and hazards test the party before the Milestone \d+ climax\./i, ' Hidden clues and lurking hazards guard the way forward.')
     .replace(/^Climax chamber for Milestone \d+\.\s*Resolving the threat here elevates the party to Level \d+\./i, 'The inner sanctum, where ancient stonework and flickering braziers frame the heart of the danger.')
     .trim();
 }
 
 function instanceToComposed(prior: NonNullable<ReturnType<typeof activeSceneInstance>>): ComposedScene {
-  const cleanedBanner = sanitizePlayerFacingSceneText(prior.sceneBanner);
-  const cleanedDescription = sanitizePlayerFacingSceneText(prior.description ?? prior.mood);
+  const isOutdoor =
+    prior.templateId.startsWith('exterior_') ||
+    prior.templateId.startsWith('landmark_') ||
+    !prior.environment.endsWith('_interior');
+  const cleanedBanner = sanitizePlayerFacingSceneText(prior.sceneBanner, isOutdoor);
+  const cleanedDescription = sanitizePlayerFacingSceneText(prior.description ?? prior.mood, isOutdoor);
   return {
     sceneId: prior.sceneId,
     templateId: prior.templateId,
@@ -852,7 +1010,7 @@ export function interactObjectRuntime(options: {
           edge.kind === 'door' &&
           (edge.edgeId === targetId ||
             edge.keyItemId === 'Wall Lever Mechanism' ||
-            /\b(?:lever|mechanism)\b/i.test(edge.keyItemId ?? ''))
+            /\b(?:lever|mechanism|switch|winch)\b/i.test(edge.keyItemId ?? ''))
         ) {
           nextDoors[edge.edgeId] = 'open';
           instanceDoors[edge.edgeId] = 'open';
@@ -869,7 +1027,7 @@ export function interactObjectRuntime(options: {
         if (
           exit.exitId === targetId ||
           exit.keyItemId === 'Wall Lever Mechanism' ||
-          /\b(?:lever|mechanism)\b/i.test(exit.keyItemId ?? '')
+          /\b(?:lever|mechanism|switch|winch)\b/i.test(exit.keyItemId ?? '')
         ) {
           unlockedAnyMechanism = true;
           return {
@@ -885,7 +1043,7 @@ export function interactObjectRuntime(options: {
           f.objectId === targetId ||
           (f.objectKind === 'exit' &&
             (f.keyItemId === 'Wall Lever Mechanism' ||
-              /\b(?:lever|mechanism)\b/i.test(f.keyItemId ?? '') ||
+              /\b(?:lever|mechanism|switch|winch)\b/i.test(f.keyItemId ?? '') ||
               updatedExits.some((e) => e.exitId === f.objectId && e.lockState === 'unlocked')));
         if (!matchesLeverTarget) {
           return f;
@@ -928,8 +1086,13 @@ export function interactObjectRuntime(options: {
       });
 
       if (unlockedAnyMechanism) {
-        leverUnlockedClause =
-          ' Counterweights grind inside the wall and unseal the locked passage!';
+        const isOutdoorActive =
+          updatedActive.templateId.startsWith('exterior_') ||
+          updatedActive.templateId.startsWith('landmark_') ||
+          !updatedActive.environment.endsWith('_interior');
+        leverUnlockedClause = isOutdoorActive
+          ? ' Counterweights grind and unseal the locked passage ahead!'
+          : ' Counterweights grind inside the wall and unseal the locked passage!';
         const updatedInstance: StoredSceneInstance = {
           ...updatedActive,
           edges: updatedEdges,
@@ -1020,15 +1183,33 @@ export function lootContainerRuntime(options: {
     return itemTokens.some((tok) => declarationMentionsLabelWord(searchPhrase, tok));
   };
 
-  const targetContainer =
-    (options.objectId !== undefined
+  const openContainers = unlockedContainersWithContents.filter((f) => f.state === 'open');
+  const explicitById =
+    options.objectId !== undefined
       ? unlockedContainersWithContents.find((f) => f.objectId === options.objectId)
-      : undefined) ??
+      : undefined;
+  // If an unopened container was passed by objectId without the player naming that container,
+  // and an ALREADY-OPEN container holds the requested item, bind to the open container!
+  const openContainerWithMatchingItem = openContainers.find((f) =>
+    (f.contents ?? []).some(itemMatchesSearch),
+  );
+  const effectiveExplicit =
+    explicitById !== undefined &&
+    explicitById.state !== 'open' &&
+    openContainerWithMatchingItem !== undefined &&
+    scoreFeatureLabelMatch(searchPhrase, explicitById.label).score === 0
+      ? openContainerWithMatchingItem
+      : explicitById;
+
+  const targetContainer =
+    effectiveExplicit ??
+    openContainerWithMatchingItem ??
+    openContainers.find((f) => scoreFeatureLabelMatch(searchPhrase, f.label).score > 0) ??
     unlockedContainersWithContents.find((f) => (f.contents ?? []).some(itemMatchesSearch)) ??
     unlockedContainersWithContents.find(
       (f) => scoreFeatureLabelMatch(searchPhrase, f.label).score > 0,
     ) ??
-    unlockedContainersWithContents.find((f) => f.state === 'open') ??
+    openContainers[0] ??
     unlockedContainersWithContents[0]!;
 
   const currentContents = [...(targetContainer.contents ?? [])];
@@ -1086,7 +1267,12 @@ export function transferNpcItemRuntime(options: {
   );
   const targetNpc =
     (options.objectId !== undefined
-      ? active.features.find((f) => f.objectId === options.objectId)
+      ? active.features.find(
+          (f) =>
+            f.objectId === options.objectId ||
+            ((f.objectKind === 'npc' || f.referenceKind === 'npc') &&
+              npcNamesMatch(f.label, options.objectId ?? '')),
+        )
       : undefined) ?? npcsWithItems[0];
   if (
     targetNpc === undefined ||
@@ -1169,20 +1355,30 @@ function resolveGraphTargetExit(
   destinationHint: string,
   returnToPrevious: boolean,
 ): string | null {
-  if (returnToPrevious || /\breturn|go back|head back|retreat\b/i.test(destinationHint)) {
+  if (returnToPrevious || /\b(?:return|go\s+back|head\s+back|retreat|back\s+to)\b/i.test(destinationHint)) {
     const backExit = active.exits.find(
       (exit) =>
         typeof exit.targetSceneId === 'string' &&
-        (/\b(return|back)\b/i.test(exit.label) || exit.exitId.endsWith('-back')),
+        (/\b(?:return|back)\b/i.test(exit.label) || exit.exitId.endsWith('-back')),
     );
     return backExit?.targetSceneId ?? null;
   }
-  const graphExits = active.exits.filter(
+  const forwardGraphExits = active.exits.filter(
     (exit) =>
       typeof exit.targetSceneId === 'string' &&
       exit.targetSceneId.length > 0 &&
-      !exit.exitId.endsWith('-back'),
+      !exit.exitId.endsWith('-back') &&
+      !/\b(?:return|back\s+to|way\s+back)\b/i.test(exit.label),
   );
+  const graphExits =
+    forwardGraphExits.length > 0
+      ? forwardGraphExits
+      : active.exits.filter(
+          (exit) =>
+            typeof exit.targetSceneId === 'string' &&
+            exit.targetSceneId.length > 0 &&
+            !exit.exitId.endsWith('-back'),
+        );
   if (graphExits.length === 0) {
     return null;
   }
@@ -1205,6 +1401,28 @@ function resolveGraphTargetExit(
         lower.includes(exit.destinationHint.toLowerCase()))
     ) {
       return exit.targetSceneId;
+    }
+  }
+  // Check compass bearing match against exit features or labels.
+  const compassMatch = /\b(north|northern|south|southern|east|eastern|west|western)\b/i.exec(lower);
+  if (compassMatch) {
+    const dir = compassMatch[1]!.toLowerCase();
+    for (const exit of graphExits) {
+      if (new RegExp(`\\b${dir.slice(0, 4)}`, 'i').test(exit.label)) {
+        return exit.targetSceneId ?? null;
+      }
+      const exitFeat = active.features.find(
+        (f) => f.objectId === exit.exitId && f.objectKind === 'exit',
+      );
+      if (exitFeat) {
+        const isEast = dir.startsWith('east') && exitFeat.column >= active.columns - 2;
+        const isWest = dir.startsWith('west') && exitFeat.column <= 1;
+        const isNorth = dir.startsWith('north') && exitFeat.row <= 1;
+        const isSouth = dir.startsWith('south') && exitFeat.row >= active.rows - 2;
+        if (isEast || isWest || isNorth || isSouth) {
+          return exit.targetSceneId ?? null;
+        }
+      }
     }
   }
   return graphExits[0]?.targetSceneId ?? null;
@@ -1244,6 +1462,23 @@ export function resolveTravelDestinationTitle(
     if (blueprintRoom !== null) {
       return blueprintRoom.title;
     }
+    const matchedGraphExit = active.exits.find((e) => e.targetSceneId === graphTargetId);
+    if (
+      matchedGraphExit !== undefined &&
+      matchedGraphExit.destinationHint.trim().length > 0 &&
+      matchedGraphExit.destinationHint.trim().toLowerCase() !== active.title.trim().toLowerCase()
+    ) {
+      if (
+        matchedGraphExit.destinationHint.trim().toLowerCase() ===
+          matchedGraphExit.label.trim().toLowerCase() &&
+        /-r3$/.test(graphTargetId) &&
+        active.title.includes(' — ')
+      ) {
+        const basePlace = active.title.split(' — ')[0]!.trim();
+        return `${basePlace} — Sanctum`;
+      }
+      return matchedGraphExit.destinationHint.trim();
+    }
   }
   if (returnToPrevious) {
     const stack = runtime.sceneStack ?? [];
@@ -1253,7 +1488,11 @@ export function resolveTravelDestinationTitle(
     }
   }
   const matchedExit = matchPresentedExit(active.exits, destinationHint);
-  if (matchedExit !== null && matchedExit.destinationHint.trim().length > 0) {
+  if (
+    matchedExit !== null &&
+    matchedExit.destinationHint.trim().length > 0 &&
+    matchedExit.destinationHint.trim().toLowerCase() !== active.title.trim().toLowerCase()
+  ) {
     return matchedExit.destinationHint.trim();
   }
   return null;
@@ -1305,7 +1544,7 @@ export function checkExitLockedForTravel(
       f.objectKind === 'lever' &&
       (f.targetEdgeOrObjectId === targetExit.exitId ||
         targetExit.keyItemId === 'Wall Lever Mechanism' ||
-        /\b(?:lever|mechanism)\b/i.test(targetExit.keyItemId ?? '')),
+        /\b(?:lever|mechanism|switch|winch)\b/i.test(targetExit.keyItemId ?? '')),
   );
   const leverUnpulled =
     linkedLever !== undefined &&
@@ -1324,7 +1563,7 @@ export function checkExitLockedForTravel(
   const byLever =
     linkedLever !== undefined ||
     targetExit.keyItemId === 'Wall Lever Mechanism' ||
-    /\b(?:lever|mechanism)\b/i.test(targetExit.keyItemId ?? '');
+    /\b(?:lever|mechanism|switch|winch)\b/i.test(targetExit.keyItemId ?? '');
   return {
     locked: true,
     byLever,
@@ -1713,17 +1952,22 @@ export function scoreFeatureLabelMatch(
     };
   }
 
+  const { primaryClause, locativeQualifier } = splitPrimaryTargetFromLocative(declaration);
+  const effectiveDeclaration = primaryClause.trim().length > 0 ? primaryClause : declaration;
+
   const headNoun = tokens[tokens.length - 1]!;
   const prefixTokens = tokens.slice(0, -1);
   const exactPhraseMatch =
     baseLower.length >= 3 &&
-    new RegExp(`\\b${baseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(declaration);
-  const headNounMatch = declarationMentionsLabelWord(declaration, headNoun);
+    new RegExp(`\\b${baseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(
+      effectiveDeclaration,
+    );
+  const headNounMatch = declarationMentionsLabelWord(effectiveDeclaration, headNoun);
 
   let secondaryNounMatches = 0;
   let modifierMatches = 0;
   for (const tok of prefixTokens) {
-    if (!declarationMentionsLabelWord(declaration, tok)) {
+    if (!declarationMentionsLabelWord(effectiveDeclaration, tok)) {
       continue;
     }
     if (COMMON_MODIFIER_ADJECTIVES.has(tok)) {
@@ -1733,17 +1977,41 @@ export function scoreFeatureLabelMatch(
     }
   }
 
+  // If the primary clause didn't match this feature's head or secondary noun, check if it was only mentioned in the locative qualifier.
+  if (
+    !exactPhraseMatch &&
+    !headNounMatch &&
+    secondaryNounMatches === 0 &&
+    modifierMatches === 0 &&
+    locativeQualifier.length > 0 &&
+    declarationMentionsLabelWord(locativeQualifier, headNoun)
+  ) {
+    return {
+      score: 3,
+      exactPhraseMatch: false,
+      headNounMatch: false,
+      secondaryNounMatches: 0,
+      modifierMatches: 1,
+      baseLabel,
+      headNoun,
+    };
+  }
+
   // If a multi-word feature ONLY matched a leading modifier adjective (e.g., "sealed" or "iron")
   // and its head noun is NOT in the declaration, check whether the declaration followed that
   // modifier with a different noun ("sealed <other-noun>"). If so, this feature is a modifier
   // collision and must score 0.
   if (!exactPhraseMatch && !headNounMatch && secondaryNounMatches === 0 && modifierMatches > 0) {
     const matchedModifiers = prefixTokens.filter(
-      (tok) => COMMON_MODIFIER_ADJECTIVES.has(tok) && declarationMentionsLabelWord(declaration, tok),
+      (tok) =>
+        COMMON_MODIFIER_ADJECTIVES.has(tok) &&
+        declarationMentionsLabelWord(effectiveDeclaration, tok),
     );
     const followedByDifferentNoun = matchedModifiers.some((mod) => {
       const escapedMod = mod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const m = new RegExp(`\\b${escapedMod}\\s+([a-z][a-z0-9'-]{2,})\\b`, 'i').exec(declaration);
+      const m = new RegExp(`\\b${escapedMod}\\s+([a-z][a-z0-9'-]{2,})\\b`, 'i').exec(
+        effectiveDeclaration,
+      );
       if (m === null) {
         return false;
       }
@@ -1798,13 +2066,15 @@ export function rankInteractablesByDeclaration(
   if (active === null) {
     return [];
   }
+  const { primaryClause } = splitPrimaryTargetFromLocative(declaration);
+  const effectiveDeclaration = primaryClause.trim().length > 0 ? primaryClause : declaration;
   if (
-    declarationIsDoorOpenOrPassage(declaration) ||
-    declarationNegatesDoorOpen(declaration)
+    declarationIsDoorOpenOrPassage(effectiveDeclaration) ||
+    declarationNegatesDoorOpen(effectiveDeclaration)
   ) {
     return [];
   }
-  const text = declaration.toLowerCase();
+  const text = effectiveDeclaration.toLowerCase();
   const interactable = active.features.filter(
     (feature) =>
       feature.interactable &&
@@ -1821,6 +2091,26 @@ export function rankInteractablesByDeclaration(
   const anyHeadOrSecondaryNounMatched = rawScores.some(
     (entry) => entry.labelScore.headNounMatch || entry.labelScore.secondaryNounMatches > 0,
   );
+
+  const wantsOpenState =
+    /\b(?:the|an|that|this)\s+(?:open|opened|unlocked|unsealed)\s+[a-z]/i.test(text) ||
+    /\b(?:loot|search|inspect|examine|check|empty)\s+(?:the\s+)?(?:open|opened|unlocked)\b/i.test(
+      text,
+    );
+  const wantsClosedOrLockedState =
+    /\b(?:the|a|that|this)\s+(?:closed|locked|sealed|shut|unopened)\s+[a-z]/i.test(text) ||
+    /\b(?:open|unlock|unseal|inspect|examine|pry|force)\s+(?:the\s+)?(?:closed|locked|sealed|unopened)\b/i.test(
+      text,
+    );
+  const isOpenOrUnlockVerb = /^\s*(?:i\s+|we\s+)?(?:open|unlock|unseal|unlatch|pry|force)\b/i.test(
+    text,
+  );
+  const isLootOrTakeVerb = /^\s*(?:i\s+|we\s+)?(?:loot|empty|take|grab|collect|claim)\b/i.test(
+    text,
+  );
+  const wantsWest = /\b(?:west|western|left)\b/i.test(text);
+  const wantsEast = /\b(?:east|eastern|right)\b/i.test(text);
+  const midCol = Math.floor(active.columns / 2);
 
   const ranked = rawScores
     .map(({ feature, labelScore }) => {
@@ -1878,6 +2168,40 @@ export function rankInteractablesByDeclaration(
           /\b(lever|switch|pull|flip|toggle|winch|crank|valve|mechanism)\b/.test(text)
         ) {
           score += 4;
+        }
+      }
+
+      if (score > 0) {
+        const isClosedOrLocked =
+          feature.state === 'closed' ||
+          feature.state === 'locked' ||
+          feature.lockState === 'locked';
+        if (wantsOpenState) {
+          if (feature.state === 'open' || feature.state === 'unlocked') {
+            score += 50;
+          } else if (isClosedOrLocked) {
+            score = Math.max(1, score - 40);
+          }
+        } else if (wantsClosedOrLockedState) {
+          if (isClosedOrLocked) {
+            score += 50;
+          } else if (feature.state === 'open') {
+            score = Math.max(1, score - 40);
+          }
+        } else if (isOpenOrUnlockVerb && kind === 'container') {
+          if (isClosedOrLocked) {
+            score += 25;
+          }
+        } else if (isLootOrTakeVerb && kind === 'container') {
+          if (feature.state === 'open') {
+            score += 35;
+          }
+        }
+
+        if (wantsWest && !wantsEast && feature.column < midCol) {
+          score += 30;
+        } else if (wantsEast && !wantsWest && feature.column >= midCol) {
+          score += 30;
         }
       }
 

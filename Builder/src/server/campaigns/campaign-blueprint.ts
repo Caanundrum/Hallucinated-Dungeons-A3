@@ -12,6 +12,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import type { Firestore } from 'firebase-admin/firestore';
 import type {
   CampaignBlueprint,
   CampaignBlueprintBeat,
@@ -20,7 +21,17 @@ import type {
   CampaignTone,
 } from '../../shared/campaign-contract.js';
 import { CAMPAIGN_TONE_LABELS, isCampaignTone } from '../../shared/campaign-contract.js';
-import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
+import {
+  APPOSITIVE_PLACE_CLAUSE_RE,
+  expandNpcNameVariants,
+  INTERPERSONAL_CONTACT_VERB_RE,
+  isCompoundPlaceWord,
+  LOCATIVE_PREPOSITIONS,
+  matchesExcludedCharacterName,
+  PERSONAL_ROLE_TITLES,
+  STRICT_LOCATIVE_PREPOSITIONS,
+} from '../../shared/campaign-facts.js';
+import { COLLECTIONS } from '../persistence/firestore.js';
 import { XP_THRESHOLDS } from '../rules/engine/xp-progression.js';
 import {
   contextualContainerLabelForTemplate,
@@ -87,7 +98,7 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   if (/\b(cottage|cabin|hut)\b/.test(text)) {
     return { locationKind: 'cottage', locationPhrase: 'a modest cottage' };
   }
-  if (/\b(marsh|bog|fen)\b/.test(text)) {
+  if (/\b(?:marsh|bog|fen|mire)\b|[a-z]{2,}(?:marsh|bog|fen|mire)\b/.test(text)) {
     return { locationKind: 'marsh', locationPhrase: 'a marsh settlement' };
   }
   if (/\b(forest|woods|grove|crossroads|clearing)\b/.test(text)) {
@@ -216,7 +227,8 @@ const MODIFIER_LEXICON = new Set([
 const EXIT_QUALIFIERS = new Set([
   'warehouse', 'cellar', 'back', 'front', 'side', 'kitchen', 'cargo', 'service', 'garden',
   'guild', 'trap', 'east', 'west', 'north', 'south', 'tower', 'crypt', 'servants', 'freight',
-  'loading', 'storm', 'vault', 'cell',
+  'loading', 'storm', 'vault', 'cell', 'lantern', 'winding', 'sunken', 'overgrown', 'plank',
+  'timber', 'misty',
 ]);
 
 const PROP_NOUNS = new Set([
@@ -228,12 +240,15 @@ const PROP_NOUNS = new Set([
   'note', 'package', 'parcel', 'sigil', 'banner', 'relic', 'vial', 'bottle', 'flask', 'hourglass',
   'compass', 'skull', 'urn', 'coffin', 'sarcophagus', 'tapestry', 'painting', 'portrait', 'clock',
   'lock', 'chain', 'hammer', 'anvil', 'cauldron', 'pendant', 'brooch', 'medallion', 'cypher',
-  'cipher', 'clue', 'evidence', 'token', 'badge', 'codex', 'manifest', 'writ',
+  'cipher', 'clue', 'evidence', 'token', 'badge', 'codex', 'manifest', 'writ', 'astrolabe',
+  'spyglass', 'sextant', 'chronometer', 'prism', 'lens', 'tablet', 'coffer', 'reliquary',
+  'lockbox', 'cabinet',
 ]);
 
 const EXIT_NOUNS = new Set([
   'door', 'doorway', 'gate', 'gateway', 'hatch', 'trapdoor', 'stairs', 'staircase', 'stairway',
   'passage', 'passageway', 'archway', 'portcullis', 'tunnel', 'ladder', 'exit', 'entrance',
+  'trail', 'path', 'pathway', 'causeway', 'bridge', 'corridor',
 ]);
 
 const LIGHT_SOURCE_NOUNS = new Set(['lantern', 'lamp', 'torch', 'candle', 'candlestick', 'sconce', 'brazier']);
@@ -297,62 +312,168 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     const start = match.index ?? 0;
     const words = match[0].split(/\s+/);
     let hadThe = false;
+    let strippedLocativePrep = '';
     // If a capitalized word at the start of a sentence/clause is followed by an article ("The", "A", "An")
     // and a proper name (e.g. "Remove The Five-Crowned Wyrm"), strip the sentence-opening imperative/verb.
     const articleIdx = words.findIndex((w, idx) => idx > 0 && /^(?:the|a|an)$/i.test(w));
     if (articleIdx > 0 && words.length - articleIdx - 1 >= 2) {
+      for (let k = 0; k < articleIdx; k += 1) {
+        const wLower = words[k]!.toLowerCase();
+        if (LOCATIVE_PREPOSITIONS.has(wLower)) {
+          strippedLocativePrep = wLower;
+        }
+      }
       hadThe = words[articleIdx]!.toLowerCase() === 'the';
       words.splice(0, articleIdx + 1);
     }
     while (words.length > 0 && LEADING_STOPWORDS.has(words[0]!.toLowerCase())) {
-      if (words[0]!.toLowerCase() === 'the') {
+      const wLower = words[0]!.toLowerCase();
+      if (wLower === 'the') {
         hadThe = true;
+      }
+      if (LOCATIVE_PREPOSITIONS.has(wLower)) {
+        strippedLocativePrep = wLower;
       }
       words.shift();
     }
     const capitalised = words.filter((word) => /^[A-Z]/.test(word));
-    if (capitalised.length < 2) {
+    if (capitalised.length === 0) {
       continue;
     }
     const label = words.join(' ');
     const before = premise.slice(0, start).trimEnd();
-    const previousWord = (before.match(/([A-Za-z]+)$/)?.[1] ?? '').toLowerCase();
-    hadThe = hadThe || previousWord === 'the';
+    const after = premise.slice(start + match[0].length);
+    const beforeWord = (before.match(/([A-Za-z]+)$/)?.[1] ?? '').toLowerCase();
+    const previousWord = strippedLocativePrep || beforeWord;
+    hadThe = hadThe || previousWord === 'the' || beforeWord === 'the';
     const first = words[0]!.toLowerCase();
     const last = words[words.length - 1]!.toLowerCase();
     const hasNpcTitle = words.some((word) => NPC_TITLES.has(word.toLowerCase()));
     const isArchitecturalRoom = words.some((word) =>
       ARCHITECTURAL_ROOM_NOUNS.has(word.toLowerCase()),
     );
+    const hasAppositivePlace = APPOSITIVE_PLACE_CLAUSE_RE.test(after);
+    const hasCompoundPlace = words.some((word) => isCompoundPlaceWord(word));
+    const precededByStrictLocative = STRICT_LOCATIVE_PREPOSITIONS.has(previousWord);
 
-    if (isArchitecturalRoom) {
+    if (capitalised.length === 1) {
+      if (
+        !LEADING_STOPWORDS.has(first) &&
+        !NPC_TITLES.has(first) &&
+        !NPC_TITLES.has(beforeWord) &&
+        (hasAppositivePlace || hasCompoundPlace || precededByStrictLocative)
+      ) {
+        pushUnique(places, label);
+      }
+      continue;
+    }
+
+    if (isArchitecturalRoom || hasAppositivePlace) {
       pushUnique(places, label);
-    } else if (hasNpcTitle || NPC_TITLES.has(first) || NPC_TITLES.has(previousWord)) {
+    } else if (hasNpcTitle || NPC_TITLES.has(first) || NPC_TITLES.has(beforeWord)) {
       pushUnique(npcs, label);
+    } else if (precededByStrictLocative) {
+      pushUnique(places, label);
     } else if (
       COMMON_SURNAMES_THAT_ARE_PLACE_NOUNS.has(last) &&
       !hadThe &&
-      !PLACE_PREPOSITIONS.has(previousWord)
+      !PLACE_PREPOSITIONS.has(previousWord) &&
+      !LOCATIVE_PREPOSITIONS.has(previousWord)
     ) {
       pushUnique(npcs, label);
-    } else if (PLACE_NOUNS.has(last)) {
+    } else if (PLACE_NOUNS.has(last) || hasCompoundPlace) {
       pushUnique(places, label);
-    } else if (hadThe || PLACE_PREPOSITIONS.has(previousWord)) {
+    } else if (hadThe || PLACE_PREPOSITIONS.has(previousWord) || LOCATIVE_PREPOSITIONS.has(previousWord)) {
       pushUnique(places, label);
     } else {
       pushUnique(npcs, label);
     }
   }
 
-  // Also extract single capitalized names preceded by an NPC role/title (e.g., "miller Orin", "the miller Orin")
-  const singleNamePattern = /\b(?:the\s+)?([a-z]+)\s+([A-Z][A-Za-z'’-]+)\b/g;
+  // Extract single-word or multi-word capitalized proper places preceded by a strict locative preposition
+  // or followed by an appositive place clause (e.g. "At <Place>, a marsh station" or "in <Place>").
+  const locativePlacePattern =
+    /\b(?:[Aa]t|[Ii]n|[Ii]nside|[Ii]nto|[Ww]ithin|[Nn]ear|[Bb]eneath|[Uu]nder|[Bb]eyond|[Aa]cross|[Aa]round|[Tt]hrough|[Aa]top|[Bb]eside|[Oo]utside|[Aa]long|[Aa]mid|[Aa]midst)\s+([A-Z][A-Za-z'’-]{2,}(?:\s+[A-Z][A-Za-z'’-]{2,})*)/g;
+  for (const match of premise.matchAll(locativePlacePattern)) {
+    const rawCandidate = match[1]!.trim();
+    const candidateWords = rawCandidate.split(/\s+/);
+    while (
+      candidateWords.length > 0 &&
+      LEADING_STOPWORDS.has(candidateWords[0]!.toLowerCase())
+    ) {
+      candidateWords.shift();
+    }
+    if (candidateWords.length === 0) {
+      continue;
+    }
+    const candidate = candidateWords.join(' ');
+    const firstLower = candidateWords[0]!.toLowerCase();
+    const afterIdx = (match.index ?? 0) + match[0].length;
+    const afterSlice = premise.slice(afterIdx);
+    if (
+      !LEADING_STOPWORDS.has(firstLower) &&
+      !NPC_TITLES.has(firstLower) &&
+      !PERSONAL_ROLE_TITLES.has(firstLower) &&
+      (APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
+        candidateWords.some((w) => isCompoundPlaceWord(w) || PLACE_NOUNS.has(w.toLowerCase())) ||
+        !INTERPERSONAL_CONTACT_VERB_RE.test(afterSlice))
+    ) {
+      pushUnique(places, candidate);
+    }
+  }
+
+  // Also extract any standalone capitalized word followed by an appositive place description
+  const appositivePlacePattern = /\b([A-Z][A-Za-z'’-]{2,}(?:\s+[A-Z][A-Za-z'’-]{2,})*)(?=\s*,)/g;
+  for (const match of premise.matchAll(appositivePlacePattern)) {
+    const rawCandidate = match[1]!.trim();
+    const candidateWords = rawCandidate.split(/\s+/);
+    while (
+      candidateWords.length > 0 &&
+      LEADING_STOPWORDS.has(candidateWords[0]!.toLowerCase())
+    ) {
+      candidateWords.shift();
+    }
+    if (candidateWords.length === 0) {
+      continue;
+    }
+    const candidate = candidateWords.join(' ');
+    const firstLower = candidateWords[0]!.toLowerCase();
+    const afterIdx = (match.index ?? 0) + match[0].length;
+    const afterSlice = premise.slice(afterIdx);
+    if (
+      !NPC_TITLES.has(firstLower) &&
+      !PERSONAL_ROLE_TITLES.has(firstLower) &&
+      APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice)
+    ) {
+      pushUnique(places, candidate);
+    }
+  }
+
+  // Also extract any standalone capitalized compound place word (e.g., words ending in -house, -hall, -keep, -fen, -mire)
+  const compoundPlaceWordPattern = /\b([A-Z][A-Za-z'’-]{3,})\b/g;
+  for (const match of premise.matchAll(compoundPlaceWordPattern)) {
+    const word = match[1]!;
+    const lower = word.toLowerCase();
+    if (
+      !LEADING_STOPWORDS.has(lower) &&
+      !NPC_TITLES.has(lower) &&
+      !PERSONAL_ROLE_TITLES.has(lower) &&
+      isCompoundPlaceWord(word)
+    ) {
+      pushUnique(places, word);
+    }
+  }
+
+  // Also extract single capitalized names preceded by an NPC role/title (e.g., "miller Orin", "Warden Elira")
+  const singleNamePattern = /\b(?:the\s+)?([A-Za-z]+)\s+([A-Z][A-Za-z'’-]+)\b/g;
   for (const match of premise.matchAll(singleNamePattern)) {
     const roleWord = match[1]!.toLowerCase();
     const candidateName = match[2]!;
     if (
-      NPC_TITLES.has(roleWord) &&
+      (NPC_TITLES.has(roleWord) || PERSONAL_ROLE_TITLES.has(roleWord)) &&
       !LEADING_STOPWORDS.has(candidateName.toLowerCase()) &&
-      !PLACE_NOUNS.has(candidateName.toLowerCase())
+      !PLACE_NOUNS.has(candidateName.toLowerCase()) &&
+      !isCompoundPlaceWord(candidateName)
     ) {
       pushUnique(npcs, candidateName);
     }
@@ -360,18 +481,52 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
 
   // Also extract names explicitly noted as waiting, present, or commissioning/asking the party
   const waitingNamePattern =
-    /\b([A-Z][A-Za-z'’-]{2,})\s+(?:is\s+waiting|waits|greets|meets|asks|hires|warns|summons|implores|begs|tells|urges|sends|commissioned|employs|awaits)\b/g;
+    /\b([A-Z][A-Za-z'’-]{2,})\s+(?:is\s+waiting|waits|greets|meets|asks|asked|hires|hired|warns|warned|summons|summoned|implores|implored|begs|begged|tells|told|urges|urged|sends|commissioned|employs|awaits|approaches|approached|recruits|recruited|tasks|tasked)\b/g;
   for (const match of premise.matchAll(waitingNamePattern)) {
     const candidateName = match[1]!;
     if (
       !LEADING_STOPWORDS.has(candidateName.toLowerCase()) &&
-      !PLACE_NOUNS.has(candidateName.toLowerCase())
+      !PLACE_NOUNS.has(candidateName.toLowerCase()) &&
+      !isCompoundPlaceWord(candidateName)
     ) {
       pushUnique(npcs, candidateName);
     }
   }
 
-  return { npcs, places };
+  // Also extract single-word proper names attached to disappearance/victim predicates
+  const missingSingleNamePattern =
+    /\b([A-Z][A-Za-z'’-]{2,})\s+(?:has\s+|had\s+|was\s+|is\s+)?(?:vanished|disappeared|went\s+missing|is\s+missing|was\s+kidnapped|was\s+taken|was\s+abducted|has\s+not\s+returned|never\s+returned|was\s+lost|was\s+captured)\b/g;
+  for (const match of premise.matchAll(missingSingleNamePattern)) {
+    const candidateName = match[1]!;
+    if (
+      !LEADING_STOPWORDS.has(candidateName.toLowerCase()) &&
+      !PLACE_NOUNS.has(candidateName.toLowerCase()) &&
+      !isCompoundPlaceWord(candidateName)
+    ) {
+      pushUnique(npcs, candidateName);
+    }
+  }
+
+  // Strictly exclude any identified Place (or compound place word without an NPC title) from npcs.
+  const placeSet = new Set(places.map((p) => p.toLowerCase()));
+  const filteredNpcs = npcs.filter((npc) => {
+    const lower = npc.toLowerCase();
+    if (placeSet.has(lower)) {
+      return false;
+    }
+    if (places.some((p) => p.toLowerCase().includes(lower) || lower.includes(p.toLowerCase()))) {
+      const words = npc.split(/\s+/);
+      const hasTitle = words.some(
+        (w) => NPC_TITLES.has(w.toLowerCase()) || PERSONAL_ROLE_TITLES.has(w.toLowerCase()),
+      );
+      if (!hasTitle) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  return { npcs: filteredNpcs, places };
 }
 
 function extractModifierPhrases(
@@ -384,6 +539,15 @@ function extractModifierPhrases(
   for (let i = 0; i < tokens.length; i += 1) {
     const noun = tokens[i]!.toLowerCase();
     if (!nouns.has(noun)) {
+      continue;
+    }
+    const nextToken = tokens[i + 1];
+    if (
+      nouns === PROP_NOUNS &&
+      nextToken !== undefined &&
+      /^[a-z]/.test(nextToken) &&
+      PLACE_NOUNS.has(nextToken.toLowerCase())
+    ) {
       continue;
     }
     const parts: string[] = [noun];
@@ -553,28 +717,51 @@ export function classifyNpcRoles(
   premise: string,
 ): ClassifiedNpcRoles {
   const missing: string[] = [];
-  const present: string[] = [];
+  const priorityPresent: string[] = [];
+  const otherPresent: string[] = [];
   const antagonists: string[] = [];
 
   for (const name of npcs) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const isDirectlyMissing =
-      new RegExp(
-        `\\b${escaped}\\b\\s+(?:has\\s+|had\\s+|was\\s+|is\\s+)?(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared)\\b`,
-        'i',
-      ).test(premise) ||
-      new RegExp(
-        `\\b(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared)\\s+(?:[a-z-]+\\s+){0,2}${escaped}\\b`,
-        'i',
-      ).test(premise) ||
-      new RegExp(
-        `\\b(?:find|rescue|save)\\s+(?:missing\\s+)?(?:courier\\s+|the\\s+)?${escaped}(?:\\s+alive)?\\b`,
-        'i',
-      ).test(premise);
+    const variants = expandNpcNameVariants(name);
+    const isDirectlyMissing = variants.some((variant) => {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return (
+        new RegExp(
+          `\\b${escaped}\\b\\s*(?:,\\s*[^,.;!?]{1,50},\\s*)?(?:has\\s+|had\\s+|was\\s+|is\\s+|have\\s+|went\\s+)?(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared|abducted|taken|captured|seized|fell\\s+silent|failed\\s+to\\s+return|not\\s+returned|never\\s+returned)\\b`,
+          'i',
+        ).test(premise) ||
+        new RegExp(
+          `\\b(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared|abducted)\\s+(?:[a-z'-]+\\s+){0,3}${escaped}\\b`,
+          'i',
+        ).test(premise) ||
+        new RegExp(
+          `\\b(?:find|rescue|save|locate|recover|search\\s+for|trace|track(?:\\s+down)?)\\s+(?:missing\\s+)?(?:[a-z'-]+\\s+){0,3}${escaped}(?:\\s+alive)?\\b`,
+          'i',
+        ).test(premise) ||
+        new RegExp(
+          `\\b(?:what\\s+happened\\s+to|whereabouts\\s+of|fate\\s+of|disappearance\\s+of|vanishing\\s+of)\\s+(?:[a-z'-]+\\s+){0,3}${escaped}\\b`,
+          'i',
+        ).test(premise)
+      );
+    });
 
-    const isPresent =
-      new RegExp(`\\b${escaped}\\b[^.!?,;\\n]*\\b(?:waiting|entrance|greets?|meets?|here)\\b`, 'i').test(premise) ||
-      new RegExp(`\\b(?:waiting|entrance|greets?|meets?|question|speak\\s+with|talk\\s+to|meet)\\s+(?:(?:the|with|to)\\s+)?(?:[a-z]+\\s+){0,3}${escaped}\\b`, 'i').test(premise);
+    const isActiveContact = variants.some((variant) => {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return (
+        new RegExp(
+          `\\b${escaped}\\b[^.!?;\\n]{0,60}\\b(?:waiting|entrance|greets?|meets?|here|asks?|asked|hires?|hired|begs?|begged|warns?|warned|tells?|told|implores?|implored|summons?|summoned|recruits?|recruited|tasks?|tasked|approaches?|approached|pleads?|pleaded|offers?|offered|commissions?|commissioned|entrusts?|entrusted|presses?|pressed|hands?|handed|gives?|gave|urges?|urged|whispers?|whispered|waits?|awaits?)\\b`,
+          'i',
+        ).test(premise) ||
+        new RegExp(
+          `\\b(?:waiting|entrance|greets?|meets?|question|speak\\s+with|talk\\s+to|meet|hired\\s+by|summoned\\s+by|recruited\\s+by|tasked\\s+by)\\s+(?:(?:the|with|to)\\s+)?(?:[a-z'-]+\\s+){0,3}${escaped}\\b`,
+          'i',
+        ).test(premise) ||
+        new RegExp(
+          `\\b(?:${[...PERSONAL_ROLE_TITLES].join('|')})\\s+${escaped}\\b`,
+          'i',
+        ).test(premise)
+      );
+    });
 
     const isBossArchetype =
       /\b(?:wyrm|dragon|lich|tyrant|horror|overlord|serpent\s+queen|crimson\s+count|aberrant|archlich|behemoth)\b/i.test(
@@ -583,16 +770,20 @@ export function classifyNpcRoles(
 
     if (isDirectlyMissing) {
       missing.push(name);
-    } else if (isPresent && !isBossArchetype) {
-      present.push(name);
     } else if (isBossArchetype) {
       antagonists.push(name);
+    } else if (isActiveContact) {
+      priorityPresent.push(name);
     } else {
-      present.push(name);
+      otherPresent.push(name);
     }
   }
 
-  return { missingNpcs: missing, presentNpcs: present, antagonistNpcs: antagonists };
+  return {
+    missingNpcs: missing,
+    presentNpcs: [...priorityPresent, ...otherPresent],
+    antagonistNpcs: antagonists,
+  };
 }
 
 export interface BuildCampaignBlueprintOptions {
@@ -736,15 +927,35 @@ function buildMilestoneGraph(options: {
     const room1Template = m === 1 ? options.openingTemplate : options.investigationTemplate;
     const isRoom1Outdoor =
       room1Template.startsWith('exterior_') || room1Template.startsWith('landmark_');
+    const isRoom2Outdoor =
+      options.investigationTemplate.startsWith('exterior_') ||
+      options.investigationTemplate.startsWith('landmark_') ||
+      isRoom1Outdoor;
+    const containerPropRe =
+      /\b(?:chest|crate|box|barrel|coffer|trunk|urn|casket|lockbox|reliquary|cabinet)\b/i;
+    const itemPropsFromPremise = options.entities.props.filter((p) => !containerPropRe.test(p));
+    const containerPropsFromPremise = options.entities.props.filter((p) => containerPropRe.test(p));
+    const effectiveItemProps =
+      itemPropsFromPremise.length > 0 ? itemPropsFromPremise : options.entities.props;
     const propLabel = sanitizeWotcProductIdentity(
-      options.entities.props[(m - 1) % Math.max(1, options.entities.props.length)] ??
+      effectiveItemProps[(m - 1) % Math.max(1, effectiveItemProps.length)] ??
         contextualPropLabelForTemplate(room1Template, m),
     );
     const secondPropLabel = sanitizeWotcProductIdentity(
-      options.entities.props[m % Math.max(1, options.entities.props.length)] ??
+      effectiveItemProps[m % Math.max(1, effectiveItemProps.length)] ??
         'sealed ledger',
     );
-    const room1ContainerLabel = contextualContainerLabelForTemplate(room1Template, m);
+    const room1ContainerLabel =
+      m === 1 && containerPropsFromPremise[0] !== undefined
+        ? sanitizeWotcProductIdentity(capitalizeLabel(containerPropsFromPremise[0]))
+        : contextualContainerLabelForTemplate(room1Template, m);
+    const room1ContainerContents = [
+      ...new Set([
+        ...itemPropsFromPremise.map((p) => sanitizeWotcProductIdentity(capitalizeLabel(p))),
+        capitalizeLabel(propLabel),
+        'Healing Draught',
+      ]),
+    ];
     const exitLabel = sanitizeWotcProductIdentity(
       options.entities.exits[(m - 1) % Math.max(1, options.entities.exits.length)] ??
         (isRoom1Outdoor ? 'winding trail ahead' : 'wooden door'),
@@ -756,7 +967,7 @@ function buildMilestoneGraph(options: {
     const room2Id = `scene-m${m}-r2`;
     const room3Id = `scene-m${m}-r3`;
 
-    const room2Title = isRoom1Outdoor
+    const room2Title = isRoom2Outdoor
       ? m === 1
         ? `${capitalizeLabel(placeName)} — Overgrown Ruin Approach`
         : `${capitalizeLabel(placeName)} — Sunken Causeway ${m}`
@@ -765,7 +976,7 @@ function buildMilestoneGraph(options: {
         : m === 2
           ? `${capitalizeLabel(placeName)} — Subterranean Reach`
           : `${capitalizeLabel(placeName)} — Deep Warrens ${m}`;
-    const room2Summary = isRoom1Outdoor
+    const room2Summary = isRoom2Outdoor
       ? sanitizeWotcProductIdentity(
           `Beyond the ${exitLabel.toLowerCase()}, weathered stone ruins and moss-choked masonry mark the outer approach into ${placeName}, where hidden clues and mechanical wards guard the threshold ahead.`,
         )
@@ -829,21 +1040,27 @@ function buildMilestoneGraph(options: {
       });
     }
 
+    const room2LeverLabel = isRoom2Outdoor
+      ? /marsh|dock|waterfront|canal|harbor/i.test(options.investigationTemplate)
+        ? 'Counterweight gate switch'
+        : 'Weathered gate lever'
+      : 'Rusted wall lever';
+
     const room2Exits: CampaignRoomBlueprint['exits'][number][] = [
       {
-        edgeLabel: isRoom1Outdoor
+        edgeLabel: isRoom2Outdoor
           ? `Trail back to ${placeName}`
           : `Passage back to ${placeName}`,
         targetSceneId: room1Id,
-        direction: isRoom1Outdoor ? 'west' : 'east',
+        direction: isRoom2Outdoor ? 'west' : 'east',
         lockState: 'unlocked',
       },
       {
-        edgeLabel: 'Sanctum archway',
+        edgeLabel: isRoom2Outdoor ? 'Locked sanctum gate' : 'Sanctum archway',
         targetSceneId: room3Id,
-        direction: 'north',
+        direction: isRoom2Outdoor ? 'east' : 'north',
         lockState: 'locked',
-        keyItemId: 'Wall Lever Mechanism',
+        keyItemId: room2LeverLabel,
       },
     ];
 
@@ -895,6 +1112,13 @@ function buildMilestoneGraph(options: {
         : ('divided_rooms' as const);
     const room1Cols = room1Archetype === 'outdoor_clearing' ? 16 : m === 1 ? 12 : 16;
     const room1Rows = room1Archetype === 'outdoor_clearing' ? 12 : m === 1 ? 8 : 12;
+    const room2Archetype = options.investigationTemplate.startsWith('exterior_')
+      ? ('outdoor_clearing' as const)
+      : options.investigationTemplate.startsWith('landmark_')
+        ? ('open_chamber' as const)
+        : ('corridor' as const);
+    const room2Cols = room2Archetype === 'outdoor_clearing' ? 20 : 16;
+    const room2Rows = room2Archetype === 'outdoor_clearing' ? 16 : 8;
 
     const rooms: CampaignRoomBlueprint[] = [
       {
@@ -932,7 +1156,7 @@ function buildMilestoneGraph(options: {
             objectKind: 'container',
             objectState: 'closed',
             lockState: 'unlocked',
-            contents: [capitalizeLabel(propLabel), 'Healing Draught'],
+            contents: room1ContainerContents,
           },
         ],
         xpAwardOnDiscovery: r1Xp,
@@ -945,9 +1169,9 @@ function buildMilestoneGraph(options: {
         title: room2Title,
         summary: room2Summary,
         templateId: options.investigationTemplate,
-        columns: 16,
-        rows: 8,
-        layoutArchetype: 'corridor',
+        columns: room2Cols,
+        rows: room2Rows,
+        layoutArchetype: room2Archetype,
         battlemapPrompt: buildRoomBattlemapPrompt(
           options.investigationTemplate,
           placeName,
@@ -976,7 +1200,7 @@ function buildMilestoneGraph(options: {
           },
           {
             propId: `${room2Id}:lever-1`,
-            label: 'Rusted wall lever',
+            label: room2LeverLabel,
             objectKind: 'lever',
             objectState: 'closed',
             targetEdgeOrObjectId: `${room2Id}-exit-2`,
@@ -1601,6 +1825,20 @@ export function isCampaignBlueprint(value: unknown): value is CampaignBlueprint 
         typeof (beat as CampaignBlueprintBeat).nextSceneTrigger === 'string',
     )
   );
+}
+
+export async function loadCampaignBlueprint(
+  firestore: Firestore,
+  campaignId: string,
+): Promise<CampaignBlueprint | null> {
+  try {
+    const snap = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+    const candidate = (snap.data() as { campaignBlueprint?: unknown } | undefined)
+      ?.campaignBlueprint;
+    return isCampaignBlueprint(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface BlueprintPacingContext {

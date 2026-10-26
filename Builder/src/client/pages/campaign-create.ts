@@ -42,7 +42,13 @@ import {
   fetchDirectorCatalog,
   fetchVault,
 } from '../api.js';
-import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
+import {
+  APPOSITIVE_PLACE_CLAUSE_RE,
+  isCompoundPlaceWord,
+  matchesExcludedCharacterName,
+  PERSONAL_ROLE_TITLES,
+  STRICT_LOCATIVE_PREPOSITIONS,
+} from '../../shared/campaign-facts.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent, registerPageCleanup } from '../page-mount.js';
@@ -113,16 +119,54 @@ function premiseCommittedFactsMarkup(
   }
   const properMatches = text.matchAll(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g);
   const seenProper = new Set<string>();
+  let hasPrimaryProperPlace = false;
   for (const match of properMatches) {
-    const candidate = match[1]?.trim() ?? '';
+    const startIdx = match.index ?? 0;
+    const rawWords = (match[1]?.trim() ?? '').split(/\s+/).filter(Boolean);
+    let strippedLocative = false;
+    while (rawWords.length > 0 && STOP_PROPER_WORDS.has(rawWords[0]!)) {
+      if (STRICT_LOCATIVE_PREPOSITIONS.has(rawWords[0]!.toLowerCase())) {
+        strippedLocative = true;
+      }
+      rawWords.shift();
+    }
+    const candidate = rawWords.join(' ');
     if (
       candidate.length > 2 &&
       !STOP_PROPER_WORDS.has(candidate) &&
       !seenProper.has(candidate.toLowerCase()) &&
       !matchesExcludedCharacterName(candidate, excludeCharacterNames)
     ) {
+      const beforeWord = (
+        text
+          .slice(0, startIdx)
+          .trimEnd()
+          .match(/([A-Za-z]+)$/)?.[1] ?? ''
+      ).toLowerCase();
+      const afterSlice = text.slice(startIdx + match[0].length);
+      const firstWordLower = (rawWords[0] ?? '').toLowerCase();
+      const hasRoleTitle =
+        PERSONAL_ROLE_TITLES.has(firstWordLower) || PERSONAL_ROLE_TITLES.has(beforeWord);
+      const isPlaceEntity =
+        !hasRoleTitle &&
+        (strippedLocative ||
+          STRICT_LOCATIVE_PREPOSITIONS.has(beforeWord) ||
+          APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
+          rawWords.some((w) => isCompoundPlaceWord(w)));
       seenProper.add(candidate.toLowerCase());
-      facts.push(`Named: ${candidate}`);
+      if (isPlaceEntity) {
+        const existingLocIdx = facts.findIndex((f) => f.startsWith('Location: '));
+        if (!hasPrimaryProperPlace && existingLocIdx >= 0) {
+          facts[existingLocIdx] = `Location: ${candidate}`;
+        } else if (!hasPrimaryProperPlace) {
+          facts.unshift(`Location: ${candidate}`);
+        } else {
+          facts.push(`Location: ${candidate}`);
+        }
+        hasPrimaryProperPlace = true;
+      } else {
+        facts.push(`Named: ${candidate}`);
+      }
       if (seenProper.size >= 4) {
         break;
       }

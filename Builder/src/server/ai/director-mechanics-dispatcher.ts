@@ -33,6 +33,7 @@ import {
   labelLooksPortableContainer,
   labelLooksPortableSceneProp,
 } from '../../shared/container-contents.js';
+import { npcNamesMatch } from '../../shared/campaign-facts.js';
 
 export type DispatchActionType =
   | 'skill_check'
@@ -535,11 +536,7 @@ export function applyDirectorDispatchToMap(options: {
   if (dispatch.actionType === 'dialogue' && dispatch.dialogue) {
     const addressee = dispatch.dialogue.addressee?.trim() ?? null;
     if (addressee && addressee.length > 0) {
-      const absentNpc = absentRoomNpcs.find((n) => {
-        const target = addressee.toLowerCase();
-        const label = n.label.toLowerCase();
-        return label === target || label.includes(target) || target.includes(label);
-      });
+      const absentNpc = absentRoomNpcs.find((n) => npcNamesMatch(n.label, addressee));
       if (absentNpc) {
         return {
           proposedCommandType: 'table.sync',
@@ -549,11 +546,9 @@ export function applyDirectorDispatchToMap(options: {
       const presentNpc = map.notableFeatures.find(
         (f) =>
           (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
-          f.label.toLowerCase().includes(addressee.toLowerCase()),
+          npcNamesMatch(f.label, addressee),
       );
-      const isKnownNpc = knownNpcs.find((n) =>
-        n.label.toLowerCase().includes(addressee.toLowerCase()),
-      );
+      const isKnownNpc = knownNpcs.find((n) => npcNamesMatch(n.label, addressee));
 
       if (!presentNpc && isKnownNpc) {
         return {
@@ -683,18 +678,22 @@ export function applyDirectorDispatchToMap(options: {
         summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
       };
     }
-    const containerWithContents = map.notableFeatures.find(
+    const unlockedContainers = map.notableFeatures.filter(
       (f) =>
         f.objectKind === 'container' &&
         f.lockState !== 'locked' &&
         Array.isArray(f.contents) &&
-        f.contents.length > 0 &&
-        (f.contents.some(
-          (item) =>
-            item.toLowerCase().includes(requested) || requested.includes(item.toLowerCase()),
-        ) ||
-          scoreFeatureLabelMatch(requested, f.label).score > 0),
+        f.contents.length > 0,
     );
+    const matchesRequestedContent = (f: (typeof unlockedContainers)[number]): boolean =>
+      (f.contents ?? []).some(
+        (item) =>
+          item.toLowerCase().includes(requested) || requested.includes(item.toLowerCase()),
+      ) || scoreFeatureLabelMatch(requested, f.label).score > 0;
+    const openContainers = unlockedContainers.filter((f) => /\(open\)\s*$/i.test(f.label));
+    const containerWithContents =
+      openContainers.find(matchesRequestedContent) ??
+      unlockedContainers.find(matchesRequestedContent);
     if (containerWithContents) {
       const cleanContainer = stripFeatureStateSuffix(containerWithContents.label);
       return {
@@ -717,7 +716,7 @@ export function applyDirectorDispatchToMap(options: {
     );
     const matchedNpc =
       (npcFilter.length > 0
-        ? npcFeatures.find((f) => f.label.toLowerCase().includes(npcFilter))
+        ? npcFeatures.find((f) => npcNamesMatch(f.label, npcFilter))
         : undefined) ?? npcFeatures[0];
     if (matchedNpc !== undefined && matchedNpc.heldItems !== undefined) {
       const matchedItem =

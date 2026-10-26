@@ -385,17 +385,38 @@ export function mountCharacterCreatePage(host: PageHost): void {
       syncIdentityStepDomInPlace();
     }
     try {
-      current = await saveDraft({
+      const saved = await saveDraft({
         candidateId: candidate.candidateId,
         draftId: current.draft.draftId,
         choices: next,
       });
+      const latestDraft = current?.draft;
+      const keepForgedPortrait =
+        latestDraft !== undefined &&
+        latestDraft.portraitForged === true &&
+        (saved.draft.portraitForged !== true ||
+          (latestDraft.avatarOptions !== undefined && saved.draft.avatarOptions === undefined));
+      const nextCurrent: DraftResponse = keepForgedPortrait
+        ? {
+            ...saved,
+            draft: {
+              ...saved.draft,
+              avatarUrl: latestDraft.avatarUrl ?? saved.draft.avatarUrl ?? null,
+              ...(latestDraft.avatarOptions !== undefined
+                ? { avatarOptions: latestDraft.avatarOptions }
+                : {}),
+              portraitForged: true,
+              appearancePrompt: latestDraft.appearancePrompt ?? saved.draft.appearancePrompt ?? null,
+            },
+          }
+        : saved;
+      current = nextCurrent;
       if (
         localIdentityDraft !== null &&
-        localIdentityDraft.name === current.draft.choices.identity.name &&
-        localIdentityDraft.pronouns === current.draft.choices.identity.pronouns &&
-        localIdentityDraft.appearance === current.draft.choices.identity.appearance &&
-        localIdentityDraft.concept === current.draft.choices.identity.concept
+        localIdentityDraft.name === nextCurrent.draft.choices.identity.name &&
+        localIdentityDraft.pronouns === nextCurrent.draft.choices.identity.pronouns &&
+        localIdentityDraft.appearance === nextCurrent.draft.choices.identity.appearance &&
+        localIdentityDraft.concept === nextCurrent.draft.choices.identity.concept
       ) {
         localIdentityDraft = null;
       }
@@ -433,7 +454,11 @@ export function mountCharacterCreatePage(host: PageHost): void {
       } else if (
         error === null &&
         activeStep === 'identity' &&
-        (options?.silentDom === true || isIdentityInputFocused())
+        (options?.silentDom === true ||
+          isIdentityInputFocused() ||
+          lightboxPortraitIndex !== null ||
+          portraitBusy ||
+          current?.draft.portraitForged === true)
       ) {
         syncIdentityStepDomInPlace();
       } else {
@@ -1660,6 +1685,10 @@ export function mountCharacterCreatePage(host: PageHost): void {
   async function forgePortrait(): Promise<boolean> {
     if (candidate === null || current === null) {
       return false;
+    }
+    if (identityDebounceTimer !== null) {
+      window.clearTimeout(identityDebounceTimer);
+      identityDebounceTimer = null;
     }
     const validation = validateAppearancePrompt(portraitPromptValue());
     if (!validation.ok) {

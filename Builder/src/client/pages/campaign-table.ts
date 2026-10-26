@@ -203,6 +203,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let infoRailCollapsed = true;
   /** Map-first default: chat opens as an overlay drawer on demand. */
   let commsRailCollapsed = true;
+  /** Compact Ask DM header toggle so collapsing header info never closes the chat drawer (RS-07). */
+  let askDmHeaderCollapsed = false;
   let doorRecoveryVisible = false;
   let lastSubmittedDeclaration = '';
   /** When true, the play timeline sticks to the newest beat (A3). */
@@ -2146,11 +2148,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     if (activeTab === 'director_address') {
       return `
         <div class="dock-pane director-address-single-scroll" data-testid="director-address-pane">
-          <div class="director-address-header">
+          <div class="director-address-header${askDmHeaderCollapsed ? ' is-compact' : ''}">
             <p class="record-meta" data-testid="ask-dm-identity">Consulting ${escapeHtml(directorIdentityLabel)}</p>
-            <button type="button" class="table-secondary-action" data-testid="collapse-director-address">Collapse</button>
+            <button type="button" class="table-secondary-action" data-testid="collapse-director-address" aria-expanded="${!askDmHeaderCollapsed}">${askDmHeaderCollapsed ? 'Show info' : 'Hide info'}</button>
           </div>
-          <p data-testid="director-address-notice">${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
+          <p class="director-address-notice" data-testid="director-address-notice"${askDmHeaderCollapsed ? ' hidden' : ''}>${escapeHtml(DIRECTOR_ADDRESS_NOTICE)}</p>
           ${
             askDmConsulting
               ? `<p class="ask-dm-shimmer" data-testid="ask-dm-consulting" aria-live="polite">Consulting ancient lore…</p>`
@@ -2160,10 +2162,10 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             listTestId: 'ask-dm-thread',
             latestReplyTestId: 'director-address-reply',
           })}
-          <form class="dock-composer" data-testid="director-address-composer">
+          <form class="dock-composer director-address-composer-compact" data-testid="director-address-composer">
             <label class="field">
-              <span>Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
-              <textarea data-testid="director-address-input" rows="3" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
+              <span class="record-meta">Ask ${escapeHtml(directorIdentityLabel)} about rules or feasibility</span>
+              <textarea data-testid="director-address-input" rows="1" placeholder="Example: Can I climb that wall and cast Magic Missile in the same turn?" ${askDmConsulting ? 'readonly' : ''}>${escapeHtml(directorDraft)}</textarea>
             </label>
             <button type="submit" data-testid="director-address-send" aria-disabled="${askDmConsulting || directorDraft.trim().length === 0}">
               ${askDmConsulting ? 'Consulting…' : `Ask ${escapeHtml(directorIdentityLabel)}`}
@@ -5091,6 +5093,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
         }
         // Ask DM is a side channel — never claim the play-mutation `busy` latch.
         askDmConsulting = true;
+        askDmHeaderCollapsed = true;
         error = null;
         appendAskDmThread('player', 'You', question, 'declaration');
         directorDraft = '';
@@ -5137,9 +5140,13 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     root
       .querySelector<HTMLButtonElement>('[data-testid="collapse-director-address"]')
       ?.addEventListener('click', () => {
-        commsRailCollapsed = true;
+        askDmHeaderCollapsed = !askDmHeaderCollapsed;
         render();
-        shell.announce('Director consult drawer collapsed.');
+        shell.announce(
+          askDmHeaderCollapsed
+            ? 'Ask the Game Director info banner hidden.'
+            : 'Ask the Game Director info banner shown.',
+        );
       });
 
     directorInput?.addEventListener('keydown', (event) => {

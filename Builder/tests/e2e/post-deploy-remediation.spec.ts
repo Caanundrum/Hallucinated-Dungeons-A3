@@ -208,10 +208,15 @@ test.describe('Post-Deploy Systemic Remediation (Packets 1–5)', () => {
     });
     expect(nestedScrollableCount).toBe(0);
 
-    // Collapse the Ask the Director drawer via the header collapse button
+    // Sending a question auto-compacts the header notice; clicking the toggle button expands/collapses only the notice while keeping the pane open
     const collapseBtn = page.getByTestId('collapse-director-address');
+    const notice = page.getByTestId('director-address-notice');
     await expect(collapseBtn).toBeVisible();
+    await expect(notice).toBeHidden();
     await collapseBtn.click();
-    await expect(addressPane).toBeHidden();
+    await expect(notice).toBeVisible();
+    await collapseBtn.click();
+    await expect(notice).toBeHidden();
+    await expect(addressPane).toBeVisible();
   });
 });

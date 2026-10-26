@@ -250,7 +250,11 @@ export function applyViewerFog(
       (e) => e.kind === 'door' && e.doorState !== 'open' && interiorWalls.length > 0,
     );
     for (const feature of full.notableFeatures) {
-      if (feature.objectKind !== 'exit' && feature.referenceKind !== 'exit') {
+      if (
+        feature.objectKind !== 'exit' &&
+        feature.referenceKind !== 'exit' &&
+        feature.objectKind !== 'lever'
+      ) {
         continue;
       }
       let blockedByClosedDividingWall = false;
@@ -315,6 +319,9 @@ export function applyViewerFog(
   });
 
   const notableFeatures = full.notableFeatures.filter((feature) => {
+    if (feature.objectKind === 'exit' || feature.referenceKind === 'exit') {
+      return true;
+    }
     const id = squareId(feature.column, feature.row);
     return exploredIds.has(id) || visibleIds.has(id);
   });
@@ -406,13 +413,41 @@ export function buildAuthoritativeMapBundle(options: {
       artProvenance: (directorScene.sceneArtUrl ?? resolveSceneArtUrl(directorScene.templateId))
         ? 'original_phase5_starter_v1'
         : 'procedural_local_placeholder',
-      sceneBanner: directorScene.sceneBanner
-        .replace(/^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i, '')
-        .replace(/Investigation and side-trek hall beyond the/i, 'A shadowed passage beyond the cellar stairs and connecting doorway')
-        .replace(/beyond the wooden door\b/i, 'beyond the cellar stairs and connecting doorway')
-        .replace(/\s*Clues and hazards test the party before the Milestone \d+ climax\./i, ' Hidden clues and lurking hazards guard the way forward.')
-        .replace(/^Climax chamber for Milestone \d+\.\s*Resolving the threat here elevates the party to Level \d+\./i, 'The inner sanctum, where ancient stonework and flickering braziers frame the heart of the danger.')
-        .trim() || directorScene.sceneBanner,
+      sceneBanner: (() => {
+        const isOutdoorScene =
+          directorScene.templateId.startsWith('exterior_') ||
+          directorScene.templateId.startsWith('landmark_') ||
+          !directorScene.environment.endsWith('_interior');
+        const base = directorScene.sceneBanner.replace(
+          /^Entry threshold for Milestone \d+\s*(?:\([^)]*\))?\.\s*/i,
+          '',
+        );
+        const withThreshold = isOutdoorScene
+          ? base
+              .replace(
+                /Investigation and side-trek hall beyond the/i,
+                'Along the weathered trail beyond the',
+              )
+              .replace(/beyond the wooden door\b/i, 'beyond the outer threshold')
+          : base
+              .replace(
+                /Investigation and side-trek hall beyond the/i,
+                'A shadowed passage beyond the cellar stairs and connecting doorway',
+              )
+              .replace(/beyond the wooden door\b/i, 'beyond the cellar stairs and connecting doorway');
+        return (
+          withThreshold
+            .replace(
+              /\s*Clues and hazards test the party before the Milestone \d+ climax\./i,
+              ' Hidden clues and lurking hazards guard the way forward.',
+            )
+            .replace(
+              /^Climax chamber for Milestone \d+\.\s*Resolving the threat here elevates the party to Level \d+\./i,
+              'The inner sanctum, where ancient stonework and flickering braziers frame the heart of the danger.',
+            )
+            .trim() || directorScene.sceneBanner
+        );
+      })(),
       notableFeatures: features,
       sceneEnvironment: directorScene.environment,
       sceneLighting: directorScene.lighting,

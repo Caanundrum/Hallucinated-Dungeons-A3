@@ -523,8 +523,8 @@ function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string)
   );
   const validNpcs =
     presentNpcs.length > 0
-      ? nonRoomNpcs.filter((name) => !missingNpcs.includes(name))
-      : nonRoomNpcs;
+      ? presentNpcs.filter((name) => nonRoomNpcs.includes(name))
+      : nonRoomNpcs.filter((name) => !missingNpcs.includes(name));
   const [firstNpc, ...otherNpcs] = validNpcs;
   if (firstNpc !== undefined) {
     npcLabel = firstNpc;
@@ -537,9 +537,9 @@ function dressInteriorFamilyWithPremise(family: InteriorFamily, premise: string)
     }
   }
 
-  // The first named place becomes a visible mark on the cover slot; the rest stay in prose.
+  // The first named place becomes a visible mark on the cover slot only when not already the scene title; the rest stay in prose.
   const [firstPlace, ...otherPlaces] = continuity.namedPlaces;
-  if (firstPlace !== undefined) {
+  if (firstPlace !== undefined && firstPlace.toLowerCase() !== title.toLowerCase()) {
     if (!mentions(firstPlace)) {
       coverLabel = `${firstPlace} mark`;
       mood = `${mood} The ${firstPlace} is the meeting mark people still use.`;
@@ -1106,7 +1106,11 @@ function composeInterior(options: {
       objectId: chestId,
       column: farColumn,
       row: Math.min(rows - 2, 2 + ((seed >>> 8) % 2)),
-      label: contextualContainerLabelForTemplate(family.templateId, seed),
+      label:
+        contextualContainerLabelForTemplate(family.templateId, seed).toLowerCase() ===
+        family.poiLabel.trim().toLowerCase()
+          ? contextualContainerLabelForTemplate(family.templateId, seed + 1)
+          : contextualContainerLabelForTemplate(family.templateId, seed),
       referenceKind: 'prop',
       objectKind: 'container',
       state: 'closed',
@@ -1720,7 +1724,74 @@ export function composeDirectorScene(options: {
     });
   }
   // System-wide: every contract exit becomes a visible tactical primitive.
-  return attachExitsToComposedScene(composed);
+  const withExits = attachExitsToComposedScene(composed);
+  return {
+    ...withExits,
+    features: deduplicateSceneFeatureLabels(withExits.features, withExits.columns),
+  };
+}
+
+export function deduplicateSceneFeatureLabels<
+  TFeature extends {
+    readonly objectId: string;
+    readonly column: number;
+    readonly row: number;
+    readonly label: string;
+    readonly referenceKind: MapReferenceMarkerKind;
+    readonly objectKind: SceneObjectKind;
+    readonly state: SceneObjectState;
+    readonly interactable: boolean;
+    readonly lockState?: 'unlocked' | 'locked';
+  },
+>(features: readonly TFeature[], columns = 12): TFeature[] {
+  const stripState = (lbl: string): string =>
+    lbl
+      .replace(
+        /\s*(?:\((?:lit|unlit|intact|broken|open|closed|locked|unlocked|pulled|spotted|taken|active|disarmed|present)\)|—\s*(?:lit|unlit|intact|broken|open|closed|locked|unlocked|pulled|spotted|taken|active|disarmed|present))\s*$/i,
+        '',
+      )
+      .trim();
+  const counts = new Map<string, number>();
+  for (const f of features) {
+    if (f.objectKind === 'npc' || f.objectKind === 'creature' || f.objectKind === 'exit') continue;
+    const base = stripState(f.label).toLowerCase();
+    counts.set(base, (counts.get(base) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const usedDisambiguated = new Set<string>();
+  return features.map((f) => {
+    if (f.objectKind === 'npc' || f.objectKind === 'creature' || f.objectKind === 'exit') {
+      return f;
+    }
+    const base = stripState(f.label);
+    const key = base.toLowerCase();
+    if ((counts.get(key) ?? 0) <= 1) {
+      usedDisambiguated.add(key);
+      return f;
+    }
+    const idx = (seen.get(key) ?? 0) + 1;
+    seen.set(key, idx);
+    const midCol = Math.floor(columns / 2);
+    const loweredBase = `${base.charAt(0).toLowerCase()}${base.slice(1)}`;
+    const preferredPrefix = f.column < midCol ? 'West' : f.column > midCol ? 'East' : idx === 1 ? 'West' : 'East';
+    let candidateBase = `${preferredPrefix} ${loweredBase}`;
+    if (usedDisambiguated.has(candidateBase.toLowerCase())) {
+      const altPrefix = preferredPrefix === 'West' ? 'East' : 'West';
+      candidateBase = `${altPrefix} ${loweredBase}`;
+      if (usedDisambiguated.has(candidateBase.toLowerCase())) {
+        candidateBase = `${idx === 1 ? 'Near' : 'Far'} ${loweredBase}`;
+      }
+    }
+    usedDisambiguated.add(candidateBase.toLowerCase());
+    const hasStateParens = /\([^)]+\)\s*$/.test(f.label);
+    const nextLabel = hasStateParens
+      ? featureLabelWithState({ ...(f as unknown as ComposedSceneFeature), label: candidateBase })
+      : candidateBase;
+    return {
+      ...f,
+      label: nextLabel,
+    };
+  });
 }
 
 export function featureLabelWithState(feature: ComposedSceneFeature): string {
@@ -1764,7 +1835,7 @@ export function contextualContainerLabelForTemplate(templateId: string, seed = 0
     return seed % 2 === 0 ? 'Reinforced tool locker' : 'Iron-hasped supply crate';
   }
   if (lower.includes('warehouse') || lower.includes('dock') || lower.includes('waterfront')) {
-    return seed % 2 === 0 ? 'Tarred smuggling crate' : 'Banded freight trunk';
+    return seed % 2 === 0 ? 'Wax-sealed cargo crate' : 'Copper-strapped shipping chest';
   }
   if (lower.includes('inn') || lower.includes('tavern') || lower.includes('cottage')) {
     return seed % 2 === 0 ? 'Iron-hasped travel trunk' : 'Brass-bound strongbox';

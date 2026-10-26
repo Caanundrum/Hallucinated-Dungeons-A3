@@ -49,6 +49,7 @@ import { getAiKillSwitch } from '../admin/admin-service.js';
 import {
   formatBlueprintBeatPrompt,
   isCampaignBlueprint,
+  loadCampaignBlueprint,
   selectActiveBlueprintBeat,
 } from '../campaigns/campaign-blueprint.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
@@ -104,6 +105,7 @@ import {
   resolveIntentAuthority,
 } from '../../shared/play-authority-contract.js';
 import {
+  splitPrimaryTargetFromLocative,
   understandUtterance,
 } from '../../shared/utterance-understanding.js';
 import {
@@ -116,6 +118,7 @@ import { formatMapRouteSummary } from '../../shared/map-presentation.js';
 import type { CampaignMemoryProjection } from '../../shared/campaign-memory-contract.js';
 import {
   answerFromCampaignFacts,
+  npcNamesMatch,
 } from '../../shared/campaign-facts.js';
 import {
   answerContainerContentsQuery,
@@ -245,25 +248,28 @@ export function buildSceneSurveyNarration(
         .trim();
     }
 
+    const { primaryClause: askPrimary } = splitPrimaryTargetFromLocative(playerText);
+    const lowerPrimaryAsk = (askPrimary.trim().length > 0 ? askPrimary : playerText).toLowerCase();
+
     // 2. Check if the player is inspecting a specific visible scene feature (e.g., reading an open prop).
     const matchedSceneFeature = propFeatures.find((feature) => {
       const cleanFeature = shortFeatureLabel(feature.label)
         .replace(/\s*\([^)]+\)\s*$/, '')
         .toLowerCase()
         .trim();
-      const tokens = cleanFeature.split(/[^a-z0-9']+/).filter((w) => w.length >= 3);
+      const tokens = cleanFeature.split(/[^a-z0-9']+/).filter((w: string) => w.length >= 3);
       const head = tokens[tokens.length - 1];
-      return head !== undefined && new RegExp(`\\b${head}s?\\b`, 'i').test(lowerAsk);
+      return head !== undefined && new RegExp(`\\b${head}s?\\b`, 'i').test(lowerPrimaryAsk);
     });
 
     // 3. Check if the player is examining a clue or detail established in recent Chronicle dialogue or Campaign Premise.
-    const askNouns = lowerAsk
+    const askNouns = lowerPrimaryAsk
       .replace(
         /\b(?:i|my|character|the|a|an|at|on|in|to|toward|towards|near|by|around|from|with|for|of|and|carefully|closely|quietly|inspect|examine|check|look|study|read|peruse|decipher|scan|trace|search|peer|listen)\b/g,
         ' ',
       )
       .split(/[^a-z0-9']+/)
-      .filter((w) => w.length >= 4);
+      .filter((w: string) => w.length >= 4);
 
     const corpusLines = [
       ...(options?.recentChronicleSummaries ?? []),
@@ -278,7 +284,7 @@ export function buildSceneSurveyNarration(
             .find((line) => {
               const lowerLine = line.toLowerCase();
               if (lowerLine === lowerAsk) return false;
-              return askNouns.some((noun) => lowerLine.includes(noun));
+              return askNouns.some((noun: string) => lowerLine.includes(noun));
             })
         : undefined;
 
@@ -775,13 +781,11 @@ async function resolveDirectorNarrateOutput(options: {
     const name = options.structured.addressee;
     const npc =
       memory?.npcs.find(
-        (entry) => entry.name.toLowerCase() === name.toLowerCase() || entry.npcId === name,
+        (entry) => npcNamesMatch(entry.name, name) || entry.npcId === name,
       ) ?? null;
     const sceneNpc =
       map?.notableFeatures.find(
-        (f) =>
-          f.referenceKind === 'npc' &&
-          f.label.toLowerCase().includes(name.toLowerCase()),
+        (f) => f.referenceKind === 'npc' && npcNamesMatch(f.label, name),
       ) ?? null;
 
     // Check if the player is speaking to an established NPC who is absent/missing from this scene
@@ -1443,6 +1447,48 @@ export async function interpretNaturalLanguageIntent(options: {
         if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
         if (applied.destinationHint) destinationHint = applied.destinationHint;
         if (applied.skillCheckIntent !== undefined) skillCheckIntent = applied.skillCheckIntent;
+        if (proposedCommandType === 'table.travel_scene') {
+          try {
+            const { activeSceneInstance, loadMapRuntime } = await import('../table/map-runtime.js');
+            const {
+              checkExitLockedForTravel,
+              resolveTravelDestinationTitle,
+            } = await import('../table/scene-commands.js');
+            const [runtime, blueprint] = await Promise.all([
+              loadMapRuntime(options.firestore, options.campaignId),
+              loadCampaignBlueprint(options.firestore, options.campaignId),
+            ]);
+            const active = activeSceneInstance(runtime);
+            const isReturn = returnToPrevious === true;
+            if (active !== null && !isReturn) {
+              const lockCheck = checkExitLockedForTravel(active, rawText, false);
+              if (lockCheck.locked) {
+                proposedCommandType = 'table.sync';
+                summary = lockCheck.byLever
+                  ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                      lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+                    } to unseal it.`
+                  : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+              }
+            }
+            if (proposedCommandType === 'table.travel_scene') {
+              const resolvedTitle = resolveTravelDestinationTitle(
+                runtime,
+                rawText,
+                isReturn,
+                blueprint,
+              );
+              if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
+                destinationHint = resolvedTitle.trim();
+                summary = isReturn
+                  ? `Ready to return to ${destinationHint}. Confirm to restore it with prior consequences.`
+                  : `Ready to travel to ${destinationHint}. Confirm so the Game Director establishes the next place.`;
+              }
+            }
+          } catch {
+            // Keep applied travel draft if runtime lookup fails
+          }
+        }
         if (applied.deferDirectorNarrate) {
           const structured = parsePlayerDeclaration(rawText, {
             knownNpcs,

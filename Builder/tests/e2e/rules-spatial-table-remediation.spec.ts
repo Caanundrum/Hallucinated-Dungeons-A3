@@ -187,22 +187,32 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('ac-formula-breakdown')).toContainText(
       '10 base + 3 DEX + 3 WIS (Unarmored Defense)',
     );
+    // RS-05 & Guardrail 2: Verify Monk Martial Arts attack bonus (+5 to hit) and 1d6+3 damage on Spear and Unarmed Strike
+    await expect(page.getByTestId('attack-list')).toContainText(/Spear[\s\S]*?\+5[\s\S]*?to hit[\s\S]*?1d6\+3 piercing/i);
+    await expect(page.getByTestId('attack-list')).toContainText(/Unarmed Strike[\s\S]*?\+5[\s\S]*?to hit[\s\S]*?1d6\+3 bludgeoning/i);
 
     // =========================================================================
-    // PACKET 2: Campaign Creation Layout Polish & Notice Typography
+    // PACKET 2 & RS-01: Campaign Creation Layout Polish, Syntactic Place vs.
+    //                   Person Entity Classification, & Setting Fidelity
     // =========================================================================
     await page.getByTestId('nav-campaigns').click();
     await page.getByTestId('start-campaign').click();
     await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
 
     const outdoorPremise =
-      'Beyond the mist-shrouded forest clearing of Elderwood, Ranger Venn asks Kaelen Windstep to follow the winding trail to the sunken watchtower ruin.';
-    await page.getByTestId('campaign-name').fill('Elderwood Watchtower');
+      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks Kaelen Windstep to investigate why Apprentice Talia vanished after sealing a brass astrolabe inside a reinforced supply locker.';
+    await page.getByTestId('campaign-name').fill('Clockhouse Lantern Mystery');
     await page.getByTestId('campaign-name').dispatchEvent('input');
     await page.getByTestId('campaign-summary').fill(outdoorPremise);
     await page.getByTestId('campaign-summary').dispatchEvent('input');
     await page.getByTestId('identity-veyra').click();
     await page.getByTestId('personality-seasoned_host').click();
+
+    // RS-01: Verify committed facts preview classifies Clockhouse as Location (never NPC)
+    const committedFacts = page.getByTestId('premise-committed-facts');
+    await expect(committedFacts).toContainText('Location: Clockhouse');
+    await expect(committedFacts).not.toContainText('NPC: Clockhouse');
+    await expect(committedFacts).not.toContainText('NPC: Glimmerfen');
 
     // Verify `.campaign-draft-actions-stack` and `p.message.notice` block typography
     const draftStack = page.locator('.campaign-draft-actions-stack');
@@ -214,6 +224,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
 
     await page.getByTestId('draft-campaign-skeleton').click();
     await expect(page.getByTestId('campaign-skeleton-preview')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('campaign-skeleton-preview')).toContainText('Clockhouse');
     const approveBtn = page.getByTestId('approve-rough-outline');
     if (await approveBtn.isVisible().catch(() => false)) {
       await approveBtn.click();
@@ -233,7 +244,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await awaitAdventureReady(page);
 
     // =========================================================================
-    // PACKETS 3, 4, & 5 + GUARDRAILS 1 & 2 ON THE PLAY TABLE
+    // PACKETS 3, 4, & 5 + RS-01..RS-07 + GUARDRAILS 1 & 2 ON THE PLAY TABLE
     // =========================================================================
     const candidateId = await page.evaluate(() => {
       const meta = document.querySelector('meta[name="hd-candidate-id"]');
@@ -252,6 +263,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
         mapBundleId: string;
         title: string;
         coordinateSpace: { columns: number; rows: number };
+        cells: readonly { column: number; row: number; terrain: string }[];
         notableFeatures: readonly {
           column: number;
           row: number;
@@ -266,12 +278,25 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       };
     };
 
-    // 1. Verify Scene 1 has perimeter exit on the outer grid border and no hardcoded 'Sturdy oak chest'
+    // 1. RS-01 & RS-02: Verify Scene 1 is titled "Clockhouse", has Warden Corin Vale as the NPC (never Clockhouse or Apprentice Talia), and has no duplicate container labels
     const initialMap = await fetchMapBundle();
+    expect(initialMap.title).toBe('Clockhouse');
     const features = initialMap.notableFeatures ?? [];
     const labels = features.map((f) => f.label.toLowerCase());
     expect(labels).not.toContain('sturdy oak chest');
     expect(labels).not.toContain('iron lantern');
+    const npcFeatures = features.filter((f) => f.objectKind === 'npc');
+    expect(npcFeatures.some((f) => /corin/i.test(f.label))).toBe(true);
+    expect(npcFeatures.some((f) => /clockhouse/i.test(f.label))).toBe(false);
+    expect(npcFeatures.some((f) => /talia/i.test(f.label))).toBe(false);
+
+    const containerFeatures = features.filter((f) => f.objectKind === 'container');
+    const uniqueContainerBaseLabels = new Set(
+      containerFeatures.map((f) =>
+        f.label.replace(/\s*\((?:open|closed|locked|unlocked)\).*$/i, '').trim().toLowerCase(),
+      ),
+    );
+    expect(uniqueContainerBaseLabels.size).toBe(containerFeatures.length);
 
     const exitFeature = features.find((f) => f.objectKind === 'exit');
     expect(exitFeature).toBeDefined();
@@ -292,11 +317,28 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('move-target-meta')).toHaveCount(0);
     await expect(page.getByTestId('door-selection-detail')).toHaveCount(0);
 
-    // 3. Packet 3 & Guardrail 2: Two-Step Container Looting
+    // 3. RS-07: Ask DM Pane Layout & Non-Destructive Info Toggle
+    const expandCommsBtn = page.getByTestId('expand-comms-rail');
+    if (await expandCommsBtn.isVisible().catch(() => false)) {
+      await expandCommsBtn.click();
+    }
+    const askTab = page.getByTestId('dock-tab-director_address');
+    await expect(askTab).toBeVisible({ timeout: 10_000 });
+    await askTab.click();
+    await expect(page.getByTestId('director-address-pane')).toBeVisible();
+    await expect(page.getByTestId('director-address-notice')).toBeVisible();
+    await page.getByTestId('collapse-director-address').click();
+    // Clicking the info toggle hides the notice without closing the Ask DM pane!
+    await expect(page.getByTestId('director-address-pane')).toBeVisible();
+    await expect(page.getByTestId('director-address-notice')).toBeHidden();
+    await page.getByTestId('collapse-director-address').click();
+    await expect(page.getByTestId('director-address-notice')).toBeVisible();
+
+    // 4. Packet 3, RS-02, RS-03, & Guardrail 2: Two-Step Container Looting & Locative Prepositional Stripping
     const containerFeature = features.find((f) => f.objectKind === 'container');
     expect(containerFeature).toBeDefined();
     const containerLabel = containerFeature!.label
-      .replace(/\s*\((?:open|closed|locked|unlocked)\).*$/i, '')
+      .replace(/\s*(?:\([^)]*\)|â€”\s*.*)$/i, '')
       .trim();
 
     // Step 1: Open container -> lists contents in Chronicle without auto-looting
@@ -308,14 +350,27 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       timeout: 15_000,
     });
 
-    // Step 2: Explicitly loot container -> transfers contents to inventory
-    await page.getByTestId('player-action-input').fill(`I loot the ${containerLabel}`);
+    // RS-02: Inspect the item inside the container using locative phrasing ("in the <container>")
+    await page
+      .getByTestId('player-action-input')
+      .fill(`I inspect the brass astrolabe in the ${containerLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await confirmDraftIfVisible(page);
-    await expect(page.getByTestId('dm-play-thread')).toContainText(/Took .* from/i, {
-      timeout: 15_000,
-    });
+
+    // Step 2: Explicitly take the item from the opened container -> attributes to the open container
+    await page
+      .getByTestId('player-action-input')
+      .fill(`I take the brass astrolabe from the ${containerLabel}`);
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await confirmDraftIfVisible(page);
+    await expect(page.getByTestId('dm-play-thread')).toContainText(
+      new RegExp(`Took .* from ${containerLabel}`, 'i'),
+      {
+        timeout: 15_000,
+      },
+    );
 
     const rulesRes = await page.request.get(`${origin}/api/campaigns/${campaignId}/rules-state`, {
       headers: {
@@ -330,13 +385,12 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     const equipNames = (rulesData.progression?.sheet?.equipment ?? []).map((e) =>
       e.name.toLowerCase(),
     );
-    expect(equipNames.some((n) => /healing draught/i.test(n))).toBe(true);
+    expect(equipNames.some((n) => /brass astrolabe/i.test(n))).toBe(true);
 
-    // 4. Packet 4: Travel via perimeter exit ("I take the winding trail") transitions to Scene 2
-    const exitLabel = exitFeature!.label
-      .replace(/\s*â€”\s*(?:open|closed|locked|unlocked).*$/i, '')
-      .trim();
-    await page.getByTestId('player-action-input').fill(`I take the ${exitLabel}`);
+    // 5. Packet 4 & RS-04: Doorway passage travel ("I head east through the doorway into the next area") transitions to Scene 2
+    await page
+      .getByTestId('player-action-input')
+      .fill('I head east through the doorway into the next area');
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await confirmDraftIfVisible(page);
@@ -351,8 +405,9 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       )
       .toContain('scene-m1-r2');
 
-    // 5. Packet 4 & Guardrail 1: Wall-lever mechanism lock in Scene 2
+    // 6. Packet 4, RS-06, & Guardrail 1: Gate-adjacent walkable mechanism lock in Scene 2
     const scene2Map = await fetchMapBundle();
+    expect(scene2Map.title).not.toContain('Side Passage');
     const scene2Features = scene2Map.notableFeatures ?? [];
     const leverFeature = scene2Features.find((f) => /lever|switch|chain/i.test(f.label));
     const scene2Exit = scene2Features.find(
@@ -360,11 +415,19 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     );
     expect(leverFeature).toBeDefined();
     expect(scene2Exit).toBeDefined();
+    expect(leverFeature!.label).not.toMatch(/wall lever/i);
     const scene2ExitLabel = scene2Exit!.label
       .replace(/\s*â€”\s*(?:open|closed|locked|unlocked).*$/i, '')
       .trim();
-    // Lever must be wall-anchored along the north perimeter (row <= 2)
-    expect(leverFeature!.row).toBeLessThanOrEqual(2);
+    // RS-06: Lever must be on a walkable cell within Manhattan distance <= 2 of the target exit
+    const leverCell = (scene2Map.cells ?? []).find(
+      (c) => c.column === leverFeature!.column && c.row === leverFeature!.row,
+    );
+    expect(leverCell?.terrain).not.toBe('blocked');
+    const manhattanToExit =
+      Math.abs(leverFeature!.column - scene2Exit!.column) +
+      Math.abs(leverFeature!.row - scene2Exit!.row);
+    expect(manhattanToExit).toBeLessThanOrEqual(2);
     // Scene 2 exit starts locked by the lever mechanism
     expect(scene2Exit!.lockState).toBe('locked');
 

@@ -1,11 +1,25 @@
-import type {
-  DerivedCharacterSheet,
-  DerivedValue,
+import {
+  ABILITY_LABELS,
+  formatArmorClassFormula,
+  type Ability,
+  type DerivedAttack,
+  type DerivedCharacterSheet,
+  type DerivedValue,
 } from '../../../shared/character-contract.js';
 import type {
   ProgressionDerivedProjection,
 } from '../../../shared/rules-combat-contract.js';
-import { findClass } from '../srd-manifest.js';
+import {
+  deriveSpeedForSheet,
+  isMonkWeapon,
+  monkMartialArtsDieSides,
+  upgradeDamageDieForMonk,
+} from '../character-rules.js';
+import {
+  ARMOR,
+  WEAPONS,
+  findClass,
+} from '../srd-manifest.js';
 
 /** Cumulative XP required to attain each level, index 0 = level 1. */
 export const XP_THRESHOLDS = [
@@ -503,9 +517,16 @@ export function deriveProgression(
     : 0;
   const hitPointsPerAdditionalLevel =
     Math.max(1, averageHitDie + constitutionModifier) + speciesHpPerLevel + toughHpPerLevel;
+  const level1HpComponents = baseSheet.hitPoints.components.filter(
+    (c) => !c.ruleId.endsWith('.hit-points-after-level-1'),
+  );
+  const level1BaseHp =
+    level1HpComponents.length > 0
+      ? level1HpComponents.reduce((sum, c) => sum + c.amount, 0)
+      : baseSheet.hitPoints.value;
   return {
     proficiencyBonus: proficiencyBonusForLevel(level),
-    maxHitPoints: baseSheet.hitPoints.value + (level - 1) * hitPointsPerAdditionalLevel,
+    maxHitPoints: level1BaseHp + (level - 1) * hitPointsPerAdditionalLevel,
     hitDice: `${level}d${classRecord.hitDie}`,
     attacksPerAction: attacksPerActionForClass(classId, level),
     spellSlots: spellSlotsForClass(classId, level),
@@ -524,18 +545,254 @@ export function recomputeSheetForLevel(
   experiencePoints: number,
 ): DerivedCharacterSheet {
   const derived = deriveProgression(baseSheet, classId, level);
-  const priorProficiency = baseSheet.proficiencyBonus.value;
-  const proficiencyDelta = derived.proficiencyBonus - priorProficiency;
+  const level1HpComponents = baseSheet.hitPoints.components.filter(
+    (c) => !c.ruleId.endsWith('.hit-points-after-level-1'),
+  );
+  const level1BaseHp =
+    level1HpComponents.length > 0
+      ? level1HpComponents.reduce((sum, c) => sum + c.amount, 0)
+      : baseSheet.hitPoints.value;
   const hitPointComponents = [
-    ...baseSheet.hitPoints.components,
+    ...level1HpComponents,
     ...(level > 1
       ? [{
           label: `Levels 2–${level}`,
-          amount: derived.maxHitPoints - baseSheet.hitPoints.value,
+          amount: derived.maxHitPoints - level1BaseHp,
           ruleId: `class.${classId}.hit-points-after-level-1`,
         }]
       : []),
   ];
+
+  const equippedArmorItems = baseSheet.equipment.filter((entry) => entry.equipped !== false);
+  const hasEquipmentList = baseSheet.equipment.length > 0;
+  const wearingArmor = hasEquipmentList
+    ? equippedArmorItems.some((entry) => {
+        const lower = entry.name.trim().toLowerCase();
+        return (
+          entry.itemKind === 'armor' ||
+          ARMOR.some((a) => a.category !== 'shield' && a.label.toLowerCase() === lower)
+        );
+      })
+    : baseSheet.armorClass.components.some(
+        (c) => c.ruleId.startsWith('armor.') && c.ruleId !== 'armor.shield',
+      );
+  const shieldEquipped = hasEquipmentList
+    ? equippedArmorItems.some((entry) => {
+        const lower = entry.name.trim().toLowerCase();
+        return entry.itemKind === 'shield' || lower === 'shield';
+      })
+    : baseSheet.armorClass.components.some((c) => c.ruleId === 'armor.shield');
+  const heavyArmorEquipped = hasEquipmentList
+    ? equippedArmorItems.some((entry) => {
+        const lower = entry.name.trim().toLowerCase();
+        return ARMOR.some((a) => a.category === 'heavy' && a.label.toLowerCase() === lower);
+      })
+    : baseSheet.armorClass.components.some((c) =>
+        ARMOR.some((a) => a.category === 'heavy' && c.ruleId === `armor.${a.id}`),
+      );
+  const monkMartialArts = classId === 'monk' && !wearingArmor && !shieldEquipped;
+
+  const baseSpeedComponent =
+    baseSheet.speed.components.find((c) => c.ruleId.startsWith('species.')) ??
+    baseSheet.speed.components[0] ?? {
+      label: 'Base Speed',
+      amount: 30,
+      ruleId: 'species.base.speed',
+    };
+  const updatedSpeed = deriveSpeedForSheet({
+    baseSpeedComponent,
+    classId,
+    level,
+    wearingArmor,
+    shieldEquipped,
+    heavyArmorEquipped,
+  });
+
+  const modifiers = baseSheet.abilityModifiers;
+  const classRecord = findClass(classId);
+  let updatedArmorClass = baseSheet.armorClass;
+  if (
+    classRecord !== null &&
+    classRecord.unarmoredDefenseAbility !== null &&
+    !wearingArmor &&
+    !(classId === 'monk' && shieldEquipped) &&
+    !baseSheet.armorClass.components.some(
+      (c) => c.ruleId === `ability.${classRecord.unarmoredDefenseAbility}`,
+    )
+  ) {
+    const unarmoredAbility = classRecord.unarmoredDefenseAbility;
+    const acComponents = [
+      {
+        label: 'Unarmored Defense base',
+        amount: 10,
+        ruleId: `class.${classRecord.id}.unarmored-defense`,
+      },
+      {
+        label: ABILITY_LABELS.dexterity,
+        amount: modifiers.dexterity,
+        ruleId: 'ability.dexterity',
+      },
+      {
+        label: ABILITY_LABELS[unarmoredAbility],
+        amount: modifiers[unarmoredAbility],
+        ruleId: `ability.${unarmoredAbility}`,
+      },
+      ...(shieldEquipped
+        ? [{ label: 'Shield', amount: 2, ruleId: 'armor.shield' }]
+        : []),
+    ];
+    const acVal = acComponents.reduce((sum, c) => sum + c.amount, 0);
+    const baseDerived: DerivedValue = { value: acVal, components: acComponents };
+    updatedArmorClass = {
+      ...baseDerived,
+      formulaSummary: formatArmorClassFormula(baseDerived),
+    };
+  } else if (updatedArmorClass.formulaSummary === undefined) {
+    updatedArmorClass = {
+      ...updatedArmorClass,
+      formulaSummary: formatArmorClassFormula(updatedArmorClass),
+    };
+  }
+  const updatedAttacks: DerivedAttack[] = baseSheet.attacks.map((attack) => {
+    const lowerName = attack.name.trim().toLowerCase();
+    const matchedWeapon =
+      WEAPONS.find((w) => w.label.toLowerCase() === lowerName) ?? null;
+    if (lowerName === 'unarmed strike' && monkMartialArts) {
+      const ability: Ability =
+        modifiers.dexterity > modifiers.strength ? 'dexterity' : 'strength';
+      const components = [
+        {
+          label: ABILITY_LABELS[ability],
+          amount: modifiers[ability],
+          ruleId: `ability.${ability}`,
+        },
+        {
+          label: 'Proficiency Bonus',
+          amount: derived.proficiencyBonus,
+          ruleId: 'proficiency-bonus',
+        },
+      ];
+      return {
+        ...attack,
+        damage: `1d${monkMartialArtsDieSides(level)}`,
+        attackBonus: {
+          components,
+          value: components.reduce((sum, c) => sum + c.amount, 0),
+        },
+      };
+    }
+    if (matchedWeapon !== null) {
+      const ranged = matchedWeapon.category.endsWith('ranged');
+      const finesse = matchedWeapon.properties.includes('Finesse');
+      const monkWeapon = monkMartialArts && isMonkWeapon(matchedWeapon);
+      const ability: Ability = ranged
+        ? 'dexterity'
+        : (finesse || monkWeapon) && modifiers.dexterity > modifiers.strength
+          ? 'dexterity'
+          : 'strength';
+      const components = attack.attackBonus.components.map((component) => {
+        if (component.ruleId === 'proficiency-bonus') {
+          return { ...component, amount: derived.proficiencyBonus };
+        }
+        if (component.ruleId.startsWith('ability.')) {
+          return {
+            label: ABILITY_LABELS[ability],
+            amount: modifiers[ability],
+            ruleId: `ability.${ability}`,
+          };
+        }
+        return component;
+      });
+      return {
+        ...attack,
+        damage: monkWeapon
+          ? upgradeDamageDieForMonk(matchedWeapon.damage, level)
+          : matchedWeapon.damage,
+        attackBonus: {
+          components,
+          value: components.reduce((sum, c) => sum + c.amount, 0),
+        },
+      };
+    }
+    const components = attack.attackBonus.components.map((component) =>
+      component.ruleId === 'proficiency-bonus'
+        ? { ...component, amount: derived.proficiencyBonus }
+        : component,
+    );
+    return {
+      ...attack,
+      attackBonus: {
+        components,
+        value: components.reduce((sum, c) => sum + c.amount, 0),
+      },
+    };
+  });
+
+  if (
+    monkMartialArts &&
+    !updatedAttacks.some((a) => a.name.trim().toLowerCase() === 'unarmed strike')
+  ) {
+    const ability: Ability =
+      modifiers.dexterity > modifiers.strength ? 'dexterity' : 'strength';
+    const components = [
+      {
+        label: ABILITY_LABELS[ability],
+        amount: modifiers[ability],
+        ruleId: `ability.${ability}`,
+      },
+      {
+        label: 'Proficiency Bonus',
+        amount: derived.proficiencyBonus,
+        ruleId: 'proficiency-bonus',
+      },
+    ];
+    updatedAttacks.push({
+      name: 'Unarmed Strike',
+      attackBonus: {
+        components,
+        value: components.reduce((sum, c) => sum + c.amount, 0),
+      },
+      damage: `1d${monkMartialArtsDieSides(level)}`,
+      damageType: 'bludgeoning',
+      properties: [],
+      ruleId: 'weapon.unarmed-strike',
+    });
+  }
+
+  const updatedEquipment = baseSheet.equipment.map((entry) => {
+    const lowerName = entry.name.trim().toLowerCase();
+    const matchedWeapon =
+      WEAPONS.find((w) => w.label.toLowerCase() === lowerName) ?? null;
+    if (matchedWeapon === null) {
+      return entry;
+    }
+    const ranged = matchedWeapon.category.endsWith('ranged');
+    const finesse = matchedWeapon.properties.includes('Finesse');
+    const monkWeapon = monkMartialArts && isMonkWeapon(matchedWeapon);
+    const ability: Ability = ranged
+      ? 'dexterity'
+      : (finesse || monkWeapon) && modifiers.dexterity > modifiers.strength
+        ? 'dexterity'
+        : 'strength';
+    const atkBonus = modifiers[ability] + derived.proficiencyBonus;
+    const dmgMod = modifiers[ability];
+    const dmgModStr = dmgMod > 0 ? `+${dmgMod}` : dmgMod < 0 ? `${dmgMod}` : '';
+    const weaponDamage = monkWeapon
+      ? upgradeDamageDieForMonk(matchedWeapon.damage, level)
+      : matchedWeapon.damage;
+    const catLabel = matchedWeapon.category
+      .replace('-', ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const masteryMatch = /·\s*Mastery:\s*([^·]+)$/i.exec(entry.statsSummary ?? '');
+    const masterySuffix =
+      masteryMatch !== null ? ` · Mastery: ${masteryMatch[1]!.trim()}` : '';
+    return {
+      ...entry,
+      itemKind: 'weapon' as const,
+      statsSummary: `${catLabel} · ${atkBonus >= 0 ? `+${atkBonus}` : atkBonus} to hit · ${weaponDamage}${dmgModStr} ${matchedWeapon.damageType}${matchedWeapon.properties.length > 0 ? ` · ${matchedWeapon.properties.join(', ')}` : ''}${masterySuffix}`,
+    };
+  });
+
   return {
     ...baseSheet,
     level,
@@ -551,6 +808,8 @@ export function recomputeSheetForLevel(
     hitPoints: { value: derived.maxHitPoints, components: hitPointComponents },
     hitPointsCurrent: derived.maxHitPoints,
     hitDice: derived.hitDice,
+    armorClass: updatedArmorClass,
+    speed: updatedSpeed,
     features: [
       ...baseSheet.features.filter(
         (feature) =>
@@ -605,18 +864,8 @@ export function recomputeSheetForLevel(
         ? replaceProficiency(baseSheet.passivePerception, derived.proficiencyBonus)
         : baseSheet.passivePerception,
     initiative: replaceProficiency(baseSheet.initiative, derived.proficiencyBonus),
-    attacks: baseSheet.attacks.map((attack) => ({
-      ...attack,
-      attackBonus: {
-        ...attack.attackBonus,
-        value: attack.attackBonus.value + proficiencyDelta,
-        components: attack.attackBonus.components.map((component) =>
-          component.ruleId === 'proficiency-bonus'
-            ? { ...component, amount: derived.proficiencyBonus }
-            : component,
-        ),
-      },
-    })),
+    attacks: updatedAttacks,
+    equipment: updatedEquipment,
     classResources: classResourcesForLevel(baseSheet, classId, level),
     ...(classId === 'fighter' && level >= 3
       ? { subclassLabel: 'Champion (Alpha default Fighter subclass)' }

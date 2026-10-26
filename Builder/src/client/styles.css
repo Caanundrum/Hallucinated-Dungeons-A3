@@ -8275,6 +8275,61 @@ button.danger:hover:not(:disabled),
   }
 }
 
+/* Packet 5 (RS-07): Ask DM Pane Layout & Compact Info Toggle */
+[data-testid='director-address-pane'] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 360px;
+  height: 100%;
+}
+
+[data-testid='director-address-pane'] .director-address-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.15rem 0;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+[data-testid='director-address-pane'] .director-address-header [data-testid='collapse-director-address'] {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+[data-testid='director-address-pane'] .director-address-notice {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+
+[data-testid='director-address-pane'] [data-testid='ask-dm-thread'] {
+  flex: 1 1 auto;
+  min-height: 240px;
+  max-height: none;
+  margin: 0;
+}
+
+[data-testid='director-address-pane'] .director-address-composer-compact {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 0.3rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+[data-testid='director-address-pane'] [data-testid='director-address-input'] {
+  min-height: 38px;
+  max-height: 76px;
+  padding: 0.35rem 0.55rem;
+  resize: vertical;
+}
+
+
 
 
 

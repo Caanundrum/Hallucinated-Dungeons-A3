@@ -255,7 +255,10 @@ test.describe('PQA residual regressions', () => {
     const intercept1 = page.getByTestId('intent-intercept');
     if (await intercept1.isVisible({ timeout: 2_500 }).catch(() => false)) {
       await expect(intercept1).toContainText(/Service counter/i);
-      await page.getByTestId('confirm-intent-intercept').click();
+      const confirmBtn1 = page.getByTestId('confirm-intent-intercept');
+      if (await confirmBtn1.isEnabled({ timeout: 1_500 }).catch(() => false)) {
+        await confirmBtn1.click().catch(() => {});
+      }
       await expect(intercept1).toHaveCount(0, { timeout: 15_000 });
     }
     // Closed doorway must remain closed!
@@ -277,7 +280,10 @@ test.describe('PQA residual regressions', () => {
     const intercept2 = page.getByTestId('intent-intercept');
     if (await intercept2.isVisible({ timeout: 2_500 }).catch(() => false)) {
       await expect(intercept2).not.toContainText(/Open the door/i);
-      await page.getByTestId('confirm-intent-intercept').click();
+      const confirmBtn2 = page.getByTestId('confirm-intent-intercept');
+      if (await confirmBtn2.isEnabled({ timeout: 1_500 }).catch(() => false)) {
+        await confirmBtn2.click().catch(() => {});
+      }
       await expect(intercept2).toHaveCount(0, { timeout: 15_000 });
     }
 

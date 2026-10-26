@@ -14,7 +14,16 @@ import {
 } from '../../dist/server/rules/srd-manifest.js';
 import {
   buildCampaignBlueprint,
+  classifyNpcRoles,
+  extractPremiseEntities,
 } from '../../dist/server/campaigns/campaign-blueprint.js';
+import {
+  expandNpcNameVariants,
+  npcNamesMatch,
+} from '../../dist/shared/campaign-facts.js';
+import {
+  parsePlayerDeclaration,
+} from '../../dist/shared/play-authority-contract.js';
 import {
   buildCampaignAssetPrompt,
   formatBattlemapCardinalExits,
@@ -27,6 +36,7 @@ import {
 import {
   contextualContainerLabelForTemplate,
   contextualPropLabelForTemplate,
+  deduplicateSceneFeatureLabels,
 } from '../../dist/server/table/scene-composition.js';
 import {
   buildMapRuntimeFromBlueprint,
@@ -36,6 +46,8 @@ import {
   isPortableSceneContainer,
   lootContainerRuntime,
   matchTakeContainerByDeclaration,
+  rankInteractablesByDeclaration,
+  scoreFeatureLabelMatch,
   travelSceneRuntime,
 } from '../../dist/server/table/scene-commands.js';
 import {
@@ -44,10 +56,21 @@ import {
 } from '../../dist/server/table/map-projection.js';
 import {
   classifyClause,
+  isPassageOrTravelThroughDoorway,
+  splitPrimaryTargetFromLocative,
 } from '../../dist/shared/utterance-understanding.js';
 import {
   applyDirectorDispatchToMap,
 } from '../../dist/server/ai/director-mechanics-dispatcher.js';
+import {
+  resolveDeterministicIntentFallback,
+} from '../../dist/server/ai/deterministic-intent-fallback.js';
+import {
+  recomputeSheetForLevel,
+} from '../../dist/server/rules/engine/xp-progression.js';
+import {
+  applyProgressionTrackers,
+} from '../../dist/server/rules/engine/encounter-runtime.js';
 
 const BASE_ABILITIES = {
   strength: 10,
@@ -513,3 +536,335 @@ test('Packet 5: Topological battlemap prompts include PERIMETER EXIT TOPOLOGY an
   });
   assert.match(fullPrompt, /PERIMETER EXIT TOPOLOGY/);
 });
+
+test('RS-01 & Guardrail 1: Syntactic Place vs. Person classification, active contact vs. vanished NPC role priority, and role-titled NPC lookup continuity', () => {
+  const premise =
+    'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks Ironfist to investigate why Apprentice Talia vanished after sealing a brass astrolabe inside a reinforced supply locker.';
+
+  const entities = extractPremiseEntities(premise, {
+    excludeCharacterNames: ['Ironfist'],
+  });
+  assert.equal(entities.npcs.includes('Clockhouse'), false, 'Building is never classified as an NPC');
+  assert.equal(entities.npcs.includes('Glimmerfen'), false, 'Compound region is never classified as an NPC');
+  assert.equal(entities.npcs.includes('Ironfist'), false, 'Excluded PC is never classified as an NPC');
+  assert.equal(entities.places.includes('Clockhouse'), true, 'Prepositional/appositive building is in places');
+  assert.equal(entities.places.includes('Glimmerfen'), true, 'Compound place is in places');
+  assert.equal(
+    entities.npcs.some((n) => npcNamesMatch(n, 'Warden Corin Vale')),
+    true,
+    'Active contact is extracted in npcs',
+  );
+  assert.equal(
+    entities.npcs.some((n) => npcNamesMatch(n, 'Apprentice Talia')),
+    true,
+    'Vanished person is extracted in npcs',
+  );
+  assert.equal(entities.places[0], 'Clockhouse');
+
+  const roles = classifyNpcRoles(entities.npcs, premise);
+  assert.equal(
+    npcNamesMatch(roles.presentNpcs[0], 'Warden Corin Vale'),
+    true,
+    'Active interpersonal contact is presentNpcs[0]',
+  );
+  assert.equal(
+    roles.missingNpcs.some((n) => npcNamesMatch(n, 'Apprentice Talia')),
+    true,
+    'Vanished person is placed in missingNpcs',
+  );
+  assert.equal(
+    roles.presentNpcs.some((n) => npcNamesMatch(n, 'Apprentice Talia')),
+    false,
+    'Vanished person never spawns in Room 1 presentNpcs',
+  );
+
+  const bp = buildCampaignBlueprint({
+    summary: premise,
+    startLevel: 1,
+    targetEndLevel: 2,
+    excludeCharacterNames: ['Ironfist'],
+  });
+  const room1 = bp.milestones[0].rooms[0];
+  assert.equal(room1.title, 'Clockhouse', 'Room 1 title preserves primary named location');
+  assert.equal(
+    npcNamesMatch(room1.npcs[0].name, 'Warden Corin Vale'),
+    true,
+    'Room 1 NPC is the active contact, not the building or the missing apprentice',
+  );
+
+  // Guardrail 1: Role-titled NPC lookup continuity across all natural forms
+  const variants = expandNpcNameVariants('Corin Vale', 'Warden');
+  assert.equal(variants.includes('Warden Corin Vale'), true);
+  assert.equal(variants.includes('Warden Corin'), true);
+  assert.equal(variants.includes('Corin Vale'), true);
+  assert.equal(variants.includes('Corin'), true);
+
+  for (const queryForm of ['Warden Corin Vale', 'Warden Corin', 'Corin Vale', 'Corin']) {
+    assert.equal(npcNamesMatch('Warden Corin Vale', queryForm), true, `Matches ${queryForm}`);
+    assert.equal(npcNamesMatch('Corin Vale', queryForm, 'Warden'), true, `Matches ${queryForm} with roleHint`);
+    const parsed = parsePlayerDeclaration(`I ask ${queryForm} what happened here`, {
+      knownNpcs: [{ id: 'npc-corin', label: 'Warden Corin Vale' }],
+    });
+    assert.ok(parsed.addressee, `parsePlayerDeclaration resolves ${queryForm}`);
+    assert.equal(npcNamesMatch(parsed.addressee, 'Warden Corin Vale'), true);
+  }
+});
+
+test('RS-02 & RS-03: Locative prepositional stripping, container deduplication, open-container loot attribution, and verb/state/position-aware tie-breaker', () => {
+  // Locative stripping
+  const split = splitPrimaryTargetFromLocative('I inspect the brass astrolabe in the reinforced supply locker');
+  assert.equal(split.primaryClause, 'I inspect the brass astrolabe');
+  assert.equal(split.locativeQualifier, 'in the reinforced supply locker');
+
+  // Feature label deduplication
+  const deduped = deduplicateSceneFeatureLabels([
+    {
+      objectId: 'scene:poi',
+      label: 'Weatherproof ranger pack (closed)',
+      objectKind: 'container',
+      referenceKind: 'loot',
+      column: 4,
+      row: 3,
+      state: 'closed',
+    },
+    {
+      objectId: 'scene:east-chest',
+      label: 'Weatherproof ranger pack (closed)',
+      objectKind: 'container',
+      referenceKind: 'loot',
+      column: 9,
+      row: 5,
+      state: 'closed',
+    },
+  ]);
+  assert.notEqual(deduped[0].label, deduped[1].label, 'Duplicate container labels are disambiguated');
+
+  // Blueprint with two containers that share the head noun "locker"
+  const bp = buildCampaignBlueprint({
+    summary:
+      'At Clockhouse, a stilted lantern station, Warden Corin Vale asks the party to recover a brass astrolabe from a reinforced supply locker.',
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  const baseRuntime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-loot',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    seatTokens: [{ seatId: 'seat-1', characterId: 'char-1', column: 2, row: 4 }],
+    activateFirstScene: true,
+  });
+  const r1 = baseRuntime.sceneInstances['scene-m1-r1'];
+  const customR1 = {
+    ...r1,
+    features: [
+      {
+        objectId: 'scene-m1-r1:locker-west',
+        label: 'Reinforced supply locker (open)',
+        objectKind: 'container',
+        referenceKind: 'loot',
+        interactable: true,
+        column: 3,
+        row: 4,
+        state: 'open',
+        lockState: 'unlocked',
+        contents: ['Brass Astrolabe', 'Healing Draught'],
+      },
+      {
+        objectId: 'scene-m1-r1:locker-east',
+        label: 'Ironbound storage locker (closed)',
+        objectKind: 'container',
+        referenceKind: 'loot',
+        interactable: true,
+        column: 10,
+        row: 4,
+        state: 'closed',
+        lockState: 'unlocked',
+        contents: ['Rations'],
+      },
+    ],
+  };
+  const runtimeWithTwoLockers = {
+    ...baseRuntime,
+    sceneInstances: {
+      ...baseRuntime.sceneInstances,
+      'scene-m1-r1': customR1,
+    },
+  };
+
+  // Taking the item attributes it to the OPEN container ("Reinforced supply locker"), not the closed one
+  const lootRes = lootContainerRuntime({
+    runtime: runtimeWithTwoLockers,
+    itemHint: 'brass astrolabe',
+    declaration: 'I take the brass astrolabe from the reinforced supply locker.',
+  });
+  assert.deepEqual(lootRes.lootedItems, ['Brass Astrolabe']);
+  assert.equal(lootRes.containerLabel, 'Reinforced supply locker');
+
+  // Inspecting the item "in the reinforced supply locker" scores the open locker when qualified
+  const rankedForOpenQualifier = rankInteractablesByDeclaration(
+    runtimeWithTwoLockers,
+    'I check the open locker on the west side',
+  );
+  assert.equal(rankedForOpenQualifier[0].objectId, 'scene-m1-r1:locker-west');
+});
+
+test('RS-04: Doorway passage travel intent routing and accurate destination title resolution', () => {
+  const bp = buildCampaignBlueprint({
+    summary:
+      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks the party to trace a vanished apprentice.',
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-travel',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    seatTokens: [{ seatId: 'seat-1', characterId: 'char-1', column: 2, row: 4 }],
+    activateFirstScene: true,
+  });
+  const mapBundle = buildAuthoritativeMapBundle({
+    campaignId: 'camp-travel',
+    seats: [
+      {
+        seatId: 'seat-1',
+        campaignId: 'camp-travel',
+        ownerAccountId: 'acc-1',
+        characterId: 'char-1',
+        characterName: 'Test Hero',
+      },
+    ],
+    runtime,
+  });
+  const r2Title = bp.milestones[0].rooms[1].title;
+
+  assert.equal(
+    isPassageOrTravelThroughDoorway('I head east through the doorway into the next area.'),
+    true,
+    'Doorway passage utterance is recognized as travel',
+  );
+  assert.equal(
+    isPassageOrTravelThroughDoorway('I take the eastern doorway and follow the trail.'),
+    true,
+    'Taking the eastern doorway and following the trail is recognized as travel',
+  );
+
+  // Executing travelSceneRuntime with "east doorway" transitions from scene-m1-r1 to scene-m1-r2 and uses Room 2's title
+  const traveled = travelSceneRuntime({
+    runtime,
+    campaignId: 'camp-travel',
+    accountId: 'acc-1',
+    destinationHint: 'east doorway',
+    blueprint: bp,
+  });
+  assert.equal(traveled.runtime.activeSceneId, 'scene-m1-r2');
+  assert.equal(traveled.chronicle.includes(r2Title), true);
+  assert.notEqual(r2Title, mapBundle.title);
+});
+
+test('RS-05 & Guardrail 2: Monk Martial Arts weapon derivation at Level 1, Unarmored Movement at Level 2+, and applyProgressionTrackers self-healing', () => {
+  const monkChoices = minimalChoices({
+    classId: 'monk',
+    baseAbilityScores: {
+      strength: 12,
+      dexterity: 15,
+      constitution: 14,
+      intelligence: 10,
+      wisdom: 14,
+      charisma: 8,
+    },
+    backgroundAbilityBonuses: {
+      dexterity: 2,
+      wisdom: 1,
+    },
+  });
+
+  const l1Sheet = deriveSheet(monkChoices);
+  // Level 1 Monk has DEX 17 (+3), STR 12 (+1), WIS 15 (+2), Prof +2
+  assert.equal(l1Sheet.speed.value, 30, 'Level 1 Monk speed is 30 ft');
+  const l1SpearAttack = l1Sheet.attacks.find((a) => a.name === 'Spear');
+  assert.ok(l1SpearAttack, 'Level 1 Monk has Spear attack');
+  assert.equal(l1SpearAttack.attackBonus.value, 5, 'Spear uses DEX (+3) + Prof (+2) = +5 to hit');
+  assert.equal(l1SpearAttack.damage, '1d6', 'Spear uses Martial Arts 1d6 base die');
+  const l1Unarmed = l1Sheet.attacks.find((a) => a.name === 'Unarmed Strike');
+  assert.ok(l1Unarmed, 'Level 1 Monk has Unarmed Strike attack');
+  assert.equal(l1Unarmed.attackBonus.value, 5, 'Unarmed Strike uses DEX (+3) + Prof (+2) = +5');
+  assert.equal(l1Unarmed.damage, '1d6', 'Unarmed Strike uses 1d6 Martial Arts die');
+  const l1SpearEquip = l1Sheet.equipment.find((e) => e.name === 'Spear');
+  assert.ok(l1SpearEquip);
+  assert.match(l1SpearEquip.statsSummary ?? '', /\+5 to hit · 1d6\+3 piercing/i);
+
+  // Level 2 Monk gains Unarmored Movement (+10 ft => 40 ft)
+  const l2Sheet = recomputeSheetForLevel(l1Sheet, 'monk', 2, 300);
+  assert.equal(l2Sheet.speed.value, 40, 'Level 2 unarmored Monk speed is 40 ft');
+  assert.match(l2Sheet.speed.formulaSummary ?? '', /30 base \+ 10 Unarmored Movement = 40 ft/);
+
+  // Guardrail 2: applyProgressionTrackers self-heals a stale saved sheet even when level matches
+  const staleSheet = {
+    ...l1Sheet,
+    speed: {
+      value: 30,
+      components: [{ label: 'Human Speed', amount: 30, ruleId: 'species.human.speed' }],
+    },
+    attacks: l1Sheet.attacks.map((a) =>
+      a.name === 'Spear'
+        ? {
+            ...a,
+            attackBonus: {
+              value: 3,
+              components: [
+                { label: 'Strength', amount: 1, ruleId: 'ability.strength' },
+                { label: 'Proficiency Bonus', amount: 2, ruleId: 'proficiency-bonus' },
+              ],
+            },
+          }
+        : a,
+    ),
+  };
+  const healedL2 = applyProgressionTrackers(staleSheet, {
+    characterId: 'char-monk',
+    classId: 'monk',
+    level: 2,
+    experiencePoints: 300,
+    updatedAt: new Date().toISOString(),
+  });
+  assert.equal(healedL2.speed.value, 40, 'applyProgressionTrackers synchronizes Level 2 Monk speed to 40 ft');
+  const healedSpear = healedL2.attacks.find((a) => a.name === 'Spear');
+  assert.equal(healedSpear.attackBonus.value, 5, 'applyProgressionTrackers heals Spear attack bonus to +5');
+});
+
+test('RS-06 & RS-07: Walkable gate-adjacent lever placement on outdoor Room 2 maps and non-destructive Ask DM info toggle', () => {
+  const bp = buildCampaignBlueprint({
+    summary:
+      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks the party to trace a vanished apprentice.',
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-outdoor-lever',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    seatTokens: [{ seatId: 'seat-1', characterId: 'char-1', column: 2, row: 4 }],
+    activateFirstScene: true,
+  });
+  const r2 = runtime.sceneInstances['scene-m1-r2'];
+  assert.doesNotMatch(r2.title, /Side Passage/i, 'Outdoor Room 2 title avoids indoor Side Passage');
+  assert.doesNotMatch(r2.sceneBanner, /cellar stairs|stone wall/i, 'Outdoor Room 2 banner avoids cellar stairs / stone wall prose');
+
+  const lever = r2.features.find((f) => f.objectKind === 'lever');
+  assert.ok(lever, 'Room 2 has a mechanism lever');
+  assert.doesNotMatch(lever.label, /wall lever/i, 'Outdoor lever avoids indoor wall lever label');
+  const leverCell = r2.cells.find((c) => c.column === lever.column && c.row === lever.row);
+  assert.equal(leverCell?.terrain, 'floor', 'Lever cell is walkable floor terrain, never blocked');
+
+  const targetExit = r2.exits.find((e) => e.id === lever.targetEdgeOrObjectId);
+  if (targetExit) {
+    const manhattan =
+      Math.abs(lever.column - targetExit.column) + Math.abs(lever.row - targetExit.row);
+    assert.equal(
+      manhattan >= 1 && manhattan <= 2,
+      true,
+      `Lever at (${lever.column},${lever.row}) is within Manhattan distance 1-2 of target exit (${targetExit.column},${targetExit.row})`,
+    );
+  }
+});
+

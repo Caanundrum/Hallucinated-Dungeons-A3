@@ -1151,12 +1151,101 @@ function deriveArmorClass(
   return withFormula(value(components));
 }
 
+export function isMonkWeapon(weapon: WeaponRecord): boolean {
+  return (
+    weapon.category === 'simple-melee' ||
+    (weapon.category === 'martial-melee' && weapon.properties.includes('Light'))
+  );
+}
+
+export function monkMartialArtsDieSides(level: number): number {
+  if (level >= 17) return 12;
+  if (level >= 11) return 10;
+  if (level >= 5) return 8;
+  return 6;
+}
+
+export function upgradeDamageDieForMonk(damage: string, level: number): string {
+  const minSides = monkMartialArtsDieSides(level);
+  const match = /^1d(\d+)(.*)$/i.exec(damage.trim());
+  if (match === null) {
+    return damage;
+  }
+  const currentSides = Number.parseInt(match[1]!, 10);
+  const suffix = match[2] ?? '';
+  if (currentSides < minSides) {
+    return `1d${minSides}${suffix}`;
+  }
+  return damage;
+}
+
+export function deriveSpeedForSheet(options: {
+  readonly baseSpeedComponent: {
+    readonly label: string;
+    readonly amount: number;
+    readonly ruleId: string;
+  };
+  readonly classId: string;
+  readonly level: number;
+  readonly wearingArmor: boolean;
+  readonly shieldEquipped: boolean;
+  readonly heavyArmorEquipped?: boolean;
+}): DerivedValue {
+  const components: Array<{ label: string; amount: number; ruleId: string }> = [
+    { ...options.baseSpeedComponent },
+  ];
+  if (
+    options.classId === 'monk' &&
+    options.level >= 2 &&
+    !options.wearingArmor &&
+    !options.shieldEquipped
+  ) {
+    const bonus =
+      options.level >= 18
+        ? 30
+        : options.level >= 14
+          ? 25
+          : options.level >= 10
+            ? 20
+            : options.level >= 6
+              ? 15
+              : 10;
+    components.push({
+      label: 'Unarmored Movement',
+      amount: bonus,
+      ruleId: 'class.monk.unarmored-movement',
+    });
+  } else if (
+    options.classId === 'barbarian' &&
+    options.level >= 5 &&
+    !options.heavyArmorEquipped
+  ) {
+    components.push({
+      label: 'Fast Movement',
+      amount: 10,
+      ruleId: 'class.barbarian.fast-movement',
+    });
+  }
+  const derived = value(components);
+  if (components.length > 1) {
+    const parts = components.map((c, idx) =>
+      idx === 0 ? `${c.amount} base` : `+ ${c.amount} ${c.label}`,
+    );
+    return {
+      ...derived,
+      formulaSummary: `${parts.join(' ')} = ${derived.value} ft`,
+    };
+  }
+  return derived;
+}
+
 function deriveAttacks(
   classRecord: ClassRecord,
   classEquipment: EquipmentOption | null,
   modifiers: Record<Ability, number>,
   proficiencyBonus: number,
   choices: CharacterChoices,
+  level = STARTING_LEVEL,
 ): readonly DerivedAttack[] {
   // Only the Class equipment option produces attack lines: the character is
   // proficient with everything in their own Class kit by construction, so no
@@ -1167,35 +1256,54 @@ function deriveAttacks(
     .map((id) => findWeapon(id))
     .filter((weapon): weapon is NonNullable<typeof weapon> => weapon !== null);
 
+  const unequippedSet = new Set(
+    (choices.unequippedItemNames ?? []).map((name) => name.trim().toLowerCase()),
+  );
+  const armorIds = classEquipment?.armorIds ?? [];
+  const armors = armorIds
+    .map((id) => findArmor(id))
+    .filter((armor): armor is NonNullable<typeof armor> => armor !== null)
+    .filter((armor) => !unequippedSet.has(armor.label.toLowerCase()));
+  const wearingArmor = armors.some((armor) => armor.category !== 'shield');
+  const shieldEquipped = armors.some((armor) => armor.category === 'shield');
+  const monkMartialArts =
+    classRecord.id === 'monk' && !wearingArmor && !shieldEquipped;
+
   const meleeWeaponCount = weapons.filter((weapon) => !weapon.category.endsWith('ranged')).length;
   const archery = hasFightingStyle(choices, 'archery');
   const dueling = hasFightingStyle(choices, 'dueling');
 
-  if (weapons.length === 0) {
+  const buildUnarmedStrike = (): DerivedAttack => {
     const ability: Ability =
       modifiers.dexterity > modifiers.strength ? 'dexterity' : 'strength';
-    return [
-      {
-        name: 'Unarmed Strike',
-        attackBonus: value([
-          { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
-          { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
-        ]),
-        damage: String(Math.max(1, 1 + modifiers[ability])),
-        damageType: 'bludgeoning',
-        properties: ['Unarmed'],
-        ruleId: 'weapon.unarmed-strike',
-      },
-    ];
+    const damage = monkMartialArts
+      ? `1d${monkMartialArtsDieSides(level)}`
+      : String(Math.max(1, 1 + modifiers[ability]));
+    return {
+      name: 'Unarmed Strike',
+      attackBonus: value([
+        { label: ABILITY_LABELS[ability], amount: modifiers[ability], ruleId: `ability.${ability}` },
+        { label: 'Proficiency Bonus', amount: proficiencyBonus, ruleId: 'proficiency-bonus' },
+      ]),
+      damage,
+      damageType: 'bludgeoning',
+      properties: monkMartialArts ? ['Unarmed', 'Martial Arts'] : ['Unarmed'],
+      ruleId: 'weapon.unarmed-strike',
+    };
+  };
+
+  if (weapons.length === 0) {
+    return [buildUnarmedStrike()];
   }
 
-  return weapons.map((weapon) => {
+  const weaponAttacks = weapons.map((weapon) => {
     const ranged = weapon.category.endsWith('ranged');
     const finesse = weapon.properties.includes('Finesse');
     const twoHanded = weapon.properties.includes('Two-Handed');
+    const monkWeapon = monkMartialArts && isMonkWeapon(weapon);
     const ability: Ability = ranged
       ? 'dexterity'
-      : finesse && modifiers.dexterity > modifiers.strength
+      : (finesse || monkWeapon) && modifiers.dexterity > modifiers.strength
         ? 'dexterity'
         : 'strength';
     const attackComponents = [
@@ -1210,11 +1318,11 @@ function deriveAttacks(
       });
     }
 
-    let damage = weapon.damage;
+    let damage = monkWeapon ? upgradeDamageDieForMonk(weapon.damage, level) : weapon.damage;
     const properties = [...weapon.properties];
     if (dueling && !ranged && !twoHanded && meleeWeaponCount === 1) {
       // Sheet-facing reminder: +2 damage under Dueling conditions.
-      damage = `${weapon.damage}+2`;
+      damage = `${damage}+2`;
       properties.push('Dueling +2 damage');
     }
 
@@ -1227,6 +1335,11 @@ function deriveAttacks(
       ruleId: `weapon.${weapon.id}`,
     };
   });
+
+  if (monkMartialArts) {
+    return [...weaponAttacks, buildUnarmedStrike()];
+  }
+  return weaponAttacks;
 }
 
 /**
@@ -1404,6 +1517,17 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     const lower = entry.name.trim().toLowerCase();
     return lower === 'shield' && !unequippedSet.has(lower);
   });
+  const hasEquippedBodyArmor = rawEquipment.some((entry) => {
+    const lower = entry.name.trim().toLowerCase();
+    if (lower === 'shield' || unequippedSet.has(lower)) {
+      return false;
+    }
+    return ARMOR.some(
+      (armor) =>
+        armor.category !== 'shield' &&
+        (armor.label.toLowerCase() === lower || lower.includes(armor.label.toLowerCase())),
+    );
+  });
   const equipment = rawEquipment.map((entry) => {
     const lower = entry.name.trim().toLowerCase();
     const matchedArmor =
@@ -1475,9 +1599,12 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
       const isEquipped = !unequippedSet.has(lower);
       const ranged = matchedWeapon.category.endsWith('ranged');
       const finesse = matchedWeapon.properties.includes('Finesse');
+      const monkMartialArts =
+        classRecord.id === 'monk' && !hasEquippedBodyArmor && !hasEquippedShield;
+      const monkWeapon = monkMartialArts && isMonkWeapon(matchedWeapon);
       const ability: Ability = ranged
         ? 'dexterity'
-        : finesse && modifiers.dexterity > modifiers.strength
+        : (finesse || monkWeapon) && modifiers.dexterity > modifiers.strength
           ? 'dexterity'
           : 'strength';
       const proficient = classIsProficientWithWeapon(classRecord, matchedWeapon);
@@ -1486,6 +1613,9 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
         modifiers[ability] + (proficient ? proficiencyBonus.value : 0) + archeryBonus;
       const dmgMod = modifiers[ability];
       const dmgModStr = dmgMod > 0 ? `+${dmgMod}` : dmgMod < 0 ? `${dmgMod}` : '';
+      const weaponDamage = monkWeapon
+        ? upgradeDamageDieForMonk(matchedWeapon.damage, STARTING_LEVEL)
+        : matchedWeapon.damage;
       const mastery = WEAPON_MASTERY_BY_NAME[matchedWeapon.label];
       const catLabel = matchedWeapon.category
         .replace('-', ' ')
@@ -1494,7 +1624,7 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
         ...entry,
         equipped: isEquipped,
         itemKind: 'weapon' as const,
-        statsSummary: `${catLabel} · ${atkBonus >= 0 ? `+${atkBonus}` : atkBonus} to hit · ${matchedWeapon.damage}${dmgModStr} ${matchedWeapon.damageType}${matchedWeapon.properties.length > 0 ? ` · ${matchedWeapon.properties.join(', ')}` : ''}${mastery !== undefined ? ` · Mastery: ${mastery}` : ''}`,
+        statsSummary: `${catLabel} · ${atkBonus >= 0 ? `+${atkBonus}` : atkBonus} to hit · ${weaponDamage}${dmgModStr} ${matchedWeapon.damageType}${matchedWeapon.properties.length > 0 ? ` · ${matchedWeapon.properties.join(', ')}` : ''}${mastery !== undefined ? ` · Mastery: ${mastery}` : ''}`,
         comparisonNote: isEquipped ? 'Equipped' : 'Unequipped (Carried in pack)',
       };
     }
@@ -1792,7 +1922,17 @@ export function deriveSheet(choices: CharacterChoices): DerivedCharacterSheet | 
     hitDice: `1d${classRecord.hitDie}`,
     armorClass: derivedArmorClass,
     initiative: value(initiativeComponents),
-    speed: value([{ label: `${speciesRecord.label} Speed`, amount: speciesRecord.speed, ruleId: `species.${speciesRecord.id}.speed` }]),
+    speed: deriveSpeedForSheet({
+      baseSpeedComponent: {
+        label: `${speciesRecord.label} Speed`,
+        amount: speciesRecord.speed,
+        ruleId: `species.${speciesRecord.id}.speed`,
+      },
+      classId: classRecord.id,
+      level: STARTING_LEVEL,
+      wearingArmor: hasEquippedBodyArmor,
+      shieldEquipped: hasEquippedShield,
+    }),
     passivePerception,
     savingThrows,
     savingThrowProficiencies: classRecord.savingThrowProficiencies,

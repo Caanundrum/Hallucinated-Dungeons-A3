@@ -11,6 +11,7 @@ import type {
 import { describeEquipmentItemMechanics } from '../../../shared/container-contents.js';
 import { COLLECTIONS } from '../../persistence/firestore.js';
 import { deriveSheet } from '../character-rules.js';
+import { findClass } from '../srd-manifest.js';
 import {
   deriveProgression,
   levelForExperience,
@@ -148,39 +149,7 @@ export function applyProgressionTrackers(
   if (progression === null) {
     return sheet;
   }
-  const maxHp = sheet.hitPoints.value;
-  const hitPointsCurrent =
-    typeof progression.hitPointsCurrent === 'number'
-      ? Math.max(0, Math.min(maxHp, progression.hitPointsCurrent))
-      : sheet.hitPointsCurrent;
-  const temporaryHitPoints =
-    typeof progression.temporaryHitPoints === 'number'
-      ? Math.max(0, progression.temporaryHitPoints)
-      : (sheet.temporaryHitPoints ?? 0);
-  const classResources = (sheet.classResources ?? []).map((resource) => {
-    const remaining = progression.resourceRemaining?.[resource.id];
-    if (typeof remaining !== 'number') {
-      return resource;
-    }
-    return {
-      ...resource,
-      remaining: Math.max(0, Math.min(resource.maximum, remaining)),
-    };
-  });
-  const spellcasting =
-    sheet.spellcasting === null
-      ? null
-      : {
-          ...sheet.spellcasting,
-          level1SlotsRemaining:
-            typeof progression.level1SlotsRemaining === 'number'
-              ? Math.max(
-                  0,
-                  Math.min(sheet.spellcasting.level1SlotCount, progression.level1SlotsRemaining),
-                )
-              : sheet.spellcasting.level1SlotsRemaining,
-        };
-  const equipment =
+  const rawEquipment =
     progression.equipmentOverrides !== undefined && progression.equipmentOverrides.length > 0
       ? progression.equipmentOverrides.map((item) => {
           const baseMatch = sheet.equipment.find(
@@ -204,13 +173,66 @@ export function applyProgressionTrackers(
           };
         })
       : sheet.equipment;
+
+  const targetLevel = Math.max(
+    1,
+    Math.min(20, typeof progression.level === 'number' ? progression.level : sheet.level),
+  );
+  const targetXp =
+    typeof progression.experiencePoints === 'number'
+      ? progression.experiencePoints
+      : sheet.experiencePoints;
+  const synchronizedSheet =
+    typeof progression.classId === 'string' && findClass(progression.classId) !== null
+      ? recomputeSheetForLevel(
+          { ...sheet, equipment: rawEquipment },
+          progression.classId,
+          targetLevel,
+          targetXp,
+        )
+      : { ...sheet, equipment: rawEquipment };
+
+  const maxHp = synchronizedSheet.hitPoints.value;
+  const hitPointsCurrent =
+    typeof progression.hitPointsCurrent === 'number'
+      ? Math.max(0, Math.min(maxHp, progression.hitPointsCurrent))
+      : synchronizedSheet.hitPointsCurrent;
+  const temporaryHitPoints =
+    typeof progression.temporaryHitPoints === 'number'
+      ? Math.max(0, progression.temporaryHitPoints)
+      : (synchronizedSheet.temporaryHitPoints ?? 0);
+  const classResources = (synchronizedSheet.classResources ?? []).map((resource) => {
+    const remaining = progression.resourceRemaining?.[resource.id];
+    if (typeof remaining !== 'number') {
+      return resource;
+    }
+    return {
+      ...resource,
+      remaining: Math.max(0, Math.min(resource.maximum, remaining)),
+    };
+  });
+  const spellcasting =
+    synchronizedSheet.spellcasting === null
+      ? null
+      : {
+          ...synchronizedSheet.spellcasting,
+          level1SlotsRemaining:
+            typeof progression.level1SlotsRemaining === 'number'
+              ? Math.max(
+                  0,
+                  Math.min(
+                    synchronizedSheet.spellcasting.level1SlotCount,
+                    progression.level1SlotsRemaining,
+                  ),
+                )
+              : synchronizedSheet.spellcasting.level1SlotsRemaining,
+        };
   return {
-    ...sheet,
+    ...synchronizedSheet,
     hitPointsCurrent,
     temporaryHitPoints,
     classResources,
     spellcasting,
-    equipment,
   };
 }
 

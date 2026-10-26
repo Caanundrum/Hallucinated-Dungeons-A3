@@ -591,9 +591,14 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     };
   }
 
-  // 6.5. Route / Exit Travel Intent (checked BEFORE physical manipulation so "take the trail" / "use the stairs" is travel, not take_item)
+  // 6.5. Route / Exit Travel Intent (checked BEFORE physical manipulation so "take the trail" / "use the stairs" / "take the eastern doorway" is travel, not take_item)
+  const hasExplicitDoorOpenCloseVerb =
+    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|close(?:s|d|ing)?|shut(?:s|ting)?|pick(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
+      trimmed,
+    );
   const isRouteOrExitTravel =
-    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:down|up|along|through|onward|forward)|walk(?:s|ing)?\s+(?:down|up|along|through)|head(?:s|ing)?\s+(?:down|up|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
+    !hasExplicitDoorOpenCloseVerb &&
+    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:down|up|along|through|onward|forward)|walk(?:s|ing)?\s+(?:down|up|along|through)|head(?:s|ing)?\s+(?:down|up|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
       trimmed,
     );
   if (isRouteOrExitTravel && !constraints.forbidMove) {
@@ -708,4 +713,66 @@ export function actionableDirectorFallback(understanding: UtteranceUnderstanding
     return 'Staying put. The Game Director narrates what you perceive or do from where you stand without moving.';
   }
   return 'You act within the scene — the Game Director narrates what unfolds from your action.';
+}
+
+/**
+ * Separates a declaration's primary verb + direct-object target clause from a secondary
+ * locative prepositional phrase (e.g. "near the eastern doorway", "beside the locked chest")
+ * while keeping trailing purpose phrases ("for footprints", "for traps") attached to `primaryClause`.
+ */
+export function splitPrimaryTargetFromLocative(declaration: string): {
+  readonly primaryClause: string;
+  readonly locativeQualifier: string;
+  readonly locativeClause: string;
+} {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0) {
+    return { primaryClause: '', locativeQualifier: '', locativeClause: '' };
+  }
+  const pattern =
+    /^([\s\S]*?\b(?:study|studies|studying|examin(?:e|es|ing)|inspect(?:s|ing)?|search(?:es|ing)?|check(?:s|ing)?|look(?:s|ing)?\s+(?:at|over|inside)|read(?:s|ing)?|sift(?:s|ing)?(?:\s+through)?|prob(?:e|es|ing)|investigat(?:e|es|ing)|trac(?:e|es|ing)|analyz(?:e|es|ing)|open(?:s|ing)?|unlock(?:s|ing)?|loot(?:s|ing)?|tak(?:e|es|ing)|grab(?:s|bing)?|pull(?:s|ing)?|flip(?:s|ping)?|push(?:es|ing)?|disarm(?:s|ing)?|touch(?:es|ing)?|feel(?:s|ing)?|smell(?:s|ing)?)\s+(?:the\s+|a\s+|an\s+|some\s+|any\s+|this\s+|that\s+|these\s+|those\s+)?[a-z0-9'’-]{3,}(?:\s+(?!near\b|beside\b|by\b|next\s+to\b|in\s+front\s+of\b|behind\b|past\b|beyond\b|around\b|alongside\b|close\s+to\b|adjacent\s+to\b|in\b|inside\b|from\b|on\b|upon\b|under\b|beneath\b|at\b)[a-z0-9'’-]+){0,6})\s+((?:near(?:\s+to)?|beside|by|next\s+to|in\s+front\s+of|behind|past|beyond|around|alongside|close\s+to|adjacent\s+to|in|inside|from|on|upon|under|beneath|at)\s+(?:the|a|an|this|that)\s+[a-z0-9'’\s-]{2,40}?)(?=\s+(?:for|to\s+see|to\s+find|to\s+check|with|using|and|before|while)\b|[.?!,;]|$)(.*)$/i;
+  const match = pattern.exec(trimmed);
+  if (match === null) {
+    return { primaryClause: trimmed, locativeQualifier: '', locativeClause: '' };
+  }
+  const head = match[1]!.trim();
+  const locative = match[2]!.trim();
+  const tail = match[3]!.trim();
+  const primaryClause = tail.length > 0 ? `${head} ${tail}`.replace(/\s+/g, ' ').trim() : head;
+  return {
+    primaryClause,
+    locativeQualifier: locative,
+    locativeClause: locative,
+  };
+}
+
+/**
+ * Returns true when a declaration mentions a doorway/gate/archway/exit as a passage or travel route
+ * (e.g., "I take the eastern doorway and follow the trail...", "go through the doorway", "take the eastern exit")
+ * without an explicit door-opening/closing/unlocking verb.
+ */
+export function isPassageOrTravelThroughDoorway(declaration: string): boolean {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (
+    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|close(?:s|d|ing)?|shut(?:s|ting)?|pick(?:s|ing)?\s+(?:the\s+)?lock|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+  const takesOrPassesDoorway =
+    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|(?:go(?:es|ing)?|pass(?:es|ing)?|step(?:s|ping)?|walk(?:s|ing)?|head(?:s|ing)?|mov(?:e|es|ing)|continu(?:e|es|ing)|proceed(?:s|ing)?|cross(?:es|ing)?|leav(?:e|es|ing)|exit(?:s|ing)?)(?:\s+(?:north|south|east|west|northern|southern|eastern|western|forward|ahead|onward|out))?\s+through)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,4}(?:doorway|door|gate|gateway|archway|threshold|exit|passage|way)\b/i.test(
+      trimmed,
+    );
+  const compoundDoorwayAndTravel =
+    /\b(?:doorway|door|gate|gateway|archway|threshold|exit)\b[\s\S]{0,60}\b(?:and|then)\s+(?:i\s+)?(?:follow|trace|travel|head|continue|proceed|go|walk|march|press\s+on)\b/i.test(
+      trimmed,
+    ) ||
+    /\bfollow(?:s|ing)?\s+(?:the\s+)?[\w\s'-]{1,40}\b(?:toward|towards|into|to|onward|ahead|beyond)\b/i.test(
+      trimmed,
+    );
+  return takesOrPassesDoorway || compoundDoorwayAndTravel;
 }
