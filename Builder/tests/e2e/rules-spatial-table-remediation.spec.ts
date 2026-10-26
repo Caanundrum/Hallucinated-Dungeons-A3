@@ -358,10 +358,24 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await page.getByTestId('submit-player-action').click();
     await confirmDraftIfVisible(page);
 
-    // Step 2: Explicitly take the item from the opened container -> attributes to the open container
+    // RV-02: Opening a document on a support surface ("I open the station logbook on the oak table")
+    // narrates reading the document without mutating any furniture prop to (open)
     await page
       .getByTestId('player-action-input')
-      .fill(`I take the brass astrolabe from the ${containerLabel}`);
+      .fill('I open the station logbook on the oak table');
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await confirmDraftIfVisible(page);
+    await expect(page.getByTestId('dm-play-thread')).toContainText(
+      /Inspecting the station logbook closely in Clockhouse/i,
+      { timeout: 15_000 },
+    );
+
+    // Step 2 (RV-01): Whole-container loot on the already-open container ("I loot the open <container>")
+    // routes to table.take_scene_prop, transfers all contents to inventory, and logs "Took ... from <container>."
+    await page
+      .getByTestId('player-action-input')
+      .fill(`I loot the open ${containerLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
     await confirmDraftIfVisible(page);
@@ -448,6 +462,15 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     const leverLabel = leverFeature!.label
       .replace(/\s*\((?:open|closed|locked|unlocked|intact|broken|lit|unlit)\).*$/i, '')
       .trim();
+
+    // RV-03: Approaching an in-room feature ("I walk up to the <lever>") routes to intra-scene table.move, NEVER table.travel_scene
+    await page.getByTestId('player-action-input').fill(`I walk up to the ${leverLabel}`);
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await confirmDraftIfVisible(page);
+    const afterApproachScene2 = await fetchMapBundle();
+    expect(afterApproachScene2.mapBundleId).toContain('scene-m1-r2');
+
     await page.getByTestId('player-action-input').fill(`I pull the ${leverLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();

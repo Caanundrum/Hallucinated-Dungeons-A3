@@ -552,12 +552,20 @@ export function classifyClause(text: string): ClauseSemanticClassification {
   }
 
   // 6. Sensory / Cognitive / Reading Intent (prioritized before physical manipulation when reading/examining/listening)
+  if (isDocumentOpenOrReadDeclaration(trimmed)) {
+    return {
+      kind: 'inspect',
+      category: 'sensory_reading',
+      outcomeHint: 'read_text',
+    };
+  }
+
   const hasSensoryOrReadingVerb =
     /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|study|studies|studying|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|listen(?:s|ing)?|eavesdrop(?:s|ping)?|smell(?:s|ing)?|sniff(?:s|ing)?|peer(?:s|ing)?|squint(?:s|ing)?|check(?:s|ing)?|examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+(?:at|into|over|around)|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|prob(?:e|es|ing)|survey(?:s|ing)?|observ(?:e|es|ing)|notic(?:e|es|ing)|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
       trimmed,
     );
   const hasExplicitOpenOrManipulateVerb =
-    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|pull(?:s|ing)?|push(?:es|ing)?|flip(?:s|ping)?|turn(?:s|ing)?|rotat(?:e|es|ing)|twist(?:s|ing)?|light(?:s|ing)?|ignit(?:e|es|ing)|extinguish(?:es|ing)?|dous(?:e|es|ing)|tak(?:e|es|ing)|grab(?:s|bing)?|loot(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
+    /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|smash(?:es|ing)?|break(?:s|ing)?|pull(?:s|ing)?|push(?:es|ing)?|flip(?:s|ping)?|turn(?:s|ing)?|rotat(?:e|es|ing)|twist(?:s|ing)?|light(?:s|ing)?|ignit(?:e|es|ing)|extinguish(?:es|ing)?|dous(?:e|es|ing)|tak(?:e|es|ing)|grab(?:s|bing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|plunder(?:s|ing)?|ransack(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
       trimmed,
     );
 
@@ -598,7 +606,8 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     );
   const isRouteOrExitTravel =
     !hasExplicitDoorOpenCloseVerb &&
-    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:down|up|along|through|onward|forward)|walk(?:s|ing)?\s+(?:down|up|along|through)|head(?:s|ing)?\s+(?:down|up|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
+    !/\b(?:lever|switch|winch|crank|pulley|valve|dial)\b/i.test(trimmed) &&
+    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|onward|forward)|walk(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through)|head(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
       trimmed,
     );
   if (isRouteOrExitTravel && !constraints.forbidMove) {
@@ -643,7 +652,8 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     );
     const mentionsDoor = /\b(?:door|doorway|gate|entry(?:way)?)\b/i.test(withoutOpenAdjective);
     if (
-      /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|collect(?:s|ing)?|loot(?:s|ing)?|retriev(?:e|es|ing)|stow(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
+      isWholeContainerLootDeclaration(trimmed) ||
+      /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|collect(?:s|ing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|plunder(?:s|ing)?|ransack(?:s|ing)?|retriev(?:e|es|ing)|stow(?:s|ing)?|pick(?:s|ing)?\s+up)\b/i.test(
         trimmed,
       )
     ) {
@@ -717,7 +727,7 @@ export function actionableDirectorFallback(understanding: UtteranceUnderstanding
 
 /**
  * Separates a declaration's primary verb + direct-object target clause from a secondary
- * locative prepositional phrase (e.g. "near the eastern doorway", "beside the locked chest")
+ * locative prepositional phrase (e.g. "near the eastern doorway", "beside the locked chest", "on the stone pedestal")
  * while keeping trailing purpose phrases ("for footprints", "for traps") attached to `primaryClause`.
  */
 export function splitPrimaryTargetFromLocative(declaration: string): {
@@ -730,7 +740,7 @@ export function splitPrimaryTargetFromLocative(declaration: string): {
     return { primaryClause: '', locativeQualifier: '', locativeClause: '' };
   }
   const pattern =
-    /^([\s\S]*?\b(?:study|studies|studying|examin(?:e|es|ing)|inspect(?:s|ing)?|search(?:es|ing)?|check(?:s|ing)?|look(?:s|ing)?\s+(?:at|over|inside)|read(?:s|ing)?|sift(?:s|ing)?(?:\s+through)?|prob(?:e|es|ing)|investigat(?:e|es|ing)|trac(?:e|es|ing)|analyz(?:e|es|ing)|open(?:s|ing)?|unlock(?:s|ing)?|loot(?:s|ing)?|tak(?:e|es|ing)|grab(?:s|bing)?|pull(?:s|ing)?|flip(?:s|ping)?|push(?:es|ing)?|disarm(?:s|ing)?|touch(?:es|ing)?|feel(?:s|ing)?|smell(?:s|ing)?)\s+(?:the\s+|a\s+|an\s+|some\s+|any\s+|this\s+|that\s+|these\s+|those\s+)?[a-z0-9'’-]{3,}(?:\s+(?!near\b|beside\b|by\b|next\s+to\b|in\s+front\s+of\b|behind\b|past\b|beyond\b|around\b|alongside\b|close\s+to\b|adjacent\s+to\b|in\b|inside\b|from\b|on\b|upon\b|under\b|beneath\b|at\b)[a-z0-9'’-]+){0,6})\s+((?:near(?:\s+to)?|beside|by|next\s+to|in\s+front\s+of|behind|past|beyond|around|alongside|close\s+to|adjacent\s+to|in|inside|from|on|upon|under|beneath|at)\s+(?:the|a|an|this|that)\s+[a-z0-9'’\s-]{2,40}?)(?=\s+(?:for|to\s+see|to\s+find|to\s+check|with|using|and|before|while)\b|[.?!,;]|$)(.*)$/i;
+    /^([\s\S]*?\b(?:study|studies|studying|examin(?:e|es|ing)|inspect(?:s|ing)?|search(?:es|ing)?|check(?:s|ing)?|look(?:s|ing)?\s+(?:at|over|inside|into)|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|flip(?:s|ping)?\s+(?:open|through)|turn(?:s|ing)?\s+(?:the\s+)?pages?\s+of|unfold(?:s|ing)?|unroll(?:s|ing)?|sift(?:s|ing)?(?:\s+through)?|prob(?:e|es|ing)|investigat(?:e|es|ing)|trac(?:e|es|ing)|analyz(?:e|es|ing)|open(?:s|ing)?|close(?:s|ing)?|shut(?:s|ting)?|unlock(?:s|ing)?|loot(?:s|ing)?|empt(?:y|ies|ying)|clear(?:s|ing)?(?:\s+out)?|plunder(?:s|ing)?|ransack(?:s|ing)?|tak(?:e|es|ing)|grab(?:s|bing)?|collect(?:s|ing)?|retriev(?:e|es|ing)|pick(?:s|ing)?\s+up|pull(?:s|ing)?|flip(?:s|ping)?|push(?:es|ing)?|disarm(?:s|ing)?|touch(?:es|ing)?|feel(?:s|ing)?|smell(?:s|ing)?|use(?:s|ing)?|interact(?:s|ing)?\s+with)\s+(?:the\s+|a\s+|an\s+|some\s+|any\s+|this\s+|that\s+|these\s+|those\s+|my\s+|his\s+|her\s+|their\s+|our\s+)?[a-z0-9'’-]{3,}(?:\s+(?!near\b|beside\b|by\b|next\s+to\b|in\s+front\s+of\b|behind\b|past\b|beyond\b|around\b|alongside\b|close\s+to\b|adjacent\s+to\b|in\b|inside\b|within\b|from\b|off\b|on\b|upon\b|atop\b|over\b|across\b|under\b|beneath\b|underneath\b|below\b|against\b|at\b|resting\s+on\b|sitting\s+on\b|lying\s+on\b|laid\s+(?:out\s+)?on\b)[a-z0-9'’-]+){0,6})\s+((?:resting\s+on|sitting\s+on|lying\s+on|laid\s+(?:out\s+)?on|near(?:\s+to)?|beside|by|next\s+to|in\s+front\s+of|behind|past|beyond|around|alongside|close\s+to|adjacent\s+to|in|inside|within|from|off|on|upon|atop|over|across|under|beneath|underneath|below|against|at)\s+(?:the|a|an|this|that|my|his|her|their|our)\s+[a-z0-9'’\s-]{2,40}?)(?=\s+(?:for|to\s+see|to\s+find|to\s+check|with|using|and|before|while)\b|[.?!,;]|$)(.*)$/i;
   const match = pattern.exec(trimmed);
   if (match === null) {
     return { primaryClause: trimmed, locativeQualifier: '', locativeClause: '' };
@@ -744,6 +754,76 @@ export function splitPrimaryTargetFromLocative(declaration: string): {
     locativeQualifier: locative,
     locativeClause: locative,
   };
+}
+
+/**
+ * Readable document / book / record head nouns (`RV-02`).
+ */
+export const DOCUMENT_NOUN_PATTERN =
+  /\b(?:books?|ledgers?|journals?|diaries|diary|logs?|logbooks?|registers?|manifests?|scrolls?|parchments?|letters?|notes?|missives?|dossiers?|folios?|tomes?|manuals?|codex|codices|pamphlets?|charts?|maps?|folders?|envelopes?|papers?|records?)\b/i;
+
+/**
+ * Solid non-container surface/fixture head nouns (including compound `-bench`, `-table`, `-desk`, `-counter`, `-shelf`, `-rack`)
+ * that cannot transition to `state: 'open'` (`RV-02`).
+ */
+export const NON_OPENABLE_SURFACE_HEAD_NOUN =
+  /^(?:[a-z]*(?:bench|benches|table|tables|desk|desks|counter|counters|shelf|shelves|rack|racks)|altar|altars|pedestal|pedestals|pillar|pillars|column|columns|statue|statues|chair|chairs|stool|stools|anvil|anvils|bed|beds|cot|cots|tapestry|tapestries|banner|banners|painting|paintings|mirror|mirrors)$/i;
+
+/**
+ * Returns true when a declaration opens, unfolds, flips through, or reads a document/book/record noun (`RV-02`),
+ * rather than taking/pocketing/destroying it.
+ */
+export function isDocumentOpenOrReadDeclaration(declaration: string): boolean {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0) return false;
+  // Never treat map/door state corrections ("the map summary still says closed...") as reading an in-world document.
+  if (
+    (/\b(summary|routes?|map)\b/i.test(trimmed) &&
+      /\b(closed|open|wrong|still|says?|show|showing|fix|correct|update)\b/i.test(trimmed)) ||
+    (/\b(door|doorway)\b/i.test(trimmed) &&
+      /\b(already\s+open|is\s+open|says?\s+closed|still\s+closed|summary)\b/i.test(trimmed))
+  ) {
+    return false;
+  }
+  const { primaryClause } = splitPrimaryTargetFromLocative(trimmed);
+  const targetClause = primaryClause.trim().length > 0 ? primaryClause : trimmed;
+  if (
+    /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|pocket(?:s|ing)?|stow(?:s|ing)?|loot(?:s|ing)?|collect(?:s|ing)?|claim(?:s|ing)?|retriev(?:e|es|ing)|pick(?:s|ing)?\s+up|steal(?:s|ing)?|burn(?:s|ing)?|destroy(?:s|ing)?|tear(?:s|ing)?|rip(?:s|ping)?)\b/i.test(
+      targetClause,
+    )
+  ) {
+    return false;
+  }
+  return /\b(?:open(?:s|ing)?|unfold(?:s|ing)?|unroll(?:s|ing)?|leaf(?:s|ing)?\s+through|flip(?:s|ping)?\s+(?:open|through)|turn(?:s|ing)?\s+(?:the\s+)?pages?\s+of|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|examin(?:e|es|ing)|inspect(?:s|ing)?|study|studies|studying|check(?:s|ing)?|look(?:s|ing)?\s+(?:at|in|inside|into|over)|peer(?:s|ing)?\s+(?:at|into))\s+(?:the\s+|a\s+|an\s+|some\s+|any\s+|this\s+|that\s+|these\s+|those\s+|my\s+|his\s+|her\s+|their\s+|our\s+)?(?:[a-z0-9'’-]+\s+){0,4}(?:books?|ledgers?|journals?|diaries|diary|logs?|logbooks?|registers?|manifests?|scrolls?|parchments?|letters?|notes?|missives?|dossiers?|folios?|tomes?|manuals?|codex|codices|pamphlets?|charts?|maps?|folders?|envelopes?|papers?|records?)\b/i.test(
+    targetClause,
+  );
+}
+
+/**
+ * Returns true when a declaration expresses whole-container looting/collection (`RV-01`),
+ * e.g., "I loot the open chest", "I empty the crate", "I take everything from the trunk".
+ */
+export function isWholeContainerLootDeclaration(declaration: string): boolean {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0) return false;
+  if (
+    /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing)|not\s+taking\s+anything)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:loot(?:s|ing)?|empt(?:y|ies|ying)|clear(?:s|ing)?(?:\s+out)?|plunder(?:s|ing)?|ransack(?:s|ing)?|strip(?:s|ping)?)\b/i.test(
+      trimmed,
+    ) ||
+    /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|collect(?:s|ing)?|claim(?:s|ing)?|pocket(?:s|ing)?|stow(?:s|ing)?|retriev(?:e|es|ing)|pull(?:s|ing)?\s+out)\s+(?:all|everything|(?:all\s+)?(?:of\s+)?(?:the\s+)?(?:items?|contents?|loot|supplies|gear|goods|things?))\b/i.test(
+      trimmed,
+    ) ||
+    /\b(?:tak(?:e|es|ing)|grab(?:s|bing)?|collect(?:s|ing)?|loot(?:s|ing)?|retriev(?:e|es|ing))\s+from\s+(?:the\s+|a\s+|an\s+|this\s+|that\s+)?(?:open(?:ed)?\s+|unlocked\s+)?[a-z0-9'’-]+\b/i.test(
+      trimmed,
+    )
+  );
 }
 
 /**

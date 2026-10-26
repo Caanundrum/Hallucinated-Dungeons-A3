@@ -669,14 +669,57 @@ export function resolveBlankTableDoorBuild(
   };
 }
 
+function isEdgeBlockedBetween(
+  map: MapBundleProjection,
+  from: MapSquareCoordinate,
+  to: MapSquareCoordinate,
+): boolean {
+  const dc = to.column - from.column;
+  const dr = to.row - from.row;
+  for (const edge of map.edges) {
+    const blocks = edge.kind === 'wall' || (edge.kind === 'door' && edge.doorState !== 'open');
+    if (!blocks) continue;
+    if (dc === 1 && dr === 0) {
+      if (
+        (edge.column === from.column && edge.row === from.row && edge.orientation === 'east') ||
+        (edge.column === to.column && edge.row === to.row && edge.orientation === 'west')
+      ) {
+        return true;
+      }
+    } else if (dc === -1 && dr === 0) {
+      if (
+        (edge.column === from.column && edge.row === from.row && edge.orientation === 'west') ||
+        (edge.column === to.column && edge.row === to.row && edge.orientation === 'east')
+      ) {
+        return true;
+      }
+    } else if (dc === 0 && dr === 1) {
+      if (
+        (edge.column === from.column && edge.row === from.row && edge.orientation === 'south') ||
+        (edge.column === to.column && edge.row === to.row && edge.orientation === 'north')
+      ) {
+        return true;
+      }
+    } else if (dc === 0 && dr === -1) {
+      if (
+        (edge.column === from.column && edge.row === from.row && edge.orientation === 'north') ||
+        (edge.column === to.column && edge.row === to.row && edge.orientation === 'south')
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
- * Compute path from anchor to an open square adjacent to a notable map feature (counter, lamp, bench, etc.).
+ * Compute path from anchor to an open square adjacent to a notable map feature (counter, lamp, bench, lever, etc.).
  */
 export function pathBesideFeature(
   anchor: MapSquareCoordinate,
   featureCoord: MapSquareCoordinate,
   map: MapBundleProjection,
-  maxSteps = 6,
+  maxSteps = 24,
 ): MapSquareCoordinate[] | null {
   const adjacent: MapSquareCoordinate[] = [
     { column: featureCoord.column - 1, row: featureCoord.row },
@@ -695,37 +738,58 @@ export function pathBesideFeature(
     return null;
   }
   // If anchor is already on one of the adjacent squares, step to another adjacent square along the feature
-  const candidates = adjacent.some((sq) => sq.column === anchor.column && sq.row === anchor.row)
+  const alreadyAdjacent = adjacent.some(
+    (sq) => sq.column === anchor.column && sq.row === anchor.row,
+  );
+  const candidates = alreadyAdjacent
     ? adjacent.filter((sq) => sq.column !== anchor.column || sq.row !== anchor.row)
     : adjacent;
   if (candidates.length === 0) {
     return null;
   }
-  candidates.sort(
-    (a, b) =>
-      Math.abs(a.column - anchor.column) +
-      Math.abs(a.row - anchor.row) -
-      (Math.abs(b.column - anchor.column) + Math.abs(b.row - anchor.row)),
-  );
-  const destination = candidates[0]!;
-  const path: MapSquareCoordinate[] = [];
-  let cursor = anchor;
-  for (let step = 0; step < maxSteps; step += 1) {
-    if (cursor.column === destination.column && cursor.row === destination.row) {
-      break;
+  const targetKeys = new Set(candidates.map((sq) => `${sq.column},${sq.row}`));
+
+  // BFS shortest walkable path from anchor to any candidate orthogonally adjacent square
+  const queue: Array<{
+    readonly square: MapSquareCoordinate;
+    readonly path: MapSquareCoordinate[];
+  }> = [{ square: anchor, path: [] }];
+  const visited = new Set<string>([`${anchor.column},${anchor.row}`]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.path.length > 0 && targetKeys.has(`${current.square.column},${current.square.row}`)) {
+      return current.path.slice(0, maxSteps);
     }
-    if (
-      candidates === adjacent &&
-      adjacent.some((sq) => sq.column === cursor.column && sq.row === cursor.row)
-    ) {
-      break;
+    if (current.path.length >= maxSteps) {
+      continue;
     }
-    const next = nextStepTowardSquare(cursor, destination, map);
-    if (next === null) {
-      break;
+    const neighbors: MapSquareCoordinate[] = [
+      { column: current.square.column + 1, row: current.square.row },
+      { column: current.square.column - 1, row: current.square.row },
+      { column: current.square.column, row: current.square.row + 1 },
+      { column: current.square.column, row: current.square.row - 1 },
+    ];
+    for (const next of neighbors) {
+      if (
+        next.column < 0 ||
+        next.column >= map.coordinateSpace.columns ||
+        next.row < 0 ||
+        next.row >= map.coordinateSpace.rows
+      ) {
+        continue;
+      }
+      const key = `${next.column},${next.row}`;
+      if (visited.has(key)) {
+        continue;
+      }
+      if (isBlockedSquare(map, next) || isEdgeBlockedBetween(map, current.square, next)) {
+        continue;
+      }
+      visited.add(key);
+      queue.push({ square: next, path: [...current.path, next] });
     }
-    path.push(next);
-    cursor = next;
   }
-  return path.length > 0 ? path : null;
+
+  return null;
 }

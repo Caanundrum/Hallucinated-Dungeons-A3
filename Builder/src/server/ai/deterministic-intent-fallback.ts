@@ -26,7 +26,9 @@ import {
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
+  isDocumentOpenOrReadDeclaration,
   isPassageOrTravelThroughDoorway,
+  isWholeContainerLootDeclaration,
   resolveConditionalDoorIntent,
   splitPrimaryTargetFromLocative,
   understandUtterance,
@@ -581,59 +583,98 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !mentionsDoorIntent(text) &&
-    (/\b(leave|travel|head\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:out|outside|onward|for|to|down|up|toward|towards|into|through)|go\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:outside|outdoors|onward|through|to|toward|towards|down|up|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:down|up|along|through)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|doorway|gate|gateway|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|down|up|through)|continue\s+(?:to|toward|towards|into|onward|down|up|along|through)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
+    (/\b(leave|travel|head\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:out|outside|onward|for|to|(?:down|up)(?!\s+to\b)|toward|towards|into|through)|go\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:outside|outdoors|onward|through|to|toward|towards|(?:down|up)(?!\s+to\b)|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:(?:down|up)(?!\s+to\b)|along|through)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|doorway|gate|gateway|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|(?:down|up)(?!\s+to\b)|through)|continue\s+(?:to|toward|towards|into|onward|(?:down|up)(?!\s+to\b)|along|through)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
       text,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort|sanctum\s+gate|sanctum\s+archway)\b/i.test(
         text,
       ))
   ) {
-    proposedCommandType = 'table.travel_scene';
-    destinationHint = rawText.slice(0, 200);
-    const towardMatch = /\b(?:toward|towards|into|to)\s+(?:the\s+)?([a-z][\w\s'-]{2,40}?)(?:[.?!]|$)/i.exec(
-      rawText,
-    );
-    let summaryDestination =
-      towardMatch?.[1]?.trim() ? `the ${towardMatch[1].trim()}` : 'the next area';
-    let exitLockedMessage: string | null = null;
+    // Packet 3 (`RV-03`): Before proposing scene-level travel, check if the player is approaching
+    // an in-room non-exit feature (lever, container, prop, light, trap) or present NPC.
+    let resolvedAsInRoomMove = false;
     try {
-      const { activeSceneInstance, loadMapRuntime } = await import('../table/map-runtime.js');
-      const {
-        checkExitLockedForTravel,
-        resolveTravelDestinationTitle,
-      } = await import('../table/scene-commands.js');
-      const { loadCampaignBlueprint } = await import('../campaigns/campaign-blueprint.js');
-      const [runtime, blueprint] = await Promise.all([
-        loadMapRuntime(options.firestore, options.campaignId),
-        loadCampaignBlueprint(options.firestore, options.campaignId),
-      ]);
-      const active = activeSceneInstance(runtime);
-      if (active !== null) {
-        const lockCheck = checkExitLockedForTravel(active, rawText, false);
-        if (lockCheck.locked) {
-          exitLockedMessage = lockCheck.byLever
-            ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
-                lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
-              } to unseal it.`
-            : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+      const map = await fetchCampaignMap({
+        firestore: options.firestore,
+        accountId: options.accountId,
+        campaignId: options.campaignId,
+      });
+      const { matchInRoomApproachTarget, stripFeatureStateSuffix } = await import(
+        '../table/scene-commands.js'
+      );
+      const inRoomTarget = matchInRoomApproachTarget(map.notableFeatures, rawText);
+      const ownToken =
+        map.viewerSeatId === null
+          ? map.tokens[0]
+          : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
+      if (inRoomTarget !== undefined && inRoomTarget !== null && ownToken !== undefined) {
+        const cleanTargetLabel = stripFeatureStateSuffix(inRoomTarget.label)
+          .replace(/\s+[—–-]\s+.*$/u, '')
+          .trim();
+        const featureSquare = { column: inRoomTarget.column, row: inRoomTarget.row };
+        const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
+        if (featurePath !== null && featurePath.length > 0) {
+          proposedCommandType = 'table.move';
+          path = featurePath;
+          const steps = featurePath.length;
+          const feet = steps * map.coordinateSpace.feetPerSquare;
+          summary = `Walk beside the ${cleanTargetLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
+          resolvedAsInRoomMove = true;
+          sceneLoopResolved = true;
         }
       }
-      const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false, blueprint);
-      if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
-        destinationHint = resolvedTitle.trim();
-        summaryDestination = resolvedTitle.trim();
-      }
     } catch {
-      // Keep default destinationHint
+      resolvedAsInRoomMove = false;
     }
-    if (exitLockedMessage !== null) {
-      proposedCommandType = 'table.sync';
-      deferDirectorNarrate = false;
-      summary = exitLockedMessage;
-    } else {
-      summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
+
+    if (!resolvedAsInRoomMove) {
+      proposedCommandType = 'table.travel_scene';
+      destinationHint = rawText.slice(0, 200);
+      const towardMatch = /\b(?:toward|towards|into|to)\s+(?:the\s+)?([a-z][\w\s'-]{2,40}?)(?:[.?!]|$)/i.exec(
+        rawText,
+      );
+      let summaryDestination =
+        towardMatch?.[1]?.trim() ? `the ${towardMatch[1].trim()}` : 'the next area';
+      let exitLockedMessage: string | null = null;
+      try {
+        const { activeSceneInstance, loadMapRuntime } = await import('../table/map-runtime.js');
+        const {
+          checkExitLockedForTravel,
+          resolveTravelDestinationTitle,
+        } = await import('../table/scene-commands.js');
+        const { loadCampaignBlueprint } = await import('../campaigns/campaign-blueprint.js');
+        const [runtime, blueprint] = await Promise.all([
+          loadMapRuntime(options.firestore, options.campaignId),
+          loadCampaignBlueprint(options.firestore, options.campaignId),
+        ]);
+        const active = activeSceneInstance(runtime);
+        if (active !== null) {
+          const lockCheck = checkExitLockedForTravel(active, rawText, false);
+          if (lockCheck.locked) {
+            exitLockedMessage = lockCheck.byLever
+              ? `The ${lockCheck.exitLabel.toLowerCase()} is sealed by a heavy mechanism; look for a wall lever or switch${
+                  lockCheck.leverLabel ? ` (${lockCheck.leverLabel.toLowerCase()})` : ''
+                } to unseal it.`
+              : `The ${lockCheck.exitLabel.toLowerCase()} is locked; unlock it before traveling through.`;
+          }
+        }
+        const resolvedTitle = resolveTravelDestinationTitle(runtime, rawText, false, blueprint);
+        if (resolvedTitle !== null && resolvedTitle.trim().length > 0) {
+          destinationHint = resolvedTitle.trim();
+          summaryDestination = resolvedTitle.trim();
+        }
+      } catch {
+        // Keep default destinationHint
+      }
+      if (exitLockedMessage !== null) {
+        proposedCommandType = 'table.sync';
+        deferDirectorNarrate = false;
+        summary = exitLockedMessage;
+      } else {
+        summary = `Ready to travel to ${summaryDestination}. Confirm so the Game Director establishes the next place.`;
+      }
+      sceneLoopResolved = true;
     }
-    sceneLoopResolved = true;
   } else if (
     !/(short\s*rest|long\s*rest|arcane recovery|end (?:the )?(?:encounter|fight|combat)|begin (?:the )?encounter|start (?:the )?(?:encounter|combat|fight)|roll initiative|healing potion)/i.test(
       text,
@@ -641,10 +682,13 @@ export async function resolveDeterministicIntentFallback(
     !declarationIsDoorOpenOrPassage(rawText) &&
     !declarationNegatesDoorOpen(rawText) &&
     !mentionsDoorIntent(text) &&
-    /\b(extinguish|douse|snuff|relight|ignite|kindle|light\s+the|break|smash|kick|shatter|move\s+the|clear\s+the|open|unseal|unlatch|unlock|pry|force|wedge|close|shut|disarm|pull|push|flip|toggle|turn|rotate|twist|press|activate|read|peruse)\b/i.test(
+    /\b(extinguish|douse|snuff|relight|ignite|kindle|light\s+the|break|smash|kick|shatter|move\s+the|clear\s+the|open|unseal|unlatch|unlock|pry|force|wedge|close|shut|disarm|pull|push|flip|toggle|turn|rotate|twist|press|activate|read|peruse|unfold|unroll|leaf\s+through)\b/i.test(
       text,
     ) &&
-    !/\b(?:take|grab|pocket|stow|carry|lift|pick(?:ing|ed)?\s+up)\b/i.test(text)
+    !isWholeContainerLootDeclaration(rawText) &&
+    !/\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|collect|retrieve|pick(?:ing|ed)?\s+up)\b/i.test(
+      text,
+    )
   ) {
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
@@ -659,11 +703,19 @@ export async function resolveDeterministicIntentFallback(
         runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
           ? runtime.sceneInstances?.[runtime.activeSceneId]
           : undefined;
+      const isDocOpenOrRead = isDocumentOpenOrReadDeclaration(rawText);
       const isReadOnlyVerb =
-        /\b(read|peruse|decipher|translate|scan)\b/i.test(text) &&
+        /\b(read|peruse|decipher|translate|scan|leaf\s+through|pore\s+over)\b/i.test(text) &&
         !/\b(open|unseal|unlatch|pry|force|break|smash|close|shut)\b/i.test(text);
 
-      if (ranked.length >= 2 && ranked[0]!.score === ranked[1]!.score) {
+      // Packet 2 (`RV-02`): If the declaration opens/unfolds/reads a document noun ("I open the ledger on the stone pedestal")
+      // and no scene feature matched the document's head noun, route directly to in-world reading narration (`table.sync`).
+      if (isDocOpenOrRead && (ranked[0] === undefined || !ranked[0].headNounMatch)) {
+        proposedCommandType = 'table.sync';
+        deferDirectorNarrate = true;
+        summary = authority.summary;
+        sceneLoopResolved = true;
+      } else if (ranked.length >= 2 && ranked[0]!.score === ranked[1]!.score) {
         const verbMatch =
           /\b(loot|open|unlock|unseal|close|shut|search|inspect|examine|check|break|smash|pull|push|take)\b/i.exec(
             rawText,
@@ -695,8 +747,8 @@ export async function resolveDeterministicIntentFallback(
             ? nextObjectState(feature, isReadOnlyVerb && feature.state === 'closed' ? `open ${rawText}` : rawText)
             : null;
 
-        if (feature !== undefined && isReadOnlyVerb && feature.state !== 'closed') {
-          // Reading an already-open or stateless prop routes to in-character Director narration.
+        if (feature !== undefined && (isReadOnlyVerb || isDocOpenOrRead) && feature.state !== 'closed') {
+          // Reading or opening an already-open or stateless document/prop routes to in-character Director narration.
           proposedCommandType = 'table.sync';
           objectId = matched;
           deferDirectorNarrate = true;
@@ -720,10 +772,12 @@ export async function resolveDeterministicIntentFallback(
                 : 'interact with';
           summary = `Ready to ${actionVerb} the ${cleanLabel}. Confirm to update its state on the table.`;
           sceneLoopResolved = true;
-        } else if (!isReadOnlyVerb) {
-          proposedCommandType = 'table.interact_object';
+        } else if (feature !== undefined && nextState === null) {
+          // Non-openable surface or read-only inspection (`RV-02`): route to Director narration, never mutate.
+          proposedCommandType = 'table.sync';
           objectId = matched;
-          summary = `Ready to interact with the ${cleanLabel}. Confirm to update its state on the table.`;
+          deferDirectorNarrate = true;
+          summary = authority.summary;
           sceneLoopResolved = true;
         }
       }
@@ -737,7 +791,10 @@ export async function resolveDeterministicIntentFallback(
     !declarationIsDoorOpenOrPassage(rawText) &&
     !declarationNegatesDoorOpen(rawText) &&
     !mentionsDoorIntent(text) &&
-    /\b(?:take|grab|pocket|stow|carry|lift|loot|pick(?:ing|ed)?\s+up)\b/i.test(text)
+    (isWholeContainerLootDeclaration(rawText) ||
+      /\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|collect|retrieve|pick(?:ing|ed)?\s+up)\b/i.test(
+        text,
+      ))
   ) {
     try {
       const { loadMapRuntime } = await import('../table/map-runtime.js');
@@ -751,7 +808,7 @@ export async function resolveDeterministicIntentFallback(
         runtime.activeSceneId !== null && runtime.activeSceneId !== undefined
           ? runtime.sceneInstances?.[runtime.activeSceneId]
           : undefined;
-      // 1. Check if the player is taking an item from inside an unlocked/open container or looting a container.
+      // 1. Check if the player is taking an item from inside an unlocked/open container or looting a container (`RV-01`).
       const unlockedContainersWithContents = (active?.features ?? []).filter(
         (f) =>
           f.objectKind === 'container' &&
@@ -764,44 +821,80 @@ export async function resolveDeterministicIntentFallback(
         (f) => f.state === 'open',
       );
       const isLootAllVerb =
-        /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?contents)\b/i.test(
+        isWholeContainerLootDeclaration(rawText) ||
+        /\b(?:loot|empty|plunder|ransack|clear\s+out|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?(?:items?|contents?))\b/i.test(
           rawText,
         );
-      const matchesContainerContent = (f: (typeof unlockedContainersWithContents)[number]): boolean =>
-        (f.contents ?? []).some((item: string) =>
+      const matchesContainerContent = (f: (typeof unlockedContainersWithContents)[number]): boolean => {
+        const containerWords = new Set(
+          stripFeatureStateSuffix(f.label)
+            .toLowerCase()
+            .split(/\W+/)
+            .filter((w) => w.length >= 2),
+        );
+        return (f.contents ?? []).some((item: string) =>
           item
             .toLowerCase()
             .split(/\s+/)
-            .some((w: string) => w.length >= 3 && text.includes(w)),
+            .some(
+              (w: string) =>
+                w.length >= 3 &&
+                !containerWords.has(w) &&
+                !/^(?:open|opened|closed|locked|unlocked|the|from|all|everything|contents?|items?)$/i.test(
+                  w,
+                ) &&
+                text.includes(w),
+            ),
         );
+      };
       // Strongly prefer ALREADY-OPEN containers when taking an item so open -> take never attributes to an unopened container.
       const containerByContentItem =
         openContainersWithContents.find(matchesContainerContent) ??
         unlockedContainersWithContents.find(matchesContainerContent);
-      const containerByLabelForLoot = isLootAllVerb
-        ? (openContainersWithContents.find(
-            (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
-          ) ??
-          unlockedContainersWithContents.find(
-            (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
-          ) ??
-          openContainersWithContents[0] ??
-          unlockedContainersWithContents[0])
-        : undefined;
+      const containerByLabelForLoot =
+        openContainersWithContents.find(
+          (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
+        ) ??
+        (isLootAllVerb
+          ? (unlockedContainersWithContents.find(
+              (f) => scoreFeatureLabelMatch(rawText, f.label).score > 0,
+            ) ??
+            openContainersWithContents[0] ??
+            unlockedContainersWithContents[0])
+          : undefined);
       const targetLootContainer = containerByContentItem ?? containerByLabelForLoot;
       if (targetLootContainer !== undefined && targetLootContainer.contents !== undefined) {
-        const matchedItem = isLootAllVerb
+        const containerWords = new Set(
+          stripFeatureStateSuffix(targetLootContainer.label)
+            .toLowerCase()
+            .split(/\W+/)
+            .filter((w) => w.length >= 2),
+        );
+        const specificContentItem =
+          /\b(?:all|everything|contents?|items?)\b/i.test(rawText)
+            ? undefined
+            : targetLootContainer.contents.find((item: string) =>
+                item
+                  .toLowerCase()
+                  .split(/\s+/)
+                  .some(
+                    (w: string) =>
+                      w.length >= 3 &&
+                      !containerWords.has(w) &&
+                      !/^(?:open|opened|closed|locked|unlocked|the|from|all|everything|contents?|items?)$/i.test(
+                        w,
+                      ) &&
+                      text.includes(w),
+                  ),
+              );
+        const takeWholeContainer = isLootAllVerb || specificContentItem === undefined;
+        const matchedItem = takeWholeContainer
           ? targetLootContainer.contents.join(', ')
-          : (targetLootContainer.contents.find((item: string) =>
-              item
-                .toLowerCase()
-                .split(/\s+/)
-                .some((w: string) => w.length >= 3 && text.includes(w)),
-            ) ?? targetLootContainer.contents[0]!);
+          : specificContentItem;
         const containerBaseLabel = stripFeatureStateSuffix(targetLootContainer.label);
         proposedCommandType = 'table.take_scene_prop';
         objectId = targetLootContainer.objectId;
-        itemId = isLootAllVerb ? 'all' : matchedItem;
+        itemId = takeWholeContainer ? 'all' : matchedItem;
         summary = `Ready to take ${matchedItem} from the ${containerBaseLabel}. Confirm to stow it in your inventory.`;
         sceneLoopResolved = true;
       } else {
@@ -1005,13 +1098,21 @@ export async function resolveDeterministicIntentFallback(
               : (map.tokens.find((token) => token.seatId === map.viewerSeatId) ?? map.tokens[0]);
 
           if (ownToken !== undefined && !mentionsDoorIntent(text)) {
-            let targetFeature = map.notableFeatures.find((f) => {
-              const label = f.label.toLowerCase();
-              if (text.toLowerCase().includes(label)) return true;
-              const parts = label.split(/\s+/).filter((p) => p.length >= 4);
-              return parts.some((p) => text.toLowerCase().includes(p));
-            });
-            let featureDisplayLabel = targetFeature?.label ?? null;
+            const { matchInRoomApproachTarget, stripFeatureStateSuffix } = await import(
+              '../table/scene-commands.js'
+            );
+            let targetFeature =
+              matchInRoomApproachTarget(map.notableFeatures, rawText) ??
+              map.notableFeatures.find((f) => {
+                if (f.objectKind === 'exit' || f.referenceKind === 'exit') return false;
+                const label = f.label.toLowerCase();
+                if (text.toLowerCase().includes(label)) return true;
+                const parts = label.split(/\s+/).filter((p) => p.length >= 4);
+                return parts.some((p) => text.toLowerCase().includes(p));
+              });
+            let featureDisplayLabel = targetFeature
+              ? stripFeatureStateSuffix(targetFeature.label).replace(/\s+[—–-]\s+.*$/u, '').trim()
+              : null;
             if (
               targetFeature === undefined &&
               /\b(?:service\s+counter|counter|bar)\b/i.test(text)

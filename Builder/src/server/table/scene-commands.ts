@@ -9,13 +9,18 @@ import type {
   CampaignRoomBlueprint,
 } from '../../shared/campaign-contract.js';
 import { npcNamesMatch } from '../../shared/campaign-facts.js';
-import { resolveSceneArtUrl } from '../../shared/map-contract.js';
+import { resolveSceneArtUrl, type MapBundleProjection } from '../../shared/map-contract.js';
 import {
   declarationIsDoorOpenOrPassage,
   declarationMentionsLabelWord,
   declarationNegatesDoorOpen,
 } from '../../shared/resolved-action-receipt.js';
-import { splitPrimaryTargetFromLocative } from '../../shared/utterance-understanding.js';
+import {
+  DOCUMENT_NOUN_PATTERN,
+  NON_OPENABLE_SURFACE_HEAD_NOUN,
+  isWholeContainerLootDeclaration,
+  splitPrimaryTargetFromLocative,
+} from '../../shared/utterance-understanding.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
 import {
   composeDirectorScene,
@@ -936,6 +941,7 @@ export function interactObjectRuntime(options: {
   }
   const priorState = feature.state;
   const isExplicitLootCommand =
+    isWholeContainerLootDeclaration(options.declaration) ||
     /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|take\s+(?:the\s+)?contents)\b/i.test(
       options.declaration,
     );
@@ -951,6 +957,18 @@ export function interactObjectRuntime(options: {
     next = 'open';
   } else if (next === null || next === feature.state) {
     throw new Error('OBJECT_STATE_UNCHANGED');
+  }
+  const cleanFeatureWords = stripFeatureStateSuffix(feature.label)
+    .toLowerCase()
+    .split(/[^a-z0-9']+/)
+    .filter((w) => w.length >= 2);
+  const featureHeadNoun = cleanFeatureWords[cleanFeatureWords.length - 1] ?? '';
+  if (
+    feature.objectKind !== 'container' &&
+    NON_OPENABLE_SURFACE_HEAD_NOUN.test(featureHeadNoun) &&
+    (next === 'open' || next === 'closed')
+  ) {
+    throw new Error('OBJECT_NOT_INTERACTABLE');
   }
   const isLocked = feature.lockState === 'locked' || feature.state === 'locked';
   let unlockedWithKey: string | undefined;
@@ -1124,7 +1142,13 @@ export function interactObjectRuntime(options: {
       ? feature.contents && feature.contents.length > 0
         ? ` Inside you see: ${feature.contents.join(', ')}.`
         : ' It is empty.'
-      : '';
+      : feature.objectKind === 'prop' &&
+          next === 'open' &&
+          DOCUMENT_NOUN_PATTERN.test(baseLabel)
+        ? feature.contents && feature.contents.length > 0
+          ? ` Its pages reveal: ${feature.contents.join(', ')}.`
+          : ` Opening the ${baseLabel.toLowerCase()}, you study the entries and markings recorded across its pages.`
+        : '';
   const lootClause =
     lootedItems.length > 0 ? ` Looted into inventory: ${lootedItems.join(', ')}.` : '';
   return {
@@ -1167,20 +1191,39 @@ export function lootContainerRuntime(options: {
   if (unlockedContainersWithContents.length === 0) {
     throw new Error('NO_LOOTABLE_CONTAINER');
   }
-  const searchPhrase = `${options.itemHint ?? ''} ${options.declaration ?? ''}`.trim().toLowerCase();
+  const rawHint = (options.itemHint ?? '').trim();
+  const searchPhrase = `${rawHint === 'all' ? '' : rawHint} ${options.declaration ?? ''}`
+    .trim()
+    .toLowerCase();
   const isTakeAllOrLoot =
-    /\b(?:loot|empty|take\s+all|grab\s+all|collect\s+all|claim\s+all|contents|everything)\b/i.test(
+    rawHint.toLowerCase() === 'all' ||
+    isWholeContainerLootDeclaration(searchPhrase) ||
+    /\b(?:loot|empty|plunder|ransack|clear\s+out|take\s+all|grab\s+all|collect\s+all|claim\s+all|contents|everything)\b/i.test(
       searchPhrase,
     );
 
-  const itemMatchesSearch = (item: string): boolean => {
+  const itemMatchesSearch = (item: string, containerLabel?: string): boolean => {
     if (searchPhrase.length === 0) return false;
+    const containerTokens = new Set(
+      (containerLabel ? stripFeatureStateSuffix(containerLabel) : '')
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((t) => t.length >= 2),
+    );
     const itemLower = item.trim().toLowerCase();
     if (searchPhrase.includes(itemLower)) return true;
     const itemTokens = itemLower
       .split(/\W+/)
-      .filter((t) => t.length >= 3 && !COMMON_MODIFIER_ADJECTIVES.has(t));
-    return itemTokens.some((tok) => declarationMentionsLabelWord(searchPhrase, tok));
+      .filter(
+        (t) =>
+          t.length >= 3 &&
+          !COMMON_MODIFIER_ADJECTIVES.has(t) &&
+          !containerTokens.has(t) &&
+          !/^(?:loot|empty|clear|plunder|ransack|take|grab|collect|claim|all|everything|items?|contents?|open|opened|unlocked|from|inside)$/i.test(
+            t,
+          ),
+      );
+    return itemTokens.length > 0 && itemTokens.some((tok) => declarationMentionsLabelWord(searchPhrase, tok));
   };
 
   const openContainers = unlockedContainersWithContents.filter((f) => f.state === 'open');
@@ -1191,7 +1234,7 @@ export function lootContainerRuntime(options: {
   // If an unopened container was passed by objectId without the player naming that container,
   // and an ALREADY-OPEN container holds the requested item, bind to the open container!
   const openContainerWithMatchingItem = openContainers.find((f) =>
-    (f.contents ?? []).some(itemMatchesSearch),
+    (f.contents ?? []).some((item) => itemMatchesSearch(item, f.label)),
   );
   const effectiveExplicit =
     explicitById !== undefined &&
@@ -1205,7 +1248,9 @@ export function lootContainerRuntime(options: {
     effectiveExplicit ??
     openContainerWithMatchingItem ??
     openContainers.find((f) => scoreFeatureLabelMatch(searchPhrase, f.label).score > 0) ??
-    unlockedContainersWithContents.find((f) => (f.contents ?? []).some(itemMatchesSearch)) ??
+    unlockedContainersWithContents.find((f) =>
+      (f.contents ?? []).some((item) => itemMatchesSearch(item, f.label)),
+    ) ??
     unlockedContainersWithContents.find(
       (f) => scoreFeatureLabelMatch(searchPhrase, f.label).score > 0,
     ) ??
@@ -1213,11 +1258,18 @@ export function lootContainerRuntime(options: {
     unlockedContainersWithContents[0]!;
 
   const currentContents = [...(targetContainer.contents ?? [])];
-  const matchedSpecificItems = isTakeAllOrLoot
+  const explicitAllQuantifier =
+    rawHint.toLowerCase() === 'all' ||
+    /\b(?:all|everything|contents?|items?)\b/i.test(searchPhrase);
+  const matchedSpecificItems = explicitAllQuantifier
     ? []
-    : currentContents.filter(itemMatchesSearch);
+    : currentContents.filter((item) => itemMatchesSearch(item, targetContainer.label));
   const lootedItems =
-    matchedSpecificItems.length > 0 ? matchedSpecificItems : currentContents;
+    isTakeAllOrLoot && matchedSpecificItems.length === 0
+      ? currentContents
+      : matchedSpecificItems.length > 0
+        ? matchedSpecificItems
+        : currentContents;
   const remainingContents = currentContents.filter((item) => !lootedItems.includes(item));
   const baseLabel = stripFeatureStateSuffix(targetContainer.label);
   const nextLabel = featureLabelWithState({
@@ -1977,25 +2029,9 @@ export function scoreFeatureLabelMatch(
     }
   }
 
-  // If the primary clause didn't match this feature's head or secondary noun, check if it was only mentioned in the locative qualifier.
-  if (
-    !exactPhraseMatch &&
-    !headNounMatch &&
-    secondaryNounMatches === 0 &&
-    modifierMatches === 0 &&
-    locativeQualifier.length > 0 &&
-    declarationMentionsLabelWord(locativeQualifier, headNoun)
-  ) {
-    return {
-      score: 3,
-      exactPhraseMatch: false,
-      headNounMatch: false,
-      secondaryNounMatches: 0,
-      modifierMatches: 1,
-      baseLabel,
-      headNoun,
-    };
-  }
+  // Never award positive score from `locativeQualifier` ("on the stone pedestal", "near the chest"):
+  // a support surface or nearby landmark in a prepositional phrase is not the direct object of the verb (`RV-02`).
+  void locativeQualifier;
 
   // If a multi-word feature ONLY matched a leading modifier adjective (e.g., "sealed" or "iron")
   // and its head noun is NOT in the declaration, check whether the declaration followed that
@@ -2307,4 +2343,118 @@ export function matchInteractableByDeclaration(
 ): string | null {
   const ranked = rankInteractablesByDeclaration(runtime, declaration);
   return ranked[0]?.objectId ?? null;
+}
+
+/**
+ * Resolves an intra-scene movement/approach declaration ("I walk up to the lever",
+ * "I approach the iron chest", "I walk over to the archivist") to a non-exit feature or NPC
+ * on the active map (`RV-03`), ensuring in-room approaches never trigger `table.travel_scene`.
+ */
+export function matchInRoomApproachTarget(
+  features: MapBundleProjection['notableFeatures'],
+  declaration: string,
+): MapBundleProjection['notableFeatures'][number] | null {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0) return null;
+
+  // Must express an approach / intra-room movement intent without a chained object mutation or loot verb.
+  const hasApproachPhrase =
+    /\b(?:walk(?:s|ing)?\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|mov(?:e|es|ing)\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|step(?:s|ping)?\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|go(?:es|ing)?\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|head(?:s|ing)?\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|approach(?:es|ing)?|stand(?:s|ing)?\s+(?:beside|by|near|next\s+to|in\s+front\s+of)|position(?:s|ing)?\s+(?:myself|ourselves)\s+(?:beside|by|near|next\s+to|at))\b/i.test(
+      trimmed,
+    );
+  if (!hasApproachPhrase) {
+    return null;
+  }
+
+  // Exclude compound commands that also pull/open/unlock/loot/attack in the same breath.
+  const withoutOpenAdjective = trimmed.replace(
+    /\b(?:open(?:ed)?|closed|locked|unlocked|sealed)\s+(?=[a-z])/gi,
+    '',
+  );
+  if (
+    /\b(?:pull(?:s|ing)?|flip(?:s|ping)?|toggl(?:e|es|ing)|open(?:s|ing)?|close(?:s|ing)?|shut(?:s|ting)?|unlock(?:s|ing)?|pick(?:s|ing)?\s+(?:the\s+)?lock|loot(?:s|ing)?|empt(?:y|ies|ying)|tak(?:e|es|ing)|grab(?:s|bing)?|attack(?:s|ing)?|strik(?:e|es|ing)|cast(?:s|ing)?)\b/i.test(
+      withoutOpenAdjective,
+    )
+  ) {
+    return null;
+  }
+
+  // Extract the target phrase after the approach verb/preposition.
+  const targetMatch =
+    /\b(?:(?:walk|move|step|go|head)(?:s|ing)?\s+(?:up\s+to|over\s+to|to|toward|towards|beside|by|near)|approach(?:es|ing)?|stand(?:s|ing)?\s+(?:beside|by|near|next\s+to|in\s+front\s+of)|position(?:s|ing)?\s+(?:myself|ourselves)\s+(?:beside|by|near|next\s+to|at))\s+(.+?)(?:[.?!,;]|$)/i.exec(
+      trimmed,
+    );
+  const targetPhrase = (targetMatch?.[1] ?? trimmed).trim();
+
+  // Score non-exit features (props, levers, containers, lights, cover, traps)
+  const nonExitFeatures = features.filter(
+    (f) => f.objectKind !== 'exit' && f.referenceKind !== 'exit',
+  );
+  const exitFeatures = features.filter(
+    (f) => f.objectKind === 'exit' || f.referenceKind === 'exit',
+  );
+
+  const scoredNonExits = nonExitFeatures
+    .map((feature) => {
+      if (feature.objectKind === 'npc' || feature.referenceKind === 'npc') {
+        const cleanNpc = stripFeatureStateSuffix(feature.label)
+          .replace(/\s+[—–-]\s+.*$/u, '')
+          .trim();
+        const isMatch =
+          npcNamesMatch(cleanNpc, targetPhrase) ||
+          scoreFeatureLabelMatch(targetPhrase, cleanNpc).headNounMatch;
+        return {
+          feature,
+          score: isMatch ? 90 : 0,
+          headNounMatch: isMatch,
+        };
+      }
+      const match = scoreFeatureLabelMatch(targetPhrase, feature.label);
+      return {
+        feature,
+        score: match.headNounMatch || match.secondaryNounMatches > 0 ? match.score : 0,
+        headNounMatch: match.headNounMatch,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const bestNonExit = scoredNonExits.find((e) => e.headNounMatch) ?? scoredNonExits[0];
+  if (bestNonExit === undefined) {
+    return null;
+  }
+
+  // Ensure an exit feature doesn't score higher than the non-exit feature.
+  const bestExitScore = exitFeatures.reduce((max, exitFeat) => {
+    const m = scoreFeatureLabelMatch(targetPhrase, exitFeat.label);
+    return m.headNounMatch ? Math.max(max, m.score) : max;
+  }, 0);
+
+  if (bestExitScore > bestNonExit.score) {
+    return null;
+  }
+
+  // Also reject if the target phrase's own head noun is a pure route/exit word that is NOT the matched feature's head noun.
+  const targetWords = targetPhrase
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+  const targetHead = targetWords[targetWords.length - 1] ?? '';
+  const matchedWords = stripFeatureStateSuffix(bestNonExit.feature.label)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+  const matchedHead = matchedWords[matchedWords.length - 1] ?? '';
+  if (
+    /^(?:trail|path|pathway|road|passage|passageway|corridor|stairs|staircase|archway|doorway|door|exit|tunnel|bridge|ford|causeway|route)$/i.test(
+      targetHead,
+    ) &&
+    targetHead !== matchedHead
+  ) {
+    return null;
+  }
+
+  return bestNonExit.feature;
 }

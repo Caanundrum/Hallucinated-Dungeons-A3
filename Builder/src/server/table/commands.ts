@@ -26,6 +26,10 @@ import {
   type ResolvedActionReceipt,
 } from '../../shared/resolved-action-receipt.js';
 import {
+  isDocumentOpenOrReadDeclaration,
+  isWholeContainerLootDeclaration,
+} from '../../shared/utterance-understanding.js';
+import {
   DEFAULT_MOVEMENT_BUDGET_FEET,
   DEFAULT_VISION_RADIUS_SQUARES,
   type MovementPreviewProjection,
@@ -935,7 +939,11 @@ export async function acceptTableCommand(options: {
     const shouldLootContainerContents =
       (priorFeature !== undefined &&
         priorFeature.objectKind === 'container' &&
-        !isPortableSceneContainer(priorFeature)) ||
+        (!isPortableSceneContainer(priorFeature) ||
+          isWholeContainerLootDeclaration(trimmedDeclaration ?? '') ||
+          (Array.isArray(priorFeature.contents) &&
+            priorFeature.contents.length > 0 &&
+            !/\bwithout\s+tak(?:e|ing)\b/i.test(trimmedDeclaration ?? '')))) ||
       (typeof itemId === 'string' && itemId.length > 0) ||
       (targetObjectId === null &&
         (active?.features ?? []).some(
@@ -1601,6 +1609,22 @@ export async function acceptTableCommand(options: {
             // NPC had no held items to transfer.
           }
         }
+      }
+    } else if (
+      trimmedDeclaration !== undefined &&
+      isDocumentOpenOrReadDeclaration(trimmedDeclaration) &&
+      (trimmedPlaySummary === undefined ||
+        /^(?:Ready to |Read and examine |Examine the |Interact with )/i.test(trimmedPlaySummary))
+    ) {
+      try {
+        const { buildSceneSurveyNarration } = await import('../ai/director-gateway.js');
+        const premise = await loadCampaignPremise(firestore, campaignId);
+        sceneChronicleBody = buildSceneSurveyNarration(map, {
+          playerText: trimmedDeclaration,
+          campaignPremise: premise,
+        });
+      } catch {
+        // Best-effort document reading survey seed.
       }
     }
   }

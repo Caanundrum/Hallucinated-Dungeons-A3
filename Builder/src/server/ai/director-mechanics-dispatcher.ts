@@ -16,9 +16,14 @@ import type { MapBundleProjection } from '../../shared/map-contract.js';
 import type { DirectorLlmClient } from './gemini-director.js';
 import { pathBesideFeature } from '../table/scene-door-intent.js';
 import {
+  matchInRoomApproachTarget,
   scoreFeatureLabelMatch,
   stripFeatureStateSuffix,
 } from '../table/scene-commands.js';
+import {
+  NON_OPENABLE_SURFACE_HEAD_NOUN,
+  isWholeContainerLootDeclaration,
+} from '../../shared/utterance-understanding.js';
 import type {
   IntentDraftCommandType,
   SkillCheckIntent,
@@ -522,6 +527,28 @@ export function applyDirectorDispatchToMap(options: {
     const hint =
       dispatch.travelScene?.destinationHint ??
       (returnToPrevious ? 'the earlier scene' : 'the next area');
+    if (!returnToPrevious && ownToken) {
+      const inRoomTarget = matchInRoomApproachTarget(
+        map.notableFeatures,
+        `approach ${hint}`,
+      );
+      if (inRoomTarget !== null) {
+        const displayLabel = stripFeatureStateSuffix(inRoomTarget.label)
+          .replace(/\s+[—–-]\s+.*$/u, '')
+          .trim();
+        const featureSquare = { column: inRoomTarget.column, row: inRoomTarget.row };
+        const featurePath = pathBesideFeature(ownToken.footprint.anchor, featureSquare, map);
+        if (featurePath !== null && featurePath.length > 0) {
+          const steps = featurePath.length;
+          const feet = steps * map.coordinateSpace.feetPerSquare;
+          return {
+            proposedCommandType: 'table.move',
+            path: featurePath,
+            summary: `Walk beside the ${displayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`,
+          };
+        }
+      }
+    }
     return {
       proposedCommandType: 'table.travel_scene',
       returnToPrevious,
@@ -596,9 +623,28 @@ export function applyDirectorDispatchToMap(options: {
     const matched = findBestFeatureByHeadNoun(interactableFeatures, requested);
     if (matched !== undefined) {
       const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
-      const alreadyOpen = /\(open\)\s*$/i.test(matched.label);
-      const alreadyClosed = /\(closed\)\s*$/i.test(matched.label);
+      const headWords = cleanLabel.toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length >= 2);
+      const headNoun = headWords[headWords.length - 1] ?? '';
+      const alreadyOpen = /\(open\)\s*$/i.test(matched.label) || matched.objectState === 'open';
+      const alreadyClosed = /\(closed\)\s*$/i.test(matched.label) || matched.objectState === 'closed';
       if (
+        matched.objectKind === 'container' &&
+        alreadyOpen &&
+        matched.lockState !== 'locked' &&
+        Array.isArray(matched.contents) &&
+        matched.contents.length > 0 &&
+        (op === 'use' || isWholeContainerLootDeclaration(requested))
+      ) {
+        return {
+          proposedCommandType: 'table.take_scene_prop',
+          objectId: matched.objectId,
+          summary: `Ready to take ${matched.contents.join(', ')} from the ${cleanLabel}. Confirm to stow it in your inventory.`,
+        };
+      }
+      if (
+        (matched.objectKind !== 'container' &&
+          NON_OPENABLE_SURFACE_HEAD_NOUN.test(headNoun) &&
+          (op === 'open' || op === 'close')) ||
         op === 'inspect' ||
         (op === 'open' && alreadyOpen) ||
         (op === 'close' && alreadyClosed)
@@ -690,16 +736,27 @@ export function applyDirectorDispatchToMap(options: {
         (item) =>
           item.toLowerCase().includes(requested) || requested.includes(item.toLowerCase()),
       ) || scoreFeatureLabelMatch(requested, f.label).score > 0;
-    const openContainers = unlockedContainers.filter((f) => /\(open\)\s*$/i.test(f.label));
+    const openContainers = unlockedContainers.filter(
+      (f) => /\(open\)\s*$/i.test(f.label) || f.objectState === 'open',
+    );
     const containerWithContents =
       openContainers.find(matchesRequestedContent) ??
-      unlockedContainers.find(matchesRequestedContent);
+      unlockedContainers.find(matchesRequestedContent) ??
+      (isWholeContainerLootDeclaration(requested) || /\b(?:all|everything|contents?|items?)\b/i.test(requested)
+        ? (openContainers[0] ?? unlockedContainers[0])
+        : undefined);
     if (containerWithContents) {
       const cleanContainer = stripFeatureStateSuffix(containerWithContents.label);
+      const itemsSummary =
+        (containerWithContents.contents ?? []).length > 0 &&
+        (scoreFeatureLabelMatch(requested, containerWithContents.label).score > 0 ||
+          /\b(?:all|everything|contents?|items?)\b/i.test(requested))
+          ? containerWithContents.contents!.join(', ')
+          : dispatch.takeProp.propLabel;
       return {
         proposedCommandType: 'table.take_scene_prop',
         objectId: containerWithContents.objectId,
-        summary: `Ready to take ${dispatch.takeProp.propLabel} from the ${cleanContainer}. Confirm to stow it in your inventory.`,
+        summary: `Ready to take ${itemsSummary} from the ${cleanContainer}. Confirm to stow it in your inventory.`,
       };
     }
   }

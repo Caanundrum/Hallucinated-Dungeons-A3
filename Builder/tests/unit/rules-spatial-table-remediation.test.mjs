@@ -37,6 +37,7 @@ import {
   contextualContainerLabelForTemplate,
   contextualPropLabelForTemplate,
   deduplicateSceneFeatureLabels,
+  nextObjectState,
 } from '../../dist/server/table/scene-composition.js';
 import {
   buildMapRuntimeFromBlueprint,
@@ -45,6 +46,7 @@ import {
   interactObjectRuntime,
   isPortableSceneContainer,
   lootContainerRuntime,
+  matchInRoomApproachTarget,
   matchTakeContainerByDeclaration,
   rankInteractablesByDeclaration,
   scoreFeatureLabelMatch,
@@ -56,9 +58,17 @@ import {
 } from '../../dist/server/table/map-projection.js';
 import {
   classifyClause,
+  isDocumentOpenOrReadDeclaration,
   isPassageOrTravelThroughDoorway,
+  isWholeContainerLootDeclaration,
   splitPrimaryTargetFromLocative,
 } from '../../dist/shared/utterance-understanding.js';
+import {
+  buildSceneSurveyNarration,
+} from '../../dist/server/ai/director-gateway.js';
+import {
+  pathBesideFeature,
+} from '../../dist/server/table/scene-door-intent.js';
 import {
   applyDirectorDispatchToMap,
 } from '../../dist/server/ai/director-mechanics-dispatcher.js';
@@ -867,4 +877,180 @@ test('RS-06 & RS-07: Walkable gate-adjacent lever placement on outdoor Room 2 ma
     );
   }
 });
+
+test('RV-01, RV-02, & RV-03: Whole-container loot routing on open containers, support-surface preposition splitting & document open-to-read narration, and intra-scene feature approach vs scene travel', () => {
+  // 1. RV-01: Whole-container loot routing & runtime transfer on an already-open container
+  assert.equal(isWholeContainerLootDeclaration('I loot the open ironbound coffer'), true);
+  assert.equal(isWholeContainerLootDeclaration('I empty the carved chest'), true);
+  assert.equal(isWholeContainerLootDeclaration('I take everything from the supply locker'), true);
+  assert.equal(
+    classifyClause('I loot the open ironbound coffer').kind,
+    'take_item',
+    'Whole-container loot with adjectival "open" classifies as take_item, never interact',
+  );
+  const parsedLoot = parsePlayerDeclaration('I loot the open ironbound coffer');
+  assert.equal(parsedLoot.actionSequence[0]?.outcomeHint, 'take_from_container');
+
+  const bp = buildCampaignBlueprint({
+    summary:
+      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks the party to trace a vanished apprentice who left behind a brass astrolabe.',
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-rv',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    seatTokens: [{ seatId: 'seat-1', characterId: 'char-1', column: 2, row: 4 }],
+    activateFirstScene: true,
+  });
+  const r1 = runtime.sceneInstances[runtime.activeSceneId];
+  const container = r1.features.find((f) => f.objectKind === 'container');
+  assert.ok(container, 'Scene 1 has a container');
+  const cleanContainerLabel = container.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+
+  // Open the container first
+  const opened = interactObjectRuntime({
+    runtime,
+    objectId: container.objectId,
+    declaration: `I open the ${cleanContainerLabel}`,
+  });
+  assert.equal(opened.nextState, 'open');
+  assert.deepEqual(opened.lootedItems, []);
+
+  // Follow up with whole-container loot by container label ("I loot the open <container>")
+  const lootedAll = lootContainerRuntime({
+    runtime: opened.runtime,
+    objectId: container.objectId,
+    itemHint: 'all',
+    declaration: `I loot the open ${cleanContainerLabel}`,
+  });
+  assert.deepEqual(lootedAll.lootedItems, container.contents);
+  assert.equal(
+    lootedAll.chronicle,
+    `Took ${container.contents.join(', ')} from ${cleanContainerLabel}.`,
+  );
+  const afterLootContainer = lootedAll.runtime.sceneInstances[runtime.activeSceneId].features.find(
+    (f) => f.objectId === container.objectId,
+  );
+  assert.deepEqual(afterLootContainer.contents, []);
+
+  // 2. RV-02: Support-surface preposition splitting, non-openable furniture, & document open-to-read narration
+  const splitDoc = splitPrimaryTargetFromLocative('I open the harbor manifest on the oak table');
+  assert.equal(splitDoc.primaryClause, 'I open the harbor manifest');
+  assert.equal(splitDoc.locativeQualifier, 'on the oak table');
+  assert.equal(isDocumentOpenOrReadDeclaration('I open the harbor manifest on the oak table'), true);
+  assert.equal(isDocumentOpenOrReadDeclaration('I unfold the parchment scroll atop the stone altar'), true);
+  assert.equal(isDocumentOpenOrReadDeclaration('I open the harbor manifest'), true);
+  assert.equal(isDocumentOpenOrReadDeclaration('I take the harbor manifest from the chest'), false);
+
+  // Locative support surface must score 0 when primaryClause names a different direct-object noun
+  const surfaceMatchScore = scoreFeatureLabelMatch(
+    'I open the harbor manifest on the oak table',
+    'Oak table (intact)',
+  );
+  assert.equal(
+    surfaceMatchScore.score,
+    0,
+    'Support surface mentioned only in locativeQualifier ("on the oak table") must score 0',
+  );
+
+  // Solid surface furniture must never transition to 'open' in nextObjectState
+  assert.equal(
+    nextObjectState(
+      {
+        objectId: 'prop-table',
+        label: 'Oak table',
+        objectKind: 'prop',
+        referenceKind: 'prop',
+        column: 5,
+        row: 3,
+        state: 'intact',
+        interactable: true,
+      },
+      'I open the oak table',
+    ),
+    null,
+  );
+
+  // Guardrail check: buildSceneSurveyNarration returns identical rich document clue prose for "I open the <document>" and "I read the <document>"
+  const mapBundle = buildAuthoritativeMapBundle({
+    campaignId: 'camp-rv',
+    seats: [
+      {
+        seatId: 'seat-1',
+        campaignId: 'camp-rv',
+        ownerAccountId: 'acc-1',
+        characterId: 'char-1',
+        characterName: 'Test Hero',
+      },
+    ],
+    runtime,
+  });
+  const openDocNarration = buildSceneSurveyNarration(mapBundle, {
+    playerText: 'I open the station logbook on the oak table',
+    campaignPremise: bp.summary,
+  });
+  const readDocNarration = buildSceneSurveyNarration(mapBundle, {
+    playerText: 'I read the station logbook on the oak table',
+    campaignPremise: bp.summary,
+  });
+  assert.equal(openDocNarration, readDocNarration);
+  assert.match(openDocNarration, /Inspecting the station logbook closely in Clockhouse/i);
+  assert.doesNotMatch(openDocNarration, /You look and listen|scene settles/i);
+
+  // 3. RV-03: Intra-scene feature approach vs scene exit travel
+  const r2Step = travelSceneRuntime({
+    runtime,
+    campaignId: 'camp-rv',
+    accountId: 'acc-1',
+    destinationHint: 'scene-m1-r2',
+    blueprint: bp,
+  });
+  const r2Bundle = buildAuthoritativeMapBundle({
+    campaignId: 'camp-rv',
+    seats: [
+      {
+        seatId: 'seat-1',
+        campaignId: 'camp-rv',
+        ownerAccountId: 'acc-1',
+        characterId: 'char-1',
+        characterName: 'Test Hero',
+      },
+    ],
+    runtime: r2Step.runtime,
+  });
+  const r2Lever = r2Bundle.notableFeatures.find((f) => f.objectKind === 'lever');
+  assert.ok(r2Lever, 'Room 2 has a lever feature');
+  const cleanLeverLabel = r2Lever.label.replace(/\s*\([^)]+\)\s*$/, '').trim();
+
+  const approachedFeature = matchInRoomApproachTarget(
+    r2Bundle.notableFeatures,
+    `I walk up to the ${cleanLeverLabel}`,
+  );
+  assert.ok(approachedFeature, 'matchInRoomApproachTarget resolves in-room lever');
+  assert.equal(approachedFeature.objectId, r2Lever.objectId);
+
+  const leverPath = pathBesideFeature(
+    { column: 2, row: 4 },
+    { column: r2Lever.column, row: r2Lever.row },
+    r2Bundle,
+  );
+  assert.ok(leverPath && leverPath.length > 0, 'pathBesideFeature computes a walkable path to the lever');
+  const finalStep = leverPath[leverPath.length - 1];
+  const finalManhattan =
+    Math.abs(finalStep.column - r2Lever.column) + Math.abs(finalStep.row - r2Lever.row);
+  assert.equal(
+    finalManhattan,
+    1,
+    `Final step (${finalStep.column},${finalStep.row}) is orthogonally adjacent to lever (${r2Lever.column},${r2Lever.row})`,
+  );
+
+  // Explicit exit travel does NOT match matchInRoomApproachTarget
+  assert.equal(
+    matchInRoomApproachTarget(r2Bundle.notableFeatures, 'I follow the trail into the next area'),
+    null,
+  );
+});
+
 

@@ -25,6 +25,7 @@ import {
   isLightSourcePhrase,
 } from '../campaigns/campaign-blueprint.js';
 import { attachExitsToComposedScene } from './scene-exit-projection.js';
+import { NON_OPENABLE_SURFACE_HEAD_NOUN } from '../../shared/utterance-understanding.js';
 
 export const SCENE_PURPOSES = [
   'exploration',
@@ -1926,6 +1927,23 @@ export function nextObjectState(
     return 'taken';
   }
   if (feature.objectKind === 'cover' || feature.objectKind === 'container') {
+    const cleanFeatureTokens = (feature.label ?? '')
+      .replace(/\s*\([^)]*\)\s*$/u, '')
+      .replace(/\s+[—–-]\s+.*$/u, '')
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((w) => w.length >= 2);
+    const featureHeadNoun = cleanFeatureTokens[cleanFeatureTokens.length - 1] ?? '';
+    if (
+      feature.objectKind !== 'container' &&
+      NON_OPENABLE_SURFACE_HEAD_NOUN.test(featureHeadNoun) &&
+      /\b(open|unseal|unlatch|unlock|close|shut|seal|inspect|examine|search|check|read|peek|look)\b/.test(
+        text,
+      ) &&
+      !/\b(break|smash|kick|shatter|destroy)\b/.test(text)
+    ) {
+      return null;
+    }
     if (/\b(break|smash|kick|shatter|destroy|pry|force)\b/.test(text)) {
       return feature.objectKind === 'container' ? 'open' : 'broken';
     }
@@ -1950,6 +1968,19 @@ export function nextObjectState(
     return feature.state === 'active' ? 'disarmed' : 'active';
   }
   if (feature.objectKind === 'prop') {
+    const cleanFeatureTokens = (feature.label ?? '')
+      .replace(/\s*\([^)]*\)\s*$/u, '')
+      .replace(/\s+[—–-]\s+.*$/u, '')
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((w) => w.length >= 2);
+    const featureHeadNoun = cleanFeatureTokens[cleanFeatureTokens.length - 1] ?? '';
+    if (
+      NON_OPENABLE_SURFACE_HEAD_NOUN.test(featureHeadNoun) &&
+      !/\b(break|smash|cut|sever|collapse|shatter|destroy)\b/.test(text)
+    ) {
+      return null;
+    }
     if (/\b(break|smash|cut|sever|collapse|shatter)\b/.test(text)) return 'broken';
     if (/\b(open|unseal|unlatch|pry|force|unlock)\b/.test(text)) return 'open';
     if (/\b(close|shut|seal)\b/.test(text)) return 'closed';

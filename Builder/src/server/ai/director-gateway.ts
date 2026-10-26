@@ -105,6 +105,7 @@ import {
   resolveIntentAuthority,
 } from '../../shared/play-authority-contract.js';
 import {
+  isDocumentOpenOrReadDeclaration,
   splitPrimaryTargetFromLocative,
   understandUtterance,
 } from '../../shared/utterance-understanding.js';
@@ -265,11 +266,11 @@ export function buildSceneSurveyNarration(
     // 3. Check if the player is examining a clue or detail established in recent Chronicle dialogue or Campaign Premise.
     const askNouns = lowerPrimaryAsk
       .replace(
-        /\b(?:i|my|character|the|a|an|at|on|in|to|toward|towards|near|by|around|from|with|for|of|and|carefully|closely|quietly|inspect|examine|check|look|study|read|peruse|decipher|scan|trace|search|peer|listen)\b/g,
+        /\b(?:i|my|character|the|a|an|at|on|upon|atop|in|into|inside|within|to|toward|towards|near|by|beside|around|from|off|over|under|beneath|with|for|of|and|carefully|closely|quietly|inspect(?:s|ing)?|examin(?:e|es|ing)?|check(?:s|ing)?|look(?:s|ing)?|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)?|decipher(?:s|ing)?|scan(?:s|ning)?|trac(?:e|es|ing)?|search(?:es|ing)?|peer(?:s|ing)?|listen(?:s|ing)?|open(?:s|ing)?|unfold(?:s|ing)?|unroll(?:s|ing)?|flip(?:s|ping)?|leaf(?:s|ing)?|leaves|through|turn(?:s|ing)?|pages?|por(?:e|es|ing))\b/g,
         ' ',
       )
       .split(/[^a-z0-9']+/)
-      .filter((w: string) => w.length >= 4);
+      .filter((w: string) => w.length >= 3);
 
     const corpusLines = [
       ...(options?.recentChronicleSummaries ?? []),
@@ -307,6 +308,25 @@ export function buildSceneSurveyNarration(
     if (matchedClueLine !== undefined) {
       const targetSubject = askNouns.slice(0, 3).join(' ');
       return `Inspecting the ${targetSubject} closely in ${title}, you confirm the signs established here: ${matchedClueLine} ${doorLine}`
+        .replace(/\.\.+/g, '.')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    if (isDocumentOpenOrReadDeclaration(playerText)) {
+      const targetSubject = askNouns.length > 0 ? askNouns.slice(0, 3).join(' ') : 'document';
+      const fallbackClue =
+        (options?.campaignPremise && options.campaignPremise.trim().length > 0
+          ? options.campaignPremise.trim()
+          : undefined) ??
+        corpusLines.find((l) => l.trim().length > 0 && l.toLowerCase() !== lowerAsk);
+      if (fallbackClue !== undefined) {
+        return `Inspecting the ${targetSubject} closely in ${title}, you confirm the signs established here: ${fallbackClue} ${doorLine}`
+          .replace(/\.\.+/g, '.')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      }
+      return `Inspecting the ${targetSubject} closely in ${title}, you read through its recorded entries and markings, which point toward the active leads in the chamber. ${doorLine}`
         .replace(/\.\.+/g, '.')
         .replace(/\s{2,}/g, ' ')
         .trim();
@@ -555,6 +575,7 @@ async function resolveDirectorNarrateOutput(options: {
     inspectHint === 'sensory_sequence' ||
     inspectHint === 'unlocked door' ||
     inspectHint === 'read_text' ||
+    isDocumentOpenOrReadDeclaration(options.playerText ?? options.structured.rawText ?? '') ||
     (!isDialogue &&
       inspectHint === null &&
       options.authority.disposition === 'director_narrate_only')

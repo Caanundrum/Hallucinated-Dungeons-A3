@@ -22,6 +22,8 @@ import {
   actionableDirectorFallback,
   classifyClause,
   filterActionsByConstraints,
+  isDocumentOpenOrReadDeclaration,
+  isWholeContainerLootDeclaration,
   splitPrimaryTargetFromLocative,
   understandUtterance,
   utteranceLooksLikeQuestion,
@@ -1140,14 +1142,15 @@ export function parsePlayerDeclaration(
   const wantsRead =
     /\b(?:read(?:s|ing)?|perus(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through)\b/i.test(
       trimmed,
-    );
+    ) || isDocumentOpenOrReadDeclaration(trimmed);
 
   // Targeted prop examine / read / listen — Director narrates or routes to object/skill check.
   if (
     actionSequence.length === 0 &&
-    /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+at|listen(?:s|ing)?|eavesdrop(?:s|ping)?|peer(?:s|ing)?|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|smell(?:s|ing)?|sniff(?:s|ing)?|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
-      trimmed,
-    ) &&
+    (wantsRead ||
+      /\b(?:examin(?:e|es|ing)|inspect(?:s|ing)?|look(?:s|ing)?(?:\s+closely)?\s+at|listen(?:s|ing)?|eavesdrop(?:s|ping)?|peer(?:s|ing)?|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|translat(?:e|es|ing)|scan(?:s|ning)?|por(?:e|es|ing)\s+over|leaf(?:s|ing)?\s+through|smell(?:s|ing)?|sniff(?:s|ing)?|feel(?:s|ing)?|touch(?:es|ing)?|tap(?:s|ping)?|test(?:s|ing)?|investigat(?:e|es|ing)?|search(?:es|ing)?)\b/i.test(
+        trimmed,
+      )) &&
     !/\b(?:attack|strike|cast|unlock|pick\s+the\s+lock)\b/i.test(trimmed) &&
     !wantsOpenDoor &&
     !wantsCloseDoor &&
@@ -1183,9 +1186,10 @@ export function parsePlayerDeclaration(
     );
   const takeVerb =
     !isRestOrIdiomTake &&
-    /\b(?:take|grab|pocket|stow|carry|lift|loot|retrieve|collect|pick(?:ing|ed)?\s+up)\b/i.test(
-      trimmed,
-    );
+    (isWholeContainerLootDeclaration(trimmed) ||
+      /\b(?:take|grab|pocket|stow|carry|lift|loot|empty|plunder|ransack|retrieve|collect|pick(?:ing|ed)?\s+up)\b/i.test(
+        trimmed,
+      ));
   const negatesTakeFrom =
     /\b(?:(?:do\s+not|don't|dont|not)\s+tak(?:e|ing)|without\s+tak(?:e|ing))\b[\s\S]{0,40}\b(?:from|inside|contents?)\b/i.test(
       trimmed,
@@ -1193,15 +1197,16 @@ export function parsePlayerDeclaration(
     /\bnot\s+taking\s+anything\s+from\b/i.test(trimmed);
   if (actionSequence.length === 0 && takeVerb && !wantsOpenDoor && !wantsCloseDoor && !wantsUnlock) {
     const containerNoun =
-      /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch|coffer|trunk|cabinet)\b/i.test(
+      /\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|[a-z]*box|[a-z]*locker|barrel|urn|pouch|coffer|trunk|cabinet|reliquary|cache|hamper)\b/i.test(
         trimmed,
       );
     const takeFromContainer =
       containerNoun &&
       !negatesTakeFrom &&
-      /\b(?:take|grab|pocket|stow|loot|retrieve)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|box|barrel|urn|pouch|coffer|trunk|cabinet)\b/i.test(
-        trimmed,
-      );
+      (isWholeContainerLootDeclaration(trimmed) ||
+        /\b(?:take|grab|pocket|stow|loot|empty|plunder|ransack|retrieve|collect)\b[\s\S]{0,48}\bfrom\b[\s\S]{0,32}\b(?:courier\s+satchel|satchel|pack|bag|crate|chest|[a-z]*box|[a-z]*locker|barrel|urn|pouch|coffer|trunk|cabinet|reliquary|cache|hamper)\b/i.test(
+          trimmed,
+        ));
     const takeContainer =
       containerNoun &&
       !takeFromContainer &&
