@@ -800,13 +800,18 @@ async function resolveDirectorNarrateOutput(options: {
 
   if (isDialogue && options.structured.addressee !== null) {
     const name = options.structured.addressee;
-    const npc =
-      memory?.npcs.find(
-        (entry) => npcNamesMatch(entry.name, name) || entry.npcId === name,
-      ) ?? null;
     const sceneNpc =
       map?.notableFeatures.find(
-        (f) => f.referenceKind === 'npc' && npcNamesMatch(f.label, name),
+        (f) =>
+          (f.referenceKind === 'npc' || f.objectKind === 'npc') &&
+          npcNamesMatch(f.label, name),
+      ) ?? null;
+    const npc =
+      memory?.npcs.find(
+        (entry) =>
+          npcNamesMatch(entry.name, sceneNpc?.label ?? name) ||
+          npcNamesMatch(entry.name, name) ||
+          entry.npcId === name,
       ) ?? null;
 
     // Check if the player is speaking to an established NPC who is absent/missing from this scene
@@ -887,7 +892,7 @@ const ARBITER_CONSTITUTION = [
   'Never invent DCs, roll dice, spend spell slots, move tokens, or declare success or failure.',
   'When a plan would require checks or multiple action economy spends, list them clearly.',
   'If the character lacks a spell, feature, or capacity, say so plainly.',
-  'Answer in 3 to 8 short sentences or tight bullets. Lead with the useful ruling.',
+  'Answer concisely in 2 to 4 short sentences (under 360 characters). Lead directly with the exact sheet value or ruling.',
   'Do not narrate a new story beat unless needed to clarify presence or reach.',
 ].join(' ');
 
@@ -1368,7 +1373,8 @@ export async function interpretNaturalLanguageIntent(options: {
         for (const memNpc of knownNpcs) {
           if (
             !activeNpcNames.has(memNpc.label.toLowerCase()) &&
-            !absentRoomNpcs.some((entry) => entry.label.toLowerCase() === memNpc.label.toLowerCase())
+            !presentNpcRecords.some((p) => npcNamesMatch(p.label, memNpc.label)) &&
+            !absentRoomNpcs.some((entry) => npcNamesMatch(entry.label, memNpc.label))
           ) {
             absentRoomNpcs.push({
               id: memNpc.id,
@@ -1378,7 +1384,28 @@ export async function interpretNaturalLanguageIntent(options: {
           }
         }
       }
+      for (const absentNpc of absentRoomNpcs) {
+        if (!knownNpcs.some((entry) => npcNamesMatch(entry.label, absentNpc.label))) {
+          knownNpcs.push({ id: absentNpc.id, label: absentNpc.label });
+        }
+      }
     }
+    const blueprint = await loadCampaignBlueprint(options.firestore, options.campaignId);
+    if (blueprint !== null && Array.isArray(blueprint.namedNpcs)) {
+      for (let i = 0; i < blueprint.namedNpcs.length; i += 1) {
+        const bpNpc = blueprint.namedNpcs[i]?.trim() ?? '';
+        if (bpNpc.length > 0 && !knownNpcs.some((entry) => npcNamesMatch(entry.label, bpNpc))) {
+          knownNpcs.push({ id: `blueprint:npc:${i}`, label: bpNpc });
+        }
+      }
+    }
+    // Always prioritize present-scene NPCs ahead of absent/memory NPCs (`FC-01`).
+    knownNpcs = [
+      ...presentNpcRecords,
+      ...knownNpcs.filter(
+        (k) => !presentNpcRecords.some((p) => p.id === k.id || npcNamesMatch(p.label, k.label)),
+      ),
+    ];
   } catch {
     // Active scene NPC lookup is best-effort.
   }
@@ -1714,13 +1741,14 @@ export async function answerDirectorAddress(options: {
   const sheetDigest = sheetBlockMatch
     ? sheetBlockMatch[0]
         .split('\n')
-        .slice(0, 6)
+        .filter((line) => !/^\s*(?:Ability mods|Proficient skills):/i.test(line))
+        .slice(0, 4)
         .join(' · ')
     : null;
   const simulatorBody = mechanical
     ? `${name} weighs the plan against your sheet and the visible scene. ${
         sheetDigest !== null
-          ? `${sheetDigest}. If a spell, skill, or action spend is missing from your sheet or the scene has not established the target, say so before you declare the action.`
+          ? `${sheetDigest}.`
           : 'Seat a character so the arbiter can read your sheet.'
       } Declare the action in the ${PLAY_CHANNEL_LABEL} when you are ready — this consult does not resolve it.`
     : `${name} (${DIRECTOR_PERSONALITY_LABELS[director.personality]}) answers from the visible scene only. The table does not move from Ask the Director. Use the ${PLAY_CHANNEL_LABEL} to declare what you do.`;
@@ -1787,7 +1815,9 @@ export async function answerDirectorAddress(options: {
     understanding.speechAct !== 'rules_query' &&
     understanding.speechAct !== 'ooc_instruction'
   ) {
-    const structured = parsePlayerDeclaration(text);
+    const askKnownNpcs =
+      askMemory?.npcs.map((npc) => ({ id: npc.npcId, label: npc.name })) ?? [];
+    const structured = parsePlayerDeclaration(text, { knownNpcs: askKnownNpcs });
     const authority = resolveIntentAuthority(structured);
     if (
       authority.disposition === 'propose_command' &&
@@ -1804,7 +1834,7 @@ export async function answerDirectorAddress(options: {
           encounter: null,
           seatedSheet: null,
           rulesProgressionClassLabel: null,
-          knownNpcs: [],
+          knownNpcs: askKnownNpcs,
         });
         boundFields = {
           ...(resolved.path !== undefined ? { path: resolved.path } : {}),

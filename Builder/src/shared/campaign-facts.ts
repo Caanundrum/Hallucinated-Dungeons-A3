@@ -169,7 +169,148 @@ export const PERSONAL_ROLE_TITLES: ReadonlySet<string> = new Set([
   'princess',
   'madam',
   'madame',
+  'provost',
+  'custodian',
+  'chancellor',
+  'prefect',
+  'magistrate',
+  'chamberlain',
+  'seneschal',
+  'deacon',
+  'archdeacon',
+  'vicar',
+  'rector',
+  'dean',
+  'bursar',
+  'inquisitor',
+  'envoy',
+  'consul',
+  'legate',
+  'tribune',
+  'centurion',
+  'adjutant',
+  'auditor',
+  'assessor',
+  'comptroller',
+  'registrar',
+  'proctor',
+  'beadle',
+  'verger',
+  'sacristan',
+  'artificer',
+  'navigator',
+  'pilot',
+  'bosun',
+  'purser',
+  'archon',
+  'prelate',
+  'canon',
+  'syndic',
+  'regent',
 ]);
+
+const NPC_TOKEN_STOPWORDS: ReadonlySet<string> = new Set([
+  'the',
+  'and',
+  'for',
+  'from',
+  'with',
+  'into',
+  'onto',
+  'upon',
+  'over',
+  'under',
+  'near',
+  'beside',
+  'beyond',
+  'through',
+  'between',
+  'among',
+  'without',
+  'within',
+  'who',
+  'whom',
+  'whose',
+  'what',
+  'where',
+  'when',
+  'why',
+  'how',
+  'that',
+  'this',
+  'these',
+  'those',
+  'missing',
+  'local',
+  'contact',
+  'guide',
+  'helpful',
+  'hostile',
+  'friendly',
+  'neutral',
+  'present',
+  'absent',
+  'waiting',
+  'vanished',
+  'lost',
+  'unknown',
+  'npc',
+  'character',
+]);
+
+/**
+ * Strips parenthetical status/role tags `(...)` and dash suffixes `— ...` / ` - ...`
+ * so metadata words (`Missing`, `Local`, `Contact`, `Guide`) are never indexed as NPC name tokens.
+ */
+export function cleanNpcLabelForMatching(rawName: string): string {
+  return rawName
+    .replace(/^@+/, '')
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+[—–-]\s+.*$/u, '')
+    .replace(/[.,:;!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extracts a leading role/honorific title and canonical `<GivenName> <Surname>` / `<GivenName>`
+ * from an NPC name, supporting both known `PERSONAL_ROLE_TITLES` and any 3+-word `<Word1> <Word2> <Word3>`
+ * person name where `<Word1>` precedes a 2-word proper name.
+ */
+export function stripPersonalRoleTitle(rawName: string): {
+  readonly title: string | null;
+  readonly strippedName: string;
+  readonly givenName: string | null;
+} {
+  const cleaned = cleanNpcLabelForMatching(rawName);
+  if (cleaned.length === 0) {
+    return { title: null, strippedName: '', givenName: null };
+  }
+  const words = cleaned.split(/\s+/);
+  const firstClean = (words[0] ?? '').replace(/\.$/, '');
+  const firstLower = firstClean.toLowerCase();
+  if (words.length >= 2 && PERSONAL_ROLE_TITLES.has(firstLower)) {
+    const rest = words.slice(1);
+    return {
+      title: firstClean,
+      strippedName: rest.join(' '),
+      givenName: rest[0] ?? null,
+    };
+  }
+  if (words.length >= 3) {
+    const rest = words.slice(1);
+    return {
+      title: firstClean,
+      strippedName: rest.join(' '),
+      givenName: rest[0] ?? null,
+    };
+  }
+  return {
+    title: null,
+    strippedName: cleaned,
+    givenName: words[0] ?? null,
+  };
+}
 
 /** Interpersonal verbs indicating an active quest-giving contact present in the opening scene. */
 export const INTERPERSONAL_CONTACT_VERB_RE =
@@ -189,30 +330,36 @@ export function isCompoundPlaceWord(word: string): boolean {
 
 /**
  * Expands a stored or candidate NPC name into all natural reference forms:
- * "Warden <First> <Last>", "<First> <Last>", "Warden <First>", "<First>", and "<Last>".
+ * - Full normalized name ("<Title> <GivenName> <Surname>")
+ * - Stripped personal name ("<GivenName> <Surname>")
+ * - Every contiguous multi-word sub-phrase ("<Title> <GivenName>", "<GivenName> <Surname>")
+ * - Every substantive token (`len >= 3`, excluding metadata/stopwords) at any position (`0`, `1`, `2`, ...)
  */
 export function expandNpcNameVariants(
   rawName: string,
   roleHint?: string,
 ): readonly string[] {
-  const cleaned = rawName
-    .replace(/\s*\([^)]*\)\s*/g, ' ')
-    .replace(/\s+[—–-]\s+.*$/u, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const cleaned = cleanNpcLabelForMatching(rawName);
   if (cleaned.length === 0) {
     return [];
   }
-  const words = cleaned.split(/\s+/);
-  const firstLower = (words[0] ?? '').toLowerCase().replace(/\.$/, '');
-  let titleWord: string | null = null;
-  let nameWords: string[] = words;
+  const words = cleaned
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^A-Za-z0-9'-]+|[^A-Za-z0-9'-]+$/g, ''))
+    .filter(Boolean);
+  if (words.length === 0) {
+    return [];
+  }
 
-  if (words.length >= 2 && PERSONAL_ROLE_TITLES.has(firstLower)) {
-    titleWord = words[0]!.replace(/\.$/, '');
-    nameWords = words.slice(1);
-  } else if (typeof roleHint === 'string' && roleHint.trim().length > 0) {
-    const roleFirst = roleHint.trim().split(/\s+/)[0]?.replace(/[^A-Za-z]/g, '') ?? '';
+  const stripped = stripPersonalRoleTitle(cleaned);
+  const firstLower = (words[0] ?? '').toLowerCase().replace(/\.$/, '');
+  let titleWord: string | null = stripped.title;
+  const nameWords: string[] =
+    stripped.title !== null && words.length >= 2 ? words.slice(1) : words;
+
+  if (titleWord === null && typeof roleHint === 'string' && roleHint.trim().length > 0) {
+    const roleFirst =
+      cleanNpcLabelForMatching(roleHint).split(/\s+/)[0]?.replace(/[^A-Za-z]/g, '') ?? '';
     if (roleFirst.length > 0 && PERSONAL_ROLE_TITLES.has(roleFirst.toLowerCase())) {
       titleWord = `${roleFirst.charAt(0).toUpperCase()}${roleFirst.slice(1).toLowerCase()}`;
     }
@@ -230,33 +377,73 @@ export function expandNpcNameVariants(
   if (titleWord !== null && nameWords.length > 0) {
     pushVariant(`${titleWord} ${nameWords.join(' ')}`);
   }
-  if (nameWords.length > 0) {
-    pushVariant(nameWords.join(' '));
+  pushVariant(cleaned);
+  if (stripped.strippedName.length > 0) {
+    pushVariant(stripped.strippedName);
   }
   if (titleWord !== null && nameWords.length >= 2) {
     pushVariant(`${titleWord} ${nameWords[0]}`);
   }
-  if (nameWords.length >= 1 && nameWords[0]!.length >= 3) {
-    pushVariant(nameWords[0]!);
+
+  // Contiguous multi-word N-grams across all tokens
+  for (let span = words.length - 1; span >= 2; span -= 1) {
+    for (let i = 0; i <= words.length - span; i += 1) {
+      pushVariant(words.slice(i, i + span).join(' '));
+    }
   }
-  if (nameWords.length >= 2 && nameWords[nameWords.length - 1]!.length >= 3) {
-    pushVariant(nameWords[nameWords.length - 1]!);
+
+  // Every substantive personal token (len >= 3) across nameWords first, then any remaining substantive token
+  for (const token of nameWords) {
+    const lower = token.toLowerCase().replace(/\.$/, '');
+    if (token.length >= 3 && !NPC_TOKEN_STOPWORDS.has(lower)) {
+      pushVariant(token);
+    }
   }
-  pushVariant(cleaned);
+  for (let i = 0; i < words.length; i += 1) {
+    const token = words[i]!;
+    const lower = token.toLowerCase().replace(/\.$/, '');
+    if (i === 0 && words.length >= 2 && PERSONAL_ROLE_TITLES.has(firstLower)) {
+      continue;
+    }
+    if (token.length >= 3 && !NPC_TOKEN_STOPWORDS.has(lower)) {
+      pushVariant(token);
+    }
+  }
+
   return results;
 }
 
 /**
  * Returns true when a stored NPC name and a player/premise candidate reference refer to the same NPC
- * across any natural form ("Warden <First> <Last>", "Warden <First>", "<First> <Last>", "<First>").
+ * across any natural form ("<Title> <Given> <Surname>", "<Title> <Given>", "<Given> <Surname>", "<Given>", "<Surname>").
  */
 export function npcNamesMatch(
   storedName: string,
   candidateRef: string,
   roleHint?: string,
 ): boolean {
-  const storedVariants = expandNpcNameVariants(storedName, roleHint).map((v) => v.toLowerCase());
-  const candidateVariants = expandNpcNameVariants(candidateRef).map((v) => v.toLowerCase());
+  const cleanStored = cleanNpcLabelForMatching(storedName);
+  const cleanCandidate = cleanNpcLabelForMatching(candidateRef);
+  if (cleanStored.length === 0 || cleanCandidate.length === 0) {
+    return false;
+  }
+  const storedWords = cleanStored.toLowerCase().split(/\s+/).filter(Boolean);
+  const candidateWords = cleanCandidate.toLowerCase().split(/\s+/).filter(Boolean);
+  // Prevent two distinct multi-word titled NPCs (e.g. "Archon Mira Vane" vs "Archon Orin Kael")
+  // from false-matching solely on their shared leading title token.
+  if (
+    storedWords.length >= 2 &&
+    candidateWords.length >= 2 &&
+    storedWords[0] === candidateWords[0]
+  ) {
+    const storedRest = storedWords.slice(1);
+    const candidateRest = candidateWords.slice(1);
+    if (!storedRest.some((w) => candidateRest.includes(w))) {
+      return false;
+    }
+  }
+  const storedVariants = expandNpcNameVariants(cleanStored, roleHint).map((v) => v.toLowerCase());
+  const candidateVariants = expandNpcNameVariants(cleanCandidate).map((v) => v.toLowerCase());
   if (storedVariants.length === 0 || candidateVariants.length === 0) {
     return false;
   }

@@ -256,7 +256,8 @@ export function resolveIntentAuthority(
       (ref) =>
         ref.kind === 'npc' &&
         (ref.label.toLowerCase() === parsed.addressee!.toLowerCase() ||
-          ref.id === parsed.addressee),
+          ref.id === parsed.addressee ||
+          npcNamesMatch(ref.label, parsed.addressee!)),
     );
 
   if (addresseeIsNpc) {
@@ -753,29 +754,38 @@ export function parsePlayerDeclaration(
 ): StructuredDeclarationParse {
   const trimmed = rawText.trim();
   const knownNpcs = options.knownNpcs ?? [];
-  const knownCanonicalReferences: CanonicalReference[] = knownNpcs.map((npc) => ({
+  const presentNpcs = options.presentNpcs ?? [];
+  // Prioritize present-scene NPCs ahead of absent/memory NPCs when resolving addressees (`FC-01`).
+  const orderedKnownNpcs = [
+    ...presentNpcs,
+    ...knownNpcs.filter(
+      (k) => !presentNpcs.some((p) => p.id === k.id || npcNamesMatch(p.label, k.label)),
+    ),
+  ];
+  const knownCanonicalReferences: CanonicalReference[] = orderedKnownNpcs.map((npc) => ({
     kind: 'npc',
     id: npc.id,
     label: npc.label,
   }));
 
-  // Strip quoted speech when looking for the addressee and physical action verbs so mentions inside dialogue aren't mistaken for actions (`CV-01`).
+  // Strip quoted speech when looking for the addressee and physical action verbs so mentions inside dialogue aren't mistaken for actions or addressees (`CV-01`, `FC-01`).
   const outsideQuotes = stripQuotedSpeech(trimmed);
   const searchScope = outsideQuotes.length > 0 ? outsideQuotes : trimmed;
+  const addresseeSearchScope = outsideQuotes;
 
   let addressee: string | null = null;
-  // 1. Direct speech targeting on known NPCs: "ask Warden Elira", "speaking to Elira", "@Elira,"
-  for (const npc of knownNpcs) {
+  // 1. Direct speech targeting on known NPCs (outside quoted speech, present-scene NPCs first): "ask Warden Elira", "speaking to Elira", "@Elira,"
+  for (const npc of orderedKnownNpcs) {
     const nameVariants = expandNpcNameVariants(npc.label);
     for (const variant of nameVariants) {
       const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (
-        new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(searchScope) ||
-        new RegExp(`^(?:hey|hi)\\s+${escaped}\\b`, 'i').test(searchScope) ||
+        new RegExp(`^@?${escaped}\\s*[,:]`, 'i').test(addresseeSearchScope) ||
+        new RegExp(`^(?:hey|hi)\\s+${escaped}\\b`, 'i').test(addresseeSearchScope) ||
         new RegExp(
           `\\b(?:asks?|tells?|speaking\\s+to|talk(?:s|ing)?\\s+(?:to|with)|speaks?\\s+(?:to|with)|question(?:s|ing)?|inquir(?:e|es|ing)\\s+of|greets?|address(?:es|ing)?|says?\\s+to)\\s+(?:the\\s+)?(?:[a-z]+\\s+)?${escaped}\\b`,
           'i',
-        ).test(searchScope)
+        ).test(addresseeSearchScope)
       ) {
         addressee = npc.label;
         break;
@@ -788,12 +798,14 @@ export function parsePlayerDeclaration(
   const NPC_CANDIDATE_STOP_WORDS =
     /^(?:The|This|That|What|Which|Where|When|Why|How|Who|Whom|Whose|Director|Garrick|Veyra|In|At|On|For|From|With|By|About|Of|A|An|If|Whether|Then|First|Softly|Quietly|Loudly|Low|Now|Wait|Look|Listen|Here|There|Well|Hold|Stop|Sure|Okay|Yes|No|Fine|Hm|Hmm|Oh|Ah|Quick|Slowly|Carefully|Suddenly|Cautiously|Silently|Gently|Meanwhile|Next|Finally)$/i;
 
-  // 2. Check leading addressee format: "Orin: ...", "@Orin, ..."
+  // 2. Check leading addressee format outside quotes: "Orin: ...", "@Orin, ..."
   if (addressee === null) {
-    const leading = /^@?([A-Z][a-zA-Z'-]{1,24}(?:\s+[A-Z][a-zA-Z'-]{1,24})?)\s*[,:]/.exec(searchScope);
+    const leading = /^@?([A-Z][a-zA-Z'-]{1,24}(?:\s+[A-Z][a-zA-Z'-]{1,24})?)\s*[,:]/.exec(
+      addresseeSearchScope,
+    );
     if (leading !== null) {
       const candidate = leading[1]!;
-      const matchKnown = knownNpcs.find(
+      const matchKnown = orderedKnownNpcs.find(
         (n) =>
           n.label.toLowerCase() === candidate.toLowerCase() ||
           npcNamesMatch(n.label, candidate),
@@ -806,22 +818,22 @@ export function parsePlayerDeclaration(
     }
   }
 
-  // 3. Unknown named addressee with explicit speech verb: "asks Nib", "ask Nib,", "speaking to Nib"
+  // 3. Unknown named addressee with explicit speech verb outside quotes: "asks Nib", "ask Nib,", "speaking to Nib"
   // Multi-word support; NO /i flag so lowercase words like "in", "softly", "about" are never treated as NPC names.
   if (addressee === null) {
     // Strip adverbial or prepositional speech phrases like "in a low voice", "in a whisper", "softly", "quietly"
-    const cleanedSearch = searchScope.replace(
+    const cleanedSearch = addresseeSearchScope.replace(
       /\b(?:in\s+a\s+(?:low|quiet|hushed|soft)\s+voice|in\s+a\s+whisper|softly|quietly|aloud)\b/gi,
       '',
     );
     const asked =
-      /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+to|speaks?\s+to|question(?:s|ing)?)\s+(?:the\s+)?([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)*)\b/.exec(
+      /\b(?:asks?|tells?|speaking\s+to|talk(?:s|ing)?\s+(?:to|with)|speaks?\s+(?:to|with)|question(?:s|ing)?|inquir(?:e|es|ing)\s+of|greets?|address(?:es|ing)?|says?\s+to)\s+(?:the\s+)?([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)*)\b/.exec(
         cleanedSearch,
       );
     if (asked !== null) {
       const candidate = asked[1]!.trim();
       if (!NPC_CANDIDATE_STOP_WORDS.test(candidate)) {
-        const matchKnown = knownNpcs.find(
+        const matchKnown = orderedKnownNpcs.find(
           (n) =>
             n.label.toLowerCase() === candidate.toLowerCase() ||
             n.label.toLowerCase().startsWith(candidate.toLowerCase() + ' ') ||
@@ -833,18 +845,18 @@ export function parsePlayerDeclaration(
     }
   }
 
-  // 4. Fallback: known NPC mentioned outside quotes alongside a speaking verb
+  // 4. Fallback: known NPC mentioned outside quotes alongside a speaking verb (present-scene NPCs first)
   if (addressee === null) {
-    for (const npc of knownNpcs) {
+    for (const npc of orderedKnownNpcs) {
       const variants = expandNpcNameVariants(npc.label);
       const matchedVariant = variants.some((variant) => {
         const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\b`, 'i').test(searchScope);
+        return new RegExp(`\\b${escaped}\\b`, 'i').test(addresseeSearchScope);
       });
       if (
         matchedVariant &&
         /\b(?:speaks?|talking|talks?|greets?|questions?|inquires?|says?|approach(?:es|ing)?|address(?:es|ing)?)\b/i.test(
-          searchScope,
+          addresseeSearchScope,
         )
       ) {
         addressee = npc.label;

@@ -18,8 +18,10 @@ import {
   extractPremiseEntities,
 } from '../../dist/server/campaigns/campaign-blueprint.js';
 import {
+  cleanNpcLabelForMatching,
   expandNpcNameVariants,
   npcNamesMatch,
+  stripPersonalRoleTitle,
 } from '../../dist/shared/campaign-facts.js';
 import {
   parsePlayerDeclaration,
@@ -1123,6 +1125,76 @@ test('RV-01, RV-02, & RV-03: Whole-container loot routing on open containers, su
   assert.equal(overriddenDispatch?.deferDirectorNarrate, true);
   assert.match(overriddenDispatch?.summary ?? '', /Speak with Warden Corin Vale/i);
 });
+
+test('FC-01 & Anti-Laziness Rule 1: Position-agnostic multi-token NPC alias matching, metadata stripping, unquoted addressee extraction, and present-NPC priority', () => {
+  // 1a. Metadata stripping before tokenizing: parentheticals and dash suffixes never pollute aliases
+  const rawWithMeta = 'Conservator Corin Vale (Local Contact) — helpful guide';
+  assert.equal(cleanNpcLabelForMatching(rawWithMeta), 'Conservator Corin Vale');
+  const metaVariants = expandNpcNameVariants(rawWithMeta).map((v) => v.toLowerCase());
+  assert.equal(metaVariants.includes('missing'), false);
+  assert.equal(metaVariants.includes('local'), false);
+  assert.equal(metaVariants.includes('contact'), false);
+  assert.equal(metaVariants.includes('guide'), false);
+  assert.equal(metaVariants.includes('helpful'), false);
+  assert.equal(npcNamesMatch(rawWithMeta, 'Contact'), false);
+  assert.equal(npcNamesMatch(rawWithMeta, 'Guide'), false);
+  assert.equal(npcNamesMatch('Apprentice Talia (Missing)', 'Missing'), false);
+
+  // 1b. True position-agnostic N-grams: 3-word NPC name with an unlisted title ("Conservator" / "Arch-Verger")
+  // matches full name, contiguous sub-phrases, middle token (given name at tokens[1]), and surname (tokens[2])
+  const unlistedThreeWord = 'Arch-Verger Ilwen Thorne';
+  const stripped = stripPersonalRoleTitle(unlistedThreeWord);
+  assert.equal(stripped.strippedName, 'Ilwen Thorne');
+  assert.equal(stripped.givenName, 'Ilwen');
+
+  const variants = expandNpcNameVariants(unlistedThreeWord);
+  assert.equal(variants.includes('Arch-Verger Ilwen Thorne'), true);
+  assert.equal(variants.includes('Arch-Verger Ilwen'), true);
+  assert.equal(variants.includes('Ilwen Thorne'), true);
+  assert.equal(variants.includes('Ilwen'), true, 'Indexes middle given-name token at tokens[1]');
+  assert.equal(variants.includes('Thorne'), true, 'Indexes surname token at tokens[2]');
+
+  for (const queryForm of [
+    'Arch-Verger Ilwen Thorne',
+    'Arch-Verger Ilwen',
+    'Ilwen Thorne',
+    'Ilwen',
+    'Thorne',
+  ]) {
+    assert.equal(
+      npcNamesMatch(unlistedThreeWord, queryForm),
+      true,
+      `npcNamesMatch matches "${queryForm}" against "${unlistedThreeWord}"`,
+    );
+  }
+  // Two distinct multi-word NPCs sharing only tokens[0] must NOT false-match each other
+  assert.equal(
+    npcNamesMatch('Arch-Verger Ilwen Thorne', 'Arch-Verger Hadrin Moss'),
+    false,
+  );
+
+  // 1c & 1d. Extract addressee strictly outside quoted speech & prioritize present-scene NPCs
+  const quotedQuestionWithAbsentNpc =
+    "I ask Ilwen, 'Did Hadrin Moss leave any warning before the dawn inspection?'";
+  const parsed = parsePlayerDeclaration(quotedQuestionWithAbsentNpc, {
+    presentNpcs: [{ id: 'npc-ilwen', label: 'Arch-Verger Ilwen Thorne (Local Contact)' }],
+    knownNpcs: [
+      { id: 'npc-hadrin', label: 'Hadrin Moss (Missing)' },
+      { id: 'npc-ilwen', label: 'Arch-Verger Ilwen Thorne (Local Contact)' },
+    ],
+  });
+  assert.equal(
+    parsed.addressee,
+    'Arch-Verger Ilwen Thorne (Local Contact)',
+    'Addressee is extracted strictly from framing clause outside quotes and matched to present 3-word NPC by given name',
+  );
+  const authority = resolveIntentAuthority(parsed, [
+    { id: 'npc-ilwen', label: 'Arch-Verger Ilwen Thorne', kind: 'npc' },
+  ]);
+  assert.equal(authority.disposition, 'director_narrate_only');
+  assert.equal(authority.proposedCommandType, 'table.sync');
+});
+
 
 
 

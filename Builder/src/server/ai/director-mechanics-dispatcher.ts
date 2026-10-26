@@ -339,17 +339,30 @@ export function applyDirectorDispatchToMap(options: {
   const { map, seatedSheet, knownNpcs, absentRoomNpcs = [], rawText } = options;
   let dispatch = options.dispatch;
 
-  // Hard priority for conversational / dialogue framing (`CV-01`):
-  // Never allow words inside quoted speech ("Did <Person> leave any warning?") to hijack an NPC question into travel/movement/object actions.
+  const presentNpcRecords = map.notableFeatures
+    .filter((f) => f.objectKind === 'npc' || f.referenceKind === 'npc')
+    .map((f) => ({ id: f.objectId ?? f.label, label: f.label }));
+  const allKnownNpcs = [
+    ...presentNpcRecords,
+    ...knownNpcs.filter(
+      (k) => !presentNpcRecords.some((p) => p.id === k.id || npcNamesMatch(p.label, k.label)),
+    ),
+  ];
+
+  // Hard priority for conversational / dialogue framing (`CV-01`, `FC-01`):
+  // Never allow words or names inside quoted speech ("Did <Person> leave any warning?") to hijack an NPC question or override the unquoted addressee.
   if (
     rawText !== undefined &&
-    dispatch.actionType !== 'dialogue' &&
-    isDialogueDeclaration(
-      rawText,
-      knownNpcs.map((n) => n.label),
-    )
+    (dispatch.actionType === 'dialogue' ||
+      isDialogueDeclaration(
+        rawText,
+        allKnownNpcs.map((n) => n.label),
+      ))
   ) {
-    const parsed = parsePlayerDeclaration(rawText, { knownNpcs });
+    const parsed = parsePlayerDeclaration(rawText, {
+      knownNpcs: allKnownNpcs,
+      presentNpcs: presentNpcRecords,
+    });
     dispatch = {
       ...dispatch,
       actionType: 'dialogue',
@@ -588,25 +601,27 @@ export function applyDirectorDispatchToMap(options: {
   if (dispatch.actionType === 'dialogue' && dispatch.dialogue) {
     const addressee = dispatch.dialogue.addressee?.trim() ?? null;
     if (addressee && addressee.length > 0) {
-      const absentNpc = absentRoomNpcs.find((n) => npcNamesMatch(n.label, addressee));
-      if (absentNpc) {
-        return {
-          proposedCommandType: 'table.sync',
-          summary: `${absentNpc.label} is not in this room right now — they remain back in ${absentNpc.roomTitle}, out of earshot from here.`,
-        };
-      }
+      // Present-scene NPCs always take priority (`FC-01`)
       const presentNpc = map.notableFeatures.find(
         (f) =>
           (f.objectKind === 'npc' || f.referenceKind === 'npc') &&
           npcNamesMatch(f.label, addressee),
       );
-      const isKnownNpc = knownNpcs.find((n) => npcNamesMatch(n.label, addressee));
-
-      if (!presentNpc && isKnownNpc) {
-        return {
-          proposedCommandType: 'table.sync',
-          summary: `${isKnownNpc.label} is not in this room right now — they remain in the previous area and out of earshot.`,
-        };
+      if (!presentNpc) {
+        const absentNpc = absentRoomNpcs.find((n) => npcNamesMatch(n.label, addressee));
+        if (absentNpc) {
+          return {
+            proposedCommandType: 'table.sync',
+            summary: `${absentNpc.label} is not in this room right now — they remain back in ${absentNpc.roomTitle}, out of earshot from here.`,
+          };
+        }
+        const isKnownNpc = knownNpcs.find((n) => npcNamesMatch(n.label, addressee));
+        if (isKnownNpc) {
+          return {
+            proposedCommandType: 'table.sync',
+            summary: `${isKnownNpc.label} is not in this room right now — they remain in the previous area and out of earshot.`,
+          };
+        }
       }
     }
     return {

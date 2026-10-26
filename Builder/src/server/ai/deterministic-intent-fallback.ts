@@ -489,14 +489,24 @@ export async function resolveDeterministicIntentFallback(
   const party =
     encounter?.combatants.filter((combatant) => combatant.side === 'party') ?? [];
 
+  const presentNpcs = options.presentNpcs ?? [];
+  const absentRoomNpcs = options.absentRoomNpcs ?? [];
+  const allKnownNpcsForParse = [
+    ...presentNpcs,
+    ...knownNpcs,
+    ...absentRoomNpcs.map((npc) => ({ id: npc.id, label: npc.label })),
+  ];
   const structured = parsePlayerDeclaration(rawText, {
-    knownNpcs,
+    knownNpcs: allKnownNpcsForParse,
     ...(options.presentNpcs !== undefined ? { presentNpcs: options.presentNpcs } : {}),
   });
   const authority = resolveIntentAuthority(structured);
-  const absentRoomNpcs = options.absentRoomNpcs ?? [];
-  const matchedAbsentNpc =
+  const matchedPresentNpc =
     structured.addressee !== null
+      ? presentNpcs.find((npc) => npcNamesMatch(npc.label, structured.addressee!)) ?? null
+      : null;
+  const matchedAbsentNpc =
+    structured.addressee !== null && matchedPresentNpc === null
       ? absentRoomNpcs.find((npc) => npcNamesMatch(npc.label, structured.addressee!)) ?? null
       : null;
   const utterance = understandUtterance(rawText);

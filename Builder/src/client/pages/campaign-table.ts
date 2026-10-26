@@ -272,6 +272,8 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   let draft = '';
   let directorDraft = '';
   let askDmThread: DmThreadMessage[] = [];
+  let lastAskDmThreadCount = 0;
+  let askDmThreadScrollTop: number | null = null;
   let dmThread: DmThreadMessage[] = [];
   let dmThreadOptimistic: DmThreadMessage[] = [];
   let lastChronicleSyncCount = 0;
@@ -546,6 +548,9 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
           typeof row.kind === 'string'
         );
       });
+      if (askDmThread.length > 0) {
+        askDmHeaderCollapsed = true;
+      }
     } catch {
       askDmThread = [];
     }
@@ -6183,7 +6188,34 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
       syncMapStageOverlays(mapChrome);
     }
     syncTurnBannerSplash();
+    const priorAskThread = container.querySelector<HTMLElement>('[data-testid="ask-dm-thread"]');
+    if (priorAskThread !== null) {
+      askDmThreadScrollTop = priorAskThread.scrollTop;
+    }
     commsSlot.innerHTML = commsDockBody();
+    const nextAskThread = container.querySelector<HTMLElement>('[data-testid="ask-dm-thread"]');
+    if (nextAskThread !== null) {
+      const shouldScrollToLatest =
+        priorAskThread === null || askDmThread.length !== lastAskDmThreadCount;
+      lastAskDmThreadCount = askDmThread.length;
+      if (shouldScrollToLatest) {
+        nextAskThread.scrollTop = nextAskThread.scrollHeight;
+        askDmThreadScrollTop = nextAskThread.scrollTop;
+        requestAnimationFrame(() => {
+          nextAskThread.scrollTop = nextAskThread.scrollHeight;
+          askDmThreadScrollTop = nextAskThread.scrollTop;
+        });
+      } else if (askDmThreadScrollTop !== null) {
+        nextAskThread.scrollTop = askDmThreadScrollTop;
+      }
+      nextAskThread.addEventListener(
+        'scroll',
+        () => {
+          askDmThreadScrollTop = nextAskThread.scrollTop;
+        },
+        { passive: true },
+      );
+    }
     sheetModalSlot.innerHTML = characterSheetModalHtml();
     const overlaySlot = container.querySelector<HTMLElement>('[data-testid="table-overlay-slot"]');
     if (overlaySlot !== null) {

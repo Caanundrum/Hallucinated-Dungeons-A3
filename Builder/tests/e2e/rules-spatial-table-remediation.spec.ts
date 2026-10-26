@@ -200,7 +200,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
 
     const outdoorPremise =
-      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Warden Corin Vale asks Kaelen Windstep to investigate why Apprentice Talia vanished after sealing a brass astrolabe inside a reinforced supply locker.';
+      'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Conservator Corin Vale asks Kaelen Windstep to investigate why Apprentice Talia vanished after sealing a brass astrolabe inside a reinforced supply locker.';
     await page.getByTestId('campaign-name').fill('Clockhouse Lantern Mystery');
     await page.getByTestId('campaign-name').dispatchEvent('input');
     await page.getByTestId('campaign-summary').fill(outdoorPremise);
@@ -351,6 +351,118 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('ask-dm-thread')).toContainText(/120\s+feet/i);
     await expect(page.getByTestId('ask-dm-thread')).toContainText(/14\s+GP/i);
 
+    // CV-02 & Rule 3a: Verify single reply is unclipped (replyEl.scrollHeight <= replyEl.clientHeight + 2,
+    // replyRect.top >= threadRect.top - 2, replyRect.bottom <= composerRect.top + 2) across both 902x871 and 1280x800
+    for (const vp of [
+      { width: 902, height: 871 },
+      { width: 1280, height: 800 },
+    ]) {
+      await page.setViewportSize(vp);
+      const expandRail = page.getByTestId('expand-comms-rail');
+      if (await expandRail.isVisible().catch(() => false)) {
+        await expandRail.click();
+      }
+      const askTabVp = page.getByTestId('dock-tab-director_address');
+      if (await askTabVp.isVisible().catch(() => false)) {
+        await askTabVp.click();
+      }
+      const replyEl = page.getByTestId('director-address-reply');
+      const threadEl = page.getByTestId('ask-dm-thread');
+      const composerEl = page.getByTestId('director-address-composer');
+      await expect(replyEl).toBeVisible();
+      const replyMetrics = await replyEl.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+      expect(replyMetrics.scrollHeight).toBeLessThanOrEqual(replyMetrics.clientHeight + 2);
+      const replyRect = await replyEl.boundingBox();
+      const threadRect = await threadEl.boundingBox();
+      const composerRect = await composerEl.boundingBox();
+      expect(replyRect).not.toBeNull();
+      expect(threadRect).not.toBeNull();
+      expect(composerRect).not.toBeNull();
+      expect(replyRect!.y).toBeGreaterThanOrEqual(threadRect!.y - 2);
+      expect(replyRect!.y + replyRect!.height).toBeLessThanOrEqual(composerRect!.y + 2);
+    }
+
+    // CV-02 & Rule 3b: Reload persistence â€” reloading and re-opening Ask the Director keeps #ask-dm-info-copy hidden
+    // (askDmHeaderCollapsed === true when askDmThread.length > 0) and keeps the restored reply unclipped
+    await page.setViewportSize({ width: 902, height: 871 });
+    await page.reload();
+    await expect(page.getByTestId('table-ambient-hud')).toBeVisible({ timeout: 20_000 });
+    for (const vp of [
+      { width: 902, height: 871 },
+      { width: 1280, height: 800 },
+    ]) {
+      await page.setViewportSize(vp);
+      const expandAfterReload = page.getByTestId('expand-comms-rail');
+      if (await expandAfterReload.isVisible().catch(() => false)) {
+        await expandAfterReload.click();
+      }
+      await page.getByTestId('dock-tab-director_address').click();
+      await expect(page.getByTestId('director-address-notice')).toBeHidden();
+      const restoredReply = page.getByTestId('director-address-reply');
+      const restoredThread = page.getByTestId('ask-dm-thread');
+      const restoredComposer = page.getByTestId('director-address-composer');
+      await expect(restoredReply).toBeVisible();
+      const rReplyRect = await restoredReply.boundingBox();
+      const rThreadRect = await restoredThread.boundingBox();
+      const rComposerRect = await restoredComposer.boundingBox();
+      expect(rReplyRect).not.toBeNull();
+      expect(rThreadRect).not.toBeNull();
+      expect(rComposerRect).not.toBeNull();
+      expect(rReplyRect!.y).toBeGreaterThanOrEqual(rThreadRect!.y - 2);
+      expect(rReplyRect!.y + rReplyRect!.height).toBeLessThanOrEqual(rComposerRect!.y + 2);
+    }
+
+    // CV-02 & Rule 3c: Submit a 2nd question so ask-dm-thread has 4 entries and assert unconditionally
+    // that scrollHeight > clientHeight and mouse.wheel(0, 250) scrolls scrollTop > 0 across 902x871 and 1280x800
+    const askInputSecond = page.getByTestId('director-address-input');
+    await askInputSecond.click({ force: false });
+    await askInputSecond.fill('Can I climb a wall and make an unarmed strike in the same turn?');
+    await askInputSecond.dispatchEvent('input');
+    await page.getByTestId('director-address-send').click({ force: false });
+    await expect(page.locator('[data-testid="ask-dm-thread"] > li')).toHaveCount(4, {
+      timeout: 15_000,
+    });
+
+    for (const vp of [
+      { width: 902, height: 871 },
+      { width: 1280, height: 800 },
+    ]) {
+      await page.setViewportSize(vp);
+      const expandRail = page.getByTestId('expand-comms-rail');
+      if (await expandRail.isVisible().catch(() => false)) {
+        await expandRail.click();
+      }
+      const askTabVp = page.getByTestId('dock-tab-director_address');
+      if (await askTabVp.isVisible().catch(() => false)) {
+        await askTabVp.click();
+      }
+      const threadEl = page.getByTestId('ask-dm-thread');
+      await expect(threadEl).toBeVisible();
+      const scrollMetrics = await threadEl.evaluate((el) => {
+        el.scrollTop = 0;
+        return {
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          initialScrollTop: el.scrollTop,
+        };
+      });
+      expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+      expect(scrollMetrics.initialScrollTop).toBe(0);
+      const threadBoxForWheel = await threadEl.boundingBox();
+      expect(threadBoxForWheel).not.toBeNull();
+      await page.mouse.move(
+        threadBoxForWheel!.x + threadBoxForWheel!.width / 2,
+        threadBoxForWheel!.y + threadBoxForWheel!.height / 2,
+      );
+      await page.mouse.wheel(0, 250);
+      await expect
+        .poll(async () => threadEl.evaluate((el) => el.scrollTop), { timeout: 5_000 })
+        .toBeGreaterThan(0);
+    }
+
     // CV-02 & Universal Rule 6: Verify zero vertical boundingBox() overlap and unobstructed pointer clicks across viewports
     for (const vp of [
       { width: 1280, height: 800 },
@@ -404,13 +516,37 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     if (await mobilePlayBtn.isVisible().catch(() => false)) {
       await mobilePlayBtn.click();
     }
-    await page.setViewportSize({ width: 1280, height: 800 });
+    const collapseCommsBtn = page.getByTestId('collapse-comms-rail');
+    if (await collapseCommsBtn.isVisible().catch(() => false)) {
+      await collapseCommsBtn.click();
+    }
 
-    // CV-01 & Universal Rule 5: Single-quoted dialogue question containing "leave" routes to NPC dialogue, NEVER table.travel_scene
+    // FC-01 & CV-01: Addressing a 3-word NPC with an unlisted title ("Conservator Corin Vale") by given name alone ("Corin")
+    // while mentioning the missing NPC ("Apprentice Talia") + "leave" inside single quotes routes to present NPC dialogue
+    // across both 902x871 and 1280x800 without "not an established NPC" or travel hijacking!
+    await page.setViewportSize({ width: 902, height: 871 });
     await page
       .getByTestId('player-action-input')
       .fill(
-        "I ask Warden Corin Vale, 'Did Apprentice Talia leave any warning before the dawn inspection?'",
+        "I ask Corin, 'Did Apprentice Talia leave any warning before the dawn inspection?'",
+      );
+    await page.getByTestId('player-action-input').dispatchEvent('input');
+    await page.getByTestId('submit-player-action').click();
+    await confirmDraftIfVisible(page);
+    const afterGivenNameAskMap = await fetchMapBundle();
+    expect(afterGivenNameAskMap.title).toBe('Clockhouse');
+    await expect(page.getByTestId('dm-play-thread')).toContainText(/Corin Vale/i, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(
+      /not an established NPC|Ready to travel to|Moved to Side Passage/i,
+    );
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page
+      .getByTestId('player-action-input')
+      .fill(
+        "I ask Conservator Corin Vale, 'Where did Apprentice Talia go after sealing the locker?'",
       );
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
@@ -421,7 +557,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       timeout: 15_000,
     });
     await expect(page.getByTestId('dm-play-thread')).not.toContainText(
-      /Ready to travel to|Moved to Side Passage/i,
+      /not an established NPC|Ready to travel to|Moved to Side Passage/i,
     );
 
     // 4. Packet 3, RS-02, RS-03, & Guardrail 2: Two-Step Container Looting & Locative Prepositional Stripping
