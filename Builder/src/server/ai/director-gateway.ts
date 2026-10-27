@@ -1494,6 +1494,7 @@ export async function interpretNaturalLanguageIntent(options: {
         if (applied.path) path = applied.path;
         if (applied.edgeId) edgeId = applied.edgeId;
         if (applied.objectId) objectId = applied.objectId;
+        if (applied.itemId) itemId = applied.itemId;
         if (applied.returnToPrevious !== undefined) returnToPrevious = applied.returnToPrevious;
         if (applied.destinationHint) destinationHint = applied.destinationHint;
         if (applied.skillCheckIntent !== undefined) skillCheckIntent = applied.skillCheckIntent;

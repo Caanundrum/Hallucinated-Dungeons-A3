@@ -763,18 +763,14 @@ export async function createCampaign(options: {
       firstMilestone.rooms.find((r) => r.sceneId === 'scene-m1-r1') ?? firstMilestone.rooms[0];
     const headlightSceneIds = new Set<string>();
     if (startRoom !== undefined) {
+      // Packet 5: Strictly generate Room 1 (`scene-m1-r1`) at campaign creation;
+      // Room 2 and Room 3 battlemaps are lazily resolved/generated upon `table.travel_scene`.
       headlightSceneIds.add(startRoom.sceneId);
-      for (const exit of startRoom.exits ?? []) {
-        if (typeof exit.targetSceneId === 'string' && exit.targetSceneId.length > 0) {
-          headlightSceneIds.add(exit.targetSceneId);
-        }
-      }
     }
     if (firstMilestone.rooms.length > 0 && shouldGenerateRoomMaps) {
       const updatedRooms = await Promise.all(
         firstMilestone.rooms.map(async (room) => {
-          // Rolling Headlights: only generate heavy battlemap/portrait/token assets upfront
-          // for the starting room and its immediate adjacent exits.
+          // Only generate heavy battlemap/portrait/token assets upfront for the starting room.
           if (!headlightSceneIds.has(room.sceneId)) {
             return room;
           }
@@ -791,6 +787,7 @@ export async function createCampaign(options: {
           const assetResult = await generateAndStoreCampaignAsset({
             firestore,
             campaignId,
+            accountId,
             kind: 'battlemap',
             prompt: roomPrompt,
             fallbackTemplateId: room.templateId,

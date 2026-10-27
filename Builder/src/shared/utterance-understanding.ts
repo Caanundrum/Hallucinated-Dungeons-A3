@@ -700,11 +700,16 @@ export function classifyClause(text: string): ClauseSemanticClassification {
     /\b(?:open(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|unlock(?:s|ing)?|close(?:s|d|ing)?|shut(?:s|ting)?|pick(?:s|ing)?|pry|pries|prying|forc(?:e|es|ing))\b/i.test(
       clauseText,
     );
+  const maskedClauseForTravel = maskNonExitSceneFeatureLabels(clauseText);
   const isRouteOrExitTravel =
     !hasExplicitDoorOpenCloseVerb &&
-    !/\b(?:lever|switch|winch|crank|pulley|valve|dial)\b/i.test(clauseText) &&
-    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|onward|forward)|walk(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through)|head(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
+    !hasLeadingObjectInteractionVerb(clauseText) &&
+    !isWholeContainerLootDeclaration(clauseText) &&
+    !/\b(?:lever|switch|winch|crank|pulley|valve|dial|trunk|chest|crate|strongbox|lockbox|coffer|satchel|barrel|urn)\b/i.test(
       clauseText,
+    ) &&
+    /\b(?:tak(?:e|es|ing)|us(?:e|es|ing)|follow(?:s|ing)?|trac(?:e|es|ing)|go(?:es|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|onward|forward)|walk(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through)|head(?:s|ing)?\s+(?:(?:down|up)(?!\s+to\b)|along|through|toward|towards|into|onward)|step(?:s|ping)?\s+(?:onto|into|through)|pass(?:es|ing)?\s+through|enter(?:s|ing)?)\b[\s\S]{0,48}\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|doorway|door|gate|gateway|threshold|bridge|crossing|ford|tunnel|exit|way|route|causeway|lane|track)\b/i.test(
+      maskedClauseForTravel,
     );
   if (isRouteOrExitTravel && !constraints.forbidMove) {
     return {
@@ -957,4 +962,87 @@ export function isPassageOrTravelThroughDoorway(declaration: string): boolean {
       scope,
     );
   return takesOrPassesDoorway || compoundDoorwayAndTravel;
+}
+
+/**
+ * Masks any tokens in `text` that match a non-exit scene feature label (`objectKind !== 'exit'`)
+ * or where a travel/place modifier word (`travel`, `passage`, `gate`, `road`, `trail`, `way`)
+ * modifies an object/container/mechanism head noun (`trunk`, `chest`, `winch`, `lever`, `crate`, etc.) (`C12-02`).
+ */
+export function maskNonExitSceneFeatureLabels(
+  text: string,
+  nonExitFeatureLabels: readonly string[] = [],
+): string {
+  let masked = text;
+  // 1. Mask explicit non-exit scene feature labels from the active scene (longest first)
+  const cleanLabels = nonExitFeatureLabels
+    .map((label) =>
+      label
+        .replace(/\s*\([^)]*\)\s*$/g, '')
+        .replace(/\s+[—–-]\s+.*$/u, '')
+        .trim(),
+    )
+    .filter((label) => label.length >= 3)
+    .sort((a, b) => b.length - a.length);
+
+  for (const label of cleanLabels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    masked = masked.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' scene_object ');
+    const words = label.split(/\s+/).filter((w) => w.length >= 3);
+    if (words.length >= 2) {
+      const tailTwo = words.slice(-2).join('\\s+');
+      masked = masked.replace(new RegExp(`\\b${tailTwo}\\b`, 'gi'), ' scene_object ');
+    }
+  }
+
+  // 2. Universally mask modifier+object-noun compounds where a travel/route word precedes a container, prop, or mechanism noun
+  masked = masked.replace(
+    /\b(?:travel(?:er'?s|ing)?|journey|road|trail|way|passage|gate|gateway|harbor|dock|tower|keep|crypt|vault|bridge|ford)\s+(trunk|trunks|chest|chests|crate|crates|box|boxes|strongbox|lockbox|coffer|casket|satchel|pack|bag|pouch|barrel|urn|sack|winch|lever|switch|crank|pulley|valve|wheel|dial|chain|mechanism|lock|padlock|key|ledger|journal|log|logbook|register|manifest|scroll|map|chart|lantern|lamp|torch|brazier|cloak|boots|gear|rations|kit|papers|documents|table|bench|workbench|desk|altar|pedestal)\b/gi,
+    ' $1',
+  );
+
+  return masked;
+}
+
+/**
+ * Returns true when a player declaration's primary/leading verb is an object-manipulation,
+ * container-looting, or inspection verb (`open`, `close`, `shut`, `unlock`, `lock`, `unseal`,
+ * `pry`, `force`, `loot`, `empty`, `clear`, `plunder`, `ransack`, `search`, `inspect`, `examine`,
+ * `study`, `read`, `check`, `look at`, `look inside`, `pull`, `push`, `flip`, `turn`, `light`,
+ * `extinguish`, `disarm`) without an explicit compound scene-transition travel clause (`C12-02`).
+ */
+export function hasLeadingObjectInteractionVerb(declaration: string): boolean {
+  const trimmed = declaration.trim();
+  if (trimmed.length === 0 || isDialogueDeclaration(trimmed)) {
+    return false;
+  }
+  const unquoted = stripQuotedSpeech(trimmed);
+  const scope = (unquoted.length > 0 ? unquoted : trimmed).trim();
+
+  // If the utterance explicitly chains a doorway/scene-transition travel clause ("open the door and go through", "follow the trail"),
+  // let doorway/travel routing handle it.
+  if (
+    isPassageOrTravelThroughDoorway(scope) ||
+    /\b(?:and|then)\s+(?:i\s+)?(?:go|walk|step|pass|head|travel|continue|proceed|enter|follow)\s+(?:through|into|out|outside|onward|down|up|along|toward|towards)\b/i.test(
+      scope,
+    )
+  ) {
+    return false;
+  }
+
+  if (isWholeContainerLootDeclaration(scope) || isDocumentOpenOrReadDeclaration(scope)) {
+    return true;
+  }
+
+  // Strip optional conversational/pronoun/adverbial/approach framing at the start of the declaration
+  const strippedLead = scope
+    .replace(
+      /^(?:(?:i|we)\s+(?:will\s+|want\s+to\s+|would\s+like\s+to\s+|try\s+to\s+|attempt\s+to\s+|going\s+to\s+)?|i'll\s+|i'd\s+like\s+to\s+|let's\s+|let\s+us\s+)?(?:(?:carefully|quietly|cautiously|slowly|quickly|gently|closely|thoroughly|first|now|then)\s+)*(?:(?:walk|step|move|go|head|kneel|crouch|lean|reach)\s+(?:over|up|down|forward|closer)?(?:\s+to\s+[^,.;]+?)?\s+and\s+)?/i,
+      '',
+    )
+    .trim();
+
+  return /^(?:open(?:s|ing)?|close(?:s|ing)?|shut(?:s|ting)?|unlock(?:s|ing)?|lock(?:s|ing)?|unseal(?:s|ing)?|unlatch(?:es|ing)?|pry|pries|prying|forc(?:e|es|ing)|wedg(?:e|es|ing)|loot(?:s|ing)?|empt(?:y|ies|ying)|clear(?:s|ing)?(?:\s+out)?|plunder(?:s|ing)?|ransack(?:s|ing)?|search(?:es|ing)?|inspect(?:s|ing)?|examin(?:e|es|ing)|study|studies|studying|read(?:s|ing)?|perus(?:e|es|ing)|decipher(?:s|ing)?|check(?:s|ing)?|look(?:s|ing)?\s+(?:at|inside|in|into|over)|peer(?:s|ing)?\s+(?:inside|into|at)|pull(?:s|ing)?|push(?:es|ing)?|flip(?:s|ping)?|turn(?:s|ing)?|rotat(?:e|es|ing)|twist(?:s|ing)?|press(?:es|ing)?|light(?:s|ing)?|ignit(?:e|es|ing)|kindl(?:e|es|ing)|extinguish(?:es|ing)?|dous(?:e|es|ing)|snuff(?:s|ing)?|disarm(?:s|ing)?)\b/i.test(
+    strippedLead,
+  );
 }

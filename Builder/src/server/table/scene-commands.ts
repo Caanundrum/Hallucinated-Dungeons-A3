@@ -237,7 +237,7 @@ export function buildStoredSceneFromRoomBlueprint(
         };
       }
       if (
-        feature.objectId.endsWith(':poi') &&
+        (feature.objectId.endsWith(':poi') || feature.objectId.endsWith(':service-counter')) &&
         feature.objectKind === 'container' &&
         primaryStructuredContainer !== undefined &&
         !/\b(?:satchel|pack|bag|pouch|chest|crate|box|barrel|coffer|trunk|urn|casket|lockbox|reliquary)\b/i.test(
@@ -247,7 +247,8 @@ export function buildStoredSceneFromRoomBlueprint(
         return {
           ...feature,
           objectKind: 'prop',
-          label: featureLabelWithState({ ...feature, objectKind: 'prop' }),
+          state: 'intact',
+          label: featureLabelWithState({ ...feature, objectKind: 'prop', state: 'intact' }),
         };
       }
       if (feature.objectKind === 'container') {
@@ -326,15 +327,41 @@ export function buildStoredSceneFromRoomBlueprint(
             room.roomIndex === 1 &&
             prop.objectKind === 'container' &&
             f.column > Math.floor(composed.columns / 2);
-          const nextCol = relocateToSpawnSide
+          let nextCol = relocateToSpawnSide
             ? Math.max(1, Math.min(composed.columns - 2, composed.spawn.column + 1 + (index % 2)))
             : f.column;
-          const nextRow = relocateToSpawnSide
+          let nextRow = relocateToSpawnSide
             ? Math.max(
                 1,
                 Math.min(composed.rows - 2, composed.spawn.row + (index % 2 === 0 ? -1 : 1)),
               )
             : f.row;
+          if (relocateToSpawnSide) {
+            const candidateOffsets = [
+              { dc: 1, dr: -1 },
+              { dc: 1, dr: 1 },
+              { dc: 2, dr: 0 },
+              { dc: 2, dr: -1 },
+              { dc: 2, dr: 1 },
+              { dc: 0, dr: -1 },
+              { dc: 0, dr: 1 },
+            ];
+            for (const { dc, dr } of candidateOffsets) {
+              const candCol = Math.max(1, Math.min(composed.columns - 2, composed.spawn.column + dc));
+              const candRow = Math.max(1, Math.min(composed.rows - 2, composed.spawn.row + dr));
+              const occupied = baseFeatures.some(
+                (other, j) => j !== i && other.column === candCol && other.row === candRow,
+              );
+              if (
+                !occupied &&
+                !(candCol === composed.spawn.column && candRow === composed.spawn.row)
+              ) {
+                nextCol = candCol;
+                nextRow = candRow;
+                break;
+              }
+            }
+          }
           baseFeatures[i] = {
             ...f,
             column: nextCol,

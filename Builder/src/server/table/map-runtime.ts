@@ -48,6 +48,8 @@ export interface StoredSceneFeature {
   readonly contents?: readonly string[];
   readonly targetEdgeOrObjectId?: string | null;
   readonly heldItems?: readonly string[];
+  readonly spriteKey?: string;
+  readonly spriteUrl?: string;
 }
 
 export interface StoredSceneExit {

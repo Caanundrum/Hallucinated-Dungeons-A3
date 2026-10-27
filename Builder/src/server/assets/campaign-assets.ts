@@ -272,6 +272,239 @@ export async function storeCampaignAssetRecord(options: {
   return `/api/assets/${assetId}`;
 }
 
+export const MAX_PORTRAIT_BATCHES_PER_24H = 3;
+export const MAX_BATTLEMAP_FORGES_PER_24H = 3;
+export const IMAGE_FORGE_COOLDOWN_MS = 15_000;
+const ROLLING_WINDOW_24H_MS = 24 * 60 * 60 * 1000;
+
+export interface AccountImageQuotaResult {
+  readonly allowed: boolean;
+  readonly reason?: 'daily_cap' | 'cooldown';
+  readonly usedToday: number;
+  readonly limitToday: number;
+}
+
+interface StoredAccountImageUsage {
+  readonly accountId: string;
+  readonly portraitTimestampsMs?: readonly number[];
+  readonly battlemapTimestampsMs?: readonly number[];
+  readonly lastImageCallMs?: number;
+  readonly updatedAt: string;
+}
+
+/**
+ * Enforces delete-proof per-account image generation quotas (`Packet 5`):
+ * - Max 3 live Portrait Forge batches per account per rolling 24h window
+ * - Max 3 live Campaign Map Forges per account per rolling 24h window
+ * - 15-second cooldown between live image generation calls
+ * Deleting a character or campaign never touches `accountImageUsage`.
+ */
+export async function checkAndRecordAccountImageQuota(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly kind: 'portrait' | 'battlemap';
+  readonly nowMs?: number;
+  readonly skipCooldown?: boolean;
+}): Promise<AccountImageQuotaResult> {
+  const { firestore, accountId, kind } = options;
+  const nowMs = options.nowMs ?? Date.now();
+  const limitToday =
+    kind === 'portrait' ? MAX_PORTRAIT_BATCHES_PER_24H : MAX_BATTLEMAP_FORGES_PER_24H;
+  if (!accountId || accountId.trim().length === 0) {
+    return { allowed: true, usedToday: 0, limitToday };
+  }
+  const docRef = firestore.collection(COLLECTIONS.accountImageUsage).doc(accountId);
+  try {
+    const snap = await docRef.get();
+    const data = snap.exists ? (snap.data() as Partial<StoredAccountImageUsage>) : undefined;
+    const cutoff = nowMs - ROLLING_WINDOW_24H_MS;
+    const portraitTs = (data?.portraitTimestampsMs ?? []).filter(
+      (ts): ts is number => typeof ts === 'number' && Number.isFinite(ts) && ts > cutoff,
+    );
+    const battlemapTs = (data?.battlemapTimestampsMs ?? []).filter(
+      (ts): ts is number => typeof ts === 'number' && Number.isFinite(ts) && ts > cutoff,
+    );
+    const activeList = kind === 'portrait' ? portraitTs : battlemapTs;
+    const lastCall = typeof data?.lastImageCallMs === 'number' ? data.lastImageCallMs : 0;
+
+    if (!options.skipCooldown && lastCall > 0 && nowMs - lastCall < IMAGE_FORGE_COOLDOWN_MS) {
+      return {
+        allowed: false,
+        reason: 'cooldown',
+        usedToday: activeList.length,
+        limitToday,
+      };
+    }
+    if (activeList.length >= limitToday) {
+      return {
+        allowed: false,
+        reason: 'daily_cap',
+        usedToday: activeList.length,
+        limitToday,
+      };
+    }
+
+    const nextPortraitTs = kind === 'portrait' ? [...portraitTs, nowMs] : portraitTs;
+    const nextBattlemapTs = kind === 'battlemap' ? [...battlemapTs, nowMs] : battlemapTs;
+    await docRef.set({
+      accountId,
+      portraitTimestampsMs: nextPortraitTs,
+      battlemapTimestampsMs: nextBattlemapTs,
+      lastImageCallMs: nowMs,
+      updatedAt: new Date(nowMs).toISOString(),
+    });
+    return {
+      allowed: true,
+      usedToday: activeList.length + 1,
+      limitToday,
+    };
+  } catch {
+    return { allowed: true, usedToday: 0, limitToday };
+  }
+}
+
+function normalizeBankSegment(value: string | null | undefined, fallback = 'any'): string {
+  const clean = (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return clean.length > 0 ? clean : fallback;
+}
+
+export function buildPortraitAssetBankKey(options: {
+  readonly ancestryId?: string | null;
+  readonly classId?: string | null;
+  readonly pronouns?: string | null;
+}): string {
+  return `portrait_${normalizeBankSegment(options.ancestryId)}_${normalizeBankSegment(options.classId)}_${normalizeBankSegment(options.pronouns)}`;
+}
+
+export function buildBattlemapAssetBankKey(options: {
+  readonly templateId?: string | null;
+  readonly layoutArchetype?: string | null;
+  readonly cardinalExits?: readonly BattlemapCardinalExit[];
+}): string {
+  const exitsKey =
+    options.cardinalExits && options.cardinalExits.length > 0
+      ? [...options.cardinalExits]
+          .map((e) => e.cardinal.toLowerCase())
+          .sort()
+          .join('-')
+      : 'east';
+  return `battlemap_${normalizeBankSegment(options.templateId, 'stone-crypt')}_${normalizeBankSegment(options.layoutArchetype, 'single-room')}_${normalizeBankSegment(exitsKey, 'east')}`;
+}
+
+export async function saveToAssetBank(options: {
+  readonly firestore: Firestore;
+  readonly bankKey: string;
+  readonly urls: readonly string[];
+}): Promise<void> {
+  const validUrls = options.urls.filter((u) => typeof u === 'string' && u.trim().length > 0);
+  if (validUrls.length === 0) return;
+  const docId = options.bankKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 110);
+  try {
+    const docRef = options.firestore.collection(COLLECTIONS.assetBank).doc(docId);
+    const snap = await docRef.get();
+    const existing = snap.exists
+      ? ((snap.data() as { urls?: readonly string[] } | undefined)?.urls ?? [])
+      : [];
+    const merged = [...new Set([...validUrls, ...existing])].slice(0, 18);
+    await docRef.set({
+      bankKey: options.bankKey,
+      urls: merged,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Non-fatal cache write.
+  }
+}
+
+export async function loadFromAssetBank(
+  firestore: Firestore,
+  bankKey: string,
+): Promise<readonly string[]> {
+  const docId = bankKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 110);
+  try {
+    const snap = await firestore.collection(COLLECTIONS.assetBank).doc(docId).get();
+    if (!snap.exists) return [];
+    const urls = (snap.data() as { urls?: unknown } | undefined)?.urls;
+    if (!Array.isArray(urls)) return [];
+    return urls.filter((u): u is string => typeof u === 'string' && u.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveAccountPortraitHistory(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly avatarOptions: readonly string[];
+  readonly ancestryId?: string | null;
+  readonly classId?: string | null;
+  readonly pronouns?: string | null;
+}): Promise<void> {
+  const { firestore, accountId } = options;
+  if (!accountId || accountId.trim().length === 0 || options.avatarOptions.length === 0) {
+    return;
+  }
+  try {
+    const docRef = firestore.collection(COLLECTIONS.accountPortraitHistory).doc(accountId);
+    const snap = await docRef.get();
+    const existing = snap.exists
+      ? ((snap.data() as { entries?: readonly { urls: readonly string[]; bankKey: string }[] })
+          ?.entries ?? [])
+      : [];
+    const bankKey = buildPortraitAssetBankKey({
+      ancestryId: options.ancestryId ?? null,
+      classId: options.classId ?? null,
+      pronouns: options.pronouns ?? null,
+    });
+    const nextEntries = [
+      { bankKey, urls: [...options.avatarOptions], createdAt: new Date().toISOString() },
+      ...existing,
+    ].slice(0, 12);
+    await docRef.set({
+      accountId,
+      entries: nextEntries,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Non-fatal history write.
+  }
+}
+
+export async function loadAccountPortraitHistory(options: {
+  readonly firestore: Firestore;
+  readonly accountId: string;
+  readonly ancestryId?: string | null;
+  readonly classId?: string | null;
+  readonly pronouns?: string | null;
+}): Promise<readonly string[]> {
+  const { firestore, accountId } = options;
+  if (!accountId || accountId.trim().length === 0) return [];
+  try {
+    const snap = await firestore.collection(COLLECTIONS.accountPortraitHistory).doc(accountId).get();
+    if (!snap.exists) return [];
+    const entries = (
+      snap.data() as { entries?: readonly { bankKey?: string; urls?: readonly string[] }[] }
+    )?.entries;
+    if (!Array.isArray(entries) || entries.length === 0) return [];
+    const targetKey = buildPortraitAssetBankKey({
+      ancestryId: options.ancestryId ?? null,
+      classId: options.classId ?? null,
+      pronouns: options.pronouns ?? null,
+    });
+    const matching = entries.find(
+      (e) => e.bankKey === targetKey && Array.isArray(e.urls) && e.urls.length > 0,
+    );
+    return matching?.urls ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export function normalizeReusableMonsterKey(rawKey: string): string {
   return rawKey
     .trim()
@@ -284,6 +517,7 @@ export function normalizeReusableMonsterKey(rawKey: string): string {
 export async function generateAndStoreCampaignAsset(options: {
   readonly firestore: Firestore;
   readonly campaignId: string;
+  readonly accountId?: string | null;
   readonly kind: CampaignAssetKind;
   readonly prompt: string;
   readonly fallbackTemplateId?: string;
@@ -311,6 +545,48 @@ export async function generateAndStoreCampaignAsset(options: {
       }
     } catch {
       // Proceed to generate if cache read fails.
+    }
+  }
+
+  const battlemapBankKey =
+    options.kind === 'battlemap'
+      ? buildBattlemapAssetBankKey({
+          templateId: options.fallbackTemplateId ?? null,
+          layoutArchetype: options.gridLayout?.layoutArchetype ?? null,
+          ...(options.gridLayout?.cardinalExits !== undefined
+            ? { cardinalExits: options.gridLayout.cardinalExits }
+            : {}),
+        })
+      : null;
+
+  // Enforce delete-proof per-account battlemap quota when accountId is provided (`Packet 5`).
+  if (
+    options.kind === 'battlemap' &&
+    typeof options.accountId === 'string' &&
+    options.accountId.trim().length > 0
+  ) {
+    const quota = await checkAndRecordAccountImageQuota({
+      firestore: options.firestore,
+      accountId: options.accountId,
+      kind: 'battlemap',
+      skipCooldown: true,
+    });
+    if (!quota.allowed) {
+      if (battlemapBankKey !== null) {
+        const banked = await loadFromAssetBank(options.firestore, battlemapBankKey);
+        if (banked.length > 0) {
+          return { assetUrl: banked[0]!, source: 'curated' };
+        }
+      }
+      return {
+        assetUrl: fallbackUrlForAsset({
+          kind: options.kind,
+          ...(options.fallbackTemplateId !== undefined
+            ? { fallbackTemplateId: options.fallbackTemplateId }
+            : {}),
+        }),
+        source: 'curated',
+      };
     }
   }
 
@@ -359,6 +635,13 @@ export async function generateAndStoreCampaignAsset(options: {
         prompt: fullPrompt,
         ...(sharedAssetId !== undefined ? { customAssetId: sharedAssetId } : {}),
       });
+      if (battlemapBankKey !== null) {
+        await saveToAssetBank({
+          firestore: options.firestore,
+          bankKey: battlemapBankKey,
+          urls: [assetUrl],
+        });
+      }
       return {
         assetUrl,
         source: 'generated',

@@ -23,9 +23,12 @@ import type {
 import { CAMPAIGN_TONE_LABELS, isCampaignTone } from '../../shared/campaign-contract.js';
 import {
   APPOSITIVE_PLACE_CLAUSE_RE,
+  EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE,
   expandNpcNameVariants,
   INTERPERSONAL_CONTACT_VERB_RE,
   isCompoundPlaceWord,
+  isMultiWordPlaceByContext,
+  isPersonBySyntacticContext,
   LOCATIVE_PREPOSITIONS,
   matchesExcludedCharacterName,
   PERSONAL_ROLE_TITLES,
@@ -191,19 +194,8 @@ const COMMON_SURNAMES_THAT_ARE_PLACE_NOUNS = new Set([
 ]);
 
 const NPC_TITLES = new Set([
-  'captain', 'lord', 'lady', 'sir', 'dame', 'master', 'mistress', 'mother', 'father', 'brother',
-  'sister', 'madam', 'madame', 'doctor', 'dr', 'professor', 'king', 'queen', 'prince', 'princess',
-  'baron', 'baroness', 'elder', 'warden', 'sergeant', 'priest', 'priestess', 'magister', 'abbot',
-  'abbess', 'chief', 'commander', 'inspector', 'constable', 'duke', 'duchess', 'count', 'countess',
-  'granny', 'grandmother', 'grandfather', 'uncle', 'aunt', 'wyrm', 'lich', 'tyrant', 'horror',
-  'emperor', 'empress', 'warlord', 'archmage', 'overlord', 'miller', 'courier', 'blacksmith',
-  'smith', 'innkeeper', 'tavernkeeper', 'barkeep', 'bartender', 'merchant', 'trader', 'scout',
-  'rogue', 'guard', 'guardsman', 'hunter', 'herbalist', 'alchemist', 'scholar', 'apprentice',
-  'artisan', 'baker', 'butcher', 'brewer', 'fisherman', 'farmer', 'weaver', 'miner', 'clerk',
-  'messenger', 'guide', 'detective', 'investigator', 'informant', 'witness', 'contact', 'agent',
-  'envoy', 'patron', 'archivist', 'keeper', 'chronicler', 'astronomer', 'astrologer', 'steward',
-  'castellan', 'watchman', 'sentinel', 'sage', 'curate', 'preceptor', 'caretaker', 'overseer',
-  'bailiff', 'reeve', 'guildmaster', 'quartermaster',
+  ...PERSONAL_ROLE_TITLES,
+  'wyrm', 'lich', 'tyrant', 'horror',
 ]);
 
 const PLACE_PREPOSITIONS = new Set([
@@ -348,30 +340,38 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     hadThe = hadThe || previousWord === 'the' || beforeWord === 'the';
     const first = words[0]!.toLowerCase();
     const last = words[words.length - 1]!.toLowerCase();
+    const isSyntacticPerson = isPersonBySyntacticContext(label, premise, start);
     const hasNpcTitle = words.some((word) => NPC_TITLES.has(word.toLowerCase()));
-    const isArchitecturalRoom = words.some((word) =>
-      ARCHITECTURAL_ROOM_NOUNS.has(word.toLowerCase()),
-    );
+    const isArchitecturalRoom =
+      words.some((word) => ARCHITECTURAL_ROOM_NOUNS.has(word.toLowerCase())) ||
+      EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE.test(last);
     const hasAppositivePlace = APPOSITIVE_PLACE_CLAUSE_RE.test(after);
-    const hasCompoundPlace = words.some((word) => isCompoundPlaceWord(word));
+    const isCompoundMultiWordPlace = isMultiWordPlaceByContext(label, {
+      fullText: premise,
+      previousWord,
+      afterSlice: after,
+      matchIndex: start,
+    });
     const precededByStrictLocative = STRICT_LOCATIVE_PREPOSITIONS.has(previousWord);
 
     if (capitalised.length === 1) {
       if (
+        !isSyntacticPerson &&
         !LEADING_STOPWORDS.has(first) &&
         !NPC_TITLES.has(first) &&
         !NPC_TITLES.has(beforeWord) &&
-        (hasAppositivePlace || hasCompoundPlace || precededByStrictLocative)
+        (hasAppositivePlace || isCompoundPlaceWord(words[0]!) || precededByStrictLocative)
       ) {
         pushUnique(places, label);
       }
       continue;
     }
 
-    if (isArchitecturalRoom || hasAppositivePlace) {
-      pushUnique(places, label);
-    } else if (hasNpcTitle || NPC_TITLES.has(first) || NPC_TITLES.has(beforeWord)) {
+    // C12-01 Guardrail 1: Evaluate Person-first syntactic context BEFORE any place-noun or compound-suffix check.
+    if (isSyntacticPerson || hasNpcTitle || NPC_TITLES.has(first) || NPC_TITLES.has(beforeWord)) {
       pushUnique(npcs, label);
+    } else if (isArchitecturalRoom || hasAppositivePlace || isCompoundMultiWordPlace) {
+      pushUnique(places, label);
     } else if (precededByStrictLocative) {
       pushUnique(places, label);
     } else if (
@@ -381,7 +381,13 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
       !LOCATIVE_PREPOSITIONS.has(previousWord)
     ) {
       pushUnique(npcs, label);
-    } else if (PLACE_NOUNS.has(last) || hasCompoundPlace) {
+    } else if (
+      PLACE_NOUNS.has(last) &&
+      (hadThe ||
+        PLACE_PREPOSITIONS.has(previousWord) ||
+        LOCATIVE_PREPOSITIONS.has(previousWord) ||
+        hasAppositivePlace)
+    ) {
       pushUnique(places, label);
     } else if (hadThe || PLACE_PREPOSITIONS.has(previousWord) || LOCATIVE_PREPOSITIONS.has(previousWord)) {
       pushUnique(places, label);
@@ -408,14 +414,17 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     }
     const candidate = candidateWords.join(' ');
     const firstLower = candidateWords[0]!.toLowerCase();
+    const lastWord = candidateWords[candidateWords.length - 1]!;
     const afterIdx = (match.index ?? 0) + match[0].length;
     const afterSlice = premise.slice(afterIdx);
     if (
+      !isPersonBySyntacticContext(candidate, premise, match.index) &&
       !LEADING_STOPWORDS.has(firstLower) &&
       !NPC_TITLES.has(firstLower) &&
       !PERSONAL_ROLE_TITLES.has(firstLower) &&
       (APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
-        candidateWords.some((w) => isCompoundPlaceWord(w) || PLACE_NOUNS.has(w.toLowerCase())) ||
+        isCompoundPlaceWord(lastWord) ||
+        PLACE_NOUNS.has(lastWord.toLowerCase()) ||
         !INTERPERSONAL_CONTACT_VERB_RE.test(afterSlice))
     ) {
       pushUnique(places, candidate);
@@ -441,6 +450,7 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     const afterIdx = (match.index ?? 0) + match[0].length;
     const afterSlice = premise.slice(afterIdx);
     if (
+      !isPersonBySyntacticContext(candidate, premise, match.index) &&
       !NPC_TITLES.has(firstLower) &&
       !PERSONAL_ROLE_TITLES.has(firstLower) &&
       APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice)
@@ -449,12 +459,19 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     }
   }
 
-  // Also extract any standalone capitalized compound place word (e.g., words ending in -house, -hall, -keep, -fen, -mire)
+  const npcTokenSet = new Set(
+    npcs.flatMap((npc) => npc.toLowerCase().split(/\s+/).filter(Boolean)),
+  );
+
+  // Also extract any standalone single-word capitalized compound place word (e.g., words ending in -house, -hall, -keep, -fen, -mire)
+  // provided it is NOT a token of an identified NPC (e.g. surnames like Blackwood or Ashford).
   const compoundPlaceWordPattern = /\b([A-Z][A-Za-z'’-]{3,})\b/g;
   for (const match of premise.matchAll(compoundPlaceWordPattern)) {
     const word = match[1]!;
     const lower = word.toLowerCase();
     if (
+      !npcTokenSet.has(lower) &&
+      !isPersonBySyntacticContext(word, premise, match.index) &&
       !LEADING_STOPWORDS.has(lower) &&
       !NPC_TITLES.has(lower) &&
       !PERSONAL_ROLE_TITLES.has(lower) &&
@@ -507,14 +524,25 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     }
   }
 
-  // Strictly exclude any identified Place (or compound place word without an NPC title) from npcs.
-  const placeSet = new Set(places.map((p) => p.toLowerCase()));
+  // Person-first deduplication: if an entry is syntactically a Person, never allow `places` to shadow or remove it.
+  const confirmedPersonNames = new Set(
+    npcs
+      .filter((npc) => isPersonBySyntacticContext(npc, premise))
+      .map((npc) => npc.toLowerCase()),
+  );
+  const cleanedPlaces = places.filter((place) => !confirmedPersonNames.has(place.toLowerCase()));
+  const placeSet = new Set(cleanedPlaces.map((p) => p.toLowerCase()));
   const filteredNpcs = npcs.filter((npc) => {
     const lower = npc.toLowerCase();
+    if (confirmedPersonNames.has(lower) || isPersonBySyntacticContext(npc, premise)) {
+      return true;
+    }
     if (placeSet.has(lower)) {
       return false;
     }
-    if (places.some((p) => p.toLowerCase().includes(lower) || lower.includes(p.toLowerCase()))) {
+    if (
+      cleanedPlaces.some((p) => p.toLowerCase().includes(lower) || lower.includes(p.toLowerCase()))
+    ) {
       const words = npc.split(/\s+/);
       const hasTitle = words.some(
         (w) => NPC_TITLES.has(w.toLowerCase()) || PERSONAL_ROLE_TITLES.has(w.toLowerCase()),
@@ -526,7 +554,7 @@ function extractProperNames(premise: string): { npcs: string[]; places: string[]
     return true;
   });
 
-  return { npcs: filteredNpcs, places };
+  return { npcs: filteredNpcs, places: cleanedPlaces };
 }
 
 function extractModifierPhrases(

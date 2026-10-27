@@ -304,6 +304,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
 
     const exitFeature = features.find((f) => f.objectKind === 'exit');
     expect(exitFeature).toBeDefined();
+    expect(exitFeature!.label).toMatch(/\bExit\b/i);
     const gridW = initialMap.coordinateSpace?.columns ?? 12;
     const gridH = initialMap.coordinateSpace?.rows ?? 8;
     const onPerimeter =
@@ -312,6 +313,18 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       exitFeature!.row === 0 ||
       exitFeature!.row === gridH - 1;
     expect(onPerimeter).toBe(true);
+
+    // Packet 3 & Packet 4: Single Map Tooltip (0 <title> SVG nodes and 0 [title] attributes in map stage)
+    // and top-down object icon sprites (image.map-poi-sprite[data-sprite-key])
+    await expect(page.locator('[data-testid="table-stage-svg"] title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="table-stage-host"] [title]')).toHaveCount(0);
+    const containerMarkerLoc = page.getByTestId('map-container-marker').first();
+    await expect(containerMarkerLoc).toBeVisible();
+    await expect(containerMarkerLoc.locator('image.map-poi-sprite')).toHaveCount(1);
+    const initialSpriteKey = await containerMarkerLoc.getAttribute('data-sprite-key');
+    expect(initialSpriteKey ?? '').toMatch(/:closed$/);
+    await containerMarkerLoc.hover();
+    await expect(page.getByTestId('map-poi-tooltip')).toBeVisible();
 
     // 2. Packet 3: Clicking a map square or doorway does NOT show intrusive banners
     const anyCell = page.locator('[data-testid^="map-cell-"]').first();
@@ -567,7 +580,7 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       .replace(/\s*(?:\([^)]*\)|â€”\s*.*)$/i, '')
       .trim();
 
-    // Step 1: Open container -> lists contents in Chronicle without auto-looting
+    // Step 1: Open container -> lists contents in Chronicle without auto-looting and swaps sprite key to :open
     await page.getByTestId('player-action-input').fill(`I open the ${containerLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');
     await page.getByTestId('submit-player-action').click();
@@ -575,6 +588,13 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('dm-play-thread')).toContainText(/Inside you see:/i, {
       timeout: 15_000,
     });
+    await expect
+      .poll(
+        async () =>
+          await page.getByTestId('map-container-marker').first().getAttribute('data-sprite-key'),
+        { timeout: 10_000 },
+      )
+      .toMatch(/:open$/);
 
     // RS-02: Inspect the item inside the container using locative phrasing ("in the <container>")
     await page

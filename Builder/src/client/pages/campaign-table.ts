@@ -6139,18 +6139,18 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
             </svg>
           </a>
           <div class="table-hud-titles">
-            <h1 data-testid="campaign-table-heading" title="${escapeHtml(campaignName)}">${escapeHtml(campaignName)}</h1>
+            <h1 data-testid="campaign-table-heading" aria-label="${escapeHtml(campaignName)}">${escapeHtml(campaignName)}</h1>
             ${
               mapBundle === null
                 ? `<p class="table-hud-scene table-hud-scene-pending" data-testid="map-scene-banner">Establishing scene…</p>`
-                : `<p class="table-hud-scene" data-testid="map-scene-banner" title="${escapeHtml(mapBundle.sceneBanner)}">${escapeHtml(mapBundle.sceneBanner)}</p>`
+                : `<p class="table-hud-scene" data-testid="map-scene-banner" aria-label="${escapeHtml(mapBundle.sceneBanner)}">${escapeHtml(mapBundle.sceneBanner)}</p>`
             }
           </div>
         </div>
         <div class="table-hud-actions" role="group" aria-label="Campaign session">
-          <button type="button" class="table-hud-action" data-testid="toggle-table-history-hud" title="Table History">Table History</button>
-          <a class="table-hud-action table-hud-action-settings" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" title="Settings">Settings</a>
-          <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" title="Exit campaign">Exit campaign</a>
+          <button type="button" class="table-hud-action" data-testid="toggle-table-history-hud" aria-label="Table History">Table History</button>
+          <a class="table-hud-action table-hud-action-settings" href="/campaigns/${escapeHtml(campaignId)}/settings" data-link data-testid="table-settings" aria-label="Settings">Settings</a>
+          <a class="table-hud-action table-hud-exit" href="/campaigns/${escapeHtml(campaignId)}" data-link data-testid="table-back" aria-label="Exit campaign">Exit campaign</a>
           <details class="table-hud-overflow" data-testid="table-overflow-menu">
             <summary aria-label="Campaign menu">Menu</summary>
             <div class="table-hud-overflow-panel" role="menu">

@@ -22,8 +22,10 @@ import {
 } from '../table/scene-commands.js';
 import {
   NON_OPENABLE_SURFACE_HEAD_NOUN,
+  hasLeadingObjectInteractionVerb,
   isDialogueDeclaration,
   isWholeContainerLootDeclaration,
+  maskNonExitSceneFeatureLabels,
 } from '../../shared/utterance-understanding.js';
 import type {
   IntentDraftCommandType,
@@ -303,6 +305,7 @@ export interface AppliedDispatchResult {
   readonly destinationHint?: string | undefined;
   readonly edgeId?: string | undefined;
   readonly objectId?: string | undefined;
+  readonly itemId?: string | undefined;
   readonly skillCheckIntent?: SkillCheckIntent | undefined;
   readonly deferDirectorNarrate?: boolean | undefined;
 }
@@ -328,7 +331,7 @@ export function applyDirectorDispatchToMap(options: {
   readonly dispatch: DirectorDispatchOutput;
   readonly map: MapBundleProjection;
   readonly seatedSheet: DerivedCharacterSheet | null;
-  readonly knownNpcs: readonly { readonly id: string; readonly label: string }[];
+  readonly knownNpcs?: readonly { readonly id: string; readonly label: string }[];
   readonly absentRoomNpcs?: readonly {
     readonly id: string;
     readonly label: string;
@@ -336,7 +339,7 @@ export function applyDirectorDispatchToMap(options: {
   }[];
   readonly rawText?: string;
 }): AppliedDispatchResult | null {
-  const { map, seatedSheet, knownNpcs, absentRoomNpcs = [], rawText } = options;
+  const { map, seatedSheet, knownNpcs = [], absentRoomNpcs = [], rawText } = options;
   let dispatch = options.dispatch;
 
   const presentNpcRecords = map.notableFeatures
@@ -370,6 +373,36 @@ export function applyDirectorDispatchToMap(options: {
         addressee: parsed.addressee ?? dispatch.dialogue?.addressee ?? null,
       },
     };
+  }
+
+  // Hard priority for Leading Object-Manipulation / Container-Looting Verbs (`C12-02`):
+  // Never allow words like "travel" or "passage" inside a non-exit object's name ("Iron-hasped travel trunk")
+  // to hijack an object open/loot/inspect declaration into `travel_scene`.
+  if (
+    rawText !== undefined &&
+    dispatch.actionType === 'travel_scene' &&
+    (hasLeadingObjectInteractionVerb(rawText) || isWholeContainerLootDeclaration(rawText))
+  ) {
+    if (isWholeContainerLootDeclaration(rawText)) {
+      dispatch = {
+        ...dispatch,
+        actionType: 'take_prop',
+        takeProp: { propLabel: rawText },
+      };
+    } else {
+      const op: 'open' | 'close' | 'use' | 'inspect' = /\b(?:close|shut)\b/i.test(rawText)
+        ? 'close'
+        : /\b(?:open|unlock|unseal|unlatch|pry|force)\b/i.test(rawText)
+          ? 'open'
+          : /\b(?:inspect|examine|study|read|check|look)\b/i.test(rawText)
+            ? 'inspect'
+            : 'use';
+      dispatch = {
+        ...dispatch,
+        actionType: 'interact_object',
+        interactObject: { objectLabel: rawText, operation: op },
+      };
+    }
   }
 
   const ownToken =
@@ -673,11 +706,12 @@ export function applyDirectorDispatchToMap(options: {
         matched.lockState !== 'locked' &&
         Array.isArray(matched.contents) &&
         matched.contents.length > 0 &&
-        (op === 'use' || isWholeContainerLootDeclaration(requested))
+        (op === 'use' || isWholeContainerLootDeclaration(rawText ?? requested))
       ) {
         return {
           proposedCommandType: 'table.take_scene_prop',
           objectId: matched.objectId,
+          itemId: 'all',
           summary: `Ready to take ${matched.contents.join(', ')} from the ${cleanLabel}. Confirm to stow it in your inventory.`,
         };
       }
@@ -727,41 +761,42 @@ export function applyDirectorDispatchToMap(options: {
   // 7. Take Portable Scene Prop / Container (or route travel if the target is an exit/trail)
   if (dispatch.actionType === 'take_prop' && dispatch.takeProp) {
     const requested = dispatch.takeProp.propLabel.toLowerCase().trim();
-    const matchedExit = findBestFeatureByHeadNoun(
-      map.notableFeatures.filter((f) => f.objectKind === 'exit' || f.referenceKind === 'exit'),
-      requested,
+    const nonExitFeatures = map.notableFeatures.filter(
+      (f) => f.objectKind !== 'exit' && f.referenceKind !== 'exit' && f.objectKind !== 'npc',
     );
+    const matchedNonExit = findBestFeatureByHeadNoun(nonExitFeatures, requested);
+    const maskedRequestedForTravel = maskNonExitSceneFeatureLabels(
+      requested,
+      nonExitFeatures.map((f) => f.label),
+    );
+    const matchedExit =
+      matchedNonExit === undefined && !isWholeContainerLootDeclaration(rawText ?? requested)
+        ? findBestFeatureByHeadNoun(
+            map.notableFeatures.filter((f) => f.objectKind === 'exit' || f.referenceKind === 'exit'),
+            requested,
+          )
+        : undefined;
     if (
-      matchedExit !== undefined ||
-      /\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|bridge|crossing|ford|tunnel|exit|way|route|causeway)\b/i.test(
-        requested,
-      )
+      matchedNonExit === undefined &&
+      !isWholeContainerLootDeclaration(rawText ?? requested) &&
+      (matchedExit !== undefined ||
+        /\b(?:trail|path|pathway|road|passage|passageway|corridor|stairs?|staircase|steps|archway|bridge|crossing|ford|tunnel|exit|way|route|causeway)\b/i.test(
+          maskedRequestedForTravel,
+        ))
     ) {
-      const hint = matchedExit ? stripFeatureStateSuffix(matchedExit.label) : requested;
+      const rawExitLabel = matchedExit ? stripFeatureStateSuffix(matchedExit.label) : requested;
+      const hint =
+        rawExitLabel
+          .replace(
+            /^(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+exit\s*(?:→\s*)?/i,
+            '',
+          )
+          .trim() || rawExitLabel;
       return {
         proposedCommandType: 'table.travel_scene',
         returnToPrevious: /\b(?:return|back)\b/i.test(hint),
         destinationHint: hint,
         summary: `Ready to travel to ${hint}. Confirm to advance the party into the next area.`,
-      };
-    }
-    const portableFeatures = map.notableFeatures.filter(
-      (f) =>
-        f.objectKind !== 'npc' &&
-        f.objectKind !== 'exit' &&
-        f.objectKind !== 'lever' &&
-        (f.objectKind === 'item' ||
-          labelLooksPortableContainer(f.label) ||
-          ((f.objectKind === 'prop' || labelLooksPortableSceneProp(f.label)) &&
-            !HEAVY_FIXTURE_LABEL.test(f.label))),
-    );
-    const matched = findBestFeatureByHeadNoun(portableFeatures, requested);
-    if (matched) {
-      const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
-      return {
-        proposedCommandType: 'table.take_scene_prop',
-        objectId: matched.objectId,
-        summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
       };
     }
     const unlockedContainers = map.notableFeatures.filter(
@@ -782,21 +817,44 @@ export function applyDirectorDispatchToMap(options: {
     const containerWithContents =
       openContainers.find(matchesRequestedContent) ??
       unlockedContainers.find(matchesRequestedContent) ??
-      (isWholeContainerLootDeclaration(requested) || /\b(?:all|everything|contents?|items?)\b/i.test(requested)
+      (isWholeContainerLootDeclaration(rawText ?? requested) ||
+      /\b(?:all|everything|contents?|items?)\b/i.test(requested)
         ? (openContainers[0] ?? unlockedContainers[0])
         : undefined);
     if (containerWithContents) {
       const cleanContainer = stripFeatureStateSuffix(containerWithContents.label);
+      const isWholeContainer =
+        isWholeContainerLootDeclaration(rawText ?? requested) ||
+        scoreFeatureLabelMatch(requested, containerWithContents.label).score > 0 ||
+        /\b(?:all|everything|contents?|items?)\b/i.test(requested);
       const itemsSummary =
-        (containerWithContents.contents ?? []).length > 0 &&
-        (scoreFeatureLabelMatch(requested, containerWithContents.label).score > 0 ||
-          /\b(?:all|everything|contents?|items?)\b/i.test(requested))
+        (containerWithContents.contents ?? []).length > 0 && isWholeContainer
           ? containerWithContents.contents!.join(', ')
           : dispatch.takeProp.propLabel;
       return {
         proposedCommandType: 'table.take_scene_prop',
         objectId: containerWithContents.objectId,
+        ...(isWholeContainer ? { itemId: 'all' } : {}),
         summary: `Ready to take ${itemsSummary} from the ${cleanContainer}. Confirm to stow it in your inventory.`,
+      };
+    }
+    const portableFeatures = map.notableFeatures.filter(
+      (f) =>
+        f.objectKind !== 'npc' &&
+        f.objectKind !== 'exit' &&
+        f.objectKind !== 'lever' &&
+        (f.objectKind === 'item' ||
+          labelLooksPortableContainer(f.label) ||
+          ((f.objectKind === 'prop' || labelLooksPortableSceneProp(f.label)) &&
+            !HEAVY_FIXTURE_LABEL.test(f.label))),
+    );
+    const matched = findBestFeatureByHeadNoun(portableFeatures, requested);
+    if (matched) {
+      const cleanLabel = stripFeatureStateSuffix(matched.label) || matched.label.trim();
+      return {
+        proposedCommandType: 'table.take_scene_prop',
+        objectId: matched.objectId,
+        summary: `Ready to take ${cleanLabel} into your inventory. Confirm to stow it and remove it from the map.`,
       };
     }
   }

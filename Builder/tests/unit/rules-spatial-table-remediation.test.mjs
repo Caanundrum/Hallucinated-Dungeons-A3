@@ -20,6 +20,9 @@ import {
 import {
   cleanNpcLabelForMatching,
   expandNpcNameVariants,
+  extractCampaignFactsFromPremise,
+  isCompoundPlaceWord,
+  isPersonBySyntacticContext,
   npcNamesMatch,
   stripPersonalRoleTitle,
 } from '../../dist/shared/campaign-facts.js';
@@ -29,13 +32,19 @@ import {
 } from '../../dist/shared/play-authority-contract.js';
 import {
   buildCampaignAssetPrompt,
+  checkAndRecordAccountImageQuota,
   formatBattlemapCardinalExits,
 } from '../../dist/server/assets/campaign-assets.js';
 import {
   attachExitsToStoredScene,
   extractSceneCardinalExits,
+  formatSceneExitPlayerFacingLabel,
   isPerimeterCoordinate,
 } from '../../dist/server/table/scene-exit-projection.js';
+import {
+  resolveObjectSpriteDescriptor,
+  resolveObjectSpriteKey,
+} from '../../dist/shared/object-sprite-catalog.js';
 import {
   contextualContainerLabelForTemplate,
   contextualPropLabelForTemplate,
@@ -1194,6 +1203,321 @@ test('FC-01 & Anti-Laziness Rule 1: Position-agnostic multi-token NPC alias matc
   assert.equal(authority.disposition, 'director_narrate_only');
   assert.equal(authority.proposedCommandType, 'table.sync');
 });
+
+test('Packets 1–5 (C12-01, C12-02, Exit Terminology, Top-Down Object Sprites, & Delete-Proof Account Image Quotas)', async () => {
+  // 1. Packet 1 (C12-01): Person-First Entity Grammar — -ate titles & place-like surnames never wipe NPCs
+  assert.equal(isCompoundPlaceWord('Legate'), false, '"Legate" ends in -ate, never -gate');
+  assert.equal(isCompoundPlaceWord('Magistrate'), false, '"Magistrate" ends in -ate, never -gate');
+  assert.equal(isCompoundPlaceWord('Delegate'), false);
+  assert.equal(isCompoundPlaceWord('Prelate'), false);
+  assert.equal(isCompoundPlaceWord('Northgate'), true, 'True -gate compound place word still matches');
+
+  const premise =
+    'Inside the Frostwatch Glasshouse, Legate Aveline Marr asks Rhea Calder to find Master Toren Quill, who vanished near the Cinderwatch Archway after inspecting a silver reliquary.';
+  assert.equal(
+    isPersonBySyntacticContext('Legate Aveline Marr', premise),
+    true,
+    'Subject of speech verb "asks" is classified as a Person by syntactic context',
+  );
+  assert.equal(
+    isPersonBySyntacticContext('Master Toren Quill', premise),
+    true,
+    'Object of "to find" / subject of "who vanished" is classified as a Person',
+  );
+
+  const extracted = extractPremiseEntities(premise, {
+    excludeCharacterNames: ['Rhea Calder'],
+  });
+  assert.equal(
+    extracted.npcs.some((n) => /Legate Aveline Marr/i.test(n)),
+    true,
+    'extractPremiseEntities keeps Legate Aveline Marr as an NPC',
+  );
+  assert.equal(
+    extracted.places.some((p) => /Legate Aveline Marr/i.test(p)),
+    false,
+    'Legate Aveline Marr is never classified as a place',
+  );
+
+  const bp = buildCampaignBlueprint({
+    summary: premise,
+    startLevel: 1,
+    targetEndLevel: 2,
+    excludeCharacterNames: ['Rhea Calder'],
+  });
+  assert.equal(
+    bp.namedNpcs.some((n) => /Legate Aveline Marr/i.test(n)),
+    true,
+    'buildCampaignBlueprint preserves Legate Aveline Marr in namedNpcs (never wiped to Warden Elira)',
+  );
+  assert.equal(
+    bp.namedNpcs.some((n) => /Warden Elira/i.test(n)),
+    false,
+    'Fallback Warden Elira is not injected when custom contact Legate Aveline Marr is present',
+  );
+  const r1Npcs = bp.milestones[0].rooms[0].npcs;
+  assert.equal(
+    r1Npcs.some((n) => /Legate Aveline Marr/i.test(n.name)),
+    true,
+    'Room 1 spawns Legate Aveline Marr as the local contact NPC',
+  );
+
+  // Also verify an NPC with a place-like surname ("Blackwood" / "Ashford") in a person syntactic slot stays an NPC
+  const surnamePremise =
+    'At the Old Granary, Bailiff Harlan Blackwood asks the party to locate Archivist Sera Ashford, who vanished near the river sluice.';
+  const surnameBp = buildCampaignBlueprint({
+    summary: surnamePremise,
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  assert.equal(
+    surnameBp.namedNpcs.some((n) => /Bailiff Harlan Blackwood/i.test(n)),
+    true,
+    'NPC with place-suffix surname (Blackwood) in person syntactic position is preserved as NPC',
+  );
+  assert.equal(
+    surnameBp.namedNpcs.some((n) => /Archivist Sera Ashford/i.test(n)),
+    true,
+    'NPC with place-suffix surname (Ashford) in person syntactic position is preserved as NPC',
+  );
+
+  // 2. Packet 2 (C12-02): Verb-First Object Targeting & "Exit" Terminology
+  const runtime = buildMapRuntimeFromBlueprint({
+    campaignId: 'camp-c12',
+    blueprint: bp,
+    accountIds: ['acc-1'],
+    seatTokens: [{ seatId: 'seat-1', characterId: 'char-1', column: 2, row: 4 }],
+    activateFirstScene: true,
+  });
+  // Ensure Scene 1 has an "Iron-hasped travel trunk" container with contents
+  const r1 = runtime.sceneInstances[runtime.activeSceneId];
+  const trunkFeature = {
+    objectId: 'obj-travel-trunk',
+    label: 'Iron-hasped travel trunk',
+    objectKind: 'container',
+    referenceKind: 'prop',
+    column: 3,
+    row: 4,
+    state: 'closed',
+    lockState: 'unlocked',
+    interactable: true,
+    contents: ['Silver reliquary key', 'Wax-sealed ledger'],
+  };
+  const customRuntime = {
+    ...runtime,
+    sceneInstances: {
+      ...runtime.sceneInstances,
+      [runtime.activeSceneId]: {
+        ...r1,
+        features: [
+          ...r1.features.filter((f) => f.objectKind !== 'container'),
+          trunkFeature,
+        ],
+      },
+    },
+  };
+  const customBundle = buildAuthoritativeMapBundle({
+    campaignId: 'camp-c12',
+    seats: [
+      {
+        seatId: 'seat-1',
+        campaignId: 'camp-c12',
+        ownerAccountId: 'acc-1',
+        characterId: 'char-1',
+        characterName: 'Rhea Calder',
+      },
+    ],
+    runtime: customRuntime,
+  });
+
+  // 2a. Exit features use explicit "Exit" terminology
+  const exitFeatures = customBundle.notableFeatures.filter(
+    (f) => f.objectKind === 'exit' || f.referenceKind === 'exit',
+  );
+  assert.equal(exitFeatures.length > 0, true, 'Scene projects exit features');
+  for (const exitFeat of exitFeatures) {
+    assert.match(
+      exitFeat.label,
+      /\bExit\b/i,
+      `Exit feature label "${exitFeat.label}" explicitly includes "Exit"`,
+    );
+  }
+  assert.match(
+    formatSceneExitPlayerFacingLabel({
+      rawLabel: 'Wooden doorway',
+      orientation: 'east',
+      destinationHint: 'Cinderwatch Archway',
+      doorState: 'closed',
+    }),
+    /^East Exit → Cinderwatch Archway — closed$/,
+  );
+
+  // 2b. "I open the Iron-hasped travel trunk." routes to table.interact_object (NEVER table.travel_scene or table.door_state)
+  const openTrunkClause = classifyClause('I open the Iron-hasped travel trunk.', undefined, [
+    'Iron-hasped travel trunk',
+  ]);
+  assert.notEqual(
+    openTrunkClause.kind,
+    'travel',
+    '"I open the Iron-hasped travel trunk." must never classify as travel despite the word "travel" in the container name',
+  );
+  const openTrunkDispatch = applyDirectorDispatchToMap({
+    dispatch: {
+      actionType: 'travel_scene',
+      travelScene: { destinationHint: 'Iron-hasped travel trunk', returnToPrevious: false },
+    },
+    map: customBundle,
+    seatedSheet: null,
+    rawText: 'I open the Iron-hasped travel trunk.',
+  });
+  assert.equal(
+    openTrunkDispatch?.proposedCommandType,
+    'table.interact_object',
+    'applyDirectorDispatchToMap overrides travel_scene to table.interact_object when opening the Iron-hasped travel trunk',
+  );
+  assert.equal(openTrunkDispatch?.objectId, 'obj-travel-trunk');
+
+  // 2c. "I loot the open Iron-hasped travel trunk." routes to table.take_scene_prop with itemId: 'all' (NEVER table.travel_scene)
+  const openTrunkBundle = {
+    ...customBundle,
+    notableFeatures: customBundle.notableFeatures.map((f) =>
+      f.objectId === 'obj-travel-trunk'
+        ? { ...f, label: 'Iron-hasped travel trunk (open)', objectState: 'open' }
+        : f,
+    ),
+  };
+  const lootTrunkDispatch = applyDirectorDispatchToMap({
+    dispatch: {
+      actionType: 'travel_scene',
+      travelScene: { destinationHint: 'open Iron-hasped travel trunk', returnToPrevious: false },
+    },
+    map: openTrunkBundle,
+    seatedSheet: null,
+    rawText: 'I loot the open Iron-hasped travel trunk.',
+  });
+  assert.equal(
+    lootTrunkDispatch?.proposedCommandType,
+    'table.take_scene_prop',
+    'applyDirectorDispatchToMap routes looting the open Iron-hasped travel trunk to table.take_scene_prop',
+  );
+  assert.equal(lootTrunkDispatch?.objectId, 'obj-travel-trunk');
+  assert.equal(lootTrunkDispatch?.itemId, 'all');
+
+  // 3. Packet 4: Top-Down Object Sprites & State-Driven Sprite Swapping
+  const closedSprite = resolveObjectSpriteDescriptor({
+    label: 'Iron-hasped travel trunk',
+    objectKind: 'container',
+    state: 'closed',
+  });
+  const openSprite = resolveObjectSpriteDescriptor({
+    label: 'Iron-hasped travel trunk (open)',
+    objectKind: 'container',
+    state: 'open',
+  });
+  assert.equal(closedSprite.spriteKey, 'container:trunk:closed');
+  assert.equal(openSprite.spriteKey, 'container:trunk:open');
+  assert.notEqual(
+    closedSprite.spriteUrl,
+    openSprite.spriteUrl,
+    'Opening a container swaps its top-down sprite URL from closed to open',
+  );
+  assert.match(closedSprite.spriteUrl, /^data:image\/svg\+xml;utf8,/);
+
+  const leverClosedSprite = resolveObjectSpriteKey({
+    label: 'Rusted iron lever',
+    objectKind: 'lever',
+    state: 'closed',
+  });
+  const leverOpenSprite = resolveObjectSpriteKey({
+    label: 'Rusted iron lever (pulled)',
+    objectKind: 'lever',
+    state: 'open',
+  });
+  assert.equal(leverClosedSprite, 'mechanism:lever:closed');
+  assert.equal(leverOpenSprite, 'mechanism:lever:open');
+
+  // Every projected notableFeature in buildAuthoritativeMapBundle has spriteKey and spriteUrl
+  for (const feat of customBundle.notableFeatures) {
+    assert.equal(
+      typeof feat.spriteKey === 'string' && feat.spriteKey.length > 0,
+      true,
+      `Projected feature "${feat.label}" includes spriteKey`,
+    );
+    assert.equal(
+      typeof feat.spriteUrl === 'string' && feat.spriteUrl.length > 0,
+      true,
+      `Projected feature "${feat.label}" includes spriteUrl`,
+    );
+  }
+
+  // 4. Packet 5: Delete-Proof Account Image Quotas (3/day + 15s cooldown, unaffected by character/campaign deletion)
+  const store = new Map();
+  const mockFirestore = {
+    collection(colName) {
+      return {
+        doc(docId) {
+          const key = `${colName}/${docId}`;
+          return {
+            async get() {
+              const val = store.get(key);
+              return { exists: val !== undefined, data: () => val };
+            },
+            async set(val) {
+              store.set(key, val);
+            },
+          };
+        },
+      };
+    },
+  };
+  const t0 = 1_700_000_000_000;
+  const q1 = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-quota-test',
+    kind: 'portrait',
+    nowMs: t0,
+  });
+  assert.equal(q1.allowed, true);
+  assert.equal(q1.usedToday, 1);
+
+  // Calling 2 seconds later hits 15s cooldown
+  const qCooldown = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-quota-test',
+    kind: 'portrait',
+    nowMs: t0 + 2_000,
+  });
+  assert.equal(qCooldown.allowed, false);
+  assert.equal(qCooldown.reason, 'cooldown');
+
+  // Calling after 20s and 40s succeeds up to 3/day
+  const q2 = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-quota-test',
+    kind: 'portrait',
+    nowMs: t0 + 20_000,
+  });
+  const q3 = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-quota-test',
+    kind: 'portrait',
+    nowMs: t0 + 40_000,
+  });
+  assert.equal(q2.allowed, true);
+  assert.equal(q3.allowed, true);
+  assert.equal(q3.usedToday, 3);
+
+  // 4th call within 24h is blocked by daily_cap
+  const q4 = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-quota-test',
+    kind: 'portrait',
+    nowMs: t0 + 60_000,
+  });
+  assert.equal(q4.allowed, false);
+  assert.equal(q4.reason, 'daily_cap');
+});
+
 
 
 

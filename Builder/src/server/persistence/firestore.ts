@@ -43,6 +43,9 @@ export const COLLECTIONS = {
   campaignSessions: 'campaignSessions',
   legalAcceptances: 'legalAcceptances',
   campaignAssets: 'campaignAssets',
+  accountImageUsage: 'accountImageUsage',
+  assetBank: 'assetBank',
+  accountPortraitHistory: 'accountPortraitHistory',
 } as const;
 
 export interface CanonicalStore {

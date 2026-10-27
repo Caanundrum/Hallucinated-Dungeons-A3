@@ -1136,7 +1136,9 @@ export async function acceptTableCommand(options: {
         const arrivedScene = activeSceneInstance(nextSceneRuntime);
         if (
           arrivedScene !== null &&
-          (result.jitCompiledSceneId !== undefined || !arrivedScene.sceneArtUrl)
+          (result.jitCompiledSceneId !== undefined ||
+            !arrivedScene.sceneArtUrl ||
+            !arrivedScene.sceneArtUrl.startsWith('/api/assets/'))
         ) {
           try {
             const { formatBattlemapWallSummary, generateAndStoreCampaignAsset } = await import(
@@ -1150,6 +1152,7 @@ export async function acceptTableCommand(options: {
             const assetResult = await generateAndStoreCampaignAsset({
               firestore,
               campaignId,
+              accountId,
               kind: 'battlemap',
               prompt: `${arrivedScene.title}. ${arrivedScene.description ?? arrivedScene.sceneBanner}`,
               fallbackTemplateId: arrivedScene.templateId,

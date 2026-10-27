@@ -207,6 +207,42 @@ export const PERSONAL_ROLE_TITLES: ReadonlySet<string> = new Set([
   'canon',
   'syndic',
   'regent',
+  'delegate',
+  'advocate',
+  'potentate',
+  'exarch',
+  'viceroy',
+  'bellkeeper',
+  'surveyor',
+  'sexton',
+  'granny',
+  'grandmother',
+  'grandfather',
+  'uncle',
+  'aunt',
+  'emperor',
+  'empress',
+  'warlord',
+  'archmage',
+  'overlord',
+  'rogue',
+  'artisan',
+  'baker',
+  'butcher',
+  'brewer',
+  'fisherman',
+  'farmer',
+  'weaver',
+  'miner',
+  'messenger',
+  'guide',
+  'detective',
+  'investigator',
+  'informant',
+  'witness',
+  'contact',
+  'agent',
+  'patron',
 ]);
 
 const NPC_TOKEN_STOPWORDS: ReadonlySet<string> = new Set([
@@ -320,12 +356,133 @@ export const INTERPERSONAL_CONTACT_VERB_RE =
 export const DISAPPEARANCE_PREDICATE_RE =
   /\b(?:vanished|disappeared|went\s+missing|is\s+missing|was\s+kidnapped|was\s+taken|was\s+abducted|has\s+not\s+returned|never\s+returned|was\s+lost|was\s+captured|was\s+seized|fell\s+silent|failed\s+to\s+return|kidnapped|captive|hostage)\b/i;
 
+/** Words ending in `-ate` (specifically `-gate` like `legate` / `delegate`) that are never compound `-gate` places. */
+export const NON_PLACE_ATE_WORDS_RE =
+  /^(?:legate|delegate|relegate|abnegate|aggregate|congregate|segregate|propagate|mitigate|litigate|investigate|navigate|obligate|instigate|interrogate|castigate|fumigate|irrigate|subjugate|surrogate|magistrate|prelate|advocate|curate|potentate|syndicate|consulate|protectorate|directorate|novitiate|episcopate|caliphate|sultanate|triumvirate|archonate)$/i;
+
+/** Explicit architectural building nouns or suffixes that denote a physical structure when used as the final head noun. */
+export const EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE =
+  /^(?:[a-z]{2,}(?:house|hall|keep|tower|spire|abbey|manor|vault|crypt|foundry|bastion|citadel|sanctum|lodge|mill|forge|wharf|dock|pier)|house|hall|keep|tower|spire|observatory|archive|archives|abbey|foundry|guildhall|warehouse|sanctum|manor|inn|tavern|dock|docks|wharf|pier|mill|sawmill|gristmill|windmill|temple|shrine|vault|cellar|crypt|prison|fortress|fort|outpost|bastion|station|laboratory|library|museum|lodge|citadel|sanctuary|monastery|chapel|garrison|quarry|lighthouse|beacon|glasshouse|lockhouse|bellhouse|watchtower|gatehouse|boathouse|storehouse|almshouse|charthouse|customhouse|workhouse)$/i;
+
 export function isCompoundPlaceWord(word: string): boolean {
   const cleaned = word.trim().replace(/^['’]+|['’]+$/g, '');
   if (cleaned.length < 5) {
     return false;
   }
+  if (NON_PLACE_ATE_WORDS_RE.test(cleaned)) {
+    return false;
+  }
+  if (PERSONAL_ROLE_TITLES.has(cleaned.toLowerCase())) {
+    return false;
+  }
   return COMPOUND_PLACE_SUFFIX_RE.test(cleaned);
+}
+
+/**
+ * Evaluates whether a proper noun phrase is syntactically a Person (NPC) BEFORE any place-noun
+ * or compound-suffix check (`C12-01`).
+ */
+export function isPersonBySyntacticContext(
+  candidate: string,
+  fullText?: string,
+  matchIndex?: number,
+): boolean {
+  const cleaned = cleanNpcLabelForMatching(candidate);
+  if (cleaned.length === 0) {
+    return false;
+  }
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return false;
+  }
+  const firstClean = (words[0] ?? '').replace(/\.$/, '').toLowerCase();
+  const lastClean = (words[words.length - 1] ?? '').replace(/\.$/, '').toLowerCase();
+
+  // If the final head word is an explicit building/room structure (e.g. "Warden's Keep", "Frostwatch Glasshouse"),
+  // it is a structure, not a person.
+  if (EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE.test(lastClean)) {
+    return false;
+  }
+
+  // 1. Starts with any PERSONAL_ROLE_TITLES word in a multi-word name ("Legate Aveline Marr", "Provost Ilwen")
+  if (words.length >= 2 && PERSONAL_ROLE_TITLES.has(firstClean)) {
+    return true;
+  }
+
+  if (typeof fullText === 'string' && fullText.trim().length > 0) {
+    const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Check preceding role title immediately before candidate in fullText
+    if (
+      typeof matchIndex === 'number' &&
+      matchIndex > 0
+    ) {
+      const beforeSlice = fullText.slice(0, matchIndex).trimEnd();
+      const prevWord = (beforeSlice.match(/([A-Za-z]+)\.?$/)?.[1] ?? '').toLowerCase();
+      if (PERSONAL_ROLE_TITLES.has(prevWord)) {
+        return true;
+      }
+    }
+
+    // 2. Acts as the subject of an interpersonal contact verb
+    const subjectContactRe = new RegExp(
+      `\\b${escaped}\\b\\s*(?:,\\s*[^,.;!?]{1,70},\\s*)?(?:asks|asked|hires|hired|begs|begged|warns|warned|tells|told|implores|implored|summons|summoned|recruits|recruited|tasks|tasked|approaches|approached|greets|greeted|meets|met|pleads|pleaded|offers|offered|commissions|commissioned|entrusts|entrusted|presses|pressed|hands|handed|gives|gave|urges|urged|whispers|whispered|explains|explained|bids|bade|wants|wanted|needs|needed|waits|is\\s+waiting|awaits)\\b`,
+      'i',
+    );
+    if (subjectContactRe.test(fullText)) {
+      return true;
+    }
+
+    // 3. Attached to a disappearance/victim predicate or rescue/find verb
+    const missingPredicateRe = new RegExp(
+      `\\b${escaped}\\b\\s*(?:,\\s*[^,.;!?]{1,60},\\s*)?(?:who\\s+)?(?:has\\s+|had\\s+|was\\s+|is\\s+|have\\s+|went\\s+)?(?:vanished|missing|lost|kidnapped|captive|hostage|disappeared|abducted|taken|captured|seized|fell\\s+silent|failed\\s+to\\s+return|not\\s+returned|never\\s+returned)\\b`,
+      'i',
+    );
+    const findVictimRe = new RegExp(
+      `\\b(?:find|rescue|save|locate|recover|search\\s+for|trace|track(?:\\s+down)?|question|speak\\s+with|talk\\s+to|meet|hired\\s+by|summoned\\s+by|recruited\\s+by|tasked\\s+by)\\s+(?:missing\\s+)?(?:[a-z'-]+\\s+){0,2}${escaped}\\b`,
+      'i',
+    );
+    if (missingPredicateRe.test(fullText) || findVictimRe.test(fullText)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Evaluates whether a multi-word proper name `<Word1> <Word2> [<Word3>]` is a Place (`C12-01` Guardrail 1).
+ * Never allows a multi-word proper name to be classified as a Place via `COMPOUND_PLACE_SUFFIX_RE`
+ * unless its final token has a non-`-ate` place suffix AND the phrase is either preceded by a locative
+ * preposition, followed by a place appositive, or ends in an explicit architectural noun.
+ */
+export function isMultiWordPlaceByContext(
+  candidate: string,
+  options?: {
+    readonly fullText?: string;
+    readonly previousWord?: string;
+    readonly afterSlice?: string;
+    readonly matchIndex?: number;
+  },
+): boolean {
+  const cleaned = cleanNpcLabelForMatching(candidate);
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length < 2) {
+    return false;
+  }
+  if (isPersonBySyntacticContext(cleaned, options?.fullText, options?.matchIndex)) {
+    return false;
+  }
+  const lastWord = words[words.length - 1] ?? '';
+  if (!isCompoundPlaceWord(lastWord) && !EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE.test(lastWord)) {
+    return false;
+  }
+  const prevLower = (options?.previousWord ?? '').trim().toLowerCase();
+  const afterSlice = options?.afterSlice ?? '';
+  const precededByLocative = LOCATIVE_PREPOSITIONS.has(prevLower);
+  const followedByPlaceAppositive = APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice);
+  const endsInArchitecturalNoun = EXPLICIT_ARCHITECTURAL_HEAD_NOUN_RE.test(lastWord);
+
+  return precededByLocative || followedByPlaceAppositive || endsInArchitecturalNoun;
 }
 
 /**

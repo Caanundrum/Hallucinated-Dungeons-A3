@@ -26,10 +26,12 @@ import {
 import {
   actionableDirectorFallback,
   evaluateCharacterCapability,
+  hasLeadingObjectInteractionVerb,
   isDialogueDeclaration,
   isDocumentOpenOrReadDeclaration,
   isPassageOrTravelThroughDoorway,
   isWholeContainerLootDeclaration,
+  maskNonExitSceneFeatureLabels,
   resolveConditionalDoorIntent,
   splitPrimaryTargetFromLocative,
   stripQuotedSpeech,
@@ -512,6 +514,10 @@ export async function resolveDeterministicIntentFallback(
   const utterance = understandUtterance(rawText);
   const unquotedRawText = stripQuotedSpeech(rawText);
   const actionText = (unquotedRawText.length > 0 ? unquotedRawText : rawText).toLowerCase();
+  const maskedActionTextForTravel = maskNonExitSceneFeatureLabels(actionText).toLowerCase();
+  const hasLeadingObjectVerb =
+    hasLeadingObjectInteractionVerb(unquotedRawText || rawText) ||
+    isWholeContainerLootDeclaration(unquotedRawText || rawText);
   const isDialogueOrQuestionBypass =
     isDialogueDeclaration(
       rawText,
@@ -586,10 +592,11 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !isDialogueOrQuestionBypass &&
-    ((/\b(return|go back|head back|retreat|back to|passage back)\b/i.test(actionText) &&
-      /\b(scene|chamber|room|inn|tavern|cellar|stairs|upstairs|path|way|earlier|previous)\b/i.test(actionText)) ||
-      /\b(?:return|head\s+back|go\s+back)\s+(?:up|down|to|through)\b/i.test(actionText) ||
-      /\bpassage\s+back\b/i.test(actionText))
+    !hasLeadingObjectVerb &&
+    ((/\b(return|go back|head back|retreat|back to|passage back)\b/i.test(maskedActionTextForTravel) &&
+      /\b(scene|chamber|room|inn|tavern|cellar|stairs|upstairs|path|way|earlier|previous)\b/i.test(maskedActionTextForTravel)) ||
+      /\b(?:return|head\s+back|go\s+back)\s+(?:up|down|to|through)\b/i.test(maskedActionTextForTravel) ||
+      /\bpassage\s+back\b/i.test(maskedActionTextForTravel))
   ) {
     proposedCommandType = 'table.travel_scene';
     returnToPrevious = true;
@@ -609,12 +616,13 @@ export async function resolveDeterministicIntentFallback(
     sceneLoopResolved = true;
   } else if (
     !isDialogueOrQuestionBypass &&
+    !hasLeadingObjectVerb &&
     !mentionsDoorIntent(actionText) &&
     (/\b(leave|travel|head\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:out|outside|onward|for|to|(?:down|up)(?!\s+to\b)|toward|towards|into|through)|go\s+(?:(?:north|south|east|west|northern|southern|eastern|western)\s+)?(?:outside|outdoors|onward|through|to|toward|towards|(?:down|up)(?!\s+to\b)|into|along)|step\s+(?:out|outside|onto|into)|climb|descend|ascend|walk\s+(?:(?:down|up)(?!\s+to\b)|along|through)|(?:take|use)\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:stairs?|staircase|steps|trail|path|pathway|road|passage|passageway|corridor|archway|tunnel|bridge|crossing|ford|causeway|route|exit|doorway|gate|gateway|way\s+onward|way\s+ahead)|down\s+the\s+stairs|up\s+the\s+stairs|enter\s+the|follow(?:s|ing)?\s+(?:the\s+)?(?:[a-z'-]+\s+){0,5}(?:trail|tracks|path|pathway|road|marks?|lead|footprints?|way|corridor|passage|passageway|tunnel|hall|stairs?|archway|route)|proceed\s+(?:to|toward|towards|into|along|(?:down|up)(?!\s+to\b)|through)|continue\s+(?:to|toward|towards|into|onward|(?:down|up)(?!\s+to\b)|along|through)|cross\s+into|make\s+for|seek|higher\s+ground)\b/i.test(
-      actionText,
+      maskedActionTextForTravel,
     ) ||
       /\b(watchtower|tower|dock|docks|pier|harbor|cavern|cave|bridge|ridge|ruin|ruins|keep|fort|sanctum\s+gate|sanctum\s+archway)\b/i.test(
-        actionText,
+        maskedActionTextForTravel,
       ))
   ) {
     // Packet 3 (`RV-03`): Before proposing scene-level travel, check if the player is approaching

@@ -45,6 +45,8 @@ import {
 import {
   APPOSITIVE_PLACE_CLAUSE_RE,
   isCompoundPlaceWord,
+  isMultiWordPlaceByContext,
+  isPersonBySyntacticContext,
   matchesExcludedCharacterName,
   PERSONAL_ROLE_TITLES,
   STRICT_LOCATIVE_PREPOSITIONS,
@@ -147,12 +149,21 @@ function premiseCommittedFactsMarkup(
       const firstWordLower = (rawWords[0] ?? '').toLowerCase();
       const hasRoleTitle =
         PERSONAL_ROLE_TITLES.has(firstWordLower) || PERSONAL_ROLE_TITLES.has(beforeWord);
+      const isSyntacticPerson =
+        hasRoleTitle || isPersonBySyntacticContext(candidate, text, startIdx);
       const isPlaceEntity =
-        !hasRoleTitle &&
+        !isSyntacticPerson &&
         (strippedLocative ||
           STRICT_LOCATIVE_PREPOSITIONS.has(beforeWord) ||
           APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
-          rawWords.some((w) => isCompoundPlaceWord(w)));
+          (rawWords.length === 1
+            ? isCompoundPlaceWord(rawWords[0]!)
+            : isMultiWordPlaceByContext(candidate, {
+                fullText: text,
+                previousWord: beforeWord,
+                afterSlice,
+                matchIndex: startIdx,
+              })));
       seenProper.add(candidate.toLowerCase());
       if (isPlaceEntity) {
         const existingLocIdx = facts.findIndex((f) => f.startsWith('Location: '));

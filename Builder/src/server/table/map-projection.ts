@@ -28,6 +28,7 @@ import { loadMapRuntime, activeSceneInstance, type StoredMapRuntime } from './ma
 import { bootstrapBlankFirstScene, mergeRuntimeEdges } from './scene-builder.js';
 import { visibleSquaresFrom } from './path-validator.js';
 import { attachExitsToStoredScene } from './scene-exit-projection.js';
+import { resolveProjectedObjectSprite } from '../assets/object-sprites.js';
 
 export class MapProjectionError extends Error {
   readonly code: string;
@@ -374,26 +375,37 @@ export function buildAuthoritativeMapBundle(options: {
         doorStates: { ...directorScene.doorStates, ...runtime.doorStates },
       },
     );
-    const features = directorScene.features.map((feature) => ({
-      column: feature.column,
-      row: feature.row,
-      label: feature.label,
-      referenceKind: feature.referenceKind,
-      objectId: feature.objectId,
-      objectKind: feature.objectKind,
-      objectState: feature.state,
-      interactable: feature.interactable,
-      ...(feature.lockState !== undefined ? { lockState: feature.lockState } : {}),
-      ...(feature.keyItemId !== undefined ? { keyItemId: feature.keyItemId } : {}),
-      ...(feature.lockpickDC !== undefined ? { lockpickDC: feature.lockpickDC } : {}),
-      ...(feature.breakDC !== undefined ? { breakDC: feature.breakDC } : {}),
-      ...(feature.inspectDC !== undefined ? { inspectDC: feature.inspectDC } : {}),
-      ...(feature.contents !== undefined ? { contents: feature.contents } : {}),
-      ...(feature.targetEdgeOrObjectId !== undefined
-        ? { targetEdgeOrObjectId: feature.targetEdgeOrObjectId }
-        : {}),
-      ...(feature.heldItems !== undefined ? { heldItems: feature.heldItems } : {}),
-    }));
+    const features = directorScene.features.map((feature) => {
+      const sprite = resolveProjectedObjectSprite({
+        objectKind: feature.objectKind,
+        referenceKind: feature.referenceKind,
+        label: feature.label,
+        state: feature.state,
+        lockState: feature.lockState ?? null,
+      });
+      return {
+        column: feature.column,
+        row: feature.row,
+        label: feature.label,
+        referenceKind: feature.referenceKind,
+        objectId: feature.objectId,
+        objectKind: feature.objectKind,
+        objectState: feature.state,
+        interactable: feature.interactable,
+        spriteKey: sprite.spriteKey,
+        spriteUrl: sprite.spriteUrl,
+        ...(feature.lockState !== undefined ? { lockState: feature.lockState } : {}),
+        ...(feature.keyItemId !== undefined ? { keyItemId: feature.keyItemId } : {}),
+        ...(feature.lockpickDC !== undefined ? { lockpickDC: feature.lockpickDC } : {}),
+        ...(feature.breakDC !== undefined ? { breakDC: feature.breakDC } : {}),
+        ...(feature.inspectDC !== undefined ? { inspectDC: feature.inspectDC } : {}),
+        ...(feature.contents !== undefined ? { contents: feature.contents } : {}),
+        ...(feature.targetEdgeOrObjectId !== undefined
+          ? { targetEdgeOrObjectId: feature.targetEdgeOrObjectId }
+          : {}),
+        ...(feature.heldItems !== undefined ? { heldItems: feature.heldItems } : {}),
+      };
+    });
     return {
       campaignId,
       mapBundleId: `director:${directorScene.sceneId}:${campaignId}`,
@@ -533,10 +545,28 @@ export function buildAuthoritativeMapBundle(options: {
     }),
     artProvenance: presentation?.artProvenance ?? 'procedural_local_placeholder',
     sceneBanner,
-    notableFeatures:
+    notableFeatures: (
       presentation?.notableFeatures ??
       (blankBootstrap?.notableFeatures ??
-        (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES)),
+        (isBlankTable ? [] : DEFAULT_NOTABLE_FEATURES))
+    ).map((feature): MapNotableFeatureRecord => {
+      const f = feature as MapNotableFeatureRecord;
+      if (f.spriteKey && f.spriteUrl) {
+        return f;
+      }
+      const sprite = resolveProjectedObjectSprite({
+        objectKind: f.objectKind ?? null,
+        referenceKind: f.referenceKind ?? null,
+        label: f.label,
+        objectState: f.objectState ?? null,
+        lockState: f.lockState ?? null,
+      });
+      return {
+        ...f,
+        spriteKey: sprite.spriteKey,
+        spriteUrl: sprite.spriteUrl,
+      };
+    }),
     sceneTemplateId: scene?.sceneId ?? options.currentChapterId ?? null,
     sceneArtUrl: resolveSceneArtUrl(scene?.sceneId ?? options.currentChapterId ?? null),
     viewerSeatId: null,

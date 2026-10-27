@@ -182,6 +182,10 @@ export interface MapNotableFeatureRecord {
   readonly contents?: readonly string[];
   readonly targetEdgeOrObjectId?: string | null;
   readonly heldItems?: readonly string[];
+  /** Canonical top-down object sprite key (`kind:archetype:state`). */
+  readonly spriteKey?: string;
+  /** Resolved top-down object icon URL or SVG data URL. */
+  readonly spriteUrl?: string;
 }
 
 /** Non-authoritative map reference markers for lighting / atmosphere / actors. */

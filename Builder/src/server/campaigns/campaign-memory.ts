@@ -53,7 +53,10 @@ import { COLLECTIONS } from '../persistence/firestore.js';
 import { CampaignNotFoundError } from './errors.js';
 import { appendChronicleEntry } from '../communication/chronicle.js';
 import { emptyMapRuntime } from '../table/map-runtime.js';
-import { matchesExcludedCharacterName } from '../../shared/campaign-facts.js';
+import {
+  isPersonBySyntacticContext,
+  matchesExcludedCharacterName,
+} from '../../shared/campaign-facts.js';
 import { classifyNpcRoles, extractPremiseEntities } from './campaign-blueprint.js';
 
 export class CampaignMemoryError extends Error {
@@ -408,7 +411,7 @@ function seedNpcsFromBlueprint(
   const filteredNamedNpcs = (blueprint.namedNpcs ?? []).filter(
     (name) =>
       !matchesExcludedCharacterName(name, excludeCharacterNames) &&
-      !placeSet.has(name.toLowerCase()),
+      (isPersonBySyntacticContext(name, premiseText) || !placeSet.has(name.toLowerCase())),
   );
   const { missingNpcs, presentNpcs, antagonistNpcs } = classifyNpcRoles(
     filteredNamedNpcs,
@@ -429,7 +432,7 @@ function seedNpcsFromBlueprint(
       for (const n of r.npcs ?? []) {
         if (
           !matchesExcludedCharacterName(n.name, excludeCharacterNames) &&
-          !placeSet.has(n.name.toLowerCase()) &&
+          (isPersonBySyntacticContext(n.name, premiseText) || !placeSet.has(n.name.toLowerCase())) &&
           !roomNpcRoles.has(n.name.toLowerCase())
         ) {
           roomNpcRoles.set(n.name.toLowerCase(), n.role);

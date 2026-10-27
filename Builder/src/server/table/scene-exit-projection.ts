@@ -100,6 +100,48 @@ function nearbyDoor(
 }
 
 /**
+ * Formats a scene-transition exit feature (`objectKind === 'exit'`) with explicit `"Exit"`
+ * terminology (e.g., `"East Exit → <Destination>"` or `"East Exit — closed"`), never labeling
+ * a map-transition exit marker as a `"Door"` or `"Doorway"`.
+ */
+export function formatSceneExitPlayerFacingLabel(options: {
+  readonly rawLabel: string;
+  readonly orientation: 'north' | 'south' | 'east' | 'west';
+  readonly destinationHint?: string | undefined;
+  readonly doorState?: DoorState | undefined;
+}): string {
+  const cardinal =
+    options.orientation.charAt(0).toUpperCase() + options.orientation.slice(1).toLowerCase();
+  const cleanRaw = options.rawLabel
+    .replace(/\s*[—–-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+    .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, '')
+    .trim();
+  const cleanDest = (options.destinationHint ?? '')
+    .replace(/\s*[—–-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+    .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, '')
+    .trim();
+  const isGenericDoorLabel =
+    cleanRaw.length === 0 ||
+    /^(?:(?:wooden|iron|stone|heavy|oak|oaken|reinforced|locked|closed|open|arched|narrow)\s+)*(?:door|doorway)(?:\s+(?:north|south|east|west|ahead|onward))?$/i.test(
+      cleanRaw,
+    );
+  const stateSuffix = options.doorState !== undefined ? ` — ${options.doorState}` : '';
+  if (isGenericDoorLabel) {
+    if (
+      cleanDest.length > 0 &&
+      !/^(?:(?:wooden|iron|stone|heavy|oak)\s+)*(?:door|doorway)$/i.test(cleanDest)
+    ) {
+      return `${cardinal} Exit → ${cleanDest}${stateSuffix}`;
+    }
+    return `${cardinal} Exit${stateSuffix}`;
+  }
+  if (/\bexit\b/i.test(cleanRaw)) {
+    return `${cleanRaw}${stateSuffix}`;
+  }
+  return `${cardinal} Exit → ${cleanRaw}${stateSuffix}`;
+}
+
+/**
  * Materialize every contract exit onto perimeter features + door edges.
  * Idempotent: existing exit features are normalized to the perimeter boundary.
  */
@@ -143,12 +185,9 @@ export function materializeContractExits<
   readonly edges: MapEdgeRecord[];
   readonly doorStates: Record<string, DoorState>;
 } {
-  // Normalize any existing exit features so they are strictly on the outer perimeter.
+  // Normalize any existing exit features so they are strictly on the outer perimeter and use Exit terminology.
   const features = options.features.map((feature, idx) => {
     if (!isExitFeature(feature)) {
-      return feature;
-    }
-    if (isPerimeterCoordinate(feature.column, feature.row, options.columns, options.rows)) {
       return feature;
     }
     const snapped = inferExitPlacement(
@@ -158,10 +197,39 @@ export function materializeContractExits<
       options.rows,
       idx,
     );
+    const col = isPerimeterCoordinate(feature.column, feature.row, options.columns, options.rows)
+      ? feature.column
+      : snapped.column;
+    const row = isPerimeterCoordinate(feature.column, feature.row, options.columns, options.rows)
+      ? feature.row
+      : snapped.row;
+    const orientation: 'north' | 'south' | 'east' | 'west' =
+      col >= options.columns - 1
+        ? 'east'
+        : col <= 0
+          ? 'west'
+          : row <= 0
+            ? 'north'
+            : 'south';
+    const stateMatch = feature.label.match(/\b(open|closed|locked)\b/i);
+    const matchedContractExit = options.exits.find((e) => e.exitId === feature.objectId);
+    const doorState: DoorState | undefined =
+      feature.lockState === 'locked' || feature.state === 'locked'
+        ? 'locked'
+        : stateMatch
+          ? (stateMatch[1]!.toLowerCase() as DoorState)
+          : undefined;
+    const formattedLabel = formatSceneExitPlayerFacingLabel({
+      rawLabel: feature.label,
+      orientation,
+      destinationHint: matchedContractExit?.destinationHint,
+      doorState,
+    });
     return {
       ...feature,
-      column: snapped.column,
-      row: snapped.row,
+      column: col,
+      row: row,
+      label: formattedLabel,
     };
   }) as TFeature[];
   const edges = [...options.edges];
@@ -228,14 +296,23 @@ export function materializeContractExits<
         : existingOriented !== undefined
           ? (doorStates[existingOriented.edgeId] ?? existingOriented.doorState ?? 'closed')
           : 'closed';
-    const labeledExit = /\b—\s*(open|closed|locked|unlocked)\b/i.test(exit.label)
-      ? exit.label
-      : `${exit.label.replace(/\s*\((?:open|closed|locked|unlocked)\)\s*/gi, '').trim()} — ${doorState}`;
+    const labeledExit = formatSceneExitPlayerFacingLabel({
+      rawLabel: exit.label,
+      orientation: place.orientation,
+      destinationHint: exit.destinationHint,
+      doorState,
+    });
     if (!knownExitIds.has(exit.exitId)) {
+      const cleanExitBase = exit.label
+        .replace(/\s*[—–-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+        .trim()
+        .toLowerCase();
       const alreadyLabeled = features.some(
         (feature) =>
           isExitFeature(feature) &&
-          feature.label.toLowerCase().startsWith(exit.label.toLowerCase().slice(0, 12)),
+          (feature.label.toLowerCase() === labeledExit.toLowerCase() ||
+            (cleanExitBase.length >= 4 &&
+              feature.label.toLowerCase().includes(cleanExitBase.slice(0, 12)))),
       );
       if (!alreadyLabeled) {
         features.push({

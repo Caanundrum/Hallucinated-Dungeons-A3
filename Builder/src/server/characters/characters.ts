@@ -26,11 +26,23 @@ import {
 } from '../../shared/character-contract.js';
 import {
   type GeneratePortraitResponse,
+  PORTRAIT_DWARF_FIGHTER,
+  PORTRAIT_ELF_ROGUE,
+  archetypePortraitUrl,
   isTrustedAvatarUrl,
   validateAppearancePrompt,
 } from '../../shared/portrait-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
-import { loadCampaignAsset, storeCampaignAssetRecord } from '../assets/campaign-assets.js';
+import {
+  buildPortraitAssetBankKey,
+  checkAndRecordAccountImageQuota,
+  loadAccountPortraitHistory,
+  loadCampaignAsset,
+  loadFromAssetBank,
+  saveAccountPortraitHistory,
+  saveToAssetBank,
+  storeCampaignAssetRecord,
+} from '../assets/campaign-assets.js';
 import { resolvePortraitChoices, type PortraitEnvironment } from './portrait.js';
 import { findQuickStartTemplate } from '../rules/srd-manifest.js';
 import {
@@ -1135,40 +1147,103 @@ export async function generateCharacterPortrait(options: {
     }
   }
 
-  const portrait = await resolvePortraitChoices({
-    appearancePrompt,
+  const portraitBankKey = buildPortraitAssetBankKey({
     ancestryId,
     classId,
     pronouns,
-    characterName: choices?.identity?.name ?? null,
-    characterHistory,
-    preserveCorePortrait: stored !== null && Boolean(stored.avatarUrl),
-    baseImage,
-    ...(options.env !== undefined ? { env: options.env } : {}),
-    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+  });
+  const quota = await checkAndRecordAccountImageQuota({
+    firestore,
+    accountId,
+    kind: 'portrait',
   });
 
-  const persistSingleUrl = async (rawUrl: string): Promise<string> => {
-    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(rawUrl);
-    if (match !== null && rawUrl.length > 1000) {
-      try {
-        return await storeCampaignAssetRecord({
-          firestore,
-          campaignId: characterId ?? draftId ?? 'character-portrait',
-          kind: 'npc_portrait',
-          mimeType: match[1]!,
-          base64Data: match[2]!,
-          prompt: appearancePrompt,
-        });
-      } catch {
-        return rawUrl;
-      }
-    }
-    return rawUrl;
-  };
+  let resolvedOptions: readonly string[];
+  let resolvedAvatarUrl: string;
+  let portraitSource: 'generated' | 'archetype';
 
-  const resolvedOptions = await Promise.all(portrait.avatarOptions.map(persistSingleUrl));
-  const resolvedAvatarUrl = resolvedOptions[0] ?? portrait.avatarUrl;
+  if (!quota.allowed) {
+    // Silent $0.00 cache fallback on daily cap or 15s cooldown (Guardrail 4 / Packet 5).
+    const historyUrls = await loadAccountPortraitHistory({
+      firestore,
+      accountId,
+      ancestryId,
+      classId,
+      pronouns,
+    });
+    const bankUrls =
+      historyUrls.length >= 3 ? [] : await loadFromAssetBank(firestore, portraitBankKey);
+    const primaryCurated = archetypePortraitUrl({
+      ancestryId,
+      classId,
+      name: choices?.identity?.name ?? null,
+    });
+    const curatedUrls = [
+      primaryCurated,
+      primaryCurated === PORTRAIT_ELF_ROGUE ? PORTRAIT_DWARF_FIGHTER : PORTRAIT_ELF_ROGUE,
+    ];
+    const combined = [...new Set([...historyUrls, ...bankUrls, ...curatedUrls])].filter((u) =>
+      isTrustedAvatarUrl(u),
+    );
+    resolvedOptions = combined.slice(0, 3);
+    resolvedAvatarUrl = resolvedOptions[0] ?? primaryCurated;
+    portraitSource = 'archetype';
+  } else {
+    const portrait = await resolvePortraitChoices({
+      appearancePrompt,
+      ancestryId,
+      classId,
+      pronouns,
+      characterName: choices?.identity?.name ?? null,
+      characterHistory,
+      preserveCorePortrait: stored !== null && Boolean(stored.avatarUrl),
+      baseImage,
+      ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+    });
+
+    const persistSingleUrl = async (rawUrl: string): Promise<string> => {
+      const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(rawUrl);
+      if (match !== null && rawUrl.length > 1000) {
+        try {
+          return await storeCampaignAssetRecord({
+            firestore,
+            campaignId: characterId ?? draftId ?? 'character-portrait',
+            kind: 'npc_portrait',
+            mimeType: match[1]!,
+            base64Data: match[2]!,
+            prompt: appearancePrompt,
+          });
+        } catch {
+          return rawUrl;
+        }
+      }
+      return rawUrl;
+    };
+
+    resolvedOptions = await Promise.all(portrait.avatarOptions.map(persistSingleUrl));
+    resolvedAvatarUrl = resolvedOptions[0] ?? portrait.avatarUrl;
+    portraitSource = portrait.source;
+
+    if (resolvedOptions.length > 0 && portraitSource === 'generated') {
+      await Promise.all([
+        saveAccountPortraitHistory({
+          firestore,
+          accountId,
+          avatarOptions: resolvedOptions,
+          ancestryId,
+          classId,
+          pronouns,
+        }),
+        saveToAssetBank({
+          firestore,
+          bankKey: portraitBankKey,
+          urls: resolvedOptions,
+        }),
+      ]);
+    }
+  }
+
   if (!isTrustedAvatarUrl(resolvedAvatarUrl)) {
     throw new PortraitRequestError('Portrait could not be produced.');
   }
@@ -1179,7 +1254,7 @@ export async function generateCharacterPortrait(options: {
     const updated: StoredCharacter = {
       ...stored,
       avatarUrl: resolvedAvatarUrl,
-      avatarOptions: resolvedOptions,
+      avatarOptions: [...resolvedOptions],
       appearancePrompt,
       milestonePortraitCredits,
       revisions: [
@@ -1193,7 +1268,7 @@ export async function generateCharacterPortrait(options: {
     const updatedDraft: StoredDraft = {
       ...draft,
       avatarUrl: resolvedAvatarUrl,
-      avatarOptions: resolvedOptions,
+      avatarOptions: [...resolvedOptions],
       portraitForged: true,
       appearancePrompt,
       updatedAt: new Date(),
@@ -1203,10 +1278,10 @@ export async function generateCharacterPortrait(options: {
 
   return {
     avatarUrl: resolvedAvatarUrl,
-    avatarOptions: resolvedOptions,
+    avatarOptions: [...resolvedOptions],
     portraitForged: true,
     appearancePrompt,
-    source: portrait.source,
+    source: portraitSource,
     ...(milestonePortraitCredits !== undefined ? { milestonePortraitCredits } : {}),
   };
 }

@@ -38,6 +38,7 @@ import {
   canonicalDoorFeatureKey,
 } from '../../shared/play-authority-contract.js';
 import { archetypePortraitUrl } from '../../shared/portrait-contract.js';
+import { resolveObjectSpriteDescriptor } from '../../shared/object-sprite-catalog.js';
 import {
   objectVisualFamily,
   resolveSceneVisuals,
@@ -357,18 +358,30 @@ function paintSemanticSvg(
             Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
         );
         if (nearbyDoor !== undefined) {
-          const doorLabel = formatDoorPlayerFacingLabel(
-            doorAuthorityFromStored(nearbyDoor.doorState),
-            nearbyDoor.orientation,
-          );
+          const auth = doorAuthorityFromStored(nearbyDoor.doorState);
+          const stateSuffix =
+            auth.leaf === 'open'
+              ? 'open'
+              : auth.lock === 'locked'
+                ? 'closed, locked'
+                : auth.lock === 'unlocked'
+                  ? 'closed, unlocked'
+                  : 'closed';
+          const dirWord =
+            nearbyDoor.orientation.charAt(0).toUpperCase() + nearbyDoor.orientation.slice(1);
           const cleanFeatureLabel = feature.label
             .replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+            .replace(/\s*\((?:open|closed|locked|unlocked)[^)]*\)\s*$/i, '')
             .trim();
-          if (cleanFeatureLabel.length > 0 && !/^wooden doorway/i.test(cleanFeatureLabel)) {
-            fullLabel = `${cleanFeatureLabel} (${doorLabel})`;
+          if (/\bexit\b/i.test(cleanFeatureLabel)) {
+            fullLabel = `${cleanFeatureLabel} — ${stateSuffix}`;
+          } else if (cleanFeatureLabel.length > 0 && !/^wooden doorway/i.test(cleanFeatureLabel)) {
+            fullLabel = `${dirWord} Exit → ${cleanFeatureLabel} — ${stateSuffix}`;
           } else {
-            fullLabel = doorLabel;
+            fullLabel = `${dirWord} Exit — ${stateSuffix}`;
           }
+        } else if (!/\bexit\b/i.test(fullLabel)) {
+          fullLabel = `Exit → ${fullLabel}`;
         }
       }
       return {
@@ -625,6 +638,16 @@ function paintSemanticSvg(
       : !isContainer && !isLever && !isTrap && !isItem && !isProp && !isNpcPortrait
         ? `<circle class="map-poi-core" cx="${x}" cy="${y}" r="${isActor || isExit ? 8 : isTorch ? 7 : 6}" fill="${fill}" stroke="#1a1208" stroke-width="1.5" />`
         : '';
+    const spriteDesc = !isActor
+      ? feature.spriteKey && feature.spriteUrl
+        ? { spriteKey: feature.spriteKey, spriteUrl: feature.spriteUrl }
+        : resolveObjectSpriteDescriptor(feature)
+      : null;
+    const spriteSize = Math.round(pixelsPerSquare * 0.72);
+    const objectSpriteImg =
+      spriteDesc !== null && !isNpcPortrait && (!isExit || !doorOwnedExit)
+        ? `<image class="map-poi-sprite" data-testid="map-poi-sprite" data-sprite-key="${escapeHtml(spriteDesc.spriteKey)}" href="${escapeHtml(spriteDesc.spriteUrl)}" x="${x - spriteSize / 2}" y="${y - spriteSize / 2}" width="${spriteSize}" height="${spriteSize}" preserveAspectRatio="xMidYMid meet" pointer-events="none" aria-hidden="true" />`
+        : '';
     const testId = isExit
       ? 'map-exit-marker'
       : isActor
@@ -642,19 +665,15 @@ function paintSemanticSvg(
                   : 'map-poi-marker';
     const boundEdgeAttr =
       boundDoor !== null ? ` data-bound-edge="${escapeHtml(boundDoor.edgeId)}"` : '';
+    const spriteKeyAttr =
+      spriteDesc !== null ? ` data-sprite-key="${escapeHtml(spriteDesc.spriteKey)}"` : '';
     const cleanLabel = feature.label.replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '').trim();
     const accessibleName = doorOwnedExit
       ? `Exit marker for ${cleanLabel} (${formatEdgeAccessibleLabel(boundDoor, map.edges)})`
       : feature.label;
     // Visual-only object markers: never click-to-interact.
     const interactiveAttrs = `role="img" aria-label="${escapeHtml(accessibleName)}"`;
-    const exitStateDisplay =
-      doorOwnedExit && boundDoor.doorState !== 'open'
-        ? boundDoor.doorState === 'locked'
-          ? 'closed, locked'
-          : 'closed'
-        : visual.stateVariant.replace(/^state_/, '');
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isLever ? ' map-poi-lever' : ''}${isTrap ? ' map-poi-trap' : ''}${isItem ? ' map-poi-item' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr} data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isLever ? ' map-poi-lever' : ''}${isTrap ? ' map-poi-trap' : ''}${isItem ? ' map-poi-item' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr}${spriteKeyAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -667,7 +686,7 @@ function paintSemanticSvg(
       ${itemMark}
       ${propDiamond}
       ${coreDisc}
-      <title>${escapeHtml(cleanLabel)} · ${escapeHtml(kindLabel)} · ${escapeHtml(exitStateDisplay)}</title>
+      ${objectSpriteImg}
     </g>`;
   };
   const hazardLayer = hazardFeatures.map(paintFeatureDot).join('');
@@ -684,7 +703,6 @@ function paintSemanticSvg(
         ${leader}
         <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="4" class="map-label-plate" fill="#16110c" fill-opacity="0.92" stroke="#c4a574" stroke-opacity="0.7" />
         <text class="map-label-compact" x="${placement.x + 7}" y="${placement.y + placement.height / 2 + placement.fontSize * 0.35}" fill="#f8e7b0" font-size="${placement.fontSize}" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="600">${escapeHtml(placement.displayText)}</text>
-        <title>${escapeHtml(placement.fullLabel)}</title>
       </g>`;
     })
     .join('');
@@ -1285,6 +1303,16 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function bindPoiTooltips(): void {
+    // Enforce Packet 3 Single Map Tooltip rule: zero <title> SVG nodes and zero native [title] attributes inside the map stage.
+    host.querySelectorAll('svg title').forEach((node) => node.remove());
+    host.querySelectorAll('[title]').forEach((el) => {
+      const nativeTitle = el.getAttribute('title');
+      if (nativeTitle && !el.getAttribute('aria-label')) {
+        el.setAttribute('aria-label', nativeTitle);
+      }
+      el.removeAttribute('title');
+    });
+
     let tip = host.querySelector<HTMLElement>('[data-testid="map-poi-tooltip"]');
     if (tip === null) {
       tip = document.createElement('div');
@@ -1299,7 +1327,11 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       if (tip === null) return;
       const hostBox = host.getBoundingClientRect();
       tip.hidden = false;
-      tip.textContent = `${label} · ${kind.replace(/_/g, ' ')}`;
+      const displayKind =
+        kind === 'exit' || kind === 'Map Exit'
+          ? 'Map Exit'
+          : kind.replace(/_/g, ' ');
+      tip.textContent = displayKind.length > 0 ? `${label} · ${displayKind}` : label;
       const leftPx = Math.max(8, clientX - hostBox.left + 12);
       const minTopPx = leftPx < 240 ? 58 : 8;
       tip.style.left = `${leftPx}px`;
@@ -1346,6 +1378,19 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           }
         }
       };
+    });
+    host.querySelectorAll<SVGGElement>('g.map-label-chip').forEach((chip) => {
+      const fullLabel = chip.getAttribute('data-full-label') ?? 'Point of interest';
+      const labelKind = chip.getAttribute('data-label-kind') ?? 'marker';
+      const badge =
+        /\bexit\b/i.test(fullLabel)
+          ? 'Map Exit'
+          : labelKind === 'token'
+            ? 'party'
+            : '';
+      chip.onmouseenter = (event) => show(fullLabel, badge, event.clientX, event.clientY);
+      chip.onmousemove = (event) => show(fullLabel, badge, event.clientX, event.clientY);
+      chip.onmouseleave = () => hide();
     });
     host.querySelectorAll<SVGGElement>('g.map-label-chip[data-label-id^="door:"]').forEach((chip) => {
       const labelId = chip.getAttribute('data-label-id') ?? '';
@@ -1601,6 +1646,25 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       const layer = isHazard ? layers.hazards_zones : layers.ground_markers;
       layer.addChild(marker);
+      if (!isActor) {
+        const spriteUrl =
+          feature.spriteUrl ?? resolveObjectSpriteDescriptor(feature).spriteUrl;
+        const targetSize = Math.round(pixelsPerSquare * 0.72);
+        Assets.load<Texture>(spriteUrl)
+          .then((tex) => {
+            if (layers === null || paintSeq !== pixiPaintSeq) {
+              return;
+            }
+            const spr = new Sprite(tex);
+            spr.width = targetSize;
+            spr.height = targetSize;
+            spr.x = x - targetSize / 2;
+            spr.y = y - targetSize / 2;
+            spr.eventMode = 'none';
+            layer.addChild(spr);
+          })
+          .catch(() => undefined);
+      }
       const isPrimaryInteractable =
         isContainer || isLever || isTrap || isItem || isActor || isExit;
       const featureLabel = new Text({
