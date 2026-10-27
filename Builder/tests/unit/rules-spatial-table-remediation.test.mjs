@@ -15,6 +15,8 @@ import {
 import {
   buildCampaignBlueprint,
   classifyNpcRoles,
+  detectQuestHook,
+  draftCampaignBlueprintOptionsWithAi,
   extractPremiseEntities,
 } from '../../dist/server/campaigns/campaign-blueprint.js';
 import {
@@ -34,7 +36,41 @@ import {
   buildCampaignAssetPrompt,
   checkAndRecordAccountImageQuota,
   formatBattlemapCardinalExits,
+  isImageQuotaExemptAccount,
+  loadFromAssetBank,
+  MAX_LIVE_MAP_FORGES_PER_24H,
+  MAX_LIVE_MAP_FORGES_PER_CAMPAIGN,
+  MAX_LIVE_PORTRAIT_FORGES_PER_24H,
+  resetAccountImageQuota,
+  saveToAssetBank,
 } from '../../dist/server/assets/campaign-assets.js';
+import {
+  evaluateGlobalAssetBankEligibility,
+} from '../../dist/server/assets/asset-library-guard.js';
+import {
+  CLEAN_MAP_ZOOM_STEPS,
+  clampMapPanOffset,
+  computeClampedMapTooltipPosition,
+  computeMapDragGesture,
+  layoutMapLabels,
+  stepMapZoomPercent,
+} from '../../dist/shared/map-label-layout.js';
+import {
+  describeMoveDestination,
+  formatMoveTravelSummary,
+} from '../../dist/shared/map-presentation.js';
+import {
+  buildResolvedActionReceipt,
+} from '../../dist/shared/resolved-action-receipt.js';
+import {
+  applyDmNpcDirective,
+  applyDmSceneDirective,
+  closeCurrentChapter,
+} from '../../dist/server/campaigns/campaign-memory.js';
+import {
+  isTrustedForwardedHost,
+  servingOriginFromHost,
+} from '../../dist/server/http/origin-guard.js';
 import {
   attachExitsToStoredScene,
   extractSceneCardinalExits,
@@ -1490,32 +1526,400 @@ test('Packets 1–5 (C12-01, C12-02, Exit Terminology, Top-Down Object Sprites, 
   assert.equal(qCooldown.allowed, false);
   assert.equal(qCooldown.reason, 'cooldown');
 
-  // Calling after 20s and 40s succeeds up to 3/day
-  const q2 = await checkAndRecordAccountImageQuota({
-    firestore: mockFirestore,
-    accountId: 'acc-quota-test',
-    kind: 'portrait',
-    nowMs: t0 + 20_000,
-  });
-  const q3 = await checkAndRecordAccountImageQuota({
-    firestore: mockFirestore,
-    accountId: 'acc-quota-test',
-    kind: 'portrait',
-    nowMs: t0 + 40_000,
-  });
-  assert.equal(q2.allowed, true);
-  assert.equal(q3.allowed, true);
-  assert.equal(q3.usedToday, 3);
+  // Calling after 20s..100s succeeds up to 6/day (Packet 2)
+  assert.equal(MAX_LIVE_PORTRAIT_FORGES_PER_24H, 6);
+  assert.equal(MAX_LIVE_MAP_FORGES_PER_CAMPAIGN, 12);
+  assert.equal(MAX_LIVE_MAP_FORGES_PER_24H, 12);
+  for (let i = 2; i <= 6; i += 1) {
+    const qNext = await checkAndRecordAccountImageQuota({
+      firestore: mockFirestore,
+      accountId: 'acc-quota-test',
+      kind: 'portrait',
+      nowMs: t0 + i * 20_000,
+    });
+    assert.equal(qNext.allowed, true, `Portrait forge #${i} is allowed within 6/24h`);
+    assert.equal(qNext.usedToday, i);
+  }
 
-  // 4th call within 24h is blocked by daily_cap
-  const q4 = await checkAndRecordAccountImageQuota({
+  // 7th portrait call within 24h is blocked by daily_cap
+  const q7 = await checkAndRecordAccountImageQuota({
     firestore: mockFirestore,
     accountId: 'acc-quota-test',
     kind: 'portrait',
-    nowMs: t0 + 60_000,
+    nowMs: t0 + 140_000,
   });
-  assert.equal(q4.allowed, false);
-  assert.equal(q4.reason, 'daily_cap');
+  assert.equal(q7.allowed, false);
+  assert.equal(q7.reason, 'daily_cap');
+
+  // Battlemap quota: up to 12 per campaign / 24h, 13th blocked
+  for (let i = 1; i <= 12; i += 1) {
+    const mNext = await checkAndRecordAccountImageQuota({
+      firestore: mockFirestore,
+      accountId: 'acc-map-quota-test',
+      campaignId: 'camp-map-12',
+      kind: 'battlemap',
+      nowMs: t0 + 200_000 + i * 20_000,
+    });
+    assert.equal(mNext.allowed, true, `Battlemap forge #${i} is allowed within 12/campaign`);
+  }
+  const m13 = await checkAndRecordAccountImageQuota({
+    firestore: mockFirestore,
+    accountId: 'acc-map-quota-test',
+    campaignId: 'camp-map-12',
+    kind: 'battlemap',
+    nowMs: t0 + 500_000,
+  });
+  assert.equal(m13.allowed, false);
+  assert.equal(m13.reason, 'campaign_cap');
+});
+
+test('VP-01..VP-05, 6/12 Quotas + Admin/Codex/Antigravity Bypass, Global Asset Bank Guard, & Security Hardening', async () => {
+  // 1. VP-01: Map chips preserve "Exit" and right-edge tooltips flip left & clamp within stage
+  const placements = layoutMapLabels(
+    [
+      {
+        id: 'exit-east',
+        kind: 'poi',
+        fullLabel: 'East Exit → Sunken Vault — closed',
+        referenceKind: 'exit',
+        objectKind: 'exit',
+        x: 720,
+        y: 256,
+        obstacle: { x: 704, y: 240, w: 32, h: 32 },
+        priority: 30,
+      },
+    ],
+    {
+      mapWidth: 768,
+      mapHeight: 512,
+      zoomScale: 1,
+    },
+  );
+  assert.equal(placements.length, 1);
+  assert.match(placements[0].displayText, /\bEast Exit\b/i, 'Exit map chip keeps "Exit" in displayText');
+
+  const rightEdgeTip = computeClampedMapTooltipPosition({
+    anchorX: 730,
+    anchorY: 250,
+    stageWidth: 768,
+    stageHeight: 512,
+    tooltipWidth: 220,
+    tooltipHeight: 36,
+    featureColumn: 11,
+    mapColumns: 12,
+  });
+  assert.equal(rightEdgeTip.flippedLeft, true, 'Right-edge exit marker flips tooltip to the left');
+  assert.equal(
+    rightEdgeTip.left + 220 <= 768 - 8,
+    true,
+    'Clamped tooltip right edge stays inside stageWidth - 8',
+  );
+  assert.equal(rightEdgeTip.left >= 8, true, 'Clamped tooltip left edge stays >= 8');
+
+  // 2. VP-03: Scenery/furniture prepositional clauses ("Near a fallen parcel rack...") never hijack a Missing Person questHook
+  const missingPersonWithSceneryPremise =
+    'At the Weighhouse, Bailiff Maelis asks the party to find Curator Pelan Rusk, who vanished before dawn. Near a fallen parcel rack, violet wool tufts catch on a rusted grate.';
+  const hook = detectQuestHook(missingPersonWithSceneryPremise);
+  assert.doesNotMatch(
+    hook,
+    /missing\s+courier|parcel\s+rack/i,
+    'Incidental scenery ("Near a fallen parcel rack...") never spawns a competing missing courier hook',
+  );
+  assert.match(
+    hook,
+    /disappearance\s+of\s+Curator\s+Pelan\s+Rusk/i,
+    'Missing person questHook names the disappearance of Curator Pelan Rusk',
+  );
+  const vp03Bp = buildCampaignBlueprint({
+    summary: missingPersonWithSceneryPremise,
+    startLevel: 1,
+    targetEndLevel: 2,
+  });
+  assert.doesNotMatch(vp03Bp.questHook, /missing\s+courier/i);
+  assert.equal(
+    vp03Bp.namedProps.some((p) => /parcel\s+rack/i.test(p)),
+    false,
+    'Furniture noun "parcel rack" is excluded from namedProps',
+  );
+
+  // 3. VP-04: In-room approach movement receipt preserves the declared feature name ("Brass-bound strongbox") over an adjacent doorway
+  const vp04Map = {
+    title: 'Weighhouse',
+    coordinateSpace: { columns: 12, rows: 8, feetPerSquare: 5 },
+    edges: [
+      {
+        edgeId: 'door-east',
+        kind: 'door',
+        column: 10,
+        row: 4,
+        orientation: 'east',
+        doorState: 'closed',
+      },
+    ],
+    notableFeatures: [
+      {
+        objectId: 'obj-strongbox',
+        label: 'Brass-bound strongbox (closed)',
+        objectKind: 'container',
+        referenceKind: 'prop',
+        column: 9,
+        row: 4,
+      },
+    ],
+  };
+  const moveDest = describeMoveDestination(
+    vp04Map,
+    { column: 10, row: 4 },
+    'I walk up to the Brass-bound strongbox.',
+  );
+  assert.equal(
+    moveDest,
+    'Brass-bound strongbox',
+    'describeMoveDestination names the declared feature ("Brass-bound strongbox") even when stopping beside a doorway square',
+  );
+  const moveSummary = formatMoveTravelSummary({
+    path: [
+      { column: 8, row: 4 },
+      { column: 9, row: 3 },
+      { column: 10, row: 4 },
+    ],
+    map: vp04Map,
+    actorLabel: 'Oren',
+    declaration: 'I walk up to the Brass-bound strongbox.',
+  });
+  assert.match(moveSummary, /toward Brass-bound strongbox\./);
+  assert.doesNotMatch(moveSummary, /Wooden doorway/i);
+  const moveReceipt = buildResolvedActionReceipt({
+    commandType: 'table.move',
+    targetLabel: moveDest,
+    targetKind: 'object',
+    doorStatesAfter: { 'door-east': 'closed' },
+    sceneTitle: 'Weighhouse',
+    declaration: 'I walk up to the Brass-bound strongbox.',
+  });
+  assert.equal(moveReceipt.target.label, 'Brass-bound strongbox');
+  assert.match(moveReceipt.narrationSeed, /Moved on the table to Brass-bound strongbox in Weighhouse\./);
+
+  // 4. VP-05: Clean zoom percentage steps (100% baseline) and 5px drag threshold pan math
+  assert.deepEqual(CLEAN_MAP_ZOOM_STEPS, [50, 75, 100, 125, 150, 175, 200, 250, 300]);
+  assert.equal(stepMapZoomPercent(100, 'in'), 125);
+  assert.equal(stepMapZoomPercent(125, 'in'), 150);
+  assert.equal(stepMapZoomPercent(100, 'out'), 75);
+  assert.equal(stepMapZoomPercent(175, 'fit'), 100);
+
+  const microClick = computeMapDragGesture({
+    startClientX: 200,
+    startClientY: 200,
+    currentClientX: 203,
+    currentClientY: 202,
+    originPanX: 0,
+    originPanY: 0,
+  });
+  assert.equal(microClick.isPanning, false, 'Movement <= 5px is treated as a click, not a pan');
+  assert.equal(microClick.panX, 0);
+
+  const realDrag = computeMapDragGesture({
+    startClientX: 200,
+    startClientY: 200,
+    currentClientX: 260,
+    currentClientY: 240,
+    originPanX: 10,
+    originPanY: -5,
+    stageWidth: 800,
+    stageHeight: 600,
+    scaledMapWidth: 960,
+    scaledMapHeight: 640,
+  });
+  assert.equal(realDrag.isPanning, true, 'Movement > 5px pans the camera');
+  assert.equal(realDrag.panX, 70);
+  assert.equal(realDrag.panY, 35);
+
+  const clampedPan = clampMapPanOffset({
+    panX: 99999,
+    panY: -99999,
+    stageWidth: 800,
+    stageHeight: 600,
+    scaledMapWidth: 800,
+    scaledMapHeight: 600,
+  });
+  assert.equal(clampedPan.panX < 2000, true);
+  assert.equal(clampedPan.panY > -2000, true);
+
+  // 5. Packet 2: Admin, HD Codex User, & Antigravity User Quota Bypass + Battlemaps never stored in assetBank
+  assert.equal(
+    isImageQuotaExemptAccount({ email: 'nick.donner@gmail.com' }),
+    true,
+    'Bootstrap Admin is exempt from image quotas',
+  );
+  assert.equal(
+    isImageQuotaExemptAccount({ accountId: 'qa-fixture-codex', displayLabel: 'HD Codex User' }),
+    true,
+    'HD Codex User is exempt from image quotas',
+  );
+  assert.equal(
+    isImageQuotaExemptAccount({ accountId: 'dev-antigravity', displayLabel: 'Antigravity User' }),
+    true,
+    'Antigravity User is exempt from image quotas',
+  );
+  assert.equal(
+    isImageQuotaExemptAccount({
+      accountId: 'regular-player-99',
+      email: 'player99@example.com',
+      displayLabel: 'Thorne',
+    }),
+    false,
+    'Regular player account is subject to 6/12 quotas',
+  );
+
+  // 6. Packet 3: Global Asset Library Guard blocks anachronistic/meme prompts & hyper-specific descriptions
+  const memeCheck = evaluateGlobalAssetBankEligibility({
+    assetKind: 'portrait',
+    speciesId: 'elf',
+    classId: 'bard',
+    customDescription: 'Wearing a pink tuxedo and sunglasses while holding a laser rifle',
+    promptText: 'Elf bard portrait',
+  });
+  assert.equal(memeCheck.eligibleForGlobalBank, false);
+  assert.equal(memeCheck.quarantineReason, 'off_genre_or_restricted_token');
+
+  const hyperSpecificCheck = evaluateGlobalAssetBankEligibility({
+    assetKind: 'portrait',
+    speciesId: 'human',
+    classId: 'fighter',
+    customDescription: 'He shouts "For House Valerius!" while carrying a banner.',
+    promptText: 'Human fighter portrait',
+  });
+  assert.equal(hyperSpecificCheck.eligibleForGlobalBank, false);
+  assert.equal(hyperSpecificCheck.quarantineReason, 'hyper_specific_custom_description');
+
+  const battlemapBankCheck = evaluateGlobalAssetBankEligibility({
+    assetKind: 'battlemap',
+    promptText: 'Stone dungeon crypt battlemap',
+  });
+  assert.equal(
+    battlemapBankCheck.eligibleForGlobalBank,
+    false,
+    'Battlemaps are never eligible for the global cross-campaign assetBank',
+  );
+
+  const validFantasyCheck = evaluateGlobalAssetBankEligibility({
+    assetKind: 'portrait',
+    speciesId: 'dwarf',
+    classId: 'cleric',
+    pronouns: 'she/her',
+    customDescription: 'A weathered dwarf cleric in chainmail holding a warhammer and shield with a braided beard',
+    promptText: 'Dwarf cleric portrait',
+  });
+  assert.equal(validFantasyCheck.eligibleForGlobalBank, true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('dwarf'), true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('cleric'), true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('feminine'), true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('chainmail'), true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('warhammer'), true);
+  assert.equal(validFantasyCheck.canonicalTags.includes('shield'), true);
+
+  // 7. Packet 4: Security Hardening (Trusted X-Forwarded-Host, Owner-Only Directives, & Fail-Soft AI Kill Switch)
+  assert.equal(
+    isTrustedForwardedHost('evil.example.com', 'https://hd-a3-staging.web.app'),
+    false,
+    'Untrusted X-Forwarded-Host is rejected',
+  );
+  assert.equal(
+    servingOriginFromHost('evil.example.com', {
+      clientOrigin: 'https://hd-a3-staging.web.app',
+      fallbackHostHeader: 'hd-a3-player--hd-a3-staging.us-central1.hosted.app',
+    }),
+    'https://hd-a3-player--hd-a3-staging.us-central1.hosted.app',
+    'servingOriginFromHost ignores untrusted X-Forwarded-Host and falls back to trusted Host',
+  );
+
+  const secStore = new Map();
+  secStore.set('campaigns/camp-sec', {
+    campaignId: 'camp-sec',
+    ownerAccountId: 'owner-acc',
+  });
+  secStore.set('campaignMemberships/mem-non-owner', {
+    membershipId: 'mem-non-owner',
+    campaignId: 'camp-sec',
+    accountId: 'non-owner-acc',
+  });
+  secStore.set('adminAuditEvents/ai_kill_switch_meta', {
+    id: 'ai_kill_switch_meta',
+    enabled: true,
+  });
+  const secFirestore = {
+    collection(colName) {
+      return {
+        doc(docId) {
+          const key = `${colName}/${docId}`;
+          return {
+            async get() {
+              const val = secStore.get(key);
+              return { exists: val !== undefined, data: () => val };
+            },
+            async set(val) {
+              secStore.set(key, val);
+            },
+          };
+        },
+        where(field, _op, val) {
+          return {
+            where(field2, _op2, val2) {
+              return {
+                limit() {
+                  return {
+                    async get() {
+                      const docs = [];
+                      for (const [k, v] of secStore.entries()) {
+                        if (k.startsWith(`${colName}/`) && v[field] === val && v[field2] === val2) {
+                          docs.push({ data: () => v });
+                        }
+                      }
+                      return { empty: docs.length === 0, docs };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  // Non-owner campaign member cannot call applyDmNpcDirective, applyDmSceneDirective, or closeCurrentChapter
+  await assert.rejects(
+    async () =>
+      await applyDmNpcDirective(secFirestore, 'camp-sec', 'non-owner-acc', {
+        schemaVersion: 'play-authority-npc-v1',
+        npcId: 'npc-injected',
+        name: 'Injected NPC',
+        publicDescription: 'Intruder',
+        disposition: 'hostile',
+        location: null,
+        placeToken: false,
+        firstDialogue: null,
+        audience: 'public',
+        causeActionId: null,
+      }),
+    (err) => err.code === 'FORBIDDEN',
+    'Non-owner campaign member is rejected with FORBIDDEN on applyDmNpcDirective',
+  );
+
+  await assert.rejects(
+    async () => await closeCurrentChapter(secFirestore, 'camp-sec', 'non-owner-acc'),
+    (err) => err.code === 'FORBIDDEN',
+    'Non-owner campaign member is rejected with FORBIDDEN on closeCurrentChapter',
+  );
+
+  // Fail-soft AI Kill Switch: draftCampaignBlueprintOptionsWithAi returns 3 deterministic outlines without throwing
+  const killSwitchOutlines = await draftCampaignBlueprintOptionsWithAi({
+    summary: 'At the Weighhouse, Bailiff Maelis asks the party to find Curator Pelan Rusk.',
+    startLevel: 1,
+    targetEndLevel: 2,
+    firestore: secFirestore,
+  });
+  assert.equal(killSwitchOutlines.length, 3, 'AI Kill Switch falls back to 3 deterministic outlines');
 });
 
 

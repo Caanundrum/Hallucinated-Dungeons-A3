@@ -599,7 +599,7 @@ async function resolveDirectorNarrateOutput(options: {
           entities: [],
           visibility: 'public',
           rejectedMechanics: [],
-        });
+        }, { internalDirectorCall: true });
       } catch {
         // Scene chronicle is best-effort; narration still returns.
       }
@@ -772,7 +772,7 @@ async function resolveDirectorNarrateOutput(options: {
             causeActionId: null,
           },
           // Chronicle after the player declaration via interpret's single ruling.
-          { writeChronicle: false },
+          { writeChronicle: false, internalDirectorCall: true },
         );
         if (applied.created) {
           return `A wary goblin cartographer answers from beside the rubble pile. Nib: "Keep your boots dry past the east door." Nib is present with the party.`;

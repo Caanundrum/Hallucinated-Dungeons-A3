@@ -33,6 +33,7 @@ import { isHostedEnvironmentClass } from '../config/environment.js';
 import {
   corsAllowOrigin,
   isAllowedBrowserOrigin,
+  isTrustedForwardedHost,
   type OriginGuardOptions,
 } from './origin-guard.js';
 import {
@@ -62,6 +63,7 @@ import {
 import {
   assertAdminEmail,
   buildAdminPanelSnapshot,
+  recordAdminAudit,
   setAiKillSwitch,
 } from '../admin/admin-service.js';
 import {
@@ -132,7 +134,11 @@ import {
 } from '../campaigns/campaigns.js';
 import { isCampaignTone } from '../../shared/campaign-contract.js';
 import { draftCampaignBlueprintOptionsWithAi } from '../campaigns/campaign-blueprint.js';
-import { loadCampaignAsset } from '../assets/campaign-assets.js';
+import {
+  isImageQuotaExemptAccount,
+  loadCampaignAsset,
+  resetAccountImageQuota,
+} from '../assets/campaign-assets.js';
 import { buildDirectorCatalog } from '../campaigns/director-catalog.js';
 import { listChronicleEntries } from '../communication/chronicle.js';
 import { listPartyChat, postPartyChatMessage } from '../communication/party-chat.js';
@@ -404,6 +410,9 @@ function applySecurityHeadersFor(response: ServerResponse, env: ServerEnvironmen
       : 'no-referrer',
   );
   response.setHeader('x-content-type-options', 'nosniff');
+  if (isHostedEnvironmentClass(env.environmentClass) || env.clientOrigin.startsWith('https:')) {
+    response.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
+  }
 }
 
 function writeJson(
@@ -623,11 +632,19 @@ function sessionCookieFlags(env: ServerEnvironment): string {
 
 function resolveApplicationOrigin(request: IncomingMessage, env: ServerEnvironment): string {
   const forwardedHost = headerFirst(request.headers['x-forwarded-host']);
-  const host = forwardedHost ?? headerFirst(request.headers.host);
-  if (host && !host.includes('accounts.google.com')) {
+  const trustedForwarded =
+    forwardedHost !== undefined && isTrustedForwardedHost(forwardedHost, env.clientOrigin)
+      ? forwardedHost
+      : undefined;
+  const rawHost = trustedForwarded ?? headerFirst(request.headers.host);
+  if (
+    rawHost &&
+    !rawHost.includes('accounts.google.com') &&
+    isTrustedForwardedHost(rawHost, env.clientOrigin)
+  ) {
     const forwardedProto = headerFirst(request.headers['x-forwarded-proto']);
     const proto = forwardedProto ?? (env.clientOrigin.startsWith('https') ? 'https' : 'http');
-    return `${proto}://${host}`;
+    return `${proto}://${rawHost}`;
   }
   return env.clientOrigin;
 }
@@ -789,7 +806,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
       const csrfCookie = parseCookies(request.headers.cookie).get('g_csrf_token') ?? '';
       const csrfBody = form.get('g_csrf_token')?.trim() ?? '';
       const googleIdToken = form.get('credential')?.trim() ?? '';
-      if (csrfBody === '' || (csrfCookie !== '' && csrfCookie !== csrfBody)) {
+      if (csrfCookie === '' || csrfBody === '' || csrfCookie !== csrfBody) {
         process.stderr.write(`[auth/google-login] CSRF token mismatch between cookie and form body\n`);
         writeRedirect(response, env, '/?auth_error=google_signin_failed');
         return;
@@ -1213,6 +1230,47 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         }
         return;
       }
+      if (path === '/api/admin/reset-image-quota' && method === 'POST') {
+        let body: unknown;
+        try {
+          body = await readJsonBody(request);
+        } catch (error) {
+          if (error instanceof PayloadTooLargeError) {
+            refuseOversizedBody(request, response);
+          } else {
+            sendError(response, ERROR_CODES.BAD_REQUEST);
+          }
+          return;
+        }
+        try {
+          assertAdminEmail(session.identity.email);
+          const targetAccountId =
+            typeof (body as { targetAccountId?: unknown } | undefined)?.targetAccountId === 'string'
+              ? ((body as { targetAccountId: string }).targetAccountId.trim() || null)
+              : null;
+          const result = await resetAccountImageQuota({
+            firestore,
+            targetAccountId,
+          });
+          await recordAdminAudit({
+            firestore,
+            accountId: session.accountId,
+            email: session.identity.email!,
+            action: 'reset_image_quota',
+            detail:
+              targetAccountId && targetAccountId !== 'all'
+                ? `cleared quota for ${targetAccountId}`
+                : `cleared all account image quotas (${result.resetCount} records)`,
+          });
+          sendJson(response, 200, { ok: true, resetCount: result.resetCount });
+        } catch (error) {
+          sendJson(response, 403, {
+            error: ERROR_CODES.BAD_REQUEST,
+            message: error instanceof Error ? error.message : 'Admin operation refused.',
+          } satisfies ApiErrorBody);
+        }
+        return;
+      }
       sendError(response, ERROR_CODES.NOT_FOUND);
       return;
     }
@@ -1574,7 +1632,25 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         if (body === BODY_REJECTED) {
           return;
         }
-        sendJson(response, 200, await generateCharacterPortrait({ firestore, accountId, body }));
+        const limits = readArenaRateLimitDefaults();
+        const rateAllowed =
+          isImageQuotaExemptAccount(session.identity) ||
+          checkRateLimit({
+            key: rateLimitKeyForAiGateway(accountId),
+            limit: limits.aiPerWindow,
+            windowMs: limits.windowMs,
+          }).allowed;
+        sendJson(
+          response,
+          200,
+          await generateCharacterPortrait({
+            firestore,
+            accountId,
+            identity: session.identity,
+            body,
+            forceCacheFallback: !rateAllowed,
+          }),
+        );
         return;
       }
 
@@ -2048,7 +2124,8 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           targetEndLevel?: unknown;
           campaignTone?: unknown;
         };
-        const premise = typeof payload.premise === 'string' ? payload.premise.trim() : '';
+        const premise =
+          typeof payload.premise === 'string' ? payload.premise.trim().slice(0, 4000) : '';
         if (premise.length === 0) {
           sendJson(response, 400, {
             error: ERROR_CODES.BAD_REQUEST,
@@ -2074,12 +2151,22 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         } catch {
           excludeCharacterNames = [];
         }
+        const limits = readArenaRateLimitDefaults();
+        const rateAllowed =
+          isImageQuotaExemptAccount(session.identity) ||
+          checkRateLimit({
+            key: rateLimitKeyForAiGateway(accountId),
+            limit: limits.aiPerWindow,
+            windowMs: limits.windowMs,
+          }).allowed;
         const outlines = await draftCampaignBlueprintOptionsWithAi({
           summary: premise,
           startLevel,
           targetEndLevel,
           campaignTone,
           excludeCharacterNames,
+          firestore,
+          forceDeterministicFallback: !rateAllowed,
         });
         const blueprint = outlines[0]!;
         sendJson(response, 200, { blueprint, outlines });
@@ -2109,6 +2196,14 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           approvedBlueprint?: unknown;
           forgeWorldAssets?: unknown;
         };
+        const limits = readArenaRateLimitDefaults();
+        const rateAllowed =
+          isImageQuotaExemptAccount(session.identity) ||
+          checkRateLimit({
+            key: rateLimitKeyForAiGateway(accountId),
+            limit: limits.aiPerWindow,
+            windowMs: limits.windowMs,
+          }).allowed;
         const campaign = await createCampaign({
           firestore,
           accountId,
@@ -2125,7 +2220,7 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
           targetEndLevel: payload.targetEndLevel,
           campaignTone: payload.campaignTone,
           approvedBlueprint: payload.approvedBlueprint,
-          forgeWorldAssets: payload.forgeWorldAssets,
+          forgeWorldAssets: !rateAllowed ? false : payload.forgeWorldAssets,
         });
         sendJson(response, 201, campaign);
         return;
@@ -3193,6 +3288,13 @@ export function createArenaServer(dependencies: ArenaServerDependencies): ArenaS
         return;
       }
       if (error instanceof CampaignMemoryError) {
+        if (error.code === 'FORBIDDEN') {
+          sendJson(response, 403, {
+            error: ERROR_CODES.NOT_PUBLIC,
+            message: error.message,
+          } satisfies ApiErrorBody);
+          return;
+        }
         const code = error.code as ErrorCode;
         if (code in ERROR_STATUS) {
           sendJson(response, ERROR_STATUS[code], {

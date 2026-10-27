@@ -1179,6 +1179,10 @@ export async function resolveDeterministicIntentFallback(
               const feet = steps * map.coordinateSpace.feetPerSquare;
               summary = `Walk beside the ${featureDisplayLabel} in ${map.title} (${steps} square${steps === 1 ? '' : 's'}, ${feet} ft). Confirm to commit the move.`;
               doorResolved = true;
+            } else if (featurePath !== null && featurePath.length === 0) {
+              proposedCommandType = 'table.sync';
+              summary = `You are already beside the ${featureDisplayLabel} in ${map.title}.`;
+              doorResolved = true;
             }
           }
         }

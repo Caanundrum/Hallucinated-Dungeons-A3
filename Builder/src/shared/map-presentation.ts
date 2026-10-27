@@ -15,6 +15,70 @@ import {
 } from './play-authority-contract.js';
 import { relationToDoor } from './door-topology.js';
 
+function cleanFeatureBaseLabel(label: string): string {
+  return label
+    .replace(
+      /\s*[—–-]\s*(?:open|closed|locked|unlocked|intact|broken|pulled|active|lit|unlit|spotted|disarmed|present).*$/i,
+      '',
+    )
+    .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*$/i, '')
+    .trim();
+}
+
+function findDeclaredMoveFeature(
+  features: MapBundleProjection['notableFeatures'],
+  declaration: string,
+  destination?: MapSquareCoordinate,
+): MapBundleProjection['notableFeatures'][number] | null {
+  const lowerDecl = declaration.toLowerCase();
+  const candidates = features.filter(
+    (feature) =>
+      feature.referenceKind !== 'exit' &&
+      feature.objectKind !== 'exit' &&
+      feature.label.trim().length > 0 &&
+      (destination === undefined ||
+        Math.max(
+          Math.abs(feature.column - destination.column),
+          Math.abs(feature.row - destination.row),
+        ) <= 2),
+  );
+  let best: MapBundleProjection['notableFeatures'][number] | null = null;
+  let bestScore = 0;
+  for (const feature of candidates) {
+    const clean = cleanFeatureBaseLabel(feature.label).toLowerCase();
+    if (clean.length === 0) continue;
+    if (lowerDecl.includes(clean)) {
+      const score = 100 + clean.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = feature;
+      }
+      continue;
+    }
+    const tokens = clean
+      .split(/[\s-]+/)
+      .map((t) => t.replace(/[^a-z0-9]/g, ''))
+      .filter((t) => t.length >= 3);
+    if (tokens.length === 0) continue;
+    const headNoun = tokens[tokens.length - 1]!;
+    let matchedTokens = 0;
+    for (const token of tokens) {
+      if (new RegExp(`\\b${token}\\b`, 'i').test(lowerDecl)) {
+        matchedTokens += 1;
+      }
+    }
+    const headMatched = new RegExp(`\\b${headNoun}\\b`, 'i').test(lowerDecl);
+    if (headMatched || matchedTokens >= 2) {
+      const score = (headMatched ? 50 : 0) + matchedTokens * 15;
+      if (score > bestScore) {
+        bestScore = score;
+        best = feature;
+      }
+    }
+  }
+  return best;
+}
+
 export function edgeFacingLabel(orientation: MapEdgeRecord['orientation']): string {
   return orientation;
 }
@@ -100,12 +164,19 @@ export function exitLabelNearSquare(
 
 /**
  * Name a path destination for player-facing move prose.
- * Prefers exit/door labels over anonymous "marked destination".
+ * Prefers an explicitly declared in-room feature first, then exit/door labels over anonymous coordinates.
  */
 export function describeMoveDestination(
   map: Pick<MapBundleProjection, 'edges' | 'notableFeatures' | 'title'>,
   destination: MapSquareCoordinate,
+  declaration?: string | null,
 ): string {
+  if (typeof declaration === 'string' && declaration.trim().length > 0) {
+    const matchedFeature = findDeclaredMoveFeature(map.notableFeatures, declaration, destination);
+    if (matchedFeature !== null) {
+      return cleanFeatureBaseLabel(matchedFeature.label);
+    }
+  }
   const door = doorNearSquare(map, destination);
   // Live door leaf beats baked exit labels so an open doorway cannot narrate as closed.
   if (door !== null) {
@@ -118,6 +189,16 @@ export function describeMoveDestination(
   if (exit !== null) {
     return exit;
   }
+  const adjacentFeature = map.notableFeatures.find(
+    (feature) =>
+      feature.referenceKind !== 'exit' &&
+      feature.objectKind !== 'exit' &&
+      Math.abs(feature.column - destination.column) + Math.abs(feature.row - destination.row) <= 1 &&
+      feature.label.trim().length > 0,
+  );
+  if (adjacentFeature !== undefined) {
+    return cleanFeatureBaseLabel(adjacentFeature.label);
+  }
   return `column ${destination.column}, row ${destination.row}`;
 }
 
@@ -127,8 +208,10 @@ export function formatMoveTravelSummary(options: {
     MapBundleProjection,
     'edges' | 'notableFeatures' | 'title' | 'coordinateSpace'
   >;
-  readonly start?: MapSquareCoordinate;
-  readonly actorLabel?: string;
+  readonly start?: MapSquareCoordinate | undefined;
+  readonly actorLabel?: string | undefined;
+  readonly targetLabel?: string | null | undefined;
+  readonly declaration?: string | null | undefined;
 }): string {
   const { path, map } = options;
   if (path.length === 0) {
@@ -138,7 +221,11 @@ export function formatMoveTravelSummary(options: {
   const squares = path.length;
   const feet = squares * map.coordinateSpace.feetPerSquare;
   const scene = map.title.trim().length > 0 ? map.title : 'the map';
-  const dest = describeMoveDestination(map, destination);
+  const explicitTarget = options.targetLabel?.trim();
+  const dest =
+    explicitTarget && explicitTarget.length > 0
+      ? explicitTarget
+      : describeMoveDestination(map, destination, options.declaration);
   const origin =
     options.start !== undefined
       ? ` from column ${options.start.column}, row ${options.start.row}`

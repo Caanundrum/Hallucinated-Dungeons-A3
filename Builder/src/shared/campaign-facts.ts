@@ -671,15 +671,29 @@ export function extractCampaignFactsFromPremise(
   }
   const facts: CampaignFactRecord[] = [];
   const allowNamedNpcs = options.allowNamedNpcs !== false;
+  const cleanedHookText = text
+    .replace(
+      /\b(?:parcel|package|letter|missive|delivery|courier|mail|cargo)\s+(?:rack|racks|shelf|shelves|desk|desks|table|tables|counter|counters|stand|stands|bench|benches|bin|bins|slot|slots|chute|chutes|cart|carts|wagon|wagons|room|hall|bay|office|station|post|board|hooks?|nook|alcove|ledge|locker|lockers|pigeonholes?|ledger|manifest)\b/gi,
+      'scenery fixture',
+    )
+    .replace(
+      /\b(?:near|beside|by|next\s+to|under|beneath|behind|past|along|around|against|atop)\s+(?:a|an|the)\s+(?:[a-z'’-]+\s+){0,3}(?:parcel|package|letter|missive|delivery|rack|shelf|desk|table|counter|stand|bin|slot|chute|cart|wagon)\b/gi,
+      'near the scenery',
+    );
 
-  if (/\b(?:missing|vanished|lost)\s+courier\b/i.test(text) || /\bcourier\b/i.test(text)) {
+  if (
+    /\b(?:missing|vanished|lost)\s+courier\b/i.test(cleanedHookText) ||
+    /\bcourier\b/i.test(cleanedHookText)
+  ) {
     facts.push({
       factId: 'premise-courier',
       label: 'the missing courier',
-      summary: /\b(?:missing|vanished|lost)\s+courier\b/i.test(text)
+      summary: /\b(?:missing|vanished|lost)\s+courier\b/i.test(cleanedHookText)
         ? 'A courier is missing — recovering them (or news of them) is part of why you are here.'
         : 'A courier figures in the premise; details beyond that are not yet established.',
-      status: /\b(?:missing|vanished|lost)\s+courier\b/i.test(text) ? 'established' : 'inferred',
+      status: /\b(?:missing|vanished|lost)\s+courier\b/i.test(cleanedHookText)
+        ? 'established'
+        : 'inferred',
       tags: ['courier', 'premise', 'recap'],
     });
     facts.push({
@@ -689,7 +703,7 @@ export function extractCampaignFactsFromPremise(
       status: 'unknown',
       tags: ['courier', 'unknown', 'recap'],
     });
-    if (!/\bpackage\b/i.test(text)) {
+    if (!/\bpackage\b/i.test(cleanedHookText)) {
       facts.push({
         factId: 'unknown-package-whereabouts',
         label: "the package's whereabouts",
@@ -701,14 +715,19 @@ export function extractCampaignFactsFromPremise(
     }
   }
 
-  if (/\b(?:missing|vanished|lost)\s+package\b/i.test(text) || /\bpackage\b/i.test(text)) {
+  if (
+    /\b(?:missing|vanished|lost)\s+package\b/i.test(cleanedHookText) ||
+    /\bpackage\b/i.test(cleanedHookText)
+  ) {
     facts.push({
       factId: 'premise-package',
       label: 'the missing package',
-      summary: /\b(?:missing|vanished|lost)\s+package\b/i.test(text)
+      summary: /\b(?:missing|vanished|lost)\s+package\b/i.test(cleanedHookText)
         ? 'A package is missing alongside the courier hook — recovering it (or news of it) is part of why you are here.'
         : 'A package figures in the premise; details beyond that are not yet established.',
-      status: /\b(?:missing|vanished|lost)\s+package\b/i.test(text) ? 'established' : 'inferred',
+      status: /\b(?:missing|vanished|lost)\s+package\b/i.test(cleanedHookText)
+        ? 'established'
+        : 'inferred',
       tags: ['package', 'premise', 'recap'],
     });
     facts.push({

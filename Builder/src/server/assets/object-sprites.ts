@@ -10,6 +10,8 @@
 
 import type { Firestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { getAiKillSwitch } from '../admin/admin-service.js';
+import { evaluateGlobalAssetBankEligibility } from './asset-library-guard.js';
 import { portraitApiKey, type PortraitEnvironment } from '../characters/portrait.js';
 import {
   buildIllustratedObjectSpriteDataUrl,
@@ -144,8 +146,20 @@ export async function generateOrLoadObjectSprite(options: {
   }
 
   const apiKey = portraitApiKey(options.env ?? process.env);
-  if (apiKey !== null) {
+  let killSwitchActive = false;
+  try {
+    killSwitchActive = await getAiKillSwitch(options.firestore);
+  } catch {
+    killSwitchActive = false;
+  }
+  if (!killSwitchActive && apiKey !== null) {
     const prompt = buildImagenObjectSpritePrompt(options.spriteKey);
+    const guard = evaluateGlobalAssetBankEligibility({
+      assetKind: 'object_sprite',
+      objectKind: options.spriteKey.split(':')[0] ?? 'prop',
+      customDescription: options.label,
+      promptText: prompt,
+    });
     const generated = await tryImagenFastObjectSprite({
       apiKey,
       prompt,
@@ -157,16 +171,21 @@ export async function generateOrLoadObjectSprite(options: {
         generated.mimeType,
       );
       spriteMemoryCache.set(options.spriteKey, cutoutUrl);
-      try {
-        await options.firestore.collection(COLLECTIONS.assetBank).doc(bankDocId).set({
-          bankKey: `sprite:${options.spriteKey}`,
-          spriteKey: options.spriteKey,
-          spriteUrl: cutoutUrl,
-          model: IMAGEN_OBJECT_SPRITE_MODEL,
-          createdAt: new Date().toISOString(),
-        });
-      } catch {
-        // Non-fatal cache write.
+      if (guard.eligibleForGlobalBank) {
+        try {
+          await options.firestore.collection(COLLECTIONS.assetBank).doc(bankDocId).set({
+            bankKey: `sprite:${options.spriteKey}`,
+            assetKind: 'object_sprite',
+            scope: 'global_shared',
+            spriteKey: options.spriteKey,
+            spriteUrl: cutoutUrl,
+            canonicalTags: guard.canonicalTags,
+            model: IMAGEN_OBJECT_SPRITE_MODEL,
+            createdAt: new Date().toISOString(),
+          });
+        } catch {
+          // Non-fatal cache write.
+        }
       }
       return cutoutUrl;
     }
@@ -176,3 +195,5 @@ export async function generateOrLoadObjectSprite(options: {
   spriteMemoryCache.set(options.spriteKey, illustrated);
   return illustrated;
 }
+
+export const ensureObjectSpriteAsset = generateOrLoadObjectSprite;

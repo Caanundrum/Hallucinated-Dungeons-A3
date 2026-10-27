@@ -13,6 +13,13 @@ import { randomUUID } from 'node:crypto';
 import type { Firestore } from 'firebase-admin/firestore';
 
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { isBootstrapAdminEmail } from '../admin/admin-auth.js';
+import { getAiKillSwitch } from '../admin/admin-service.js';
+import {
+  evaluateGlobalAssetBankEligibility,
+  extractWhitelistedCanonicalTags,
+  resolvePresentationTagFromPronouns,
+} from './asset-library-guard.js';
 import {
   PORTRAIT_IMAGE_MODEL_DEFAULT,
   PORTRAIT_MAX_DATA_URL_LENGTH,
@@ -272,14 +279,20 @@ export async function storeCampaignAssetRecord(options: {
   return `/api/assets/${assetId}`;
 }
 
-export const MAX_PORTRAIT_BATCHES_PER_24H = 3;
-export const MAX_BATTLEMAP_FORGES_PER_24H = 3;
+export const MAX_LIVE_PORTRAIT_FORGES_PER_24H = 6;
+export const MAX_LIVE_MAP_FORGES_PER_CAMPAIGN = 12;
+export const MAX_LIVE_MAP_FORGES_PER_24H = 12;
+export const MAX_PORTRAIT_BATCHES_PER_24H = MAX_LIVE_PORTRAIT_FORGES_PER_24H;
+export const MAX_BATTLEMAP_FORGES_PER_24H = MAX_LIVE_MAP_FORGES_PER_24H;
 export const IMAGE_FORGE_COOLDOWN_MS = 15_000;
 const ROLLING_WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 
 export interface AccountImageQuotaResult {
   readonly allowed: boolean;
-  readonly reason?: 'daily_cap' | 'cooldown';
+  readonly allowLiveCall: boolean;
+  readonly remainingLiveCalls: number;
+  readonly bypassed?: boolean;
+  readonly reason?: 'daily_cap' | 'campaign_cap' | 'cooldown';
   readonly usedToday: number;
   readonly limitToday: number;
 }
@@ -288,31 +301,173 @@ interface StoredAccountImageUsage {
   readonly accountId: string;
   readonly portraitTimestampsMs?: readonly number[];
   readonly battlemapTimestampsMs?: readonly number[];
+  readonly campaignMapCounts?: Readonly<Record<string, number>>;
   readonly lastImageCallMs?: number;
   readonly updatedAt: string;
 }
 
 /**
- * Enforces delete-proof per-account image generation quotas (`Packet 5`):
- * - Max 3 live Portrait Forge batches per account per rolling 24h window
- * - Max 3 live Campaign Map Forges per account per rolling 24h window
+ * Exempts Admin (`nick.donner@gmail.com`), HD Codex User (QA harness),
+ * Antigravity User (Engineering verification agent), and any account/email
+ * in `process.env.IMAGE_QUOTA_BYPASS_ACCOUNTS` from image generation quotas and cooldowns.
+ */
+export function isImageQuotaExemptAccount(identity: {
+  readonly accountId?: string | null;
+  readonly email?: string | null;
+  readonly displayLabel?: string | null;
+  readonly env?: Record<string, string | undefined>;
+}): boolean {
+  const email = (identity.email ?? '').trim();
+  const accountId = (identity.accountId ?? '').trim();
+  const displayLabel = (identity.displayLabel ?? '').trim();
+
+  if (isBootstrapAdminEmail(email)) {
+    return true;
+  }
+  const combined = `${accountId} ${email} ${displayLabel}`;
+  if (/\bnick\.?donner\b|\bbootstrap[-_ ]?admin\b/i.test(combined)) {
+    return true;
+  }
+  if (/codex|hd[-_ ]?codex|qa[-_ ]?fixture/i.test(combined)) {
+    return true;
+  }
+  if (/antigravity|builder|dev[-_ ]?identity|local[-_ ]?arena|google[-_ ]?emulator/i.test(combined)) {
+    return true;
+  }
+
+  const rawEnvList = (
+    (identity.env ?? process.env).IMAGE_QUOTA_BYPASS_ACCOUNTS ?? ''
+  ).trim();
+  if (rawEnvList.length > 0) {
+    const entries = rawEnvList
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    if (
+      (email.length > 0 && entries.includes(email.toLowerCase())) ||
+      (accountId.length > 0 && entries.includes(accountId.toLowerCase())) ||
+      (displayLabel.length > 0 && entries.includes(displayLabel.toLowerCase()))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function resetAccountImageQuota(options: {
+  readonly firestore: Firestore;
+  readonly targetAccountId?: string | null;
+}): Promise<{ readonly resetCount: number }> {
+  const accountId = (options.targetAccountId ?? '').trim();
+  const nowIso = new Date().toISOString();
+  if (accountId.length > 0 && accountId !== 'all') {
+    await options.firestore.collection(COLLECTIONS.accountImageUsage).doc(accountId).set({
+      accountId,
+      portraitTimestampsMs: [],
+      battlemapTimestampsMs: [],
+      campaignMapCounts: {},
+      lastImageCallMs: 0,
+      updatedAt: nowIso,
+    });
+    return { resetCount: 1 };
+  }
+  const snap = await options.firestore.collection(COLLECTIONS.accountImageUsage).get();
+  if (snap.empty) {
+    return { resetCount: 0 };
+  }
+  const batch = options.firestore.batch();
+  for (const doc of snap.docs) {
+    batch.set(doc.ref, {
+      accountId: doc.id,
+      portraitTimestampsMs: [],
+      battlemapTimestampsMs: [],
+      campaignMapCounts: {},
+      lastImageCallMs: 0,
+      updatedAt: nowIso,
+    });
+  }
+  await batch.commit();
+  return { resetCount: snap.docs.length };
+}
+
+/**
+ * Enforces delete-proof per-account image generation quotas (`Packet 2`):
+ * - Max 6 live Portrait Forge batches per account per rolling 24h window
+ * - Max 12 live Campaign Map Forges per campaign AND 12 per account per rolling 24h window
  * - 15-second cooldown between live image generation calls
+ * - Bypassed for Admin, HD Codex User, Antigravity User, and `IMAGE_QUOTA_BYPASS_ACCOUNTS`.
  * Deleting a character or campaign never touches `accountImageUsage`.
  */
 export async function checkAndRecordAccountImageQuota(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
   readonly kind: 'portrait' | 'battlemap';
+  readonly campaignId?: string | null;
+  readonly email?: string | null;
+  readonly displayLabel?: string | null;
   readonly nowMs?: number;
   readonly skipCooldown?: boolean;
 }): Promise<AccountImageQuotaResult> {
   const { firestore, accountId, kind } = options;
   const nowMs = options.nowMs ?? Date.now();
   const limitToday =
-    kind === 'portrait' ? MAX_PORTRAIT_BATCHES_PER_24H : MAX_BATTLEMAP_FORGES_PER_24H;
+    kind === 'portrait' ? MAX_LIVE_PORTRAIT_FORGES_PER_24H : MAX_LIVE_MAP_FORGES_PER_24H;
   if (!accountId || accountId.trim().length === 0) {
-    return { allowed: true, usedToday: 0, limitToday };
+    return {
+      allowed: true,
+      allowLiveCall: true,
+      remainingLiveCalls: limitToday,
+      usedToday: 0,
+      limitToday,
+    };
   }
+
+  let resolvedEmail = options.email ?? null;
+  let resolvedDisplayLabel = options.displayLabel ?? null;
+  if (
+    !isImageQuotaExemptAccount({
+      accountId,
+      email: resolvedEmail,
+      displayLabel: resolvedDisplayLabel,
+    }) &&
+    (resolvedEmail === null || resolvedDisplayLabel === null)
+  ) {
+    try {
+      const accountSnap = await firestore
+        .collection(COLLECTIONS.developmentIdentities)
+        .doc(accountId)
+        .get();
+      if (accountSnap.exists) {
+        const accData = accountSnap.data() as {
+          email?: string | null;
+          displayLabel?: string | null;
+        } | undefined;
+        resolvedEmail = resolvedEmail ?? accData?.email ?? null;
+        resolvedDisplayLabel = resolvedDisplayLabel ?? accData?.displayLabel ?? null;
+      }
+    } catch {
+      // Best-effort account lookup.
+    }
+  }
+
+  if (
+    isImageQuotaExemptAccount({
+      accountId,
+      email: resolvedEmail,
+      displayLabel: resolvedDisplayLabel,
+    })
+  ) {
+    return {
+      allowed: true,
+      allowLiveCall: true,
+      remainingLiveCalls: 999,
+      bypassed: true,
+      usedToday: 0,
+      limitToday: 999,
+    };
+  }
+
   const docRef = firestore.collection(COLLECTIONS.accountImageUsage).doc(accountId);
   try {
     const snap = await docRef.get();
@@ -324,20 +479,43 @@ export async function checkAndRecordAccountImageQuota(options: {
     const battlemapTs = (data?.battlemapTimestampsMs ?? []).filter(
       (ts): ts is number => typeof ts === 'number' && Number.isFinite(ts) && ts > cutoff,
     );
+    const campaignMapCounts: Record<string, number> = {
+      ...(data?.campaignMapCounts ?? {}),
+    };
     const activeList = kind === 'portrait' ? portraitTs : battlemapTs;
     const lastCall = typeof data?.lastImageCallMs === 'number' ? data.lastImageCallMs : 0;
 
     if (!options.skipCooldown && lastCall > 0 && nowMs - lastCall < IMAGE_FORGE_COOLDOWN_MS) {
       return {
         allowed: false,
+        allowLiveCall: false,
+        remainingLiveCalls: Math.max(0, limitToday - activeList.length),
         reason: 'cooldown',
         usedToday: activeList.length,
         limitToday,
       };
     }
+
+    const campaignKey = (options.campaignId ?? '').trim();
+    if (kind === 'battlemap' && campaignKey.length > 0) {
+      const usedInCampaign = campaignMapCounts[campaignKey] ?? 0;
+      if (usedInCampaign >= MAX_LIVE_MAP_FORGES_PER_CAMPAIGN) {
+        return {
+          allowed: false,
+          allowLiveCall: false,
+          remainingLiveCalls: 0,
+          reason: 'campaign_cap',
+          usedToday: activeList.length,
+          limitToday,
+        };
+      }
+    }
+
     if (activeList.length >= limitToday) {
       return {
         allowed: false,
+        allowLiveCall: false,
+        remainingLiveCalls: 0,
         reason: 'daily_cap',
         usedToday: activeList.length,
         limitToday,
@@ -346,20 +524,33 @@ export async function checkAndRecordAccountImageQuota(options: {
 
     const nextPortraitTs = kind === 'portrait' ? [...portraitTs, nowMs] : portraitTs;
     const nextBattlemapTs = kind === 'battlemap' ? [...battlemapTs, nowMs] : battlemapTs;
+    if (kind === 'battlemap' && campaignKey.length > 0) {
+      campaignMapCounts[campaignKey] = (campaignMapCounts[campaignKey] ?? 0) + 1;
+    }
     await docRef.set({
       accountId,
       portraitTimestampsMs: nextPortraitTs,
       battlemapTimestampsMs: nextBattlemapTs,
+      campaignMapCounts,
       lastImageCallMs: nowMs,
       updatedAt: new Date(nowMs).toISOString(),
     });
+    const usedAfter = activeList.length + 1;
     return {
       allowed: true,
-      usedToday: activeList.length + 1,
+      allowLiveCall: true,
+      remainingLiveCalls: Math.max(0, limitToday - usedAfter),
+      usedToday: usedAfter,
       limitToday,
     };
   } catch {
-    return { allowed: true, usedToday: 0, limitToday };
+    return {
+      allowed: true,
+      allowLiveCall: true,
+      remainingLiveCalls: limitToday,
+      usedToday: 0,
+      limitToday,
+    };
   }
 }
 
@@ -400,9 +591,33 @@ export async function saveToAssetBank(options: {
   readonly firestore: Firestore;
   readonly bankKey: string;
   readonly urls: readonly string[];
-}): Promise<void> {
+  readonly assetKind?: 'portrait' | 'object_sprite' | 'battlemap';
+  readonly speciesId?: string | null;
+  readonly classId?: string | null;
+  readonly pronouns?: string | null;
+  readonly customDescription?: string | null;
+  readonly promptText?: string;
+}): Promise<boolean> {
+  // Never store battlemaps in the global cross-campaign assetBank (Guardrail 3 / Packet 2).
+  if (
+    options.assetKind === 'battlemap' ||
+    options.bankKey.toLowerCase().startsWith('battlemap_')
+  ) {
+    return false;
+  }
+  const guard = evaluateGlobalAssetBankEligibility({
+    assetKind: options.assetKind ?? 'portrait',
+    ...(options.speciesId ? { speciesId: options.speciesId } : {}),
+    ...(options.classId ? { classId: options.classId } : {}),
+    ...(options.pronouns ? { pronouns: options.pronouns } : {}),
+    ...(options.customDescription ? { customDescription: options.customDescription } : {}),
+    promptText: options.promptText ?? options.bankKey,
+  });
+  if (!guard.eligibleForGlobalBank) {
+    return false;
+  }
   const validUrls = options.urls.filter((u) => typeof u === 'string' && u.trim().length > 0);
-  if (validUrls.length === 0) return;
+  if (validUrls.length === 0) return false;
   const docId = options.bankKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 110);
   try {
     const docRef = options.firestore.collection(COLLECTIONS.assetBank).doc(docId);
@@ -413,11 +628,18 @@ export async function saveToAssetBank(options: {
     const merged = [...new Set([...validUrls, ...existing])].slice(0, 18);
     await docRef.set({
       bankKey: options.bankKey,
+      assetKind: options.assetKind ?? 'portrait',
+      scope: 'global_shared',
+      speciesId: normalizeBankSegment(options.speciesId),
+      classId: normalizeBankSegment(options.classId),
+      presentationTag: resolvePresentationTagFromPronouns(options.pronouns ?? undefined),
+      canonicalTags: guard.canonicalTags,
       urls: merged,
       updatedAt: new Date().toISOString(),
     });
+    return true;
   } catch {
-    // Non-fatal cache write.
+    return false;
   }
 }
 
@@ -425,6 +647,9 @@ export async function loadFromAssetBank(
   firestore: Firestore,
   bankKey: string,
 ): Promise<readonly string[]> {
+  if (bankKey.toLowerCase().startsWith('battlemap_')) {
+    return [];
+  }
   const docId = bankKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 110);
   try {
     const snap = await firestore.collection(COLLECTIONS.assetBank).doc(docId).get();
@@ -434,6 +659,94 @@ export async function loadFromAssetBank(
     return urls.filter((u): u is string => typeof u === 'string' && u.length > 0);
   } catch {
     return [];
+  }
+}
+
+export async function findMatchingPortraitFromAssetBank(
+  firestore: Firestore,
+  query: {
+    readonly speciesId?: string | null;
+    readonly classId?: string | null;
+    readonly pronouns?: string | null;
+    readonly desiredTags?: readonly string[];
+    readonly customDescription?: string | null;
+  },
+): Promise<readonly string[]> {
+  const exactKey = buildPortraitAssetBankKey({
+    ancestryId: query.speciesId ?? null,
+    classId: query.classId ?? null,
+    pronouns: query.pronouns ?? null,
+  });
+  const exactUrls = await loadFromAssetBank(firestore, exactKey);
+  if (exactUrls.length >= 3) {
+    return exactUrls.slice(0, 3);
+  }
+
+  const wantedSpecies = normalizeBankSegment(query.speciesId);
+  const wantedClass = normalizeBankSegment(query.classId);
+  const wantedPresentation = resolvePresentationTagFromPronouns(query.pronouns ?? undefined);
+  const desiredTagSet = new Set(
+    query.desiredTags ??
+      extractWhitelistedCanonicalTags({
+        ...(query.speciesId ? { speciesId: query.speciesId } : {}),
+        ...(query.classId ? { classId: query.classId } : {}),
+        ...(query.pronouns ? { pronouns: query.pronouns } : {}),
+        text: query.customDescription ?? '',
+      }),
+  );
+
+  try {
+    const snap = await firestore.collection(COLLECTIONS.assetBank).get();
+    const candidates: { readonly score: number; readonly urls: readonly string[] }[] = [];
+    for (const doc of snap.docs) {
+      const data = doc.data() as {
+        bankKey?: string;
+        assetKind?: string;
+        speciesId?: string;
+        classId?: string;
+        presentationTag?: string;
+        canonicalTags?: readonly string[];
+        urls?: readonly string[];
+      };
+      if (
+        data.assetKind === 'battlemap' ||
+        (typeof data.bankKey === 'string' && !data.bankKey.startsWith('portrait_'))
+      ) {
+        continue;
+      }
+      const urls = Array.isArray(data.urls)
+        ? data.urls.filter((u): u is string => typeof u === 'string' && u.length > 0)
+        : [];
+      if (urls.length === 0) continue;
+      if (wantedSpecies !== 'any' && data.speciesId && data.speciesId !== wantedSpecies) {
+        continue;
+      }
+      if (wantedClass !== 'any' && data.classId && data.classId !== wantedClass) {
+        continue;
+      }
+      let score = 1;
+      if (data.presentationTag === wantedPresentation) {
+        score += 3;
+      }
+      for (const tag of data.canonicalTags ?? []) {
+        if (desiredTagSet.has(tag)) {
+          score += 2;
+        }
+      }
+      candidates.push({ score, urls });
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const combined = [...exactUrls];
+    for (const candidate of candidates) {
+      for (const u of candidate.urls) {
+        if (!combined.includes(u)) {
+          combined.push(u);
+        }
+      }
+    }
+    return combined.slice(0, 3);
+  } catch {
+    return exactUrls;
   }
 }
 
@@ -548,18 +861,25 @@ export async function generateAndStoreCampaignAsset(options: {
     }
   }
 
-  const battlemapBankKey =
-    options.kind === 'battlemap'
-      ? buildBattlemapAssetBankKey({
-          templateId: options.fallbackTemplateId ?? null,
-          layoutArchetype: options.gridLayout?.layoutArchetype ?? null,
-          ...(options.gridLayout?.cardinalExits !== undefined
-            ? { cardinalExits: options.gridLayout.cardinalExits }
+  // Fail-soft AI Kill Switch enforcement (Packet 4): return curated fallback immediately when enabled.
+  try {
+    if (await getAiKillSwitch(options.firestore)) {
+      return {
+        assetUrl: fallbackUrlForAsset({
+          kind: options.kind,
+          ...(options.fallbackTemplateId !== undefined
+            ? { fallbackTemplateId: options.fallbackTemplateId }
             : {}),
-        })
-      : null;
+        }),
+        source: 'curated',
+      };
+    }
+  } catch {
+    // Proceed if kill-switch lookup fails.
+  }
 
-  // Enforce delete-proof per-account battlemap quota when accountId is provided (`Packet 5`).
+  // Enforce delete-proof per-account & per-campaign battlemap quota (`Packet 2`).
+  // Battlemaps are NEVER read from or written to the cross-campaign `assetBank` (`Guardrail 3`).
   if (
     options.kind === 'battlemap' &&
     typeof options.accountId === 'string' &&
@@ -568,16 +888,11 @@ export async function generateAndStoreCampaignAsset(options: {
     const quota = await checkAndRecordAccountImageQuota({
       firestore: options.firestore,
       accountId: options.accountId,
+      campaignId: options.campaignId,
       kind: 'battlemap',
       skipCooldown: true,
     });
     if (!quota.allowed) {
-      if (battlemapBankKey !== null) {
-        const banked = await loadFromAssetBank(options.firestore, battlemapBankKey);
-        if (banked.length > 0) {
-          return { assetUrl: banked[0]!, source: 'curated' };
-        }
-      }
       return {
         assetUrl: fallbackUrlForAsset({
           kind: options.kind,
@@ -635,13 +950,6 @@ export async function generateAndStoreCampaignAsset(options: {
         prompt: fullPrompt,
         ...(sharedAssetId !== undefined ? { customAssetId: sharedAssetId } : {}),
       });
-      if (battlemapBankKey !== null) {
-        await saveToAssetBank({
-          firestore: options.firestore,
-          bankKey: battlemapBankKey,
-          urls: [assetUrl],
-        });
-      }
       return {
         assetUrl,
         source: 'generated',

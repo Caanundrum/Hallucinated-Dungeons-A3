@@ -13,6 +13,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import type { Firestore } from 'firebase-admin/firestore';
+import { getAiKillSwitch } from '../admin/admin-service.js';
 import type {
   CampaignBlueprint,
   CampaignBlueprintBeat,
@@ -113,11 +114,37 @@ export function detectPremiseLocation(premise: string): PremiseLocation {
   return { locationKind: null, locationPhrase: null };
 }
 
+const FURNITURE_OR_STRUCTURAL_HEAD_NOUNS = new Set([
+  'rack', 'racks', 'shelf', 'shelves', 'desk', 'desks', 'table', 'tables', 'counter', 'counters',
+  'stand', 'stands', 'bench', 'benches', 'bin', 'bins', 'slot', 'slots', 'chute', 'chutes', 'cart',
+  'carts', 'wagon', 'wagons', 'room', 'hall', 'bay', 'office', 'station', 'post', 'board', 'hook',
+  'hooks', 'nook', 'alcove', 'ledge', 'locker', 'lockers', 'pigeonhole', 'pigeonholes', 'trough',
+  'troughs', 'scale', 'scales', 'beam', 'beams', 'pillar', 'pillars', 'column', 'columns',
+]);
+
+/**
+ * Strips compound furniture/structural modifiers (e.g. "parcel rack", "letter desk", "cargo hall")
+ * and purely locative scenery prepositional clauses ("Near a fallen parcel rack") so incidental
+ * background nouns do not trigger a false-positive courier/package quest hook.
+ */
+export function stripSceneryAndFurnitureClausesForHook(premise: string): string {
+  return premise
+    .replace(
+      /\b(?:parcel|package|letter|missive|delivery|courier|mail|cargo)\s+(?:rack|racks|shelf|shelves|desk|desks|table|tables|counter|counters|stand|stands|bench|benches|bin|bins|slot|slots|chute|chutes|cart|carts|wagon|wagons|room|hall|bay|office|station|post|board|hooks?|nook|alcove|ledge|locker|lockers|pigeonholes?|ledger|manifest)\b/gi,
+      'scenery fixture',
+    )
+    .replace(
+      /\b(?:near|beside|by|next\s+to|under|beneath|behind|past|along|around|against|atop)\s+(?:a|an|the)\s+(?:[a-z'’-]+\s+){0,3}(?:parcel|package|letter|missive|delivery|rack|shelf|desk|table|counter|stand|bin|slot|chute|cart|wagon)\b/gi,
+      'near the scenery',
+    );
+}
+
 export function detectQuestHook(
   premise: string,
   propOrProps?: string | readonly string[] | null,
 ): string | null {
-  const text = premise.toLowerCase();
+  const cleanedPremise = stripSceneryAndFurnitureClausesForHook(premise);
+  const text = cleanedPremise.toLowerCase();
   const props =
     typeof propOrProps === 'string'
       ? [propOrProps.trim()].filter(Boolean)
@@ -130,15 +157,33 @@ export function detectQuestHook(
       : props.length === 1
         ? props[0]!
         : null;
-  if (
-    /\b(courier|package|missive|parcel|delivery|informant|cypher|cipher|missing\s+(?:packet|letter|courier))\b/.test(
-      text,
-    )
-  ) {
+
+  const { missingNpcs } = classifyNpcRoles(extractProperNames(premise).npcs, premise);
+  const hasExplicitCourier = /\b(?:courier|messenger)\b/i.test(text);
+  if (missingNpcs.length > 0 && !hasExplicitCourier) {
+    return `the disappearance of ${missingNpcs[0]}`;
+  }
+
+  if (hasExplicitCourier) {
     if (propPhrase !== null) {
       return `a missing courier and the ${propPhrase} they carried`;
     }
     return 'a missing courier and the package they carried';
+  }
+
+  if (
+    /\b(?:missing|vanished|lost|stolen|intercepted|undelivered)\s+(?:[a-z'’-]+\s+){0,2}(?:package|missive|parcel|delivery|packet|cypher|cipher)\b/i.test(
+      text,
+    ) ||
+    /\b(?:deliver|recover|retrieve|find|intercept|carry|carried)\s+(?:the|a|an|their|his|her)\s+(?:[a-z'’-]+\s+){0,2}(?:package|missive|parcel|delivery|packet|cypher|cipher)\b/i.test(
+      text,
+    ) ||
+    /\b(?:informant|cypher|cipher)\b/i.test(text)
+  ) {
+    if (propPhrase !== null) {
+      return `the missing ${propPhrase}`;
+    }
+    return 'a missing package that must be recovered';
   }
   if (/\b(kidnap|abduct|ransom)\b/.test(text)) {
     return 'a disappearance that needs answering';
@@ -574,7 +619,10 @@ function extractModifierPhrases(
       nouns === PROP_NOUNS &&
       nextToken !== undefined &&
       /^[a-z]/.test(nextToken) &&
-      PLACE_NOUNS.has(nextToken.toLowerCase())
+      (PLACE_NOUNS.has(nextToken.toLowerCase()) ||
+        EXIT_NOUNS.has(nextToken.toLowerCase()) ||
+        PROP_NOUNS.has(nextToken.toLowerCase()) ||
+        FURNITURE_OR_STRUCTURAL_HEAD_NOUNS.has(nextToken.toLowerCase()))
     ) {
       continue;
     }
@@ -1121,7 +1169,7 @@ function buildMilestoneGraph(options: {
               portraitPrompt: sanitizeWotcProductIdentity(
                 `${missingTarget}, missing person awaiting rescue in ${placeName}, ${toneLabel.toLowerCase()} fantasy portrait`,
               ),
-              heldItems: ['Courier Signet Seal'],
+              heldItems: [/\bcourier\b/i.test(options.hook) ? 'Courier Signet Seal' : 'Signet Seal'],
             },
           ]
         : [];
@@ -1129,7 +1177,9 @@ function buildMilestoneGraph(options: {
     const room3SummaryFinal =
       missingTarget !== null
         ? sanitizeWotcProductIdentity(
-            `${room3Summary} ${missingTarget} is held here, awaiting rescue alongside ${options.hook}.`,
+            options.hook.toLowerCase().includes(missingTarget.toLowerCase())
+              ? `${room3Summary} ${missingTarget} is held here, awaiting rescue as the truth behind ${options.hook} comes to light.`
+              : `${room3Summary} ${missingTarget} is held here, awaiting rescue alongside ${options.hook}.`,
           )
         : room3Summary;
 
@@ -1343,10 +1393,11 @@ export function buildCampaignBlueprint(
   premiseOrOptions: string | BuildCampaignBlueprintOptions,
   maybeName?: string,
 ): CampaignBlueprint {
-  const rawSummary =
+  const rawSummary = (
     typeof premiseOrOptions === 'string'
       ? premiseOrOptions
-      : [premiseOrOptions.summary, premiseOrOptions.premise].filter(Boolean).join('\n\n');
+      : [premiseOrOptions.summary, premiseOrOptions.premise].filter(Boolean).join('\n\n')
+  ).slice(0, 4000);
   const campaignName =
     typeof premiseOrOptions === 'string'
       ? (maybeName ?? 'Campaign')
@@ -1530,10 +1581,24 @@ export function buildCampaignBlueprint(
  */
 export async function draftCampaignBlueprintWithAi(
   options: BuildCampaignBlueprintOptions & {
+    readonly firestore?: Firestore;
+    readonly forceDeterministicFallback?: boolean;
     readonly env?: Record<string, string | undefined>;
   },
 ): Promise<CampaignBlueprint> {
   const base = buildCampaignBlueprint(options);
+  if (options.forceDeterministicFallback === true) {
+    return base;
+  }
+  if (options.firestore !== undefined) {
+    try {
+      if (await getAiKillSwitch(options.firestore)) {
+        return base;
+      }
+    } catch {
+      // Proceed if kill-switch lookup fails.
+    }
+  }
   const env = options.env ?? process.env;
   const apiKey = (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY ?? '').trim();
   const project = (
@@ -1664,6 +1729,8 @@ export async function draftCampaignBlueprintWithAi(
  */
 export async function draftCampaignBlueprintOptionsWithAi(
   options: BuildCampaignBlueprintOptions & {
+    readonly firestore?: Firestore;
+    readonly forceDeterministicFallback?: boolean;
     readonly env?: Record<string, string | undefined>;
   },
 ): Promise<readonly CampaignBlueprint[]> {

@@ -953,6 +953,21 @@ export async function setAdminAiKillSwitch(options: {
   })) as { readonly enabled: boolean };
 }
 
+export async function resetAdminImageQuotas(options: {
+  readonly candidateId: string;
+  readonly targetAccountId?: string;
+}): Promise<{ readonly ok: boolean; readonly resetCount: number }> {
+  return (await request('/api/admin/reset-image-quota', {
+    method: 'POST',
+    candidateId: options.candidateId,
+    body: JSON.stringify({
+      ...(options.targetAccountId !== undefined
+        ? { targetAccountId: options.targetAccountId }
+        : {}),
+    }),
+  })) as { readonly ok: boolean; readonly resetCount: number };
+}
+
 export async function fetchProviderRegistry(): Promise<{
   readonly providers: readonly {
     readonly providerId: string;

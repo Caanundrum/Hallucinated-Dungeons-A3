@@ -1613,7 +1613,7 @@ ol.record-list.dm-thread-list > li {
   .dm-thread-list,
   ol.record-list.dm-thread-list {
     flex: 1 1 auto;
-    min-height: 8rem;
+    min-height: 0;
     max-height: none;
     overflow-y: auto;
   }
@@ -5231,11 +5231,27 @@ html.hd-low-effects .table-stage-svg-viewport,
   transform: translateY(1px);
 }
 
+.table-map-stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.table-map-stage.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .map-poi-tooltip {
   position: absolute;
-  z-index: 6;
+  z-index: 48;
   min-width: 10rem;
-  max-width: 16rem;
+  max-width: min(260px, calc(100% - 16px));
+  overflow-wrap: break-word;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
   border: 1px solid var(--panel-border);

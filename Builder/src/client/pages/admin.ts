@@ -7,7 +7,12 @@
  */
 
 import { getAccount, subscribeAccount } from '../account-session.js';
-import { ApiFailure, fetchAdminPanel, setAdminAiKillSwitch } from '../api.js';
+import {
+  ApiFailure,
+  fetchAdminPanel,
+  resetAdminImageQuotas,
+  setAdminAiKillSwitch,
+} from '../api.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
 import { beginPageMount, isPageMountCurrent } from '../page-mount.js';
@@ -22,6 +27,7 @@ export function mountAdminPage(host: PageHost): void {
   let snapshot: AdminSnapshot | null = null;
   let busy = false;
   let error: string | null = null;
+  let quotaResetNotice: string | null = null;
   let gateBusy = false;
   let gateError: string | null = null;
   const mountToken = beginPageMount(container);
@@ -94,6 +100,11 @@ export function mountAdminPage(host: PageHost): void {
             ? ''
             : `<div class="message error" role="alert" data-testid="admin-error">${escapeHtml(error)}</div>`
         }
+        ${
+          quotaResetNotice === null
+            ? ''
+            : `<div class="message" role="status" data-testid="admin-quota-reset-notice">${escapeHtml(quotaResetNotice)}</div>`
+        }
         <section class="panel" aria-labelledby="admin-status-heading">
           <h2 id="admin-status-heading">Authorization</h2>
           <dl class="detail-list">
@@ -107,6 +118,9 @@ export function mountAdminPage(host: PageHost): void {
           <div class="actions">
             <button type="button" data-testid="admin-toggle-kill-switch" aria-disabled="${busy}">
               ${snapshot.aiKillSwitch ? 'Disable AI kill switch' : 'Enable AI kill switch'}
+            </button>
+            <button type="button" data-testid="admin-reset-image-quota" aria-disabled="${busy}">
+              Reset Image Quotas
             </button>
           </div>
         </section>
@@ -139,6 +153,7 @@ export function mountAdminPage(host: PageHost): void {
           }
           busy = true;
           error = null;
+          quotaResetNotice = null;
           render();
           try {
             await setAdminAiKillSwitch({
@@ -151,6 +166,34 @@ export function mountAdminPage(host: PageHost): void {
               failure instanceof ApiFailure
                 ? failure.message
                 : 'The Admin kill-switch update failed.';
+            busy = false;
+            render();
+          }
+        })();
+      });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="admin-reset-image-quota"]')
+      ?.addEventListener('click', () => {
+        void (async () => {
+          if (candidate === null || busy || snapshot === null || !snapshot.isAdmin) {
+            return;
+          }
+          busy = true;
+          error = null;
+          quotaResetNotice = null;
+          render();
+          try {
+            const result = await resetAdminImageQuotas({
+              candidateId: candidate.candidateId,
+            });
+            quotaResetNotice = `Image quotas reset across ${result.resetCount} account record(s).`;
+            await load();
+          } catch (failure) {
+            error =
+              failure instanceof ApiFailure
+                ? failure.message
+                : 'The Admin image-quota reset failed.';
             busy = false;
             render();
           }

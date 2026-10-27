@@ -956,18 +956,78 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     updateDmThreadJumpVisibility();
   }
 
+  let dmThreadResizeObserver: ResizeObserver | null = null;
+  let dmThreadUserScrollIntentUntil = 0;
+
+  function onChronicleViewportResize(): void {
+    if (!dmThreadFollowLatest) {
+      return;
+    }
+    scrollDmPlayThreadToLatest('auto');
+    requestAnimationFrame(() => {
+      if (dmThreadFollowLatest) {
+        scrollDmPlayThreadToLatest('auto');
+      }
+    });
+  }
+
   function bindDmPlayThreadScroll(): void {
     const host = dmPlayThreadScrollHost();
-    if (host === null || host.dataset.scrollBound === '1') {
+    if (host === null) {
+      return;
+    }
+    if (typeof ResizeObserver === 'function') {
+      if (dmThreadResizeObserver === null) {
+        dmThreadResizeObserver = new ResizeObserver(() => {
+          onChronicleViewportResize();
+        });
+      }
+      dmThreadResizeObserver.disconnect();
+      dmThreadResizeObserver.observe(host);
+      const outerHost = container.querySelector<HTMLElement>('[data-testid="dm-play-thread"]');
+      if (outerHost !== null && outerHost !== host) {
+        dmThreadResizeObserver.observe(outerHost);
+      }
+    }
+    if (host.dataset.scrollBound === '1') {
       return;
     }
     host.dataset.scrollBound = '1';
+    host.addEventListener(
+      'wheel',
+      (event) => {
+        if (event.deltaY < 0) {
+          dmThreadUserScrollIntentUntil = Date.now() + 400;
+        }
+      },
+      { passive: true },
+    );
+    host.addEventListener(
+      'touchmove',
+      () => {
+        dmThreadUserScrollIntentUntil = Date.now() + 400;
+      },
+      { passive: true },
+    );
+    host.addEventListener('pointerdown', () => {
+      dmThreadUserScrollIntentUntil = Date.now() + 400;
+    });
+    host.addEventListener('keydown', (event) => {
+      if (event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home') {
+        dmThreadUserScrollIntentUntil = Date.now() + 400;
+      }
+    });
     host.addEventListener('scroll', () => {
       const nearBottom = isDmThreadNearBottom(host);
       if (nearBottom) {
         dmThreadFollowLatest = true;
-      } else if (host.scrollHeight > host.clientHeight + 24) {
+      } else if (
+        Date.now() <= dmThreadUserScrollIntentUntil &&
+        host.scrollHeight > host.clientHeight + 24
+      ) {
         dmThreadFollowLatest = false;
+      } else if (dmThreadFollowLatest && host.scrollHeight > host.clientHeight) {
+        host.scrollTop = host.scrollHeight;
       }
       updateDmThreadJumpVisibility();
     });
@@ -6732,6 +6792,7 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
   }
 
   document.addEventListener('visibilitychange', onVisibilityRefresh);
+  window.addEventListener('resize', onChronicleViewportResize);
   const unsubscribeAccount = subscribeAccount(() => {
     if (!isPageMountCurrent(container, mountToken)) {
       return;
@@ -6743,6 +6804,11 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     stopProjectionPoll();
     clearPartyTravelTimer();
     document.removeEventListener('visibilitychange', onVisibilityRefresh);
+    window.removeEventListener('resize', onChronicleViewportResize);
+    if (dmThreadResizeObserver !== null) {
+      dmThreadResizeObserver.disconnect();
+      dmThreadResizeObserver = null;
+    }
     if (rulesHotkeyListener !== null) {
       document.removeEventListener('keydown', rulesHotkeyListener);
       rulesHotkeyListener = null;

@@ -22,8 +22,12 @@ import {
   type WebGlRenderLayer,
 } from '../../shared/map-contract.js';
 import {
+  clampMapPanOffset,
+  computeClampedMapTooltipPosition,
+  computeMapDragGesture,
   doorStrokeColor,
   layoutMapLabels,
+  stepMapZoomPercent,
   type MapLabelAnchor,
 } from '../../shared/map-label-layout.js';
 import {
@@ -171,6 +175,56 @@ function tokenLabelFontSize(
   return Math.max(minSvgUnits, Math.round(pixelsPerSquare * 0.28));
 }
 
+function resolveExitFeatureDisplayLabel(
+  map: MapBundleProjection,
+  feature: MapBundleProjection['notableFeatures'][number],
+): string {
+  const { columns, rows } = map.coordinateSpace;
+  const nearbyDoor = map.edges.find(
+    (edge) =>
+      edge.kind === 'door' &&
+      Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
+  );
+  if (nearbyDoor !== undefined) {
+    const auth = doorAuthorityFromStored(nearbyDoor.doorState);
+    const stateSuffix =
+      auth.leaf === 'open'
+        ? 'open'
+        : auth.lock === 'locked'
+          ? 'closed, locked'
+          : auth.lock === 'unlocked'
+            ? 'closed, unlocked'
+            : 'closed';
+    const dirWord =
+      nearbyDoor.orientation.charAt(0).toUpperCase() + nearbyDoor.orientation.slice(1);
+    const cleanFeatureLabel = feature.label
+      .replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '')
+      .replace(/\s*\((?:open|closed|locked|unlocked)[^)]*\)\s*$/i, '')
+      .trim();
+    if (/\bexit\b/i.test(cleanFeatureLabel)) {
+      return `${cleanFeatureLabel} — ${stateSuffix}`;
+    }
+    if (cleanFeatureLabel.length > 0 && !/^wooden doorway/i.test(cleanFeatureLabel)) {
+      return `${dirWord} Exit → ${cleanFeatureLabel} — ${stateSuffix}`;
+    }
+    return `${dirWord} Exit — ${stateSuffix}`;
+  }
+  if (!/\bexit\b/i.test(feature.label)) {
+    const edgeDir =
+      feature.column >= columns - 2
+        ? 'East'
+        : feature.column <= 1
+          ? 'West'
+          : feature.row <= 1
+            ? 'North'
+            : feature.row >= rows - 2
+              ? 'South'
+              : null;
+    return edgeDir !== null ? `${edgeDir} Exit → ${feature.label}` : `Exit → ${feature.label}`;
+  }
+  return feature.label;
+}
+
 function paintSemanticSvg(
   host: HTMLElement,
   map: MapBundleProjection,
@@ -178,6 +232,9 @@ function paintSemanticSvg(
   selectedEdgeId: string | null,
   priorTokenBoxes: Map<string, { x: number; y: number }>,
   zoomScale: number,
+  userZoomPercent: number,
+  panX: number,
+  panY: number,
   mapToolbarMoreOpen: boolean,
   declutterProps: boolean,
 ): Map<string, { x: number; y: number }> {
@@ -350,40 +407,10 @@ function paintSemanticSvg(
     ...map.notableFeatures.map((feature, index) => {
       const cx = feature.column * pixelsPerSquare + pixelsPerSquare / 2;
       const cy = feature.row * pixelsPerSquare + pixelsPerSquare / 2;
-      let fullLabel = feature.label;
-      if (feature.referenceKind === 'exit' || feature.objectKind === 'exit') {
-        const nearbyDoor = map.edges.find(
-          (edge) =>
-            edge.kind === 'door' &&
-            Math.abs(edge.column - feature.column) + Math.abs(edge.row - feature.row) <= 1,
-        );
-        if (nearbyDoor !== undefined) {
-          const auth = doorAuthorityFromStored(nearbyDoor.doorState);
-          const stateSuffix =
-            auth.leaf === 'open'
-              ? 'open'
-              : auth.lock === 'locked'
-                ? 'closed, locked'
-                : auth.lock === 'unlocked'
-                  ? 'closed, unlocked'
-                  : 'closed';
-          const dirWord =
-            nearbyDoor.orientation.charAt(0).toUpperCase() + nearbyDoor.orientation.slice(1);
-          const cleanFeatureLabel = feature.label
-            .replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '')
-            .replace(/\s*\((?:open|closed|locked|unlocked)[^)]*\)\s*$/i, '')
-            .trim();
-          if (/\bexit\b/i.test(cleanFeatureLabel)) {
-            fullLabel = `${cleanFeatureLabel} — ${stateSuffix}`;
-          } else if (cleanFeatureLabel.length > 0 && !/^wooden doorway/i.test(cleanFeatureLabel)) {
-            fullLabel = `${dirWord} Exit → ${cleanFeatureLabel} — ${stateSuffix}`;
-          } else {
-            fullLabel = `${dirWord} Exit — ${stateSuffix}`;
-          }
-        } else if (!/\bexit\b/i.test(fullLabel)) {
-          fullLabel = `Exit → ${fullLabel}`;
-        }
-      }
+      const fullLabel =
+        feature.referenceKind === 'exit' || feature.objectKind === 'exit'
+          ? resolveExitFeatureDisplayLabel(map, feature)
+          : feature.label;
       return {
         id: `marker:${feature.column}:${feature.row}:${index}`,
         kind: 'marker' as const,
@@ -668,12 +695,13 @@ function paintSemanticSvg(
     const spriteKeyAttr =
       spriteDesc !== null ? ` data-sprite-key="${escapeHtml(spriteDesc.spriteKey)}"` : '';
     const cleanLabel = feature.label.replace(/\s*[—-]\s*(?:open|closed|locked|unlocked).*$/i, '').trim();
+    const markerDisplayLabel = isExit ? resolveExitFeatureDisplayLabel(map, feature) : feature.label;
     const accessibleName = doorOwnedExit
       ? `Exit marker for ${cleanLabel} (${formatEdgeAccessibleLabel(boundDoor, map.edges)})`
-      : feature.label;
+      : markerDisplayLabel;
     // Visual-only object markers: never click-to-interact.
     const interactiveAttrs = `role="img" aria-label="${escapeHtml(accessibleName)}"`;
-    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isLever ? ' map-poi-lever' : ''}${isTrap ? ' map-poi-trap' : ''}${isItem ? ' map-poi-item' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(feature.label)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr}${spriteKeyAttr} data-testid="${testId}" ${interactiveAttrs}>
+    return `<g class="map-poi-target ${visual.family} ${visual.stateVariant}${isTorch ? ' map-poi-torch' : ''}${isCover ? ' map-poi-rubble' : ''}${isHazard ? ' map-poi-damp' : ''}${isContainer ? ' map-poi-container' : ''}${isLever ? ' map-poi-lever' : ''}${isTrap ? ' map-poi-trap' : ''}${isItem ? ' map-poi-item' : ''}${isProp ? ' map-poi-prop' : ''}${isActor ? ' map-poi-actor' : ''}${isExit ? ' map-poi-exit' : ''}" data-notable-feature="${escapeHtml(markerDisplayLabel)}" data-feature-column="${feature.column}" data-feature-row="${feature.row}" data-reference-kind="${escapeHtml(kindLabel)}" data-object-kind="${escapeHtml(feature.objectKind ?? '')}" data-object-state="${escapeHtml(feature.objectState ?? '')}" data-visual-family="${escapeHtml(visual.family)}" data-visual-state="${escapeHtml(visual.stateVariant)}"${boundEdgeAttr}${spriteKeyAttr} data-testid="${testId}" ${interactiveAttrs}>
       ${dampWash}
       ${rubbleChips}
       ${torchGlow}
@@ -762,15 +790,15 @@ function paintSemanticSvg(
   const sceneTitle = map.title.trim().length > 0 ? map.title : 'Shared scene';
   wrap.innerHTML = `
     <div class="table-stage-toolbar map-zoom-pill" data-testid="map-stage-toolbar">
-      <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
-      <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
-      <button type="button" data-map-zoom="fit" aria-label="Fit map to viewport">Fit</button>
-      <button type="button" data-map-zoom="center" aria-label="Center on party">Center</button>
+      <button type="button" data-map-zoom="out" data-testid="map-zoom-out" aria-label="Zoom out">−</button>
+      <button type="button" data-map-zoom="in" data-testid="map-zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" data-map-zoom="fit" data-testid="map-zoom-fit" aria-label="Fit map to viewport">Fit</button>
+      <button type="button" data-map-zoom="center" data-testid="map-zoom-center" aria-label="Center on party">Center</button>
       <details class="map-toolbar-more" data-testid="map-toolbar-more"${mapToolbarMoreOpen ? ' open' : ''}>
         <summary aria-label="More map tools">More</summary>
         <button type="button" data-map-zoom="preview-cue" data-testid="preview-scene-discovery-cue" aria-label="Preview discovery cue">Cue</button>
       </details>
-      <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom ${Math.round(zoomScale * 100)}%</span>
+      <span class="record-meta map-zoom-pill-meta" data-testid="map-zoom-indicator" aria-live="polite">Zoom <span data-testid="map-zoom-readout">${userZoomPercent}%</span></span>
     </div>
     <p class="map-scene-title visually-hidden" data-testid="map-scene-title">${escapeHtml(sceneTitle)}</p>
     <p class="map-terrain-summary visually-hidden" role="region" aria-label="Map summary" data-testid="map-terrain-summary">
@@ -779,9 +807,10 @@ function paintSemanticSvg(
     <p class="map-visual-summary visually-hidden" role="region" aria-label="Scene visual presentation" data-testid="map-visual-summary">
       ${escapeHtml(visuals.semanticSummary)}
     </p>
-    <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" data-pan-enabled="true">
-      <div class="table-stage-svg-scaler" data-testid="table-stage-svg-scaler" style="width:${width * zoomScale}px;height:${height * zoomScale}px;">
-        <svg viewBox="0 0 ${width} ${height}" width="${width * zoomScale}" height="${height * zoomScale}" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
+    <div class="table-map-stage" data-testid="table-map-stage" data-zoom-percent="${userZoomPercent}" data-pan-x="${Math.round(panX)}" data-pan-y="${Math.round(panY)}">
+      <div class="table-stage-svg-viewport" data-testid="table-stage-svg-viewport" data-pan-enabled="true">
+        <div class="table-stage-svg-scaler" data-testid="table-stage-svg-scaler" style="width:${width * zoomScale}px;height:${height * zoomScale}px;transform:translate(${Math.round(panX)}px, ${Math.round(panY)}px);">
+          <svg viewBox="0 0 ${width} ${height}" width="${width * zoomScale}" height="${height * zoomScale}" role="grid" aria-label="${escapeHtml(map.title)}" data-testid="table-stage-svg" data-scene-title="${escapeHtml(map.title)}">
           <defs>
             <filter id="fog-blur" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
               <feGaussianBlur stdDeviation="${fogBlur}" />
@@ -904,6 +933,7 @@ function paintSemanticSvg(
           <g data-layer="label_chips" data-testid="table-stage-label-chips">${labelLayer}</g>
           <g data-layer="overhead_environment" data-testid="table-stage-notable-features"></g>
         </svg>
+        </div>
       </div>
     </div>
     <div class="table-stage-atmosphere atmosphere-${visuals.atmosphere} ${visuals.lightWash} ${visuals.threat}" data-testid="table-stage-atmosphere" data-atmosphere="${visuals.atmosphere}" data-light-wash="${visuals.lightWash}" data-threat="${visuals.threat}" aria-hidden="true">
@@ -988,10 +1018,15 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   let root: Container | null = null;
   let layers: Record<WebGlRenderLayer, Container> | null = null;
   let priorTokenBoxes = new Map<string, { x: number; y: number }>();
-  /** Absolute display scale: map pixel → CSS pixel (Fit sets this to fill the frame). */
+  /** Base Fit multiplier: map pixel → CSS pixel when userZoomPercent === 100. */
+  let baseFitScale = 1;
+  /** User-facing normalized zoom percentage (100% = fitted baseline). */
+  let userZoomPercent = 100;
+  /** Camera pan offsets in CSS pixels relative to fitted center (persisted across state polls in same scene). */
+  let panX = 0;
+  let panY = 0;
+  /** Effective display scale: baseFitScale * (userZoomPercent / 100). */
   let zoomScale = 1;
-  /** Last Fit scale; prop plaques stay hidden until zoom rises ~12% above this. */
-  let lastFitZoom: number | null = null;
   let mapToolbarMoreOpen = false;
   let hasFittedOnce = false;
   let pixiPaintSeq = 0;
@@ -1007,17 +1042,17 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
   }
 
   function shouldDeclutterProps(): boolean {
-    if (lastFitZoom === null) {
-      return zoomScale < 1.05;
-    }
-    return zoomScale <= lastFitZoom * 1.12;
+    return userZoomPercent <= 112;
   }
 
-  function applyZoom(next: number, options?: { readonly fromFit?: boolean }): void {
+  function syncCameraTransforms(): void {
     const size = mapPixelSize();
-    zoomScale = Math.max(0.35, Math.min(3.2, next));
-    if (options?.fromFit === true) {
-      lastFitZoom = zoomScale;
+    zoomScale = Math.max(0.2, Math.min(4.0, baseFitScale * (userZoomPercent / 100)));
+    const stageEl = host.querySelector<HTMLElement>('[data-testid="table-map-stage"]');
+    if (stageEl !== null) {
+      stageEl.dataset.zoomPercent = `${userZoomPercent}`;
+      stageEl.dataset.panX = `${Math.round(panX)}`;
+      stageEl.dataset.panY = `${Math.round(panY)}`;
     }
     const scaler = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-scaler"]');
     const svg = host.querySelector<SVGSVGElement>('[data-testid="table-stage-svg"]');
@@ -1026,21 +1061,51 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const displayH = size.height * zoomScale;
       scaler.style.width = `${displayW}px`;
       scaler.style.height = `${displayH}px`;
+      scaler.style.transform = `translate(${Math.round(panX)}px, ${Math.round(panY)}px)`;
       svg.setAttribute('width', `${displayW}`);
       svg.setAttribute('height', `${displayH}`);
     }
-    const indicator = host.querySelector<HTMLElement>('[data-testid="map-zoom-indicator"]');
-    const nextZoomLabel = `Zoom ${Math.round(zoomScale * 100)}%`;
-    if (indicator !== null && indicator.textContent !== nextZoomLabel) {
-      indicator.textContent = nextZoomLabel;
+    const readout = host.querySelector<HTMLElement>('[data-testid="map-zoom-readout"]');
+    if (readout !== null) {
+      readout.textContent = `${userZoomPercent}%`;
+    } else {
+      const indicator = host.querySelector<HTMLElement>('[data-testid="map-zoom-indicator"]');
+      if (indicator !== null) {
+        indicator.innerHTML = `Zoom <span data-testid="map-zoom-readout">${userZoomPercent}%</span>`;
+      }
+    }
+    if (application !== null && root !== null && size !== null) {
+      const viewWidth = application.screen.width;
+      const viewHeight = application.screen.height;
+      root.scale.set(zoomScale, zoomScale);
+      root.x = Math.max(12, (viewWidth - size.width * zoomScale) / 2) + panX;
+      root.y = Math.max(12, (viewHeight - size.height * zoomScale) / 2) + panY;
     }
   }
 
-  function fitMapToViewport(): void {
+  function applyUserZoom(
+    nextPercent: number,
+    options?: { readonly resetPan?: boolean },
+  ): void {
+    userZoomPercent = Math.max(50, Math.min(300, Math.round(nextPercent)));
+    if (options?.resetPan === true) {
+      panX = 0;
+      panY = 0;
+    }
+    syncCameraTransforms();
+  }
+
+  function fitMapToViewport(options?: { readonly preserveUserZoomAndPan?: boolean }): void {
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
     const size = mapPixelSize();
     if (viewport === null || size === null || currentMap === null) {
-      applyZoom(1, { fromFit: true });
+      baseFitScale = 1;
+      if (options?.preserveUserZoomAndPan !== true) {
+        userZoomPercent = 100;
+        panX = 0;
+        panY = 0;
+      }
+      syncCameraTransforms();
       return;
     }
     const dashboard = host.closest<HTMLElement>('.table-dashboard');
@@ -1051,8 +1116,6 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       viewport.clientHeight < 320 ||
       (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
     // Contain the full Director scene — never force horizontal overflow after Fit.
-    // Compact path uses less label pad so Fit fills empty canvas (Recheck 3).
-    // Pad for labels without starving the grid (VWR-005 — Fit should show the scene).
     const labelPad = compactFit
       ? Math.min(28, Math.max(12, viewport.clientWidth * 0.04))
       : Math.min(28, Math.max(12, viewport.clientWidth * 0.03));
@@ -1060,10 +1123,15 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     const vw = Math.max(48, viewport.clientWidth - pad - labelPad);
     const vh = Math.max(48, viewport.clientHeight - pad - labelPad * 0.3);
     const contain = Math.min(vw / size.width, vh / size.height);
-    // Fill more of the stage; prop labels declutter at Fit so margins can stay tight.
     const fitScale = 0.97;
     const fit = contain * fitScale;
-    applyZoom(Math.max(0.28, fit), { fromFit: true });
+    baseFitScale = Math.max(0.28, Math.min(3.2, fit));
+    if (options?.preserveUserZoomAndPan !== true) {
+      userZoomPercent = 100;
+      panX = 0;
+      panY = 0;
+    }
+    syncCameraTransforms();
     viewport.scrollTo({
       left: Math.max(0, (size.width * zoomScale - viewport.clientWidth) / 2),
       top: Math.max(0, (size.height * zoomScale - viewport.clientHeight) / 2),
@@ -1076,6 +1144,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     if (viewport === null || currentMap === null) {
       return;
     }
+    panX = 0;
+    panY = 0;
+    syncCameraTransforms();
     const token =
       currentMap.viewerSeatId === null
         ? currentMap.tokens[0]
@@ -1102,6 +1173,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       removeWindowPanListeners();
       removeWindowPanListeners = null;
     }
+    const stageEl = host.querySelector<HTMLElement>('[data-testid="table-map-stage"]');
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
     if (viewport === null || viewport.dataset.panBound === '1') {
       return;
@@ -1111,6 +1183,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     let moved = false;
     let originX = 0;
     let originY = 0;
+    let startPanX = 0;
+    let startPanY = 0;
     let scrollLeft = 0;
     let scrollTop = 0;
     let activePointerId: number | null = null;
@@ -1137,14 +1211,22 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       ) {
         return;
       }
-      const dx = event.clientX - originX;
-      const dy = event.clientY - originY;
-      if (!moved && Math.hypot(dx, dy) < 6) {
+      const gesture = computeMapDragGesture({
+        startClientX: originX,
+        startClientY: originY,
+        currentClientX: event.clientX,
+        currentClientY: event.clientY,
+        startPanX,
+        startPanY,
+        thresholdPx: 5,
+      });
+      if (!moved && !gesture.isDragging) {
         return;
       }
       if (!moved) {
         moved = true;
         viewport.classList.add('is-panning');
+        stageEl?.classList.add('is-panning');
         if ('pointerId' in event && typeof viewport.setPointerCapture === 'function') {
           try {
             viewport.setPointerCapture(event.pointerId);
@@ -1154,8 +1236,25 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         }
       }
       event.preventDefault();
-      viewport.scrollLeft = scrollLeft - dx;
-      viewport.scrollTop = scrollTop - dy;
+      const size = mapPixelSize();
+      if (size !== null) {
+        const clamped = clampMapPanOffset({
+          panX: gesture.panX,
+          panY: gesture.panY,
+          scaledMapWidth: size.width * zoomScale,
+          scaledMapHeight: size.height * zoomScale,
+          viewportWidth: viewport.clientWidth || size.width,
+          viewportHeight: viewport.clientHeight || size.height,
+        });
+        panX = clamped.panX;
+        panY = clamped.panY;
+      } else {
+        panX = gesture.panX;
+        panY = gesture.panY;
+      }
+      syncCameraTransforms();
+      viewport.scrollLeft = scrollLeft - (event.clientX - originX);
+      viewport.scrollTop = scrollTop - (event.clientY - originY);
     };
 
     const onUp = (event: PointerEvent | MouseEvent) => {
@@ -1172,6 +1271,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       dragging = false;
       activePointerId = null;
       viewport.classList.remove('is-panning');
+      stageEl?.classList.remove('is-panning');
       detachWindowListeners();
     };
 
@@ -1193,6 +1293,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       moved = false;
       originX = event.clientX;
       originY = event.clientY;
+      startPanX = panX;
+      startPanY = panY;
       scrollLeft = viewport.scrollLeft;
       scrollTop = viewport.scrollTop;
       activePointerId = 'pointerId' in event ? event.pointerId : null;
@@ -1205,6 +1307,26 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     };
 
     viewport.addEventListener('pointerdown', onDown);
+    viewport.addEventListener('mousedown', onDown);
+    viewport.addEventListener(
+      'wheel',
+      (event) => {
+        if (event.deltaY === 0) {
+          return;
+        }
+        event.preventDefault();
+        const prevDeclutter = shouldDeclutterProps();
+        const nextPercent = stepMapZoomPercent(
+          userZoomPercent,
+          event.deltaY < 0 ? 'in' : 'out',
+        );
+        applyUserZoom(nextPercent);
+        if (shouldDeclutterProps() !== prevDeclutter && currentMap !== null) {
+          paint(currentMap);
+        }
+      },
+      { passive: false },
+    );
     viewport.addEventListener(
       'click',
       (event) => {
@@ -1231,13 +1353,13 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         const mode = button.getAttribute('data-map-zoom');
         let zoomChanged = false;
         if (mode === 'in') {
-          applyZoom(zoomScale * 1.15);
+          applyUserZoom(stepMapZoomPercent(userZoomPercent, 'in'));
           zoomChanged = true;
         } else if (mode === 'out') {
-          applyZoom(zoomScale / 1.15);
+          applyUserZoom(stepMapZoomPercent(userZoomPercent, 'out'));
           zoomChanged = true;
         } else if (mode === 'fit') {
-          fitMapToViewport();
+          fitMapToViewport({ preserveUserZoomAndPan: false });
           zoomChanged = true;
         } else if (mode === 'preview-cue') {
           playSceneDiscoveryCue();
@@ -1245,18 +1367,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
           centerOnParty();
         } else if (mode === 'preset') {
           const preset = Number(button.getAttribute('data-zoom-preset') ?? '1');
-          const size = mapPixelSize();
-          const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
-          if (size !== null && viewport !== null) {
-            const pad = 12;
-            const fit = Math.min(
-              Math.max(48, viewport.clientWidth - pad) / size.width,
-              Math.max(48, viewport.clientHeight - pad) / size.height,
-            );
-            applyZoom(fit * preset);
-          } else {
-            applyZoom(preset);
-          }
+          applyUserZoom(Math.round(preset * 100));
           zoomChanged = true;
         }
         // Re-layout chips when Fit / zoom crosses the prop-declutter band.
@@ -1313,29 +1424,59 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       el.removeAttribute('title');
     });
 
+    const stageEl = host.querySelector<HTMLElement>('[data-testid="table-map-stage"]') ?? host;
     let tip = host.querySelector<HTMLElement>('[data-testid="map-poi-tooltip"]');
     if (tip === null) {
       tip = document.createElement('div');
       tip.className = 'map-poi-tooltip';
       tip.dataset.testid = 'map-poi-tooltip';
       tip.hidden = true;
-      host.appendChild(tip);
+      stageEl.appendChild(tip);
     } else {
+      if (tip.parentElement !== stageEl) {
+        stageEl.appendChild(tip);
+      }
       tip.hidden = true;
     }
-    const show = (label: string, kind: string, clientX: number, clientY: number): void => {
+    const show = (
+      label: string,
+      kind: string,
+      clientX: number,
+      clientY: number,
+      featureColumn?: number,
+    ): void => {
       if (tip === null) return;
-      const hostBox = host.getBoundingClientRect();
+      const stageBox = stageEl.getBoundingClientRect();
       tip.hidden = false;
       const displayKind =
         kind === 'exit' || kind === 'Map Exit'
           ? 'Map Exit'
           : kind.replace(/_/g, ' ');
       tip.textContent = displayKind.length > 0 ? `${label} · ${displayKind}` : label;
-      const leftPx = Math.max(8, clientX - hostBox.left + 12);
-      const minTopPx = leftPx < 240 ? 58 : 8;
-      tip.style.left = `${leftPx}px`;
-      tip.style.top = `${Math.max(minTopPx, clientY - hostBox.top + 12)}px`;
+      const tipBox = tip.getBoundingClientRect();
+      let effectiveStageWidth = Math.max(120, stageBox.width);
+      const commsRail = document.querySelector<HTMLElement>('.table-comms-rail:not(.is-collapsed)');
+      if (commsRail !== null) {
+        const railBox = commsRail.getBoundingClientRect();
+        if (railBox.width > 0 && railBox.left > stageBox.left && railBox.left < stageBox.right) {
+          effectiveStageWidth = Math.max(120, railBox.left - stageBox.left);
+        }
+      }
+      const anchorX = clientX - stageBox.left;
+      const anchorY = clientY - stageBox.top;
+      const clamped = computeClampedMapTooltipPosition({
+        anchorX,
+        anchorY,
+        tooltipWidth: Math.max(60, tipBox.width || 180),
+        tooltipHeight: Math.max(24, tipBox.height || 30),
+        stageWidth: effectiveStageWidth,
+        stageHeight: Math.max(80, stageBox.height),
+        featureColumn,
+        mapColumns: currentMap?.coordinateSpace.columns,
+      });
+      tip.style.left = `${clamped.left}px`;
+      tip.style.top = `${clamped.top}px`;
+      tip.dataset.placement = clamped.flippedLeft ? 'left' : 'right';
     };
     const hide = (): void => {
       if (tip !== null) tip.hidden = true;
@@ -1346,12 +1487,14 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       const boundEdge = group.getAttribute('data-bound-edge');
       const colAttr = group.getAttribute('data-feature-column');
       const rowAttr = group.getAttribute('data-feature-row');
-      group.onmouseenter = (event) => show(label, kind, event.clientX, event.clientY);
-      group.onmousemove = (event) => show(label, kind, event.clientX, event.clientY);
+      const parsedCol = colAttr !== null ? Number(colAttr) : undefined;
+      const featureCol = Number.isInteger(parsedCol) ? parsedCol : undefined;
+      group.onmouseenter = (event) => show(label, kind, event.clientX, event.clientY, featureCol);
+      group.onmousemove = (event) => show(label, kind, event.clientX, event.clientY, featureCol);
       group.onmouseleave = () => hide();
       group.onclick = (event) => {
         event.stopPropagation();
-        show(label, kind, event.clientX, event.clientY);
+        show(label, kind, event.clientX, event.clientY, featureCol);
         if (boundEdge !== null && boundEdge.length > 0) {
           edgeClickHandler?.(boundEdge);
         } else if (colAttr !== null && rowAttr !== null) {
@@ -1366,7 +1509,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           const box = group.getBoundingClientRect();
-          show(label, kind, box.left + box.width / 2, box.top);
+          show(label, kind, box.left + box.width / 2, box.top, featureCol);
           if (boundEdge !== null && boundEdge.length > 0) {
             edgeClickHandler?.(boundEdge);
           } else if (colAttr !== null && rowAttr !== null) {
@@ -1382,14 +1525,22 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     host.querySelectorAll<SVGGElement>('g.map-label-chip').forEach((chip) => {
       const fullLabel = chip.getAttribute('data-full-label') ?? 'Point of interest';
       const labelKind = chip.getAttribute('data-label-kind') ?? 'marker';
+      const labelId = chip.getAttribute('data-label-id') ?? '';
+      let chipCol: number | undefined;
+      if (labelId.startsWith('marker:')) {
+        const parsed = Number(labelId.split(':')[1]);
+        if (Number.isInteger(parsed)) {
+          chipCol = parsed;
+        }
+      }
       const badge =
         /\bexit\b/i.test(fullLabel)
           ? 'Map Exit'
           : labelKind === 'token'
             ? 'party'
             : '';
-      chip.onmouseenter = (event) => show(fullLabel, badge, event.clientX, event.clientY);
-      chip.onmousemove = (event) => show(fullLabel, badge, event.clientX, event.clientY);
+      chip.onmouseenter = (event) => show(fullLabel, badge, event.clientX, event.clientY, chipCol);
+      chip.onmousemove = (event) => show(fullLabel, badge, event.clientX, event.clientY, chipCol);
       chip.onmouseleave = () => hide();
     });
     host.querySelectorAll<SVGGElement>('g.map-label-chip[data-label-id^="door:"]').forEach((chip) => {
@@ -1685,24 +1836,30 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
     const viewWidth = application.screen.width;
     const viewHeight = application.screen.height;
-    root.x = Math.max(12, (viewWidth - width) / 2);
-    root.y = Math.max(12, (viewHeight - height) / 2);
+    root.scale.set(zoomScale, zoomScale);
+    root.x = Math.max(12, (viewWidth - width * zoomScale) / 2) + panX;
+    root.y = Math.max(12, (viewHeight - height * zoomScale) / 2) + panY;
   }
 
   function ensureViewportHeight(): void {
     const semantic = host.querySelector<HTMLElement>('[data-testid="table-stage-semantic"]');
+    const stageEl = host.querySelector<HTMLElement>('[data-testid="table-map-stage"]');
     const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
     if (semantic === null || viewport === null) {
       return;
     }
     let used = 0;
     for (const child of Array.from(semantic.children)) {
-      if (child === viewport) {
+      if (child === viewport || child === stageEl) {
         continue;
       }
       used += (child as HTMLElement).offsetHeight;
     }
     const available = Math.max(200, semantic.clientHeight - used - 8);
+    if (stageEl !== null) {
+      stageEl.style.minHeight = `${available}px`;
+      stageEl.style.height = `${available}px`;
+    }
     viewport.style.minHeight = `${available}px`;
     viewport.style.height = `${available}px`;
   }
@@ -1721,6 +1878,9 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       selectedEdgeId,
       priorTokenBoxes,
       zoomScale,
+      userZoomPercent,
+      panX,
+      panY,
       mapToolbarMoreOpen,
       shouldDeclutterProps(),
     );
@@ -1735,9 +1895,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       hasFittedOnce = true;
       requestAnimationFrame(() => {
         ensureViewportHeight();
-        // Fit only — avoid the prior 1.12× overzoom that made labels poster-sized (VWR-004).
-        fitMapToViewport();
-        // Re-paint so Fit declutter (tokens/exits only) lands with the Fit scale.
+        fitMapToViewport({ preserveUserZoomAndPan: false });
         if (currentMap !== null) {
           paint(currentMap);
         }
@@ -1752,7 +1910,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         }
       });
     } else {
-      applyZoom(zoomScale);
+      syncCameraTransforms();
       const viewport = host.querySelector<HTMLElement>('[data-testid="table-stage-svg-viewport"]');
       if (viewport !== null && savedScroll !== null) {
         viewport.scrollLeft = savedScroll.left;
@@ -1806,6 +1964,8 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   const onResize = (): void => {
     if (currentMap !== null) {
+      ensureViewportHeight();
+      fitMapToViewport({ preserveUserZoomAndPan: true });
       paint(currentMap);
     }
   };
@@ -1841,11 +2001,16 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
         priorMapBundleId !== map.mapBundleId &&
         (map.mapBundleId.startsWith('director:') || priorMapBundleId.startsWith('director:'));
       priorMapBundleId = map.mapBundleId;
+      if (sceneChanged) {
+        userZoomPercent = 100;
+        panX = 0;
+        panY = 0;
+      }
       paint(map);
       if (sceneChanged) {
         requestAnimationFrame(() => {
           ensureViewportHeight();
-          fitMapToViewport();
+          fitMapToViewport({ preserveUserZoomAndPan: false });
           playSceneDiscoveryCue();
         });
       }

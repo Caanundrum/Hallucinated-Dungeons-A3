@@ -156,6 +156,24 @@ async function requireOwnSeat(
   }
 }
 
+async function requireCampaignOwner(
+  firestore: Firestore,
+  campaignId: string,
+  accountId: string,
+): Promise<void> {
+  const campaignSnap = await firestore.collection(COLLECTIONS.campaigns).doc(campaignId).get();
+  if (!campaignSnap.exists) {
+    throw new CampaignNotFoundError();
+  }
+  const data = campaignSnap.data() as { ownerAccountId?: unknown };
+  if (data.ownerAccountId !== accountId) {
+    throw new CampaignMemoryError(
+      'FORBIDDEN',
+      'Only the campaign owner (Game Director) can perform this action.',
+    );
+  }
+}
+
 function asNonNegativeInt(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
     return Math.floor(value);
@@ -798,6 +816,7 @@ export async function closeCurrentChapter(
   options: { readonly recordedSummary?: string } = {},
 ): Promise<CampaignMemoryProjection> {
   await requireMembership(firestore, campaignId, accountId);
+  await requireCampaignOwner(firestore, campaignId, accountId);
   await requireOwnSeat(firestore, campaignId, accountId);
   const memory = await loadStoredMemory(firestore, campaignId);
   if (memory.currentChapterId === null) {
@@ -1055,7 +1074,7 @@ export async function applyDmNpcDirective(
   campaignId: string,
   accountId: string,
   directive: DmNpcDirective,
-  options: { readonly writeChronicle?: boolean } = {},
+  options: { readonly writeChronicle?: boolean; readonly internalDirectorCall?: boolean } = {},
 ): Promise<{
   readonly memory: CampaignMemoryProjection;
   readonly created: boolean;
@@ -1069,6 +1088,9 @@ export async function applyDmNpcDirective(
     );
   }
   await requireMembership(firestore, campaignId, accountId);
+  if (options.internalDirectorCall !== true) {
+    await requireCampaignOwner(firestore, campaignId, accountId);
+  }
   await assertSessionAllowsPlay(firestore, campaignId);
 
   const memory = await loadStoredMemory(firestore, campaignId);
@@ -1137,7 +1159,7 @@ export async function applyDmSceneDirective(
   campaignId: string,
   accountId: string,
   directive: DmSceneDirective,
-  options: { readonly writeChronicle?: boolean } = {},
+  options: { readonly writeChronicle?: boolean; readonly internalDirectorCall?: boolean } = {},
 ): Promise<{
   readonly ok: true;
   readonly sceneId: string;
@@ -1155,6 +1177,9 @@ export async function applyDmSceneDirective(
     );
   }
   await requireMembership(firestore, campaignId, accountId);
+  if (options.internalDirectorCall !== true) {
+    await requireCampaignOwner(firestore, campaignId, accountId);
+  }
   await assertSessionAllowsPlay(firestore, campaignId);
 
   const title = directive.title.trim();

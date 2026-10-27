@@ -610,7 +610,8 @@ function pickInteriorFamily(premise: string, seed: number): InteriorFamily {
   const continuity = extractPremiseContinuity(premise);
   if (
     continuity.locationKind === 'canal_waterfront' ||
-    (/\b(courier|package|missive|parcel)\b/.test(text) &&
+    (continuity.questHook !== null &&
+      /\bcourier\b/i.test(continuity.questHook) &&
       /\b(town|village|city|canal|dock|ferry)\b/.test(text))
   ) {
     return {

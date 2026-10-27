@@ -29,6 +29,7 @@ import {
   isDocumentOpenOrReadDeclaration,
   isWholeContainerLootDeclaration,
 } from '../../shared/utterance-understanding.js';
+import { matchInRoomApproachTarget } from './scene-commands.js';
 import {
   DEFAULT_MOVEMENT_BUDGET_FEET,
   type MovementPreviewProjection,
@@ -1312,7 +1313,20 @@ export async function acceptTableCommand(options: {
       );
     }
     movePath = path;
-    moveDestinationLabel = describeMoveDestination(map, path[path.length - 1]!);
+    const matchedApproachFeature =
+      typeof trimmedDeclaration === 'string' && trimmedDeclaration.length > 0
+        ? matchInRoomApproachTarget(map.notableFeatures, trimmedDeclaration)
+        : null;
+    moveDestinationLabel =
+      matchedApproachFeature !== null
+        ? matchedApproachFeature.label
+            .replace(
+              /\s*[—–-]\s*(?:open|closed|locked|unlocked|intact|broken|pulled|active|lit|unlit|spotted|disarmed|present).*$/i,
+              '',
+            )
+            .replace(/\s*\((?:open|closed|locked|unlocked)\)\s*$/i, '')
+            .trim()
+        : describeMoveDestination(map, path[path.length - 1]!, trimmedDeclaration);
     // Bind the doorway this through-step crosses so receipt/narration match the live open leaf.
     if (typeof edgeId === 'string' && edgeId.length > 0) {
       const bound = map.edges.find((entry) => entry.edgeId === edgeId && entry.kind === 'door');
@@ -1320,7 +1334,7 @@ export async function acceptTableCommand(options: {
         openEdgeId = bound.edgeId;
       }
     }
-    if (openEdgeId === undefined) {
+    if (openEdgeId === undefined && matchedApproachFeature === null) {
       const nearDoor = doorNearSquare(map, path[path.length - 1]!);
       if (nearDoor !== null) {
         openEdgeId = nearDoor.edgeId;
@@ -2225,6 +2239,8 @@ export async function acceptTableCommand(options: {
           map: mapForChronicle,
           ...(startToken !== undefined ? { start: startToken.footprint.anchor } : {}),
           actorLabel: seat.characterName || 'A player',
+          ...(moveDestinationLabel !== undefined ? { targetLabel: moveDestinationLabel } : {}),
+          ...(trimmedDeclaration !== undefined ? { declaration: trimmedDeclaration } : {}),
         }),
       });
     }

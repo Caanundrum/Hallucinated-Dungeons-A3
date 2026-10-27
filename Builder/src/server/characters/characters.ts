@@ -33,12 +33,13 @@ import {
   validateAppearancePrompt,
 } from '../../shared/portrait-contract.js';
 import { COLLECTIONS } from '../persistence/firestore.js';
+import { getAiKillSwitch } from '../admin/admin-service.js';
 import {
   buildPortraitAssetBankKey,
   checkAndRecordAccountImageQuota,
+  findMatchingPortraitFromAssetBank,
   loadAccountPortraitHistory,
   loadCampaignAsset,
-  loadFromAssetBank,
   saveAccountPortraitHistory,
   saveToAssetBank,
   storeCampaignAssetRecord,
@@ -1018,7 +1019,13 @@ function optionalId(value: unknown): string | null {
 export async function generateCharacterPortrait(options: {
   readonly firestore: Firestore;
   readonly accountId: string;
+  readonly identity?: {
+    readonly accountId?: string | null;
+    readonly email?: string | null;
+    readonly displayLabel?: string | null;
+  };
   readonly body: unknown;
+  readonly forceCacheFallback?: boolean;
   readonly env?: PortraitEnvironment;
   readonly fetchImpl?: typeof fetch;
 }): Promise<GeneratePortraitResponse> {
@@ -1152,18 +1159,35 @@ export async function generateCharacterPortrait(options: {
     classId,
     pronouns,
   });
-  const quota = await checkAndRecordAccountImageQuota({
-    firestore,
-    accountId,
-    kind: 'portrait',
-  });
+  let killSwitchActive = false;
+  try {
+    killSwitchActive = await getAiKillSwitch(firestore);
+  } catch {
+    killSwitchActive = false;
+  }
+  const quota =
+    killSwitchActive || options.forceCacheFallback === true
+      ? {
+          allowed: false,
+          allowLiveCall: false,
+          remainingLiveCalls: 0,
+          usedToday: 0,
+          limitToday: 6,
+        }
+      : await checkAndRecordAccountImageQuota({
+          firestore,
+          accountId,
+          kind: 'portrait',
+          email: options.identity?.email ?? null,
+          displayLabel: options.identity?.displayLabel ?? null,
+        });
 
   let resolvedOptions: readonly string[];
   let resolvedAvatarUrl: string;
   let portraitSource: 'generated' | 'archetype';
 
   if (!quota.allowed) {
-    // Silent $0.00 cache fallback on daily cap or 15s cooldown (Guardrail 4 / Packet 5).
+    // Silent $0.00 cache fallback on kill switch, rate limit, daily cap, or 15s cooldown (Packets 2, 3, & 4).
     const historyUrls = await loadAccountPortraitHistory({
       firestore,
       accountId,
@@ -1172,7 +1196,14 @@ export async function generateCharacterPortrait(options: {
       pronouns,
     });
     const bankUrls =
-      historyUrls.length >= 3 ? [] : await loadFromAssetBank(firestore, portraitBankKey);
+      historyUrls.length >= 3
+        ? []
+        : await findMatchingPortraitFromAssetBank(firestore, {
+            speciesId: ancestryId,
+            classId,
+            pronouns,
+            customDescription: appearancePrompt,
+          });
     const primaryCurated = archetypePortraitUrl({
       ancestryId,
       classId,
@@ -1239,6 +1270,12 @@ export async function generateCharacterPortrait(options: {
           firestore,
           bankKey: portraitBankKey,
           urls: resolvedOptions,
+          assetKind: 'portrait',
+          speciesId: ancestryId,
+          classId,
+          pronouns,
+          customDescription: appearancePrompt,
+          promptText: appearancePrompt,
         }),
       ]);
     }

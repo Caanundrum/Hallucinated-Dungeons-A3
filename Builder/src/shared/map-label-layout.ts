@@ -72,8 +72,19 @@ export function shortenMapLabel(fullLabel: string): string {
 }
 
 /** Compact badge text so small rooms are not covered by full callouts. */
-export function compactMapLabel(fullLabel: string, kind: 'token' | 'marker' = 'marker'): string {
+export function compactMapLabel(
+  fullLabel: string,
+  kind: 'token' | 'marker' = 'marker',
+  isExit = false,
+): string {
   const short = shortenMapLabel(fullLabel);
+  if (isExit || /\bexit\b/i.test(short)) {
+    const dir = short.match(/\b(east|west|north|south)\b/i)?.[1];
+    if (dir !== undefined) {
+      return `${dir.charAt(0).toUpperCase()}${dir.slice(1).toLowerCase()} Exit`;
+    }
+    return 'Map Exit';
+  }
   if (/door|doorway|gate|entry/i.test(short)) {
     const dir = short.match(/\b(east|west|north|south)\b/i)?.[1];
     if (dir !== undefined) {
@@ -92,8 +103,8 @@ function estimateChipSize(
   text: string,
   fontSize: number,
 ): { readonly width: number; readonly height: number } {
-  const avgChar = fontSize * 0.54;
-  const width = Math.ceil(text.length * avgChar + 10);
+  const avgChar = fontSize * 0.58;
+  const width = Math.ceil(text.length * avgChar + 14);
   const height = Math.ceil(fontSize + 8);
   return { width, height };
 }
@@ -168,7 +179,11 @@ export function layoutMapLabels(
     : ordered;
 
   for (const anchor of visible) {
-    const displayText = compactMapLabel(anchor.fullLabel, anchor.kind);
+    const isExit =
+      anchor.objectKind === 'exit' ||
+      (anchor.referenceKind === 'exit' && !/^door:/.test(anchor.id)) ||
+      /\bexit\b/i.test(anchor.fullLabel);
+    const displayText = compactMapLabel(anchor.fullLabel, anchor.kind, isExit);
     const size = estimateChipSize(displayText, fontSize);
     let placed: MapLabelPlacement | null = null;
 
@@ -269,4 +284,159 @@ export function doorStrokeColor(doorState: string | null): string {
     return '#3d8f6a';
   }
   return '#b86b2b';
+}
+
+export interface ClampedMapTooltipInput {
+  readonly anchorX: number;
+  readonly anchorY: number;
+  readonly stageWidth: number;
+  readonly stageHeight: number;
+  readonly tooltipWidth: number;
+  readonly tooltipHeight: number;
+  readonly featureColumn?: number | undefined;
+  readonly mapColumns?: number | undefined;
+}
+
+export interface ClampedMapTooltipPosition {
+  readonly left: number;
+  readonly top: number;
+  readonly flippedLeft: boolean;
+}
+
+/**
+ * Computes a stage-clamped tooltip position (`VP-01`) so right-edge markers
+ * (e.g. East Exit at column >= mapColumns - 4 or in the right 40% of the stage)
+ * flip to the left of the marker and never overflow into `.table-comms-rail`.
+ */
+export function computeClampedMapTooltipPosition(
+  input: ClampedMapTooltipInput,
+): ClampedMapTooltipPosition {
+  const stageW = Math.max(64, input.stageWidth);
+  const stageH = Math.max(64, input.stageHeight);
+  const tipW = Math.max(20, Math.min(stageW - 16, input.tooltipWidth));
+  const tipH = Math.max(16, Math.min(stageH - 16, input.tooltipHeight));
+
+  const inRightFortyPercent = input.anchorX > stageW * 0.6;
+  const inRightFourColumns =
+    typeof input.featureColumn === 'number' &&
+    typeof input.mapColumns === 'number' &&
+    input.featureColumn >= input.mapColumns - 4;
+  const overflowsRight = input.anchorX + 14 + tipW > stageW - 10;
+
+  const flippedLeft = inRightFortyPercent || inRightFourColumns || overflowsRight;
+  const rawLeft = flippedLeft ? input.anchorX - tipW - 14 : input.anchorX + 14;
+  const rawTop = input.anchorY - Math.round(tipH / 2);
+
+  const maxLeft = Math.max(8, stageW - tipW - 8);
+  const maxTop = Math.max(8, stageH - tipH - 8);
+
+  return {
+    left: Math.round(Math.max(8, Math.min(maxLeft, rawLeft))),
+    top: Math.round(Math.max(8, Math.min(maxTop, rawTop))),
+    flippedLeft,
+  };
+}
+
+/** Clean user-facing zoom percentage steps where 100% is the fitted baseline (`VP-05`). */
+export const CLEAN_MAP_ZOOM_STEPS = [50, 75, 100, 125, 150, 175, 200, 250, 300] as const;
+
+export function stepMapZoomPercent(
+  currentPercent: number,
+  direction: 'in' | 'out' | 'fit',
+): number {
+  if (direction === 'fit') {
+    return 100;
+  }
+  const rounded = Math.round(currentPercent);
+  if (direction === 'in') {
+    for (const step of CLEAN_MAP_ZOOM_STEPS) {
+      if (step > rounded) {
+        return step;
+      }
+    }
+    return CLEAN_MAP_ZOOM_STEPS[CLEAN_MAP_ZOOM_STEPS.length - 1]!;
+  }
+  for (let i = CLEAN_MAP_ZOOM_STEPS.length - 1; i >= 0; i -= 1) {
+    const step = CLEAN_MAP_ZOOM_STEPS[i]!;
+    if (step < rounded) {
+      return step;
+    }
+  }
+  return CLEAN_MAP_ZOOM_STEPS[0]!;
+}
+
+export function clampMapPanOffset(options: {
+  readonly panX: number;
+  readonly panY: number;
+  readonly stageWidth?: number | undefined;
+  readonly stageHeight?: number | undefined;
+  readonly viewportWidth?: number | undefined;
+  readonly viewportHeight?: number | undefined;
+  readonly scaledMapWidth: number;
+  readonly scaledMapHeight: number;
+}): { readonly panX: number; readonly panY: number } {
+  const stageW = options.stageWidth ?? options.viewportWidth ?? 800;
+  const stageH = options.stageHeight ?? options.viewportHeight ?? 600;
+  const maxPanX = Math.max(80, Math.round((options.scaledMapWidth + stageW) * 0.45));
+  const maxPanY = Math.max(80, Math.round((options.scaledMapHeight + stageH) * 0.45));
+  return {
+    panX: Math.max(-maxPanX, Math.min(maxPanX, Math.round(options.panX))),
+    panY: Math.max(-maxPanY, Math.min(maxPanY, Math.round(options.panY))),
+  };
+}
+
+export function computeMapDragGesture(options: {
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly currentClientX: number;
+  readonly currentClientY: number;
+  readonly originPanX?: number | undefined;
+  readonly originPanY?: number | undefined;
+  readonly startPanX?: number | undefined;
+  readonly startPanY?: number | undefined;
+  readonly stageWidth?: number | undefined;
+  readonly stageHeight?: number | undefined;
+  readonly scaledMapWidth?: number | undefined;
+  readonly scaledMapHeight?: number | undefined;
+  readonly dragThresholdPx?: number | undefined;
+  readonly thresholdPx?: number | undefined;
+}): {
+  readonly isPanning: boolean;
+  readonly isDragging: boolean;
+  readonly distancePx: number;
+  readonly panX: number;
+  readonly panY: number;
+} {
+  const basePanX = options.originPanX ?? options.startPanX ?? 0;
+  const basePanY = options.originPanY ?? options.startPanY ?? 0;
+  const dx = options.currentClientX - options.startClientX;
+  const dy = options.currentClientY - options.startClientY;
+  const distancePx = Math.hypot(dx, dy);
+  const threshold = options.dragThresholdPx ?? options.thresholdPx ?? 5;
+  if (distancePx <= threshold) {
+    return {
+      isPanning: false,
+      isDragging: false,
+      distancePx,
+      panX: basePanX,
+      panY: basePanY,
+    };
+  }
+  const rawPanX = basePanX + dx;
+  const rawPanY = basePanY + dy;
+  const clamped = clampMapPanOffset({
+    panX: rawPanX,
+    panY: rawPanY,
+    stageWidth: options.stageWidth ?? 800,
+    stageHeight: options.stageHeight ?? 600,
+    scaledMapWidth: options.scaledMapWidth ?? 800,
+    scaledMapHeight: options.scaledMapHeight ?? 600,
+  });
+  return {
+    isPanning: true,
+    isDragging: true,
+    distancePx,
+    panX: clamped.panX,
+    panY: clamped.panY,
+  };
 }

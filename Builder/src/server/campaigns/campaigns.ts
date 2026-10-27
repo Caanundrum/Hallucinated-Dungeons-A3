@@ -662,7 +662,7 @@ export async function createCampaign(options: {
   const campaignId = randomUUID();
   const premiseText =
     typeof options.premise === 'string' && options.premise.trim().length > 0
-      ? options.premise.trim()
+      ? options.premise.trim().slice(0, 4000)
       : summary;
   const startLevel =
     typeof options.startLevel === 'number' && Number.isFinite(options.startLevel)

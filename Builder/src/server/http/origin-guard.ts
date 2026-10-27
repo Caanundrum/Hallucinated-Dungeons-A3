@@ -33,15 +33,63 @@ export interface OriginGuardOptions {
   readonly staticResource?: boolean;
 }
 
-export function servingOriginFromHost(hostHeader: string | undefined): string | null {
+export function isTrustedForwardedHost(
+  hostHeader: string | undefined,
+  clientOrigin?: string,
+): boolean {
   if (hostHeader === undefined) {
-    return null;
+    return false;
   }
-  const host = hostHeader.split(',')[0]?.trim().toLowerCase() ?? '';
-  if (host === '' || /[\s/]/.test(host)) {
-    return null;
+  const rawHost = hostHeader.split(',')[0]?.trim().toLowerCase() ?? '';
+  if (rawHost === '' || /[\s/]/.test(rawHost)) {
+    return false;
   }
-  return `https://${host}`;
+  const hostname = rawHost.replace(/:\d+$/, '');
+  if (hostname === '') {
+    return false;
+  }
+  if (typeof clientOrigin === 'string' && clientOrigin.trim().length > 0) {
+    try {
+      const clientHostname = new URL(clientOrigin).hostname.toLowerCase();
+      if (clientHostname.length > 0 && hostname === clientHostname) {
+        return true;
+      }
+    } catch {
+      // Ignore malformed clientOrigin
+    }
+  }
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === 'chaosstandard.com' ||
+    hostname.endsWith('.chaosstandard.com') ||
+    hostname.endsWith('.hosted.app') ||
+    hostname.endsWith('.run.app')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function servingOriginFromHost(
+  hostHeader: string | undefined,
+  options?: {
+    readonly clientOrigin?: string | undefined;
+    readonly fallbackHostHeader?: string | undefined;
+  },
+): string | null {
+  if (hostHeader !== undefined) {
+    const host = hostHeader.split(',')[0]?.trim().toLowerCase() ?? '';
+    if (host !== '' && !/[\s/]/.test(host) && isTrustedForwardedHost(host, options?.clientOrigin)) {
+      return `https://${host}`;
+    }
+  }
+  if (options?.fallbackHostHeader !== undefined) {
+    return servingOriginFromHost(options.fallbackHostHeader, {
+      clientOrigin: options.clientOrigin,
+    });
+  }
+  return null;
 }
 
 /**
@@ -75,11 +123,16 @@ export function allowedBrowserOrigins(options: {
   if (!options.hosted) {
     return allowed;
   }
-  const serving = servingOriginFromHost(options.hostHeader);
+  const serving = servingOriginFromHost(options.hostHeader, {
+    clientOrigin: options.clientOrigin,
+  });
   if (serving !== null) {
     allowed.add(serving);
   }
-  const forwarded = servingOriginFromHost(options.forwardedHostHeader);
+  const forwarded = servingOriginFromHost(options.forwardedHostHeader, {
+    clientOrigin: options.clientOrigin,
+    fallbackHostHeader: options.hostHeader,
+  });
   if (forwarded !== null) {
     allowed.add(forwarded);
   }

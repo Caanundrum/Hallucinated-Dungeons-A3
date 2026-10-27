@@ -171,6 +171,14 @@ export function buildNarrationSeedFromReceipt(options: {
     ) {
       return `Moved on the table toward ${options.targetLabel}${inScene}. The doorway remains closed — no crossing.`;
     }
+    if (
+      options.targetLabel.trim().length > 0 &&
+      options.targetLabel !== 'the table' &&
+      options.targetLabel !== options.sceneTitle &&
+      !/^column\s+\d+/i.test(options.targetLabel)
+    ) {
+      return `Moved on the table to ${options.targetLabel}${inScene}.`;
+    }
     return `Moved across the table${inScene}.`;
   }
 

@@ -326,6 +326,41 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await containerMarkerLoc.hover();
     await expect(page.getByTestId('map-poi-tooltip')).toBeVisible();
 
+    // VP-01: Hovering the right-edge exit marker ("East Exit") clamps [data-testid="map-poi-tooltip"] inside [data-testid="table-map-stage"]
+    await expect(page.getByTestId('table-stage-label-chips')).toContainText(/Exit/i);
+    const exitMarkerLoc = page.getByTestId('map-exit-marker').first();
+    if (await exitMarkerLoc.isVisible().catch(() => false)) {
+      await exitMarkerLoc.hover();
+      const poiTip = page.getByTestId('map-poi-tooltip');
+      await expect(poiTip).toBeVisible();
+      const stageBox = await page.getByTestId('table-map-stage').boundingBox();
+      const tipBox = await poiTip.boundingBox();
+      expect(stageBox).not.toBeNull();
+      expect(tipBox).not.toBeNull();
+      expect(tipBox!.x).toBeGreaterThanOrEqual(stageBox!.x + 4);
+      expect(tipBox!.x + tipBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width - 4);
+    }
+
+    // VP-05: Normalized 100% baseline zoom, clean percentage steps (+ -> 125%), click-and-drag pan, and Fit reset
+    await expect(page.getByTestId('map-zoom-readout')).toHaveText('100%');
+    await page.getByTestId('map-zoom-in').click();
+    await expect(page.getByTestId('map-zoom-readout')).toHaveText('125%');
+    const mapStageLoc = page.getByTestId('table-map-stage');
+    const mapStageBox = await mapStageLoc.boundingBox();
+    expect(mapStageBox).not.toBeNull();
+    const dragStartX = mapStageBox!.x + mapStageBox!.width * 0.5;
+    const dragStartY = mapStageBox!.y + mapStageBox!.height * 0.5;
+    await page.mouse.move(dragStartX, dragStartY);
+    await page.mouse.down();
+    await page.mouse.move(dragStartX + 45, dragStartY + 25, { steps: 5 });
+    await page.mouse.up();
+    const panXAfterDrag = Number((await mapStageLoc.getAttribute('data-pan-x')) ?? '0');
+    expect(Math.abs(panXAfterDrag)).toBeGreaterThan(0);
+    await page.getByTestId('map-zoom-fit').click();
+    await expect(page.getByTestId('map-zoom-readout')).toHaveText('100%');
+    expect(await mapStageLoc.getAttribute('data-pan-x')).toBe('0');
+    expect(await mapStageLoc.getAttribute('data-pan-y')).toBe('0');
+
     // 2. Packet 3: Clicking a map square or doorway does NOT show intrusive banners
     const anyCell = page.locator('[data-testid^="map-cell-"]').first();
     if (await anyCell.isVisible().catch(() => false)) {
@@ -572,6 +607,15 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await expect(page.getByTestId('dm-play-thread')).not.toContainText(
       /not an established NPC|Ready to travel to|Moved to Side Passage/i,
     );
+
+    // VP-02: Resizing viewport from 1280x800 -> 1073x884 -> 902x871 -> 1280x800 keeps Public Chronicle pinned to bottom
+    await page.setViewportSize({ width: 1073, height: 884 });
+    await page.setViewportSize({ width: 902, height: 871 });
+    const chronicleBottomGap = await page
+      .getByTestId('dm-play-thread-list')
+      .evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+    expect(chronicleBottomGap).toBeLessThanOrEqual(24);
+    await page.setViewportSize({ width: 1280, height: 800 });
 
     // 4. Packet 3, RS-02, RS-03, & Guardrail 2: Two-Step Container Looting & Locative Prepositional Stripping
     const containerFeature = features.find((f) => f.objectKind === 'container');
