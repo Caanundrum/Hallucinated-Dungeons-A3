@@ -1340,6 +1340,21 @@ export async function acceptTableCommand(options: {
         openEdgeId = nearDoor.edgeId;
       }
     }
+    if (
+      matchedApproachFeature !== null ||
+      (typeof trimmedDeclaration === 'string' &&
+        trimmedDeclaration.length > 0 &&
+        openEdgeId === undefined)
+    ) {
+      sceneChronicleBody = formatMoveTravelSummary({
+        path,
+        map,
+        start: token.footprint.anchor,
+        actorLabel: seat.characterName || 'A player',
+        ...(moveDestinationLabel !== undefined ? { targetLabel: moveDestinationLabel } : {}),
+        ...(trimmedDeclaration !== undefined ? { declaration: trimmedDeclaration } : {}),
+      });
+    }
     eventType = 'table.token_moved';
   }
 

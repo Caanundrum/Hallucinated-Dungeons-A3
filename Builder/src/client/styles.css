@@ -4509,10 +4509,27 @@ html.hd-low-effects .map-square-fog,
   stroke-opacity: 1;
 }
 
-.table-stage-semantic rect[data-square] {
+.table-stage-semantic rect[data-square],
+.table-map-stage,
+.table-map-stage svg,
+.table-map-stage canvas,
+.table-map-stage .map-square,
+.table-map-stage .map-cell,
+.table-map-stage .map-grid-cell,
+.table-map-stage [data-square],
+.table-map-stage [data-cell],
+.table-map-stage rect[data-col] {
   pointer-events: auto;
-  cursor: pointer;
+  cursor: grab;
   outline: none;
+}
+
+.table-map-stage.is-panning,
+.table-map-stage.is-panning *,
+.table-stage-svg-viewport.is-panning,
+.table-stage-svg-viewport.is-panning * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .table-stage-semantic rect[data-square]:focus-visible {

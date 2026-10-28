@@ -657,6 +657,212 @@ export function matchesExcludedCharacterName(
   return false;
 }
 
+const FURNITURE_OR_STORAGE_COMPOUND_RE =
+  /\b(?:parcel|package|cargo|letter|mail|message|shipment|ledger|record|scroll|book|coat|weapon|tool|supply|storage)\s+(?:rack|racks|shelf|shelves|stand|stands|table|tables|desk|desks|bench|benches|cart|carts|crate|crates|barrel|barrels|bin|bins|locker|lockers|cabinet|cabinets|slot|slots|chute|hall|room|bay|yard|office|counter|hook|hooks)\b/gi;
+
+const PREPOSITIONAL_SCENERY_CLAUSE_RE =
+  /\b(?:near|beside|by|past|under|beneath|next\s+to|against|around)\s+(?:a|an|the)\s+[^,.]+/gi;
+
+const STOP_PROPER_WORDS_SET = new Set([
+  'The',
+  'A',
+  'An',
+  'In',
+  'On',
+  'At',
+  'By',
+  'For',
+  'With',
+  'From',
+  'Into',
+  'Near',
+  'Before',
+  'After',
+  'Under',
+  'Over',
+  'Through',
+  'When',
+  'Where',
+  'While',
+  'Example',
+]);
+
+export interface CampaignNamedFactsSummary {
+  readonly location: string | null;
+  readonly questHook: string | null;
+  readonly namedEntities: readonly string[];
+  readonly notableDetails: readonly string[];
+  readonly chips: readonly string[];
+}
+
+export function stripPremiseSceneryAndFurnitureCompounds(text: string): string {
+  return text
+    .replace(FURNITURE_OR_STORAGE_COMPOUND_RE, 'scenery fixture')
+    .replace(PREPOSITIONAL_SCENERY_CLAUSE_RE, 'near the scenery');
+}
+
+export function extractCampaignNamedFacts(
+  premise: string,
+  excludeCharacterNames: readonly string[] = [],
+): CampaignNamedFactsSummary {
+  const text = premise.trim();
+  if (text.length === 0) {
+    return {
+      location: null,
+      questHook: null,
+      namedEntities: [],
+      notableDetails: [],
+      chips: [],
+    };
+  }
+  const chips: string[] = [];
+  const lower = text.toLowerCase();
+  let location: string | null = null;
+  if (
+    /\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/.test(
+      lower,
+    )
+  ) {
+    const locMatch = lower.match(
+      /\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/,
+    );
+    if (locMatch?.[1]) {
+      location = locMatch[1];
+      chips.push(`Location: ${locMatch[1]}`);
+    }
+  } else {
+    const prepLocMatch = lower.match(
+      /\b(?:at|in|inside|beneath|under|within)\s+the\s+(?:[a-z]+\s+)?([a-z]{4,})\b/,
+    );
+    if (prepLocMatch?.[1]) {
+      location = prepLocMatch[1];
+      chips.push(`Location: ${prepLocMatch[1]}`);
+    }
+  }
+
+  let questHook: string | null = null;
+  const vanishedPersonMatch = text.match(
+    /\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\s+(?:has\s+|had\s+)?(?:vanished|disappeared|went\s+missing|is\s+missing)\b/,
+  );
+  const findPersonMatch = text.match(
+    /\basks?\s+(?:[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\s+to\s+(?:find|locate|rescue)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/,
+  );
+  const rawMissingPerson = (vanishedPersonMatch?.[1] ?? findPersonMatch?.[1] ?? '').trim();
+  if (rawMissingPerson.length > 0) {
+    const tokens = rawMissingPerson.split(/\s+/).filter(Boolean);
+    while (tokens.length > 0 && STOP_PROPER_WORDS_SET.has(tokens[0]!)) {
+      tokens.shift();
+    }
+    const cleanMissingPerson = tokens.join(' ');
+    if (
+      cleanMissingPerson.length > 2 &&
+      !matchesExcludedCharacterName(cleanMissingPerson, excludeCharacterNames)
+    ) {
+      questHook = `Find ${cleanMissingPerson} (missing)`;
+      chips.push(`Quest hook: ${questHook}`);
+    }
+  }
+  if (questHook === null) {
+    const cleanedLower = stripPremiseSceneryAndFurnitureCompounds(text).toLowerCase();
+    const questMatch = cleanedLower.match(
+      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual|investigate|mystery)\b/,
+    );
+    if (questMatch?.[1]) {
+      questHook = questMatch[1];
+      chips.push(`Quest hook: ${questHook}`);
+    }
+  }
+
+  const properMatches = text.matchAll(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g);
+  const seenProper = new Set<string>();
+  const namedEntities: string[] = [];
+  let hasPrimaryProperPlace = false;
+  for (const match of properMatches) {
+    const startIdx = match.index ?? 0;
+    const rawWords = (match[1]?.trim() ?? '').split(/\s+/).filter(Boolean);
+    let strippedLocative = false;
+    while (rawWords.length > 0 && STOP_PROPER_WORDS_SET.has(rawWords[0]!)) {
+      if (STRICT_LOCATIVE_PREPOSITIONS.has(rawWords[0]!.toLowerCase())) {
+        strippedLocative = true;
+      }
+      rawWords.shift();
+    }
+    const candidate = rawWords.join(' ');
+    if (
+      candidate.length > 2 &&
+      !STOP_PROPER_WORDS_SET.has(candidate) &&
+      !seenProper.has(candidate.toLowerCase()) &&
+      !matchesExcludedCharacterName(candidate, excludeCharacterNames)
+    ) {
+      const beforeWord = (
+        text
+          .slice(0, startIdx)
+          .trimEnd()
+          .match(/([A-Za-z]+)$/)?.[1] ?? ''
+      ).toLowerCase();
+      const afterSlice = text.slice(startIdx + match[0].length);
+      const firstWordLower = (rawWords[0] ?? '').toLowerCase();
+      const hasRoleTitle =
+        PERSONAL_ROLE_TITLES.has(firstWordLower) || PERSONAL_ROLE_TITLES.has(beforeWord);
+      const isSyntacticPerson =
+        hasRoleTitle || isPersonBySyntacticContext(candidate, text, startIdx);
+      const isPlaceEntity =
+        !isSyntacticPerson &&
+        (strippedLocative ||
+          STRICT_LOCATIVE_PREPOSITIONS.has(beforeWord) ||
+          APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
+          (rawWords.length === 1
+            ? isCompoundPlaceWord(rawWords[0]!)
+            : isMultiWordPlaceByContext(candidate, {
+                fullText: text,
+                previousWord: beforeWord,
+                afterSlice,
+                matchIndex: startIdx,
+              })));
+      seenProper.add(candidate.toLowerCase());
+      if (isPlaceEntity) {
+        const existingLocIdx = chips.findIndex((f) => f.startsWith('Location: '));
+        if (!hasPrimaryProperPlace && existingLocIdx >= 0) {
+          chips[existingLocIdx] = `Location: ${candidate}`;
+        } else if (!hasPrimaryProperPlace) {
+          chips.unshift(`Location: ${candidate}`);
+        } else {
+          chips.push(`Location: ${candidate}`);
+        }
+        if (!hasPrimaryProperPlace) {
+          location = candidate;
+        }
+        hasPrimaryProperPlace = true;
+      } else {
+        namedEntities.push(candidate);
+        chips.push(`Named: ${candidate}`);
+      }
+      if (seenProper.size >= 4) {
+        break;
+      }
+    }
+  }
+  const notableDetails: string[] = [];
+  const propMatches = text.matchAll(
+    /\b((?:broken|locked|ancient|silver|iron|red|sealed|gilded|cracked|rusty)\s+(?:[a-z]+\s+)?(?:lantern|door|warehouse|gate|chest|altar|key|satchel|blade|scroll|tome|astrolabe))\b/gi,
+  );
+  for (const match of propMatches) {
+    const prop = match[1]?.trim() ?? '';
+    if (prop.length > 0 && !seenProper.has(prop.toLowerCase())) {
+      seenProper.add(prop.toLowerCase());
+      notableDetails.push(prop);
+      chips.push(`Notable detail: ${prop}`);
+    }
+  }
+  return {
+    location,
+    questHook,
+    namedEntities,
+    notableDetails,
+    chips,
+  };
+}
+
 /** Seed facts from adventure premise text — never invent beyond explicit cues. */
 export function extractCampaignFactsFromPremise(
   premise: string,
@@ -671,7 +877,7 @@ export function extractCampaignFactsFromPremise(
   }
   const facts: CampaignFactRecord[] = [];
   const allowNamedNpcs = options.allowNamedNpcs !== false;
-  const cleanedHookText = text
+  const cleanedHookText = stripPremiseSceneryAndFurnitureCompounds(text)
     .replace(
       /\b(?:parcel|package|letter|missive|delivery|courier|mail|cargo)\s+(?:rack|racks|shelf|shelves|desk|desks|table|tables|counter|counters|stand|stands|bench|benches|bin|bins|slot|slots|chute|chutes|cart|carts|wagon|wagons|room|hall|bay|office|station|post|board|hooks?|nook|alcove|ledge|locker|lockers|pigeonholes?|ledger|manifest)\b/gi,
       'scenery fixture',

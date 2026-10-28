@@ -199,6 +199,16 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await page.getByTestId('start-campaign').click();
     await expect(page.getByTestId('create-campaign-heading')).toBeVisible();
 
+    // VP-03: Verify Campaign Creation fact chip excludes furniture compounds ("parcel rack") and shows missing-person hook ("Teren Sol" / "missing")
+    const frostmerePremise =
+      'At Frostmere Watchhouse, a rain-swept customs hall, Archivist Teren Sol vanished during an inspection. Legate Ivara Fenbrook asks Dalia Kestrel to find Teren Sol before the evening bell. Near a fallen parcel rack, silver chalk marks trail from the entry floor toward an inner chamber containing a cracked jade astrolabe.';
+    await page.getByTestId('campaign-summary').fill(frostmerePremise);
+    await page.getByTestId('campaign-summary').dispatchEvent('input');
+    const committedFacts = page.getByTestId('premise-committed-facts');
+    await expect(committedFacts).not.toContainText(/Quest hook:\s*parcel/i);
+    await expect(committedFacts).toContainText(/Teren Sol/i);
+    await expect(committedFacts).toContainText(/missing/i);
+
     const outdoorPremise =
       'At Clockhouse, a stilted lantern station on the edge of Glimmerfen, Conservator Corin Vale asks Kaelen Windstep to investigate why Apprentice Talia vanished after sealing a brass astrolabe inside a reinforced supply locker.';
     await page.getByTestId('campaign-name').fill('Clockhouse Lantern Mystery');
@@ -209,10 +219,11 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
     await page.getByTestId('personality-seasoned_host').click();
 
     // RS-01: Verify committed facts preview classifies Clockhouse as Location (never NPC)
-    const committedFacts = page.getByTestId('premise-committed-facts');
     await expect(committedFacts).toContainText('Location: Clockhouse');
     await expect(committedFacts).not.toContainText('NPC: Clockhouse');
     await expect(committedFacts).not.toContainText('NPC: Glimmerfen');
+    await expect(committedFacts).toContainText(/Apprentice Talia/i);
+    await expect(committedFacts).toContainText(/missing/i);
 
     // Verify `.campaign-draft-actions-stack` and `p.message.notice` block typography
     const draftStack = page.locator('.campaign-draft-actions-stack');
@@ -341,19 +352,29 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       expect(tipBox!.x + tipBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width - 4);
     }
 
-    // VP-05: Normalized 100% baseline zoom, clean percentage steps (+ -> 125%), click-and-drag pan, and Fit reset
+    // VP-05: Normalized 100% baseline zoom, clean percentage steps (+ -> 125%), grid square cursor grab -> grabbing, click-and-drag pan, and Fit reset
     await expect(page.getByTestId('map-zoom-readout')).toHaveText('100%');
     await page.getByTestId('map-zoom-in').click();
     await expect(page.getByTestId('map-zoom-readout')).toHaveText('125%');
     const mapStageLoc = page.getByTestId('table-map-stage');
+    const gridCellLoc = mapStageLoc.locator('rect[data-col]').first();
+    await expect(gridCellLoc).toBeVisible();
+    const idleCellCursor = await gridCellLoc.evaluate((el) => window.getComputedStyle(el).cursor);
+    expect(idleCellCursor).toBe('grab');
     const mapStageBox = await mapStageLoc.boundingBox();
     expect(mapStageBox).not.toBeNull();
     const dragStartX = mapStageBox!.x + mapStageBox!.width * 0.5;
     const dragStartY = mapStageBox!.y + mapStageBox!.height * 0.5;
     await page.mouse.move(dragStartX, dragStartY);
     await page.mouse.down();
+    const downCellCursor = await gridCellLoc.evaluate((el) => window.getComputedStyle(el).cursor);
+    expect(downCellCursor).toBe('grabbing');
     await page.mouse.move(dragStartX + 45, dragStartY + 25, { steps: 5 });
+    const panningCellCursor = await gridCellLoc.evaluate((el) => window.getComputedStyle(el).cursor);
+    expect(panningCellCursor).toBe('grabbing');
     await page.mouse.up();
+    const releasedCellCursor = await gridCellLoc.evaluate((el) => window.getComputedStyle(el).cursor);
+    expect(releasedCellCursor).toBe('grab');
     const panXAfterDrag = Number((await mapStageLoc.getAttribute('data-pan-x')) ?? '0');
     expect(Math.abs(panXAfterDrag)).toBeGreaterThan(0);
     await page.getByTestId('map-zoom-fit').click();
@@ -780,6 +801,33 @@ test.describe('Rules Audit, Spatial Topology, & Table UX Remediation (Packets 1â
       .toBe(1);
     const afterApproachScene2 = await fetchMapBundle();
     expect(afterApproachScene2.mapBundleId).toContain('scene-m1-r2');
+
+    // VP-04: Verify visible Chronicle and Table History both display "<Actor> moved <N> square(s) (<feet> ft) ... toward <leverLabel>." (never "Wooden doorway") and persist across page.reload()
+    const expectedMoveReceiptRe = new RegExp(
+      `moved \\d+ squares? \\(\\d+ ft\\).*toward .*${leverLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+      'i',
+    );
+    await expect(page.getByTestId('dm-play-thread')).toContainText(expectedMoveReceiptRe, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('dm-play-thread')).not.toContainText(
+      /toward Wooden doorway/i,
+    );
+    await page.reload();
+    await expect(page.getByTestId('table-ambient-hud')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('dm-play-thread')).toContainText(expectedMoveReceiptRe, {
+      timeout: 15_000,
+    });
+    const historyBtn = page
+      .locator('[data-testid="toggle-table-history"], [data-testid="toggle-table-history-hud"]')
+      .first();
+    if (await historyBtn.isVisible().catch(() => false)) {
+      await historyBtn.click();
+      await expect(page.getByTestId('table-history-chronicle-list')).toContainText(
+        expectedMoveReceiptRe,
+      );
+      await page.getByTestId('close-table-history').click();
+    }
 
     await page.getByTestId('player-action-input').fill(`I pull the ${leverLabel}`);
     await page.getByTestId('player-action-input').dispatchEvent('input');

@@ -447,7 +447,12 @@ export function mountCampaignTablePage(host: PageHost, campaignId: string): void
     const scene = mapBundle?.sceneBanner?.trim() || 'The table is ready.';
     const rawEntries = chronicle?.entries ?? [];
     const entriesForThread = explorationMode()
-      ? rawEntries.filter((entry) => entry.kind !== 'token_moved')
+      ? rawEntries.filter(
+          (entry, idx) =>
+            entry.kind !== 'token_moved' ||
+            rawEntries[idx - 1]?.kind === 'play_declaration' ||
+            /\btoward\s+(?!column\b)/i.test(entry.body),
+        )
       : rawEntries;
     const fromChronicle = dmThreadFromChronicleEntries({
       entries: entriesForThread,

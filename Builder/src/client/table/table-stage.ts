@@ -313,7 +313,7 @@ function paintSemanticSvg(
           ? 'rgba(8, 6, 4, 0.24)'
           : 'transparent'
         : terrainCss(cell.terrain, cell.known, emberferry, visuals.terrainBias);
-      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${cellFill}" class="map-square${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
+      return `<rect aria-hidden="true" data-square="${cell.column},${cell.row}" data-cell="${cell.column},${cell.row}" data-col="${cell.column}" data-row="${cell.row}" data-known="${cell.known}" data-terrain="${escapeHtml(cell.terrain)}" data-low-effects="${lowEffects}" x="${cell.column * pixelsPerSquare}" y="${cell.row * pixelsPerSquare}" width="${pixelsPerSquare}" height="${pixelsPerSquare}" fill="${cellFill}" class="map-square map-cell map-grid-cell${terrainTone}${fogClass}${selected}" />${textureOverlay}`;
     })
     .join('');
   const gridStroke = hasPaintedArt
@@ -1189,6 +1189,12 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
     let scrollTop = 0;
     let activePointerId: number | null = null;
 
+    const setPanningClass = (active: boolean): void => {
+      viewport.classList.toggle('is-panning', active);
+      stageEl?.classList.toggle('is-panning', active);
+      host.querySelector<HTMLElement>('[data-testid="table-map-stage"]')?.classList.toggle('is-panning', active);
+    };
+
     const detachWindowListeners = (): void => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -1225,8 +1231,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       if (!moved) {
         moved = true;
-        viewport.classList.add('is-panning');
-        stageEl?.classList.add('is-panning');
+        setPanningClass(true);
         if ('pointerId' in event && typeof viewport.setPointerCapture === 'function') {
           try {
             viewport.setPointerCapture(event.pointerId);
@@ -1270,8 +1275,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       dragging = false;
       activePointerId = null;
-      viewport.classList.remove('is-panning');
-      stageEl?.classList.remove('is-panning');
+      setPanningClass(false);
       detachWindowListeners();
     };
 
@@ -1291,6 +1295,7 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
       }
       dragging = true;
       moved = false;
+      setPanningClass(true);
       originX = event.clientX;
       originY = event.clientY;
       startPanX = panX;
@@ -1380,7 +1385,6 @@ export async function mountTableStage(host: HTMLElement): Promise<TableStageHand
 
   function bindSquareClicks(): void {
     host.querySelectorAll<SVGRectElement>('rect[data-square]').forEach((rect) => {
-      rect.style.cursor = 'pointer';
       rect.onclick = () => {
         if (squareClickHandler === null) return;
         const raw = rect.getAttribute('data-square');

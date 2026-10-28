@@ -43,13 +43,7 @@ import {
   fetchVault,
 } from '../api.js';
 import {
-  APPOSITIVE_PLACE_CLAUSE_RE,
-  isCompoundPlaceWord,
-  isMultiWordPlaceByContext,
-  isPersonBySyntacticContext,
-  matchesExcludedCharacterName,
-  PERSONAL_ROLE_TITLES,
-  STRICT_LOCATIVE_PREPOSITIONS,
+  extractCampaignNamedFacts,
 } from '../../shared/campaign-facts.js';
 import { bindSignedOutGate, renderSignedOutGate } from '../auth-gate.js';
 import { escapeHtml } from '../dom-utils.js';
@@ -61,30 +55,6 @@ import type { PageHost } from './home.js';
 /** Readable rotation cadence (4.8s per message) for the Campaign World Forge ticker. */
 export const FORGE_THEATER_ROTATION_MS = 4800;
 
-const STOP_PROPER_WORDS = new Set([
-  'The',
-  'A',
-  'An',
-  'In',
-  'On',
-  'At',
-  'By',
-  'For',
-  'With',
-  'From',
-  'Into',
-  'Near',
-  'Before',
-  'After',
-  'Under',
-  'Over',
-  'Through',
-  'When',
-  'Where',
-  'While',
-  'Example',
-]);
-
 /** Lightweight premise fact chips for create UX (generalized entity/location/quest extraction). */
 function premiseCommittedFactsMarkup(
   premise: string,
@@ -94,105 +64,7 @@ function premiseCommittedFactsMarkup(
   if (text.length === 0) {
     return `<p class="record-meta" data-testid="premise-committed-facts-empty">Committed premise facts will appear here as you type.</p>`;
   }
-  const facts: string[] = [];
-  const lower = text.toLowerCase();
-  if (/\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/.test(lower)) {
-    const locMatch = lower.match(
-      /\b(canal|dock|ferry|waterfront|harbor|harbour|marsh|crypt|keep|sanctum|forest|citadel|archive|ruins)\b/,
-    );
-    if (locMatch?.[1]) {
-      facts.push(`Location: ${locMatch[1]}`);
-    }
-  } else {
-    const prepLocMatch = lower.match(
-      /\b(?:at|in|inside|beneath|under|within)\s+the\s+(?:[a-z]+\s+)?([a-z]{4,})\b/,
-    );
-    if (prepLocMatch?.[1]) {
-      facts.push(`Location: ${prepLocMatch[1]}`);
-    }
-  }
-  if (/\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual|investigate|mystery)\b/.test(lower)) {
-    const questMatch = lower.match(
-      /\b(courier|package|missive|parcel|relic|artifact|missing|stolen|siege|curse|ritual|investigate|mystery)\b/,
-    );
-    if (questMatch?.[1]) {
-      facts.push(`Quest hook: ${questMatch[1]}`);
-    }
-  }
-  const properMatches = text.matchAll(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g);
-  const seenProper = new Set<string>();
-  let hasPrimaryProperPlace = false;
-  for (const match of properMatches) {
-    const startIdx = match.index ?? 0;
-    const rawWords = (match[1]?.trim() ?? '').split(/\s+/).filter(Boolean);
-    let strippedLocative = false;
-    while (rawWords.length > 0 && STOP_PROPER_WORDS.has(rawWords[0]!)) {
-      if (STRICT_LOCATIVE_PREPOSITIONS.has(rawWords[0]!.toLowerCase())) {
-        strippedLocative = true;
-      }
-      rawWords.shift();
-    }
-    const candidate = rawWords.join(' ');
-    if (
-      candidate.length > 2 &&
-      !STOP_PROPER_WORDS.has(candidate) &&
-      !seenProper.has(candidate.toLowerCase()) &&
-      !matchesExcludedCharacterName(candidate, excludeCharacterNames)
-    ) {
-      const beforeWord = (
-        text
-          .slice(0, startIdx)
-          .trimEnd()
-          .match(/([A-Za-z]+)$/)?.[1] ?? ''
-      ).toLowerCase();
-      const afterSlice = text.slice(startIdx + match[0].length);
-      const firstWordLower = (rawWords[0] ?? '').toLowerCase();
-      const hasRoleTitle =
-        PERSONAL_ROLE_TITLES.has(firstWordLower) || PERSONAL_ROLE_TITLES.has(beforeWord);
-      const isSyntacticPerson =
-        hasRoleTitle || isPersonBySyntacticContext(candidate, text, startIdx);
-      const isPlaceEntity =
-        !isSyntacticPerson &&
-        (strippedLocative ||
-          STRICT_LOCATIVE_PREPOSITIONS.has(beforeWord) ||
-          APPOSITIVE_PLACE_CLAUSE_RE.test(afterSlice) ||
-          (rawWords.length === 1
-            ? isCompoundPlaceWord(rawWords[0]!)
-            : isMultiWordPlaceByContext(candidate, {
-                fullText: text,
-                previousWord: beforeWord,
-                afterSlice,
-                matchIndex: startIdx,
-              })));
-      seenProper.add(candidate.toLowerCase());
-      if (isPlaceEntity) {
-        const existingLocIdx = facts.findIndex((f) => f.startsWith('Location: '));
-        if (!hasPrimaryProperPlace && existingLocIdx >= 0) {
-          facts[existingLocIdx] = `Location: ${candidate}`;
-        } else if (!hasPrimaryProperPlace) {
-          facts.unshift(`Location: ${candidate}`);
-        } else {
-          facts.push(`Location: ${candidate}`);
-        }
-        hasPrimaryProperPlace = true;
-      } else {
-        facts.push(`Named: ${candidate}`);
-      }
-      if (seenProper.size >= 4) {
-        break;
-      }
-    }
-  }
-  const propMatches = text.matchAll(
-    /\b((?:broken|locked|ancient|silver|iron|red|sealed|gilded|cracked|rusty)\s+(?:[a-z]+\s+)?(?:lantern|door|warehouse|gate|chest|altar|key|satchel|blade|scroll|tome))\b/gi,
-  );
-  for (const match of propMatches) {
-    const prop = match[1]?.trim() ?? '';
-    if (prop.length > 0 && !seenProper.has(prop.toLowerCase())) {
-      seenProper.add(prop.toLowerCase());
-      facts.push(`Notable detail: ${prop}`);
-    }
-  }
+  const { chips: facts } = extractCampaignNamedFacts(text, excludeCharacterNames);
   if (facts.length === 0) {
     return `<p class="record-meta" data-testid="premise-committed-facts-empty">No named location, quest hook, or entities detected yet.</p>`;
   }

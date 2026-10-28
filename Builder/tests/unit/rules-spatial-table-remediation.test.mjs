@@ -23,6 +23,7 @@ import {
   cleanNpcLabelForMatching,
   expandNpcNameVariants,
   extractCampaignFactsFromPremise,
+  extractCampaignNamedFacts,
   isCompoundPlaceWord,
   isPersonBySyntacticContext,
   npcNamesMatch,
@@ -1920,6 +1921,49 @@ test('VP-01..VP-05, 6/12 Quotas + Admin/Codex/Antigravity Bypass, Global Asset B
     firestore: secFirestore,
   });
   assert.equal(killSwitchOutlines.length, 3, 'AI Kill Switch falls back to 3 deterministic outlines');
+
+  // 7. Surgical Closure VP-03: extractCampaignNamedFacts excludes furniture compounds ("parcel rack") and prioritizes missing person
+  const frostmerePremise =
+    'At Frostmere Watchhouse, a rain-swept customs hall, Archivist Teren Sol vanished during an inspection. Legate Ivara Fenbrook asks Dalia Kestrel to find Teren Sol before the evening bell. Near a fallen parcel rack, silver chalk marks trail from the entry floor toward an inner chamber containing a cracked jade astrolabe.';
+  const frostmereNamedFacts = extractCampaignNamedFacts(frostmerePremise, ['Dalia Kestrel']);
+  assert.notEqual(frostmereNamedFacts.questHook, 'parcel');
+  assert.match(frostmereNamedFacts.questHook ?? '', /Teren Sol/i);
+  assert.match(frostmereNamedFacts.questHook ?? '', /missing/i);
+  assert.equal(
+    frostmereNamedFacts.chips.some((chip) => /Quest hook:\s*parcel/i.test(chip)),
+    false,
+    'Visible Quest hook chip must never output Quest hook: parcel for a fallen parcel rack',
+  );
+  assert.equal(
+    frostmereNamedFacts.chips.some((chip) => /Quest hook:.*Teren Sol.*missing/i.test(chip)),
+    true,
+    'Visible Quest hook chip must reflect the missing person objective',
+  );
+
+  // 8. Surgical Closure VP-04: 1-square named feature approach produces "<Actor> moved 1 square (5 ft) ... toward <targetFeatureLabel>." in both receipt narrationSeed and Chronicle
+  const oneSquareMoveSummary = formatMoveTravelSummary({
+    path: [{ column: 9, row: 4 }],
+    start: { column: 8, row: 4 },
+    map: vp04Map,
+    actorLabel: 'Dalia Kestrel',
+    targetLabel: 'Brass-bound strongbox',
+    declaration: 'I walk over to the Brass-bound strongbox.',
+  });
+  assert.equal(
+    oneSquareMoveSummary,
+    'Dalia Kestrel moved 1 square (5 ft) from column 8, row 4 across Weighhouse toward Brass-bound strongbox.',
+  );
+  const oneSquareReceipt = buildResolvedActionReceipt({
+    commandType: 'table.move',
+    targetLabel: 'Brass-bound strongbox',
+    targetKind: 'token_path',
+    doorStatesAfter: { 'door-east': 'closed' },
+    sceneTitle: 'Weighhouse',
+    declaration: 'I walk over to the Brass-bound strongbox.',
+    eventSummary: oneSquareMoveSummary,
+  });
+  assert.equal(oneSquareReceipt.narrationSeed, oneSquareMoveSummary);
+  assert.doesNotMatch(oneSquareReceipt.narrationSeed, /Wooden doorway/i);
 });
 
 
